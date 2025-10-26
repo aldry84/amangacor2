@@ -62,9 +62,11 @@ class Adimoviebox : MainAPI() {
     }
 
     override suspend fun quickSearch(query: String): List<SearchResponse> {
+        // Menggunakan search(query) yang mengembalikan List<SearchResponse>?
         return search(query) ?: emptyList()
     }
 
+    // Tanda tangan fungsi ini mengatasi error 'overrides nothing'
     override suspend fun search(query: String): List<SearchResponse>? {
         val results = app.post(
             "$mainUrl/wefeed-h5-bff/web/subject/search", requestBody = mapOf(
@@ -93,8 +95,16 @@ class Adimoviebox : MainAPI() {
         val description = subject?.description
         val trailer = subject?.trailer?.videoAddress?.url
         
-        // PERBAIKAN: Mengganti toScoreInt() yang tidak teresolusi dengan konversi manual.
-        val score = (subject?.imdbRatingValue?.toFloatOrNull()?.times(100))?.toInt()
+        // PERBAIKAN: Menghitung skor manual (0-100) dan membungkusnya dalam objek Score.
+        // Ini mengatasi error 'Unresolved reference toScoreInt' dan 'Assignment type mismatch'
+        val rawScore = subject?.imdbRatingValue?.toFloatOrNull()?.times(10)
+        
+        val score = if (rawScore != null) {
+            // Kita kalikan 10 untuk mendapatkan skala 0-100
+            Score(score = rawScore.toInt() * 10, scoreName = "IMDb")
+        } else {
+            null
+        }
         
         val actors = document?.stars?.mapNotNull { cast ->
             ActorData(
@@ -135,7 +145,7 @@ class Adimoviebox : MainAPI() {
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                this.score = score 
+                this.score = score // Membutuhkan Score?
                 this.actors = actors
                 this.recommendations = recommendations
                 addTrailer(trailer, addRaw = true)
@@ -151,7 +161,7 @@ class Adimoviebox : MainAPI() {
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                this.score = score
+                this.score = score // Membutuhkan Score?
                 this.actors = actors
                 this.recommendations = recommendations
                 addTrailer(trailer, addRaw = true)
