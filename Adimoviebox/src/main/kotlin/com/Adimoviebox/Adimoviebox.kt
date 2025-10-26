@@ -62,9 +62,11 @@ class Adimoviebox : MainAPI() {
     }
 
     override suspend fun quickSearch(query: String): List<SearchResponse> {
+        // Menggunakan search(query) yang mengembalikan List<SearchResponse>?
         return search(query) ?: emptyList()
     }
 
+    // Tanda tangan fungsi yang benar untuk search non-paging
     override suspend fun search(query: String): List<SearchResponse>? {
         val results = app.post(
             "$mainUrl/wefeed-h5-bff/web/subject/search", requestBody = mapOf(
@@ -93,15 +95,8 @@ class Adimoviebox : MainAPI() {
         val description = subject?.description
         val trailer = subject?.trailer?.videoAddress?.url
         
-        // Menghitung skor manual (0-100)
-        val rawScore = subject?.imdbRatingValue?.toFloatOrNull()?.times(10)
-        
-        // PERBAIKAN: Menggunakan helper function newScore() alih-alih constructor Score() yang private
-        val score = if (rawScore != null) {
-            newScore(rawScore.toInt() * 10, "IMDb")
-        } else {
-            null
-        }
+        // Ambil rating sebagai Float (misalnya 8.5)
+        val imdbRating = subject?.imdbRatingValue?.toFloatOrNull()
         
         val actors = document?.stars?.mapNotNull { cast ->
             ActorData(
@@ -142,7 +137,8 @@ class Adimoviebox : MainAPI() {
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                this.score = score 
+                // PERBAIKAN FINAL: Gunakan toScore() pada builder
+                this.toScore(imdbRating?.times(10)?.toInt(), "IMDb")
                 this.actors = actors
                 this.recommendations = recommendations
                 addTrailer(trailer, addRaw = true)
@@ -158,7 +154,8 @@ class Adimoviebox : MainAPI() {
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                this.score = score
+                // PERBAIKAN FINAL: Gunakan toScore() pada builder
+                this.toScore(imdbRating?.times(10)?.toInt(), "IMDb")
                 this.actors = actors
                 this.recommendations = recommendations
                 addTrailer(trailer, addRaw = true)
