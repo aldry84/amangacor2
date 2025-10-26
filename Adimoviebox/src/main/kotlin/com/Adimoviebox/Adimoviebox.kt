@@ -3,6 +3,8 @@ package com.Adimoviebox
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
+// PERBAIKAN FINAL: Import eksplisit untuk fungsi ekstensi toScore()
+import com.lagradost.cloudstream3.LoadResponse.Companion.toScore 
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
@@ -62,11 +64,9 @@ class Adimoviebox : MainAPI() {
     }
 
     override suspend fun quickSearch(query: String): List<SearchResponse> {
-        // Menggunakan search(query) yang mengembalikan List<SearchResponse>?
         return search(query) ?: emptyList()
     }
 
-    // Tanda tangan fungsi yang benar untuk search non-paging
     override suspend fun search(query: String): List<SearchResponse>? {
         val results = app.post(
             "$mainUrl/wefeed-h5-bff/web/subject/search", requestBody = mapOf(
@@ -137,7 +137,7 @@ class Adimoviebox : MainAPI() {
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                // PERBAIKAN FINAL: Gunakan toScore() pada builder
+                // Menggunakan toScore() yang sekarang sudah teresolusi
                 this.toScore(imdbRating?.times(10)?.toInt(), "IMDb")
                 this.actors = actors
                 this.recommendations = recommendations
@@ -154,7 +154,7 @@ class Adimoviebox : MainAPI() {
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                // PERBAIKAN FINAL: Gunakan toScore() pada builder
+                // Menggunakan toScore() yang sekarang sudah teresolusi
                 this.toScore(imdbRating?.times(10)?.toInt(), "IMDb")
                 this.actors = actors
                 this.recommendations = recommendations
