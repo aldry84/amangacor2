@@ -47,9 +47,11 @@ class Adimoviebox : MainAPI() {
             val episodes = document.select("div.episode a").mapNotNull {
                 val epTitle = it.text()
                 val link = it.attr("href") ?: return@mapNotNull null
-                Episode(link, epTitle)
+                newEpisode(link) {
+                    this.name = epTitle
+                }
             }
-            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes, url) {
                 this.posterUrl = poster
                 this.plot = plot
                 this.year = year
