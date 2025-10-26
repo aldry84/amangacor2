@@ -1,0 +1,136 @@
+[
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=dramafull.cc&sz=%size%",
+        "jarFileSize": 67089,
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/aldry84/amangacor2",
+        "fileSize": 19488,
+        "status": 1,
+        "language": "en",
+        "authors": [
+            "AdiDewasa"
+        ],
+        "tvTypes": [
+            "AsianDrama",
+            "TvSeries",
+            "Movie"
+        ],
+        "version": 1,
+        "internalName": "AdiDewasa",
+        "jarUrl": "https://raw.githubusercontent.com/aldry84/amangacor2/builds/AdiDewasa.jar",
+        "description": "Film Semi Dewasa",
+        "url": "https://raw.githubusercontent.com/aldry84/amangacor2/builds/AdiDewasa.cs3",
+        "name": "AdiDewasa"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=moviebox.ph&sz=%size%",
+        "jarFileSize": 132726,
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/aldry84/amangacor2",
+        "fileSize": 27724,
+        "status": 1,
+        "language": "en",
+        "authors": [
+            "AdimovieboxUser"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "Anime",
+            "AsianDrama"
+        ],
+        "version": 1,
+        "internalName": "Adimoviebox",
+        "jarUrl": "https://raw.githubusercontent.com/aldry84/amangacor2/builds/Adimoviebox.jar",
+        "description": "Adimoviebox (moviebox.ph)",
+        "url": "https://raw.githubusercontent.com/aldry84/amangacor2/builds/Adimoviebox.cs3",
+        "name": "Adimoviebox"
+    },
+    {
+        "iconUrl": "https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://idlixian.com&size=16",
+        "jarFileSize": 95112,
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/aldry84/amangacor2",
+        "fileSize": 24524,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "Hexated,Phisher98"
+        ],
+        "tvTypes": [
+            "TvSeries",
+            "Movie",
+            "Anime",
+            "AsianDrama"
+        ],
+        "version": 3,
+        "internalName": "IdlixProvider",
+        "jarUrl": "https://raw.githubusercontent.com/aldry84/amangacor2/builds/IdlixProvider.jar",
+        "url": "https://raw.githubusercontent.com/aldry84/amangacor2/builds/IdlixProvider.cs3",
+        "name": "IdlixProvider"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=noxx.to&sz=%size%",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/aldry84/amangacor2",
+        "fileSize": 13865,
+        "status": 1,
+        "language": "en",
+        "authors": [
+            "LikDev-256,Phisher98"
+        ],
+        "tvTypes": [
+            "TvSeries"
+        ],
+        "version": 3,
+        "internalName": "NOXXProvider",
+        "description": "HD TV Shows (Not all links are working because of a unsolvable issue)",
+        "url": "https://raw.githubusercontent.com/aldry84/amangacor2/builds/NOXXProvider.cs3",
+        "name": "NOXXProvider"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=pelisplushd.bz&sz=%size%",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/aldry84/amangacor2",
+        "fileSize": 21820,
+        "status": 1,
+        "language": "mx",
+        "authors": [
+            "Phisher98"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries"
+        ],
+        "version": 1,
+        "internalName": "Pelisplushd",
+        "description": "(Mexican) Movies/Series/Anime Extension",
+        "url": "https://raw.githubusercontent.com/aldry84/amangacor2/builds/Pelisplushd.cs3",
+        "name": "Pelisplushd"
+    },
+    {
+        "iconUrl": "https://i3.wp.com/yt3.googleusercontent.com/ytc/AIdro_nCBArSmvOc6o-k2hTYpLtQMPrKqGtAw_nC20rxm70akA=s900-c-k-c0x00ffffff-no-rj?ssl=1",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/aldry84/amangacor2",
+        "fileSize": 798335,
+        "status": 1,
+        "language": "en",
+        "authors": [
+            "Phisher98",
+            "Hexated"
+        ],
+        "tvTypes": [
+            "AsianDrama",
+            "TvSeries",
+            "Anime",
+            "Movie",
+            "Cartoon",
+            "AnimeMovie"
+        ],
+        "version": 453,
+        "internalName": "StreamPlay",
+        "description": "#1 best extention based on MultiAPI",
+        "url": "https://raw.githubusercontent.com/aldry84/amangacor2/builds/StreamPlay.cs3",
+        "name": "StreamPlay"
+    }
+]
