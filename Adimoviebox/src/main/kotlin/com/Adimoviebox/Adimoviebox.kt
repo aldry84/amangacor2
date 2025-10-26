@@ -3,8 +3,8 @@ package com.Adimoviebox
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
-// PERBAIKAN: Mengandalkan import wildcard untuk utilitas global seperti toScoreInt
-import com.lagradost.cloudstream3.utils.* import com.lagradost.cloudstream3.utils.AppUtils.parseJson
+import com.lagradost.cloudstream3.utils.*
+import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.nicehttp.RequestBodyTypes
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -93,8 +93,8 @@ class Adimoviebox : MainAPI() {
         val description = subject?.description
         val trailer = subject?.trailer?.videoAddress?.url
         
-        // PERBAIKAN: Pemanggilan fungsi sekarang akan berhasil dengan import com.lagradost.cloudstream3.utils.*
-        val score = subject?.imdbRatingValue.toScoreInt() 
+        // PERBAIKAN: Mengganti toScoreInt() yang tidak teresolusi dengan konversi manual.
+        val score = (subject?.imdbRatingValue?.toFloatOrNull()?.times(100))?.toInt()
         
         val actors = document?.stars?.mapNotNull { cast ->
             ActorData(
