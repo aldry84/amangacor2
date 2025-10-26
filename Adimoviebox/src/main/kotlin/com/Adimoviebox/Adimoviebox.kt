@@ -3,8 +3,6 @@ package com.Adimoviebox
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
-// PERBAIKAN: Import eksplisit untuk fungsi ekstensi toScore() yang hilang
-import com.lagradost.cloudstream3.LoadResponse.Companion.toScore 
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
@@ -95,9 +93,11 @@ class Adimoviebox : MainAPI() {
         val description = subject?.description
         val trailer = subject?.trailer?.videoAddress?.url
         
-        // Ambil rating sebagai Float (misalnya 8.5)
-        val imdbRating = subject?.imdbRatingValue?.toFloatOrNull()
-        
+        // --- Bagian Skor Dihilangkan ---
+        // Kode yang bermasalah: val imdbRating = subject?.imdbRatingValue?.toFloatOrNull()
+        // Kode yang bermasalah: this.toScore(...)
+        // ---
+
         val actors = document?.stars?.mapNotNull { cast ->
             ActorData(
                 Actor(
@@ -137,7 +137,7 @@ class Adimoviebox : MainAPI() {
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                this.toScore(imdbRating?.times(10)?.toInt(), "IMDb")
+                // Tidak ada skor yang diterapkan di sini
                 this.actors = actors
                 this.recommendations = recommendations
                 addTrailer(trailer, addRaw = true)
@@ -153,7 +153,7 @@ class Adimoviebox : MainAPI() {
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                this.toScore(imdbRating?.times(10)?.toInt(), "IMDb")
+                // Tidak ada skor yang diterapkan di sini
                 this.actors = actors
                 this.recommendations = recommendations
                 addTrailer(trailer, addRaw = true)
