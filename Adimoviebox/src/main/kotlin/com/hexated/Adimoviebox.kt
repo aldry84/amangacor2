@@ -15,14 +15,9 @@ class Adimoviebox : MainAPI() {
             val title = it.selectFirst("img")?.attr("alt") ?: return@mapNotNull null
             val href = it.selectFirst("a")?.attr("href") ?: return@mapNotNull null
             val poster = it.selectFirst("img")?.attr("data-src")
-            MovieSearchResponse(
-                title,
-                href,
-                this.name,
-                TvType.Movie,
-                poster,
-                null
-            )
+            newMovieSearchResponse(title, href, TvType.Movie) {
+                this.posterUrl = poster
+            }
         }
         return newHomePageResponse(request.name, items)
     }
@@ -34,14 +29,9 @@ class Adimoviebox : MainAPI() {
             val title = it.selectFirst("img")?.attr("alt") ?: return@mapNotNull null
             val href = it.selectFirst("a")?.attr("href") ?: return@mapNotNull null
             val poster = it.selectFirst("img")?.attr("data-src")
-            MovieSearchResponse(
-                title,
-                href,
-                this.name,
-                TvType.Movie,
-                poster,
-                null
-            )
+            newMovieSearchResponse(title, href, TvType.Movie) {
+                this.posterUrl = poster
+            }
         }
     }
 
@@ -54,12 +44,18 @@ class Adimoviebox : MainAPI() {
 
         val isSeries = document.select("div.episode-list").isNotEmpty()
         return if (isSeries) {
-            newTvSeriesLoadResponse(title, url, TvType.TvSeries, poster) {
+            val episodes = document.select("div.episode a").mapNotNull {
+                val epTitle = it.text()
+                val link = it.attr("href") ?: return@mapNotNull null
+                Episode(link, epTitle)
+            }
+            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+                this.posterUrl = poster
                 this.plot = plot
                 this.year = year
             }
         } else {
-            newMovieLoadResponse(title, url, TvType.Movie, url) {
+            newMovieLoadResponse(title, url, TvType.Movie) {
                 this.posterUrl = poster
                 this.plot = plot
                 this.year = year
