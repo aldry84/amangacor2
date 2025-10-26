@@ -3,7 +3,7 @@ package com.Adimoviebox
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
-// PERBAIKAN FINAL: Import eksplisit untuk fungsi ekstensi toScore()
+// PERBAIKAN: Import eksplisit untuk fungsi ekstensi toScore() yang hilang
 import com.lagradost.cloudstream3.LoadResponse.Companion.toScore 
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
@@ -137,7 +137,6 @@ class Adimoviebox : MainAPI() {
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                // Menggunakan toScore() yang sekarang sudah teresolusi
                 this.toScore(imdbRating?.times(10)?.toInt(), "IMDb")
                 this.actors = actors
                 this.recommendations = recommendations
@@ -154,7 +153,6 @@ class Adimoviebox : MainAPI() {
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                // Menggunakan toScore() yang sekarang sudah teresolusi
                 this.toScore(imdbRating?.times(10)?.toInt(), "IMDb")
                 this.actors = actors
                 this.recommendations = recommendations
