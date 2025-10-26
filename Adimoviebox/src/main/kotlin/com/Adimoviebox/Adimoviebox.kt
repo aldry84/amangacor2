@@ -16,7 +16,7 @@ class Adimoviebox : MainAPI() {
     private val apiUrl = "https://fmoviesunblocked.net"
     
     override val instantLinkLoading = true
-    override var name = "Adimoviebox" // Diganti dari Moviebox
+    override var name = "Adimoviebox" 
     override val hasMainPage = true
     override val hasQuickSearch = true
     override var lang = "en"
@@ -27,7 +27,6 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
-    // Struktur mainPage dari kode Moviebox yang tidak berfungsi
     override val mainPage: List<MainPageData> = mainPageOf(
         "1,ForYou" to "Movie ForYou",
         "1,Hottest" to "Movie Hottest",
@@ -63,10 +62,11 @@ class Adimoviebox : MainAPI() {
         return newHomePageResponse(request.name, home)
     }
 
-    override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
+    override suspend fun quickSearch(query: String): List<SearchResponse> = search(query).mapNotNull { it.list }.flatten()
 
-    override suspend fun search(query: String, page: Int, tvType: TvType?): List<SearchResponse> {
-        return app.post(
+    // PERBAIKAN: Menggunakan fungsi override yang benar dan tipe pengembalian yang disarankan.
+    override suspend fun search(query: String, page: Int, tvType: TvType?): SearchResponseList? {
+        val results = app.post(
             "$mainUrl/wefeed-h5-bff/web/subject/search", requestBody = mapOf(
                 "keyword" to query,
                 "page" to "1",
@@ -74,7 +74,9 @@ class Adimoviebox : MainAPI() {
                 "subjectType" to "0",
             ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
         ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
-            ?: throw ErrorLoadingException()
+            ?: return null // Mengganti throw dengan return null karena fungsi mengembalikan tipe nullable
+            
+        return SearchResponseList(results, false)
     }
 
     override suspend fun load(url: String): LoadResponse {
@@ -90,7 +92,10 @@ class Adimoviebox : MainAPI() {
         val tvType = if (subject?.subjectType == 2) TvType.TvSeries else TvType.Movie
         val description = subject?.description
         val trailer = subject?.trailer?.videoAddress?.url
-        val rating = subject?.imdbRatingValue.toRatingInt()
+        
+        // PERBAIKAN: Mengganti toRatingInt() yang usang dengan toScoreInt()
+        val score = subject?.imdbRatingValue.toScoreInt() 
+        
         val actors = document?.stars?.mapNotNull { cast ->
             ActorData(
                 Actor(
@@ -130,7 +135,8 @@ class Adimoviebox : MainAPI() {
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                this.rating = rating
+                // PERBAIKAN: Mengganti this.rating = rating dengan this.score = score
+                this.score = score 
                 this.actors = actors
                 this.recommendations = recommendations
                 addTrailer(trailer, addRaw = true)
@@ -146,7 +152,8 @@ class Adimoviebox : MainAPI() {
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                this.rating = rating
+                // PERBAIKAN: Mengganti this.rating = rating dengan this.score = score
+                this.score = score
                 this.actors = actors
                 this.recommendations = recommendations
                 addTrailer(trailer, addRaw = true)
@@ -160,7 +167,7 @@ class Adimoviebox : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-
+        // ... (Logika loadLinks tidak berubah dan tidak menghasilkan kesalahan)
         val media = parseJson<LoadData>(data)
         val referer = "$apiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&lang=en"
 
@@ -201,7 +208,8 @@ class Adimoviebox : MainAPI() {
         return true
     }
     
-    // Semua Data Class yang Anda definisikan di Moviebox
+    // Semua Data Class dipertahankan
+    // ...
     data class LoadData(
         val id: String? = null,
         val season: Int? = null,
@@ -281,7 +289,7 @@ class Adimoviebox : MainAPI() {
                 when (subjectType) {
                     2 -> TvType.TvSeries
                     1006 -> TvType.Anime
-                    else -> TvType.Movie // Anggap default Movie jika tipe tidak dikenali
+                    else -> TvType.Movie 
                 },
                 false
             ) {
