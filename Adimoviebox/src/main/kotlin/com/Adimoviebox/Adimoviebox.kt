@@ -3,11 +3,9 @@ package com.Adimoviebox
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
-import com.lagradost.cloudstream3.utils.*
-import com.lagradost.cloudstream3.utils.AppUtils.parseJson
+// PERBAIKAN: Mengandalkan import wildcard untuk utilitas global seperti toScoreInt
+import com.lagradost.cloudstream3.utils.* import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
-// PERBAIKAN: Import eksplisit untuk toScoreInt
-import com.lagradost.cloudstream3.utils.AppUtils.toScoreInt 
 import com.lagradost.nicehttp.RequestBodyTypes
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -63,12 +61,10 @@ class Adimoviebox : MainAPI() {
         return newHomePageResponse(request.name, home)
     }
 
-    // PERBAIKAN: Menghapus '.results'
     override suspend fun quickSearch(query: String): List<SearchResponse> {
         return search(query) ?: emptyList()
     }
 
-    // Menggunakan tanda tangan yang mengembalikan List<SearchResponse>?
     override suspend fun search(query: String): List<SearchResponse>? {
         val results = app.post(
             "$mainUrl/wefeed-h5-bff/web/subject/search", requestBody = mapOf(
@@ -97,7 +93,7 @@ class Adimoviebox : MainAPI() {
         val description = subject?.description
         val trailer = subject?.trailer?.videoAddress?.url
         
-        // PERBAIKAN: toScoreInt kini sudah terimport
+        // PERBAIKAN: Pemanggilan fungsi sekarang akan berhasil dengan import com.lagradost.cloudstream3.utils.*
         val score = subject?.imdbRatingValue.toScoreInt() 
         
         val actors = document?.stars?.mapNotNull { cast ->
