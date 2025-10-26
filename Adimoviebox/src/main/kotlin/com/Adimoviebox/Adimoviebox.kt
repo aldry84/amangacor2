@@ -6,7 +6,7 @@ import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
-// PERBAIKAN: Import toScoreInt (mungkin hilang dari impor util)
+// PERBAIKAN: Import eksplisit untuk toScoreInt
 import com.lagradost.cloudstream3.utils.AppUtils.toScoreInt 
 import com.lagradost.nicehttp.RequestBodyTypes
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -63,15 +63,12 @@ class Adimoviebox : MainAPI() {
         return newHomePageResponse(request.name, home)
     }
 
-    // PERBAIKAN: Menggunakan tanda tangan fungsi 'search' yang benar dan menangani SearchResponseList?.
-    // Menghilangkan '.list' karena SearchResponseList tidak memiliki properti 'list' langsung.
-    // Menggunakan safe call (?.) dan elvis operator (?: emptyList())
+    // PERBAIKAN: Menghapus '.results'
     override suspend fun quickSearch(query: String): List<SearchResponse> {
-        return search(query)?.results ?: emptyList()
+        return search(query) ?: emptyList()
     }
 
-    // PERBAIKAN: Menggunakan tanda tangan 'search' yang sesuai (tanpa parameter tvType) jika Anda ingin meng-override yang lebih sederhana.
-    // Mengganti konstruktor yang usang dengan 'newSearchResponseList'.
+    // Menggunakan tanda tangan yang mengembalikan List<SearchResponse>?
     override suspend fun search(query: String): List<SearchResponse>? {
         val results = app.post(
             "$mainUrl/wefeed-h5-bff/web/subject/search", requestBody = mapOf(
@@ -83,26 +80,8 @@ class Adimoviebox : MainAPI() {
         ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
             ?: return null
             
-        return results // Mengembalikan List<SearchResponse>? sesuai dengan tanda tangan override yang disarankan kedua.
+        return results 
     }
-
-    // Mengganti fungsi search di atas dengan yang ini jika Anda ingin mendukung paginasi dan tvType:
-    /*
-    override suspend fun search(query: String, page: Int, tvType: TvType?): SearchResponseList? {
-        val results = app.post(
-            "$mainUrl/wefeed-h5-bff/web/subject/search", requestBody = mapOf(
-                "keyword" to query,
-                "page" to page.toString(), // Gunakan page
-                "perPage" to "24", // Ganti perPage menjadi 24 untuk paginasi
-                "subjectType" to "0",
-            ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
-        ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
-            ?: return null
-            
-        return newSearchResponseList(results, false) // Gunakan newSearchResponseList
-    }
-    */
-
 
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfterLast("/")
@@ -118,7 +97,7 @@ class Adimoviebox : MainAPI() {
         val description = subject?.description
         val trailer = subject?.trailer?.videoAddress?.url
         
-        // PERBAIKAN: toScoreInt sekarang teresolusi berkat import tambahan.
+        // PERBAIKAN: toScoreInt kini sudah terimport
         val score = subject?.imdbRatingValue.toScoreInt() 
         
         val actors = document?.stars?.mapNotNull { cast ->
