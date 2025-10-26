@@ -62,11 +62,9 @@ class Adimoviebox : MainAPI() {
     }
 
     override suspend fun quickSearch(query: String): List<SearchResponse> {
-        // Menggunakan search(query) yang mengembalikan List<SearchResponse>?
         return search(query) ?: emptyList()
     }
 
-    // Tanda tangan fungsi ini mengatasi error 'overrides nothing'
     override suspend fun search(query: String): List<SearchResponse>? {
         val results = app.post(
             "$mainUrl/wefeed-h5-bff/web/subject/search", requestBody = mapOf(
@@ -95,13 +93,12 @@ class Adimoviebox : MainAPI() {
         val description = subject?.description
         val trailer = subject?.trailer?.videoAddress?.url
         
-        // PERBAIKAN: Menghitung skor manual (0-100) dan membungkusnya dalam objek Score.
-        // Ini mengatasi error 'Unresolved reference toScoreInt' dan 'Assignment type mismatch'
+        // Menghitung skor manual (0-100)
         val rawScore = subject?.imdbRatingValue?.toFloatOrNull()?.times(10)
         
+        // PERBAIKAN: Menggunakan helper function newScore() alih-alih constructor Score() yang private
         val score = if (rawScore != null) {
-            // Kita kalikan 10 untuk mendapatkan skala 0-100
-            Score(score = rawScore.toInt() * 10, scoreName = "IMDb")
+            newScore(rawScore.toInt() * 10, "IMDb")
         } else {
             null
         }
@@ -145,7 +142,7 @@ class Adimoviebox : MainAPI() {
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                this.score = score // Membutuhkan Score?
+                this.score = score 
                 this.actors = actors
                 this.recommendations = recommendations
                 addTrailer(trailer, addRaw = true)
@@ -161,7 +158,7 @@ class Adimoviebox : MainAPI() {
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                this.score = score // Membutuhkan Score?
+                this.score = score
                 this.actors = actors
                 this.recommendations = recommendations
                 addTrailer(trailer, addRaw = true)
@@ -175,7 +172,6 @@ class Adimoviebox : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // ... (Logika loadLinks dipertahankan)
         val media = parseJson<LoadData>(data)
         val referer = "$apiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&lang=en"
 
