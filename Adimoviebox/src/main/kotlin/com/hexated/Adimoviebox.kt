@@ -88,7 +88,10 @@ class Adimoviebox : MainAPI() {
         val tvType = if (subject?.subjectType == 2) TvType.TvSeries else TvType.Movie
         val description = subject?.description
         val trailer = subject?.trailer?.videoAddress?.url
-        val score = subject?.imdbRatingValue?.toDoubleOrNull()
+
+        // ambil nilai double dari imdbRatingValue lalu bungkus ke Score
+        val scoreValue = subject?.imdbRatingValue?.toDoubleOrNull()
+        val scoreObj = Score(scoreValue)
 
         val actors = document?.stars?.mapNotNull { cast ->
             ActorData(
@@ -128,7 +131,8 @@ class Adimoviebox : MainAPI() {
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                this.rating = rating
+                // gunakan Score wrapper, bukan rating Int
+                this.score = scoreObj
                 this.actors = actors
                 this.recommendations = recommendations
                 addTrailer(trailer, addRaw = true)
@@ -144,7 +148,8 @@ class Adimoviebox : MainAPI() {
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                this.score = score
+                // gunakan Score wrapper, bukan rating Int
+                this.score = scoreObj
                 this.actors = actors
                 this.recommendations = recommendations
                 addTrailer(trailer, addRaw = true)
