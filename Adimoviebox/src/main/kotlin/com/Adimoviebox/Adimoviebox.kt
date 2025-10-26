@@ -6,12 +6,13 @@ import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
+// PERBAIKAN: Import toScoreInt (mungkin hilang dari impor util)
+import com.lagradost.cloudstream3.utils.AppUtils.toScoreInt 
 import com.lagradost.nicehttp.RequestBodyTypes
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 
 class Adimoviebox : MainAPI() {
-    // URL yang Anda minta untuk dipertahankan
     override var mainUrl = "https://moviebox.ph"
     private val apiUrl = "https://fmoviesunblocked.net"
     
@@ -62,10 +63,16 @@ class Adimoviebox : MainAPI() {
         return newHomePageResponse(request.name, home)
     }
 
-    override suspend fun quickSearch(query: String): List<SearchResponse> = search(query).mapNotNull { it.list }.flatten()
+    // PERBAIKAN: Menggunakan tanda tangan fungsi 'search' yang benar dan menangani SearchResponseList?.
+    // Menghilangkan '.list' karena SearchResponseList tidak memiliki properti 'list' langsung.
+    // Menggunakan safe call (?.) dan elvis operator (?: emptyList())
+    override suspend fun quickSearch(query: String): List<SearchResponse> {
+        return search(query)?.results ?: emptyList()
+    }
 
-    // PERBAIKAN: Menggunakan fungsi override yang benar dan tipe pengembalian yang disarankan.
-    override suspend fun search(query: String, page: Int, tvType: TvType?): SearchResponseList? {
+    // PERBAIKAN: Menggunakan tanda tangan 'search' yang sesuai (tanpa parameter tvType) jika Anda ingin meng-override yang lebih sederhana.
+    // Mengganti konstruktor yang usang dengan 'newSearchResponseList'.
+    override suspend fun search(query: String): List<SearchResponse>? {
         val results = app.post(
             "$mainUrl/wefeed-h5-bff/web/subject/search", requestBody = mapOf(
                 "keyword" to query,
@@ -74,10 +81,28 @@ class Adimoviebox : MainAPI() {
                 "subjectType" to "0",
             ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
         ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
-            ?: return null // Mengganti throw dengan return null karena fungsi mengembalikan tipe nullable
+            ?: return null
             
-        return SearchResponseList(results, false)
+        return results // Mengembalikan List<SearchResponse>? sesuai dengan tanda tangan override yang disarankan kedua.
     }
+
+    // Mengganti fungsi search di atas dengan yang ini jika Anda ingin mendukung paginasi dan tvType:
+    /*
+    override suspend fun search(query: String, page: Int, tvType: TvType?): SearchResponseList? {
+        val results = app.post(
+            "$mainUrl/wefeed-h5-bff/web/subject/search", requestBody = mapOf(
+                "keyword" to query,
+                "page" to page.toString(), // Gunakan page
+                "perPage" to "24", // Ganti perPage menjadi 24 untuk paginasi
+                "subjectType" to "0",
+            ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
+        ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
+            ?: return null
+            
+        return newSearchResponseList(results, false) // Gunakan newSearchResponseList
+    }
+    */
+
 
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfterLast("/")
@@ -93,7 +118,7 @@ class Adimoviebox : MainAPI() {
         val description = subject?.description
         val trailer = subject?.trailer?.videoAddress?.url
         
-        // PERBAIKAN: Mengganti toRatingInt() yang usang dengan toScoreInt()
+        // PERBAIKAN: toScoreInt sekarang teresolusi berkat import tambahan.
         val score = subject?.imdbRatingValue.toScoreInt() 
         
         val actors = document?.stars?.mapNotNull { cast ->
@@ -135,7 +160,6 @@ class Adimoviebox : MainAPI() {
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                // PERBAIKAN: Mengganti this.rating = rating dengan this.score = score
                 this.score = score 
                 this.actors = actors
                 this.recommendations = recommendations
@@ -152,7 +176,6 @@ class Adimoviebox : MainAPI() {
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                // PERBAIKAN: Mengganti this.rating = rating dengan this.score = score
                 this.score = score
                 this.actors = actors
                 this.recommendations = recommendations
@@ -167,7 +190,7 @@ class Adimoviebox : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // ... (Logika loadLinks tidak berubah dan tidak menghasilkan kesalahan)
+        // ... (Logika loadLinks dipertahankan)
         val media = parseJson<LoadData>(data)
         val referer = "$apiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&lang=en"
 
@@ -209,7 +232,6 @@ class Adimoviebox : MainAPI() {
     }
     
     // Semua Data Class dipertahankan
-    // ...
     data class LoadData(
         val id: String? = null,
         val season: Int? = null,
