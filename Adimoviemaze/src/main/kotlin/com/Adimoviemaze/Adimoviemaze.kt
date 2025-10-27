@@ -1,179 +1,166 @@
-package com.Adimoviemaze
+package com.adimoviemaze
 
-import org.jsoup.nodes.Element
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
-import kotlinx.coroutines.runBlocking
+import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
+import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
+import org.jsoup.nodes.Element
+import java.util.Base64
 
 class Adimoviemaze : MainAPI() {
-    override var mainUrl: String = "https://moviemaze.cc"
-    override var name                 = "Adimoviemaze"
-    override val hasMainPage          = true
-    override var lang                 = "en" 
-    override val supportedTypes       = setOf(TvType.Movie, TvType.TvSeries)
-    
-    private val standardHeaders = mapOf(
-        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.88 Safari/537.36",
-        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"
-    )
-    
-    private val defaultPoster = "https://i.imgur.com/L7p41lQ.png"
+    override var mainUrl = "https://watch32.sx"  // Changed to .sx based on your request; verify if structure matches .co
+    override var name = "AdiMovieMaze"
+    override val hasMainPage = true
+    override val hasQuickSearch = false
+    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
+    override var lang = "en"
 
-    override val mainPage = mainPageOf(
-        "trending" to "Trending", 
-        "genre/action" to "Action",
-        "genre/horror" to "Horror",
-        "genre/tv-series" to "TV Series",
-        "movies" to "All Movies"
-    )
-
-    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
-        val pagePath = if (request.data.contains("/")) request.data else "${request.data}/"
-        val pageUrl = "$mainUrl/$pagePath/page/$page/"
-
-        val document = app.get(pageUrl, headers = standardHeaders).document
-        
-        // Selector utama untuk item (DooTheme)
-        var home = document.select("div.items article.item, div.items > article").mapNotNull { it.toSearchResult() }
-        
-        // PERBAIKAN LOGIKA: Jika hasil pertama kosong, coba selector fallback
-        if (home.isEmpty()) {
-             // Coba selector fallback untuk kategori atau hasil pencarian
-             home = document.select("div.result-item, article.item").mapNotNull { it.toSearchResult() }
+    companion object {
+        fun getType(t: String): TvType {
+            return when {
+                t.contains("/tv/") -> TvType.TvSeries
+                else -> TvType.Movie
+            }
         }
-        // Catatan: Jika home masih kosong, hasNext akan menjadi false.
+    }
 
-        return newHomePageResponse(
-            list = HomePageList(
-                name = request.name,
-                list = home,
-                isHorizontalImages = false
-            ),
-            hasNext = home.isNotEmpty() // Asumsi ada halaman selanjutnya jika ada hasil
-        )
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+        val document = app.get(mainUrl).document
+        val homeSections = ArrayList<HomePageList>()
+
+        // Featured or Popular Section (adapt selector if different)
+        val featured = document.select("div#popular-movies > div.row > div.item").mapNotNull {
+            it.toSearchResult()
+        }
+        if (featured.isNotEmpty()) {
+            homeSections.add(HomePageList("Popular Movies", featured, isHorizontalImages = true))
+        }
+
+        // Latest Movies Section
+        val latest = document.select("div#latest-movies > div.row > div.item").mapNotNull {
+            it.toSearchResult()
+        }
+        if (latest.isNotEmpty()) {
+            homeSections.add(HomePageList("Latest Releases", latest, isHorizontalImages = true))
+        }
+
+        // Add more sections if the site has them, e.g., Trending, Genres
+        // Example: val trending = document.select("selector-for-trending").mapNotNull { ... }
+
+        return HomePageResponse(homeSections)
     }
 
     private fun Element.toSearchResult(): SearchResponse? {
-        val titleElement = this.selectFirst("div.data a, h3 a") ?: this.selectFirst("a") ?: return null
-        val href      = fixUrl(titleElement.attr("href"))
-        
-        val title     = titleElement.text().trim().ifEmpty { 
-             this.selectFirst("h3")?.text()?.trim() ?: "" 
-        }
-
-        val posterUrl = fixUrlNull(
-            this.select("div.poster img").attr("data-src").ifEmpty { 
-                this.select("div.poster img").attr("src").ifEmpty { 
-                    this.select("img").attr("src") 
-                } 
-            }
-        )
-        
-        if (title.isBlank() || href.isBlank()) return null
-        
-        val tvType = if (this.selectFirst(".type.tv") != null) TvType.TvSeries else TvType.Movie
-
-        return newMovieSearchResponse(title, href, tvType) {
-            this.posterUrl = posterUrl ?: defaultPoster
+        val title = this.selectFirst("h2")?.text()?.trim() ?: return null
+        val href = fixUrlNull(this.selectFirst("a")?.attr("href")) ?: return null
+        val posterUrl = fixUrlNull(this.selectFirst("img")?.attr("src"))
+        val quality = parseQuality(this.selectFirst("div.quality")?.text())
+        return newMovieSearchResponse(title, href, getType(href)) {
+            this.posterUrl = posterUrl
+            this.quality = quality
         }
     }
 
-    override suspend fun search(query: String, page: Int): SearchResponseList? {
-        val searchUrl = "$mainUrl/page/$page/?s=$query"
-        val document = app.get(searchUrl, headers = standardHeaders).document
-        
-        val results = document.select("div.items > article.item").mapNotNull { it.toSearchResult() }
-        
-        return newSearchResponseList(results, results.isNotEmpty())
+    override suspend fun search(query: String): List<SearchResponse> {
+        val searchUrl = "$mainUrl/search?q=$query"
+        val document = app.get(searchUrl).document
+        return document.select("div.item").mapNotNull { it.toSearchResult() }
     }
 
     override suspend fun load(url: String): LoadResponse? {
-        val document = app.get(url, headers = standardHeaders).document
-        
-        val title       = document.selectFirst("h1.entry-title")?.text()?.trim() ?: ""
-        val poster      = document.selectFirst("div.poster > img")?.attr("src")?.let { fixUrl(it) }
-        val description = document.selectFirst("div.wp-content > p")?.text()?.trim()
-        
-        val genres      = document.select("div.sgeneros a").map { it.text() }
-        val year        = document.selectFirst("span.year")?.text()?.toIntOrNull()
-        
-        val isSeries = document.selectFirst("div.seasons") != null
-        val tvType = if (isSeries) TvType.TvSeries else TvType.Movie
+        val document = app.get(url).document
 
-        if (title.isBlank()) return null
-        
-        return if (isSeries) {
+        val title = document.selectFirst("h1")?.text()?.trim() ?: return null
+        val poster = fixUrlNull(document.selectFirst("div.poster img")?.attr("src"))
+        val tags = document.select("div.genres a").map { it.text() }
+        val year = document.selectFirst("div.year")?.text()?.toIntOrNull()
+        val plot = document.selectFirst("div.plot")?.text()?.trim()
+        val trailer = fixUrlNull(document.selectFirst("a.trailer")?.attr("href"))
+
+        val recommendations = document.select("div.related div.item").mapNotNull { it.toSearchResult() }
+
+        val actors = document.select("div.cast a").map {
+            Actor(it.text(), fixUrlNull(it.selectFirst("img")?.attr("src")))
+        }
+
+        val isTvSeries = url.contains("/tv/")
+
+        return if (isTvSeries) {
             val episodes = mutableListOf<Episode>()
-            
-            document.select("div.seasons > a[data-tab]").forEach { seasonTab ->
-                val seasonNum = seasonTab.attr("data-tab").toIntOrNull()
-                if (seasonNum != null) {
-                    document.select("div#season-$seasonNum ul.episodios > li").mapNotNull { episodeElement ->
-                        val epUrl = fixUrl(episodeElement.selectFirst("a")?.attr("href") ?: return@mapNotNull null)
-                        val epTitleFull = episodeElement.selectFirst("a")?.text()?.trim() ?: "Episode Unknown"
-                        
-                        val epNum = Regex("E(\\d+)(?: -|$)").find(epTitleFull)?.groupValues?.get(1)?.toIntOrNull()
+            document.select("div.season").forEach { season ->
+                val seasonNum = season.selectFirst("h3")?.text()?.filter { it.isDigit() }?.toIntOrNull() ?: 1
+                season.select("div.episode a").forEachIndexed { index, ep ->
+                    val epHref = fixUrl(ep.attr("href"))
+                    val epName = ep.text().trim()
+                    val epNum = index + 1
+                    episodes.add(newEpisode(epHref) {
+                        this.name = epName
+                        this.season = seasonNum
+                        this.episode = epNum
+                    })
+                }
+            }
 
-                        episodes.add(
-                            newEpisode(epUrl) {
-                                name    = epTitleFull
-                                season  = seasonNum
-                                episode = epNum
-                            }
+            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+                this.posterUrl = poster
+                this.year = year
+                this.plot = plot
+                this.tags = tags
+                this.recommendations = recommendations
+                addActors(actors)
+                addTrailer(trailer)
+            }
+        } else {
+            newMovieLoadResponse(title, url, TvType.Movie, url) {
+                this.posterUrl = poster
+                this.year = year
+                this.plot = plot
+                this.tags = tags
+                this.recommendations = recommendations
+                addActors(actors)
+                addTrailer(trailer)
+            }
+        }
+    }
+
+    override suspend fun loadLinks(
+        data: String,
+        isCasting: Boolean,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        val document = app.get(data).document
+
+        // Find server links or embeds
+        document.select("div.server-list a, iframe[src]").apmap { element ->
+            val link = fixUrl(element.attr("href") ?: element.attr("src"))
+            if (link.contains("embed") || link.contains("player")) {
+                // Load extractor for embedded players
+                loadExtractor(link, data, subtitleCallback, callback)
+            } else {
+                // If direct server, fetch and decode if needed
+                val res = app.get(link).text
+                // Look for obfuscated JS
+                val jsCode = Regex("""eval\('(.*?)'\)""").find(res)?.groupValues?.get(1)
+                if (jsCode != null) {
+                    val decoded = String(Base64.getDecoder().decode(jsCode))
+                    val videoUrl = Regex("""file:\s*"([^"]+)"""").find(decoded)?.groupValues?.get(1)
+                    if (videoUrl != null) {
+                        callback.invoke(
+                            ExtractorLink(
+                                this.name,
+                                this.name,
+                                videoUrl,
+                                "",
+                                getQualityFromName("HD"),  // Adapt quality
+                                isM3u8 = videoUrl.contains(".m3u8")
+                            )
                         )
                     }
                 }
             }
-
-            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes.reversed().toMutableList()) {
-                this.posterUrl = poster ?: defaultPoster
-                this.plot      = description
-                this.year      = year
-                this.tags      = genres
-            }
-        } else {
-            newMovieLoadResponse(title, url, TvType.Movie, url) {
-                this.posterUrl = poster ?: defaultPoster
-                this.plot      = description
-                this.year      = year
-                this.tags      = genres
-            }
         }
-    }
 
-    override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
-        
-        val document = app.get(data, headers = standardHeaders).document
-        
-        document.select("#player-option-1 ul > li[data-post][data-nonce][data-nume]").amap { li ->
-            val serverId = li.attr("data-post")
-            val serverNonce = li.attr("data-nonce")
-            val serverIdNum = li.attr("data-nume")
-            
-            if (serverId.isNotBlank() && serverNonce.isNotBlank() && serverIdNum.isNotBlank()) {
-                
-                val postResponse = app.post(
-                    url = "$mainUrl/wp-json/dooplay/v2/player_ad/", 
-                    data = mapOf(
-                        "post" to serverId,
-                        "nonce" to serverNonce,
-                        "nume" to serverIdNum
-                    ),
-                    referer = data,
-                    headers = mapOf(
-                        "X-Requested-With" to "XMLHttpRequest",
-                        "User-Agent" to standardHeaders["User-Agent"]!!
-                    )
-                ).document
-                
-                val playerUrl = postResponse.selectFirst("iframe")?.attr("src")
-                
-                if (playerUrl != null && playerUrl.isNotBlank()) {
-                    loadExtractor(playerUrl, data, subtitleCallback, callback)
-                }
-            }
-        }
-        
         return true
     }
 }
