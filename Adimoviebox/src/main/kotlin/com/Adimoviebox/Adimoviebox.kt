@@ -6,7 +6,6 @@ import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
-import com.lagradost.cloudstream3.Score // Pastikan Score terimpor
 import com.lagradost.nicehttp.RequestBodyTypes
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -54,7 +53,6 @@ class Adimoviebox : MainAPI() {
             "sort" to params.last()
         ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
 
-        // Class Media, data, dan items sekarang dapat diakses karena Media sudah tidak nested
         val home = app.post("$mainUrl/wefeed-h5-bff/web/filter", requestBody = body)
             .parsedSafe<Media>()?.data?.items?.map {
                 it.toSearchResponse(this)
@@ -68,7 +66,6 @@ class Adimoviebox : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse>? {
-        // Class Media, data, dan items sekarang dapat diakses karena Media sudah tidak nested
         val results = app.post(
             "$mainUrl/wefeed-h5-bff/web/subject/search", requestBody = mapOf(
                 "keyword" to query,
@@ -84,7 +81,6 @@ class Adimoviebox : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfterLast("/")
-        // Class MediaDetail dan data sekarang dapat diakses
         val document = app.get("$mainUrl/wefeed-h5-bff/web/subject/detail?subjectId=$id")
             .parsedSafe<MediaDetail>()?.data
         val subject = document?.subject
@@ -97,33 +93,17 @@ class Adimoviebox : MainAPI() {
         val description = subject?.description
         val trailer = subject?.trailer?.videoAddress?.url
         
-        // --- Implementasi Skor dengan penanganan Null/Error yang Aman ---
-        val scores = subject?.imdbRatingValue?.toFloatOrNull()?.let { rating ->
-            // Membuat objek Score hanya jika rating berhasil di-parse sebagai Float
-            listOf(
-                Score(
-                    score = rating,
-                    type = "IMDb", 
-                    maxScore = 10f 
-                )
-            )
-        } ?: emptyList() 
-        // ------------------------------------------------------------------
-
         val actors = document?.stars?.mapNotNull { cast ->
             ActorData(
                 Actor(
-                    // Properti name dan avatarUrl sekarang teratasi
                     cast.name ?: return@mapNotNull null,
                     cast.avatarUrl
                 ),
-                // Properti character sekarang teratasi
                 roleString = cast.character
             )
         }?.distinctBy { it.actor }
 
         val recommendations =
-            // Class Media, data, dan items sekarang dapat diakses
             app.get("$mainUrl/wefeed-h5-bff/web/subject/detail-rec?subjectId=$id&page=1&perPage=12")
                 .parsedSafe<Media>()?.data?.items?.map {
                     it.toSearchResponse(this)
@@ -131,12 +111,10 @@ class Adimoviebox : MainAPI() {
 
         return if (tvType == TvType.TvSeries) {
             val episode = document?.resource?.seasons?.map { seasons ->
-                // Properti allEp, maxEp, dan se sekarang teratasi
                 (if (seasons.allEp.isNullOrEmpty()) (1..seasons.maxEp!!) else seasons.allEp.split(",")
                     .map { it.toInt() })
                     .map { episode ->
                         newEpisode(
-                            // Class LoadData sekarang teratasi
                             LoadData(
                                 id,
                                 seasons.se,
@@ -154,7 +132,7 @@ class Adimoviebox : MainAPI() {
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                this.scores = scores // Menerapkan skor
+                this.score = Score.from10(subject?.imdbRatingValue) // <--- ADDED SCORE
                 this.actors = actors
                 this.recommendations = recommendations
                 addTrailer(trailer, addRaw = true)
@@ -164,14 +142,13 @@ class Adimoviebox : MainAPI() {
                 title,
                 url,
                 TvType.Movie,
-                // Class LoadData sekarang teratasi
                 LoadData(id, detailPath = subject?.detailPath).toJson()
             ) {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                this.scores = scores // Menerapkan skor
+                this.score = Score.from10(subject?.imdbRatingValue) // <--- ADDED SCORE
                 this.actors = actors
                 this.recommendations = recommendations
                 addTrailer(trailer, addRaw = true)
@@ -185,11 +162,9 @@ class Adimoviebox : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // Class LoadData sekarang teratasi
         val media = parseJson<LoadData>(data)
         val referer = "$apiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&lang=en"
 
-        // Class Media, data, dan streams sekarang teratasi
         val streams = app.get(
             "$apiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}",
             referer = referer
@@ -212,13 +187,13 @@ class Adimoviebox : MainAPI() {
         val id = streams?.first()?.id
         val format = streams?.first()?.format
 
-        // Class Media, data, dan captions sekarang teratasi
         app.get(
             "$apiUrl/wefeed-h5-bff/web/subject/caption?format=$format&id=$id&subjectId=${media.id}",
             referer = referer
         ).parsedSafe<Media>()?.data?.captions?.map { subtitle ->
+            // PERBAIKAN: Mengganti konstruktor SubtitleFile yang deprecated dengan newSubtitleFile
             subtitleCallback.invoke(
-                newSubtitleFile( 
+                newSubtitleFile( // Perubahan di sini
                     subtitle.lanName ?: "",
                     subtitle.url ?: return@map
                 )
@@ -227,107 +202,106 @@ class Adimoviebox : MainAPI() {
 
         return true
     }
-}
+    
+    // Semua Data Class dipertahankan
+    data class LoadData(
+        val id: String? = null,
+        val season: Int? = null,
+        val episode: Int? = null,
+        val detailPath: String? = null,
+    )
 
-// --- Semua Data Class Dipindahkan ke Luar Class Adimoviebox untuk mengatasi "Unresolved reference" ---
-
-data class LoadData(
-    val id: String? = null,
-    val season: Int? = null,
-    val episode: Int? = null,
-    val detailPath: String? = null,
-)
-
-data class Media(
-    @JsonProperty("data") val data: Data? = null,
-) {
-    data class Data(
-        @JsonProperty("subjectList") val subjectList: ArrayList<Items>? = arrayListOf(),
-        @JsonProperty("items") val items: ArrayList<Items>? = arrayListOf(),
-        @JsonProperty("streams") val streams: ArrayList<Streams>? = arrayListOf(),
-        @JsonProperty("captions") val captions: ArrayList<Captions>? = arrayListOf(),
+    data class Media(
+        @JsonProperty("data") val data: Data? = null,
     ) {
-        data class Streams(
-            @JsonProperty("id") val id: String? = null,
-            @JsonProperty("format") val format: String? = null,
-            @JsonProperty("url") val url: String? = null,
-            @JsonProperty("resolutions") val resolutions: String? = null,
-        )
-
-        data class Captions(
-            @JsonProperty("lan") val lan: String? = null,
-            @JsonProperty("lanName") val lanName: String? = null,
-            @JsonProperty("url") val url: String? = null,
-        )
-    }
-}
-
-data class MediaDetail(
-    @JsonProperty("data") val data: Data? = null,
-) {
-    data class Data(
-        @JsonProperty("subject") val subject: Items? = null,
-        @JsonProperty("stars") val stars: ArrayList<Stars>? = arrayListOf(),
-        @JsonProperty("resource") val resource: Resource? = null,
-    ) {
-        data class Stars(
-            @JsonProperty("name") val name: String? = null,
-            @JsonProperty("character") val character: String? = null,
-            @JsonProperty("avatarUrl") val avatarUrl: String? = null,
-        )
-
-        data class Resource(
-            @JsonProperty("seasons") val seasons: ArrayList<Seasons>? = arrayListOf(),
+        data class Data(
+            @JsonProperty("subjectList") val subjectList: ArrayList<Items>? = arrayListOf(),
+            @JsonProperty("items") val items: ArrayList<Items>? = arrayListOf(),
+            @JsonProperty("streams") val streams: ArrayList<Streams>? = arrayListOf(),
+            @JsonProperty("captions") val captions: ArrayList<Captions>? = arrayListOf(),
         ) {
-            data class Seasons(
-                @JsonProperty("se") val se: Int? = null,
-                @JsonProperty("maxEp") val maxEp: Int? = null,
-                @JsonProperty("allEp") val allEp: String? = null,
+            data class Streams(
+                @JsonProperty("id") val id: String? = null,
+                @JsonProperty("format") val format: String? = null,
+                @JsonProperty("url") val url: String? = null,
+                @JsonProperty("resolutions") val resolutions: String? = null,
+            )
+
+            data class Captions(
+                @JsonProperty("lan") val lan: String? = null,
+                @JsonProperty("lanName") val lanName: String? = null,
+                @JsonProperty("url") val url: String? = null,
             )
         }
     }
-}
 
-data class Items(
-    @JsonProperty("subjectId") val subjectId: String? = null,
-    @JsonProperty("subjectType") val subjectType: Int? = null,
-    @JsonProperty("title") val title: String? = null,
-    @JsonProperty("description") val description: String? = null,
-    @JsonProperty("releaseDate") val releaseDate: String? = null,
-    @JsonProperty("duration") val duration: Long? = null,
-    @JsonProperty("genre") val genre: String? = null,
-    @JsonProperty("cover") val cover: Cover? = null,
-    // Nilai ini digunakan untuk membuat objek Score
-    @JsonProperty("imdbRatingValue") val imdbRatingValue: String? = null, 
-    @JsonProperty("countryName") val countryName: String? = null,
-    @JsonProperty("trailer") val trailer: Trailer? = null,
-    @JsonProperty("detailPath") val detailPath: String? = null,
-) {
-
-    fun toSearchResponse(provider: Adimoviebox): SearchResponse {
-        return provider.newMovieSearchResponse(
-            title ?: "",
-            subjectId ?: "",
-            when (subjectType) {
-                2 -> TvType.TvSeries
-                1006 -> TvType.Anime
-                else -> TvType.Movie 
-            },
-            false
+    data class MediaDetail(
+        @JsonProperty("data") val data: Data? = null,
+    ) {
+        data class Data(
+            @JsonProperty("subject") val subject: Items? = null,
+            @JsonProperty("stars") val stars: ArrayList<Stars>? = arrayListOf(),
+            @JsonProperty("resource") val resource: Resource? = null,
         ) {
-            this.posterUrl = cover?.url
+            data class Stars(
+                @JsonProperty("name") val name: String? = null,
+                @JsonProperty("character") val character: String? = null,
+                @JsonProperty("avatarUrl") val avatarUrl: String? = null,
+            )
+
+            data class Resource(
+                @JsonProperty("seasons") val seasons: ArrayList<Seasons>? = arrayListOf(),
+            ) {
+                data class Seasons(
+                    @JsonProperty("se") val se: Int? = null,
+                    @JsonProperty("maxEp") val maxEp: Int? = null,
+                    @JsonProperty("allEp") val allEp: String? = null,
+                )
+            }
         }
     }
 
-    data class Cover(
-        @JsonProperty("url") val url: String? = null,
-    )
-
-    data class Trailer(
-        @JsonProperty("videoAddress") val videoAddress: VideoAddress? = null,
+    data class Items(
+        @JsonProperty("subjectId") val subjectId: String? = null,
+        @JsonProperty("subjectType") val subjectType: Int? = null,
+        @JsonProperty("title") val title: String? = null,
+        @JsonProperty("description") val description: String? = null,
+        @JsonProperty("releaseDate") val releaseDate: String? = null,
+        @JsonProperty("duration") val duration: Long? = null,
+        @JsonProperty("genre") val genre: String? = null,
+        @JsonProperty("cover") val cover: Cover? = null,
+        @JsonProperty("imdbRatingValue") val imdbRatingValue: String? = null, // Digunakan untuk skor
+        @JsonProperty("countryName") val countryName: String? = null,
+        @JsonProperty("trailer") val trailer: Trailer? = null,
+        @JsonProperty("detailPath") val detailPath: String? = null,
     ) {
-        data class VideoAddress(
+
+        fun toSearchResponse(provider: Adimoviebox): SearchResponse {
+            return provider.newMovieSearchResponse(
+                title ?: "",
+                subjectId ?: "",
+                when (subjectType) {
+                    2 -> TvType.TvSeries
+                    1006 -> TvType.Anime
+                    else -> TvType.Movie 
+                },
+                false
+            ) {
+                this.posterUrl = cover?.url
+                this.score = Score.from10(imdbRatingValue) // <--- ADDED SCORE
+            }
+        }
+
+        data class Cover(
             @JsonProperty("url") val url: String? = null,
         )
+
+        data class Trailer(
+            @JsonProperty("videoAddress") val videoAddress: VideoAddress? = null,
+        ) {
+            data class VideoAddress(
+                @JsonProperty("url") val url: String? = null,
+            )
+        }
     }
 }
