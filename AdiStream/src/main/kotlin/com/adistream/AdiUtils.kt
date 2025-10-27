@@ -324,14 +324,17 @@ fun getVipLanguage(str: String): String {
         "in_ID" -> "id"
         "pt" -> "pt"
         else -> str.split("_").first().let {
-            SubtitleHelper.fromTwoLettersToLanguage(it) ?: it
+            // PERBAIKAN: Mengganti SubtitleHelper.fromTwoLettersToLanguage yang deprecated
+            SubtitleHelper.fromTwoLettersToSubtitleString(it) ?: it
         }
     }
 }
 
 fun fixCrunchyrollLang(language: String?): String? {
-    return SubtitleHelper.fromTwoLettersToLanguage(language ?: return null)
-        ?: SubtitleHelper.fromTwoLettersToLanguage(language.substringBefore("-"))
+    // PERBAIKAN: Mengganti SubtitleHelper.fromTwoLettersToLanguage yang deprecated
+    return SubtitleHelper.fromTwoLettersToSubtitleString(language ?: return null)
+        // PERBAIKAN: Mengganti SubtitleHelper.fromTwoLettersToLanguage yang deprecated
+        ?: SubtitleHelper.fromTwoLettersToSubtitleString(language.substringBefore("-"))
         ?: language
 }
 
