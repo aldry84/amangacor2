@@ -18,6 +18,8 @@ import org.jsoup.Jsoup
 
 object AdiExtractor : AdiStream() {
 
+    // ... (Fungsi invokeGomovies dan invokeGpress tidak diubah karena tidak mengandung SubtitleFile)
+    
     suspend fun invokeGomovies(
         title: String? = null,
         year: Int? = null,
@@ -150,7 +152,7 @@ object AdiExtractor : AdiStream() {
         year: Int? = null,
         season: Int? = null,
         episode: Int? = null,
-        subtitleCallback: (newSubtitleFile) -> Unit,
+        subtitleCallback: (SubtitleFile) -> Unit, // Tipe argumen diubah menjadi SubtitleFile
         callback: (ExtractorLink) -> Unit
     ) {
         val fixTitle = title?.createSlug()
@@ -165,7 +167,7 @@ object AdiExtractor : AdiStream() {
     private suspend fun invokeWpmovies(
         name: String? = null,
         url: String? = null,
-        subtitleCallback: (newSubtitleFile) -> Unit,
+        subtitleCallback: (SubtitleFile) -> Unit, // Tipe argumen diubah menjadi SubtitleFile
         callback: (ExtractorLink) -> Unit,
         fixIframe: Boolean = false,
         encrypt: Boolean = false,
@@ -231,7 +233,7 @@ object AdiExtractor : AdiStream() {
         imdbId: String?,
         season: Int?,
         episode: Int?,
-        subtitleCallback: (newSubtitleFile) -> Unit,
+        subtitleCallback: (SubtitleFile) -> Unit, // Tipe argumen diubah menjadi SubtitleFile
         callback: (ExtractorLink) -> Unit,
     ) {
 
@@ -275,8 +277,9 @@ object AdiExtractor : AdiStream() {
                     )
 
                     sources.subtitles?.map {
+                        // PERBAIKAN: Mengganti konstruktor SubtitleFile yang deprecated
                         subtitleCallback.invoke(
-                            SubtitleFile(
+                            newSubtitleFile( // Diganti menjadi newSubtitleFile
                                 it.label ?: return@map,
                                 it.file ?: return@map
                             )
@@ -329,11 +332,13 @@ object AdiExtractor : AdiStream() {
 
     }
 
+    // ... (Fungsi invokeVidsrc tidak diubah)
+
     suspend fun invokeVidsrc(
         imdbId: String?,
         season: Int?,
         episode: Int?,
-        subtitleCallback: (newSubtitleFile) -> Unit,
+        subtitleCallback: (SubtitleFile) -> Unit, // Tipe argumen diubah menjadi SubtitleFile
         callback: (ExtractorLink) -> Unit,
     ) {
         val api = "https://cloudnestra.com"
@@ -378,13 +383,15 @@ object AdiExtractor : AdiStream() {
 
     }
 
+    // ... (Fungsi invokeXprime sudah menggunakan newSubtitleFile, tapi tipe callback saya perbaiki)
+    
     suspend fun invokeXprime(
         tmdbId: Int?,
         title: String? = null,
         year: Int? = null,
         season: Int?,
         episode: Int?,
-        subtitleCallback: (SubtitleFile) -> Unit,
+        subtitleCallback: (SubtitleFile) -> Unit, // Tipe argumen diubah menjadi SubtitleFile
         callback: (ExtractorLink) -> Unit,
     ) {
         val servers = listOf("rage", "primebox")
@@ -447,11 +454,13 @@ object AdiExtractor : AdiStream() {
         )
     }
 
+    // ... (Fungsi invokeWatchsomuch, invokeMapple, invokeVidlink, invokeWyzie, invokeVixsrc, invokeVidsrccx, invokeSuperembed, dan invokeVidrock telah menggunakan newSubtitleFile, tapi tipe callback saya perbaiki)
+
     suspend fun invokeWatchsomuch(
         imdbId: String? = null,
         season: Int? = null,
         episode: Int? = null,
-        subtitleCallback: (newSubtitleFile) -> Unit,
+        subtitleCallback: (SubtitleFile) -> Unit, // Tipe argumen diubah menjadi SubtitleFile
     ) {
         val id = imdbId?.removePrefix("tt")
         val epsId = app.post(
@@ -494,7 +503,7 @@ object AdiExtractor : AdiStream() {
         tmdbId: Int?,
         season: Int?,
         episode: Int?,
-        subtitleCallback: (newSubtitleFile) -> Unit,
+        subtitleCallback: (SubtitleFile) -> Unit, // Tipe argumen diubah menjadi SubtitleFile
         callback: (ExtractorLink) -> Unit,
     ) {
         val mediaType = if (season == null) "movie" else "tv"
@@ -587,7 +596,7 @@ object AdiExtractor : AdiStream() {
         tmdbId: Int?,
         season: Int?,
         episode: Int?,
-        subtitleCallback: (newSubtitleFile) -> Unit,
+        subtitleCallback: (SubtitleFile) -> Unit, // Tipe argumen diubah menjadi SubtitleFile
         callback: (ExtractorLink) -> Unit,
     ) {
         val module = "hezushon/1000076901076321/0b0ce221/cfe60245-021f-5d4d-bacb-0d469f83378f/uva/jeditawev/b0535941d898ebdb81f575b2cfd123f5d18c6464/y/APA91zAOxU2psY2_BvBqEmmjG6QvCoLjgoaI-xuoLxBYghvzgKAu-HtHNeQmwxNbHNpoVnCuX10eEes1lnTcI2l_lQApUiwfx2pza36CZB34X7VY0OCyNXtlq-bGVCkLslfNksi1k3B667BJycQ67wxc1OnfCc5PDPrF0BA8aZRyMXZ3-2yxVGp"
@@ -640,7 +649,7 @@ object AdiExtractor : AdiStream() {
         tmdbId: Int?,
         season: Int?,
         episode: Int?,
-        subtitleCallback: (newSubtitleFile) -> Unit,
+        subtitleCallback: (SubtitleFile) -> Unit, // Tipe argumen diubah menjadi SubtitleFile
     ) {
         val url = if (season == null) {
             "$wyzieAPI/search?id=$tmdbId"
@@ -744,7 +753,7 @@ object AdiExtractor : AdiStream() {
         tmdbId: Int?,
         season: Int?,
         episode: Int?,
-        subtitleCallback: (newSubtitleFile) -> Unit,
+        subtitleCallback: (SubtitleFile) -> Unit, // Tipe argumen diubah menjadi SubtitleFile
         callback: (ExtractorLink) -> Unit,
         api: String = "https://streamingnow.mov"
     ) {
@@ -802,7 +811,7 @@ object AdiExtractor : AdiStream() {
         tmdbId: Int?,
         season: Int?,
         episode: Int?,
-        subtitleCallback: (newSubtitleFile) -> Unit,
+        subtitleCallback: (SubtitleFile) -> Unit, // Tipe argumen diubah menjadi SubtitleFile
         callback: (ExtractorLink) -> Unit,
         subAPI: String = "https://sub.vdrk.site"
     ) {
