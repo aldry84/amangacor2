@@ -134,7 +134,6 @@ open class AdiStream : TmdbProvider() {
             TvType.Movie,
         ) {
             this.posterUrl = getImageUrl(posterPath)
-            // Hapus: this.score= Score.from10(voteAverage)
         }
     }
 
@@ -166,7 +165,7 @@ open class AdiStream : TmdbProvider() {
         val releaseDate = res.releaseDate ?: res.firstAirDate
         val year = releaseDate?.split("-")?.first()?.toIntOrNull()
         
-        // Hapus: val score = res.vote_average?.toString()?.toDoubleOrNull()?.let { Score.from10(it) }
+        // Removed score property initialization
 
         val genres = res.genres?.mapNotNull { it.name }
 
@@ -226,7 +225,7 @@ open class AdiStream : TmdbProvider() {
                             this.episode = eps.episodeNumber
                             this.posterUrl = getImageUrl(eps.stillPath)
                             
-                            // Hapus: this.score = eps.voteAverage?.let { Score.from10(it) }
+                            // Removed score property assignment
 
                             this.description = eps.overview
                         }.apply {
@@ -246,7 +245,7 @@ open class AdiStream : TmdbProvider() {
                 this.plot = res.overview
                 this.tags = keywords.takeIf { !it.isNullOrEmpty() } ?: genres
                 
-                // Hapus: this.score = score
+                // Removed score property assignment
 
                 this.showStatus = getStatus(res.status)
                 this.recommendations = recommendations
@@ -285,7 +284,7 @@ open class AdiStream : TmdbProvider() {
                 this.duration = res.runtime
                 this.tags = keywords.takeIf { !it.isNullOrEmpty() } ?: genres
                 
-                // Hapus: this.score = score
+                // Removed score property assignment
 
                 this.recommendations = recommendations
                 this.actors = actors
@@ -539,7 +538,8 @@ open class AdiStream : TmdbProvider() {
         @JsonProperty("videos") val videos: ResultsTrailer? = null,
         @JsonProperty("external_ids") val external_ids: ExternalIds? = null,
         @JsonProperty("credits") val credits: Credits? = null,
-        @JsonProperty("recommendations") val recommendations: ResultsRecommendations? = arrayListOf(),
+        // FIX: Menghapus initializer arrayListOf() karena tipenya ResultsRecommendations
+        @JsonProperty("recommendations") val recommendations: ResultsRecommendations? = null,
         @JsonProperty("alternative_titles") val alternative_titles: ResultsAltTitles? = null,
         @JsonProperty("production_countries") val production_countries: ArrayList<ProductionCountries>? = arrayListOf(),
     )
