@@ -150,7 +150,7 @@ object AdiExtractor : AdiStream() {
         year: Int? = null,
         season: Int? = null,
         episode: Int? = null,
-        subtitleCallback: (SubtitleFile) -> Unit,
+        subtitleCallback: (newSubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
         val fixTitle = title?.createSlug()
@@ -165,7 +165,7 @@ object AdiExtractor : AdiStream() {
     private suspend fun invokeWpmovies(
         name: String? = null,
         url: String? = null,
-        subtitleCallback: (SubtitleFile) -> Unit,
+        subtitleCallback: (newSubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
         fixIframe: Boolean = false,
         encrypt: Boolean = false,
@@ -231,7 +231,7 @@ object AdiExtractor : AdiStream() {
         imdbId: String?,
         season: Int?,
         episode: Int?,
-        subtitleCallback: (SubtitleFile) -> Unit,
+        subtitleCallback: (newSubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
     ) {
 
@@ -333,7 +333,7 @@ object AdiExtractor : AdiStream() {
         imdbId: String?,
         season: Int?,
         episode: Int?,
-        subtitleCallback: (SubtitleFile) -> Unit,
+        subtitleCallback: (newSubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
     ) {
         val api = "https://cloudnestra.com"
@@ -436,7 +436,7 @@ object AdiExtractor : AdiStream() {
 
                 sources?.subtitles?.map { subtitle ->
                     subtitleCallback.invoke(
-                        SubtitleFile(
+                        newSubtitleFile(
                             subtitle.label ?: "",
                             subtitle.file ?: return@map
                         )
@@ -451,7 +451,7 @@ object AdiExtractor : AdiStream() {
         imdbId: String? = null,
         season: Int? = null,
         episode: Int? = null,
-        subtitleCallback: (SubtitleFile) -> Unit,
+        subtitleCallback: (newSubtitleFile) -> Unit,
     ) {
         val id = imdbId?.removePrefix("tt")
         val epsId = app.post(
@@ -480,7 +480,7 @@ object AdiExtractor : AdiStream() {
 
         app.get(subUrl).parsedSafe<WatchsomuchSubResponses>()?.subtitles?.map { sub ->
             subtitleCallback.invoke(
-                SubtitleFile(
+                newSubtitleFile(
                     sub.label?.substringBefore("&nbsp")?.trim() ?: "",
                     fixUrl(sub.url ?: return@map null, watchSomuchAPI)
                 )
@@ -494,7 +494,7 @@ object AdiExtractor : AdiStream() {
         tmdbId: Int?,
         season: Int?,
         episode: Int?,
-        subtitleCallback: (SubtitleFile) -> Unit,
+        subtitleCallback: (newSubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
     ) {
         val mediaType = if (season == null) "movie" else "tv"
@@ -542,7 +542,7 @@ object AdiExtractor : AdiStream() {
         ).text
         tryParseJson<ArrayList<MappleSubtitle>>(subRes)?.map { subtitle ->
             subtitleCallback.invoke(
-                SubtitleFile(
+                newSubtitleFile(
                     subtitle.display ?: "",
                     fixUrl(subtitle.url ?: return@map, mappleAPI)
                 )
@@ -587,7 +587,7 @@ object AdiExtractor : AdiStream() {
         tmdbId: Int?,
         season: Int?,
         episode: Int?,
-        subtitleCallback: (SubtitleFile) -> Unit,
+        subtitleCallback: (newSubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
     ) {
         val module = "hezushon/1000076901076321/0b0ce221/cfe60245-021f-5d4d-bacb-0d469f83378f/uva/jeditawev/b0535941d898ebdb81f575b2cfd123f5d18c6464/y/APA91zAOxU2psY2_BvBqEmmjG6QvCoLjgoaI-xuoLxBYghvzgKAu-HtHNeQmwxNbHNpoVnCuX10eEes1lnTcI2l_lQApUiwfx2pza36CZB34X7VY0OCyNXtlq-bGVCkLslfNksi1k3B667BJycQ67wxc1OnfCc5PDPrF0BA8aZRyMXZ3-2yxVGp"
@@ -623,7 +623,7 @@ object AdiExtractor : AdiStream() {
                 if (index == 1) {
                     source.tracks?.map { subtitle ->
                         subtitleCallback.invoke(
-                            SubtitleFile(
+                            newSubtitleFile(
                                 subtitle.label ?: return@map,
                                 subtitle.file ?: return@map
                             )
@@ -640,7 +640,7 @@ object AdiExtractor : AdiStream() {
         tmdbId: Int?,
         season: Int?,
         episode: Int?,
-        subtitleCallback: (SubtitleFile) -> Unit,
+        subtitleCallback: (newSubtitleFile) -> Unit,
     ) {
         val url = if (season == null) {
             "$wyzieAPI/search?id=$tmdbId"
@@ -652,7 +652,7 @@ object AdiExtractor : AdiStream() {
 
         tryParseJson<ArrayList<WyzieSubtitle>>(res)?.map { subtitle ->
             subtitleCallback.invoke(
-                SubtitleFile(
+                newSubtitleFile(
                     subtitle.display ?: return@map,
                     subtitle.url ?: return@map,
                 )
@@ -744,7 +744,7 @@ object AdiExtractor : AdiStream() {
         tmdbId: Int?,
         season: Int?,
         episode: Int?,
-        subtitleCallback: (SubtitleFile) -> Unit,
+        subtitleCallback: (newSubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
         api: String = "https://streamingnow.mov"
     ) {
@@ -788,7 +788,7 @@ object AdiExtractor : AdiStream() {
             val (subLang, subUrl) = Regex("""\[(\w+)](http\S+)""").find(it)?.destructured
                 ?: return@map
             subtitleCallback.invoke(
-                SubtitleFile(
+                newSubtitleFile(
                     subLang.trim(),
                     subUrl.trim()
                 )
@@ -802,7 +802,7 @@ object AdiExtractor : AdiStream() {
         tmdbId: Int?,
         season: Int?,
         episode: Int?,
-        subtitleCallback: (SubtitleFile) -> Unit,
+        subtitleCallback: (newSubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
         subAPI: String = "https://sub.vdrk.site"
     ) {
@@ -852,7 +852,7 @@ object AdiExtractor : AdiStream() {
         val res = app.get(subUrl).text
         tryParseJson<ArrayList<VidrockSubtitle>>(res)?.map { subtitle ->
             subtitleCallback.invoke(
-                SubtitleFile(
+                newSubtitleFile(
                     subtitle.label?.replace(Regex("\\d"), "")?.replace(Regex("\\s+Hi"), "")?.trim() ?: return@map,
                     subtitle.file ?: return@map,
                 )
