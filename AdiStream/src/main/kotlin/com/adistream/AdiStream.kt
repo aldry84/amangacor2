@@ -13,7 +13,7 @@ import com.adistream.AdiExtractor.invokeVidsrccc
 import com.adistream.AdiExtractor.invokeVidsrccx
 import com.adistream.AdiExtractor.invokeVixsrc
 import com.adistream.AdiExtractor.invokeWatchsomuch
-import com.adistream.AdiExtractor.invokeWyzie // FIX: Tambahkan import yang hilang
+import com.adistream.AdiExtractor.invokeWyzie
 import com.adistream.AdiExtractor.invokeXprime
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
@@ -134,7 +134,7 @@ open class AdiStream : TmdbProvider() {
             TvType.Movie,
         ) {
             this.posterUrl = getImageUrl(posterPath)
-            this.score= Score.from10(voteAverage)
+            // Hapus: this.score= Score.from10(voteAverage)
         }
     }
 
@@ -166,8 +166,7 @@ open class AdiStream : TmdbProvider() {
         val releaseDate = res.releaseDate ?: res.firstAirDate
         val year = releaseDate?.split("-")?.first()?.toIntOrNull()
         
-        // FIX: Menggunakan Score.from10() untuk skor
-        val score = res.vote_average?.let { Score.from10(it) }
+        // Hapus: val score = res.vote_average?.toString()?.toDoubleOrNull()?.let { Score.from10(it) }
 
         val genres = res.genres?.mapNotNull { it.name }
 
@@ -227,8 +226,7 @@ open class AdiStream : TmdbProvider() {
                             this.episode = eps.episodeNumber
                             this.posterUrl = getImageUrl(eps.stillPath)
                             
-                            // FIX: Menggunakan this.score = Score.from10(Double?)
-                            this.score = eps.voteAverage?.let { Score.from10(it) }
+                            // Hapus: this.score = eps.voteAverage?.let { Score.from10(it) }
 
                             this.description = eps.overview
                         }.apply {
@@ -248,8 +246,7 @@ open class AdiStream : TmdbProvider() {
                 this.plot = res.overview
                 this.tags = keywords.takeIf { !it.isNullOrEmpty() } ?: genres
                 
-                // FIX: Menggunakan this.score
-                this.score = score
+                // Hapus: this.score = score
 
                 this.showStatus = getStatus(res.status)
                 this.recommendations = recommendations
@@ -288,8 +285,7 @@ open class AdiStream : TmdbProvider() {
                 this.duration = res.runtime
                 this.tags = keywords.takeIf { !it.isNullOrEmpty() } ?: genres
                 
-                // FIX: Menggunakan this.score
-                this.score = score
+                // Hapus: this.score = score
 
                 this.recommendations = recommendations
                 this.actors = actors
@@ -543,7 +539,7 @@ open class AdiStream : TmdbProvider() {
         @JsonProperty("videos") val videos: ResultsTrailer? = null,
         @JsonProperty("external_ids") val external_ids: ExternalIds? = null,
         @JsonProperty("credits") val credits: Credits? = null,
-        @JsonProperty("recommendations") val recommendations: ResultsRecommendations? = null,
+        @JsonProperty("recommendations") val recommendations: ResultsRecommendations? = arrayListOf(),
         @JsonProperty("alternative_titles") val alternative_titles: ResultsAltTitles? = null,
         @JsonProperty("production_countries") val production_countries: ArrayList<ProductionCountries>? = arrayListOf(),
     )
