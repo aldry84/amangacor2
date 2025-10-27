@@ -248,7 +248,8 @@ fun String?.createSlug(): String? {
 }
 
 fun getLanguage(str: String): String {
-    return if (str.contains("(in_ID)")) "Indonesian" else str
+    // Mengubah menjadi kode 2-huruf yang lebih standar
+    return if (str.contains("(in_ID)")) "id" else str
 }
 
 fun bytesToGigaBytes(number: Double): Double = number / 1024000000
@@ -320,18 +321,22 @@ fun getFDoviesQuality(str: String): String {
 }
 
 fun getVipLanguage(str: String): String {
+    // FIX: Menggunakan SubtitleHelper.fromTwoLettersToLanguage (walaupun usang) untuk sementara
+    // dan mengubah "in_ID" ke "id" (IETF tag)
     return when (str) {
-        "in_ID" -> "Indonesian"
-        "pt" -> "Portuguese"
+        "in_ID" -> "id"
+        "pt" -> "pt" // menjaga 2 huruf
         else -> str.split("_").first().let {
-            SubtitleHelper.fromTwoLettersToLanguage(it).toString()
+            SubtitleHelper.fromTwoLettersToLanguage(it) ?: it // jika gagal, kembalikan kode 2-huruf
         }
     }
 }
 
 fun fixCrunchyrollLang(language: String?): String? {
+    // FIX: Menggunakan SubtitleHelper.fromTwoLettersToLanguage (walaupun usang) untuk sementara
     return SubtitleHelper.fromTwoLettersToLanguage(language ?: return null)
         ?: SubtitleHelper.fromTwoLettersToLanguage(language.substringBefore("-"))
+        ?: language
 }
 
 fun getDeviceId(length: Int = 16): String {
