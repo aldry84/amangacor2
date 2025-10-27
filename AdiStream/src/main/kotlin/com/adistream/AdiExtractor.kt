@@ -276,7 +276,7 @@ object AdiExtractor : AdiStream() {
 
                     sources.subtitles?.map {
                         subtitleCallback.invoke(
-                            SubtitleFile(
+                            newSubtitleFile( // FIX: Menggunakan newSubtitleFile
                                 it.label ?: return@map,
                                 it.file ?: return@map
                             )
@@ -436,7 +436,7 @@ object AdiExtractor : AdiStream() {
 
                 sources?.subtitles?.map { subtitle ->
                     subtitleCallback.invoke(
-                        SubtitleFile(
+                        newSubtitleFile( // FIX: Menggunakan newSubtitleFile
                             subtitle.label ?: "",
                             subtitle.file ?: return@map
                         )
@@ -480,7 +480,7 @@ object AdiExtractor : AdiStream() {
 
         app.get(subUrl).parsedSafe<WatchsomuchSubResponses>()?.subtitles?.map { sub ->
             subtitleCallback.invoke(
-                SubtitleFile(
+                newSubtitleFile( // FIX: Menggunakan newSubtitleFile
                     sub.label?.substringBefore("&nbsp")?.trim() ?: "",
                     fixUrl(sub.url ?: return@map null, watchSomuchAPI)
                 )
@@ -542,7 +542,7 @@ object AdiExtractor : AdiStream() {
         ).text
         tryParseJson<ArrayList<MappleSubtitle>>(subRes)?.map { subtitle ->
             subtitleCallback.invoke(
-                SubtitleFile(
+                newSubtitleFile( // FIX: Menggunakan newSubtitleFile
                     subtitle.display ?: "",
                     fixUrl(subtitle.url ?: return@map, mappleAPI)
                 )
@@ -623,7 +623,7 @@ object AdiExtractor : AdiStream() {
                 if (index == 1) {
                     source.tracks?.map { subtitle ->
                         subtitleCallback.invoke(
-                            SubtitleFile(
+                            newSubtitleFile( // FIX: Menggunakan newSubtitleFile
                                 subtitle.label ?: return@map,
                                 subtitle.file ?: return@map
                             )
@@ -652,7 +652,7 @@ object AdiExtractor : AdiStream() {
 
         tryParseJson<ArrayList<WyzieSubtitle>>(res)?.map { subtitle ->
             subtitleCallback.invoke(
-                SubtitleFile(
+                newSubtitleFile( // FIX: Menggunakan newSubtitleFile
                     subtitle.display ?: return@map,
                     subtitle.url ?: return@map,
                 )
@@ -788,7 +788,7 @@ object AdiExtractor : AdiStream() {
             val (subLang, subUrl) = Regex("""\[(\w+)](http\S+)""").find(it)?.destructured
                 ?: return@map
             subtitleCallback.invoke(
-                SubtitleFile(
+                newSubtitleFile( // FIX: Menggunakan newSubtitleFile
                     subLang.trim(),
                     subUrl.trim()
                 )
@@ -852,7 +852,7 @@ object AdiExtractor : AdiStream() {
         val res = app.get(subUrl).text
         tryParseJson<ArrayList<VidrockSubtitle>>(res)?.map { subtitle ->
             subtitleCallback.invoke(
-                SubtitleFile(
+                newSubtitleFile( // FIX: Menggunakan newSubtitleFile
                     subtitle.label?.replace(Regex("\\d"), "")?.replace(Regex("\\s+Hi"), "")?.trim() ?: return@map,
                     subtitle.file ?: return@map,
                 )
