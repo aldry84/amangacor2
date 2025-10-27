@@ -33,12 +33,10 @@ class LayarKacaProvider : MainAPI() {
         "$mainUrl/latest/page/" to "Film Upload Terbaru",
     )
 
-    // ================== PERBAIKAN 1 DI SINI ==================
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest
     ): HomePageResponse {
-        // Menambahkan referer untuk mengatasi blokir
         val document = app.get(
             request.data + page,
             referer = "$mainUrl/" 
@@ -87,37 +85,45 @@ class LayarKacaProvider : MainAPI() {
         }
     }
 
-    // ================== PERBAIKAN 2 DI SINI ==================
+    // ================== PERBAIKAN ADA DI FUNGSI INI ==================
     override suspend fun search(query: String): List<SearchResponse>? {
-        // Menambahkan referer untuk mengatasi blokir
         val res = app.get(
             "$searchurl/search.php?s=$query",
             referer = "$searchurl/"
         ).text
         
+        // KITA TAMBAHKAN LOG UNTUK MELIHAT RESPONS SERVER
+        Log.d("LayarKacaSearch", "Query: $query | Hasil respons: $res")
+        
         val results = mutableListOf<SearchResponse>()
+        
+        // KITA TAMBAHKAN TRY-CATCH AGAR TIDAK CRASH JIKA RESPONS-NYA BUKAN JSON
+        try { 
+            val root = JSONObject(res)
+            val arr = root.getJSONArray("data")
 
-        val root = JSONObject(res)
-        val arr = root.getJSONArray("data")
-
-        for (i in 0 until arr.length()) {
-            val item = arr.getJSONObject(i)
-            val title = item.getString("title")
-            val slug = item.getString("slug")
-            val type = item.getString("type")
-            val posterUrl = "https://poster.lk21.party/wp-content/uploads/"+item.optString("poster")
-            when (type) {
-                "series" -> results.add(
-                    newTvSeriesSearchResponse(title, "$seriesUrl/$slug", TvType.TvSeries) {
-                        this.posterUrl = posterUrl
-                    }
-                )
-                "movie" -> results.add(
-                    newMovieSearchResponse(title, "$mainUrl/$slug", TvType.Movie) {
-                        this.posterUrl = posterUrl
-                    }
-                )
+            for (i in 0 until arr.length()) {
+                val item = arr.getJSONObject(i)
+                val title = item.getString("title")
+                val slug = item.getString("slug")
+                val type = item.getString("type")
+                val posterUrl = "https://poster.lk21.party/wp-content/uploads/"+item.optString("poster")
+                when (type) {
+                    "series" -> results.add(
+                        newTvSeriesSearchResponse(title, "$seriesUrl/$slug", TvType.TvSeries) {
+                            this.posterUrl = posterUrl
+                        }
+                    )
+                    "movie" -> results.add(
+                        newMovieSearchResponse(title, "$mainUrl/$slug", TvType.Movie) {
+                            this.posterUrl = posterUrl
+                        }
+                    )
+                }
             }
+        } catch (e: Exception) {
+            // Log error jika parsing JSON gagal
+            Log.e("LayarKacaSearch", "Gagal parse JSON untuk query '$query'. Error: ${e.message}")
         }
 
         return results
@@ -235,6 +241,7 @@ class LayarKacaProvider : MainAPI() {
     private fun Element.getImageAttr(): String {
         return when {
             this.hasAttr("src") -> this.attr("src")
+            this.hasAttr("data-data-src") -> this.attr("data-data-src") // Seringkali typo, data-src
             this.hasAttr("data-src") -> this.attr("data-src")
             else -> this.attr("src")
         }
@@ -242,8 +249,13 @@ class LayarKacaProvider : MainAPI() {
 
 
     fun getBaseUrl(url: String?): String {
+        if (url.isNullOrBlank()) return mainUrl // fallback
         return URI(url).let {
-            "${it.scheme}://${it.host}"
+            if (it.scheme.isNullOrBlank() || it.host.isNullOrBlank()) {
+                mainUrl // fallback jika url tidak valid
+            } else {
+                "${it.scheme}://${it.host}"
+            }
         }
     }
 
