@@ -80,8 +80,7 @@ class Adimoviemaze : MainAPI() {
         val poster      = document.selectFirst("div.poster > img")?.attr("src")?.let { fixUrl(it) }
         val description = document.selectFirst("div.wp-content > p")?.text()?.trim()
         
-        // Data Tambahan - Menggunakan API skor baru
-        val score      = document.selectFirst("span.rating")?.text()?.toScoreInt() // DIPERBAIKI: toRatingInt() -> toScoreInt()
+        // Data Tambahan (Score/Rating DIHILANGKAN)
         val genres      = document.select("div.sgeneros a").map { it.text() }
         val year        = document.selectFirst("span.year")?.text()?.toIntOrNull()
         
@@ -117,7 +116,6 @@ class Adimoviemaze : MainAPI() {
                 this.posterUrl = poster ?: defaultPoster
                 this.plot      = description
                 this.year      = year
-                this.score     = score     // DIPERBAIKI: rating -> score
                 this.tags      = genres
             }
         } else {
@@ -125,7 +123,6 @@ class Adimoviemaze : MainAPI() {
                 this.posterUrl = poster ?: defaultPoster
                 this.plot      = description
                 this.year      = year
-                this.score     = score     // DIPERBAIKI: rating -> score
                 this.tags      = genres
             }
         }
