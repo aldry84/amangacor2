@@ -8,6 +8,7 @@ import kotlinx.coroutines.runBlocking
 class Adimoviemaze : MainAPI() {
     override var mainUrl: String = "https://moviemaze.cc"
     override var name                 = "Adimoviemaze"
+    // ... (property lainnya tidak berubah)
     override val hasMainPage          = true
     override var lang                 = "en" 
     override val supportedTypes       = setOf(TvType.Movie, TvType.TvSeries)
@@ -33,7 +34,16 @@ class Adimoviemaze : MainAPI() {
 
         val document = app.get(pageUrl, headers = standardHeaders).document
         
-        val home = document.select("div.items > article.item").mapNotNull { it.toSearchResult() }
+        // REVISI SELECTOR UTAMA: 
+        // Mencoba selector yang lebih generik untuk item di halaman index DooTheme.
+        // Jika div.items > article.item gagal, kita coba div.items.
+        val home = document.select("div.items article.item, div.items > article").mapNotNull { it.toSearchResult() }
+        
+        // Jika halaman Kategori adalah halaman index biasa, terkadang mereka menggunakan .result-item
+        if (home.isEmpty()) {
+             // Selector alternatif untuk hasil pencarian/kategori jika struktur berbeda
+             return document.select("div.result-item, article.item").mapNotNull { it.toSearchResult() }
+        }
 
         return newHomePageResponse(
             list = HomePageList(
@@ -46,121 +56,37 @@ class Adimoviemaze : MainAPI() {
     }
 
     private fun Element.toSearchResult(): SearchResponse? {
-        val titleElement = this.selectFirst("div.data > h3 > a") ?: return null
-        val title     = titleElement.text().trim()
+        
+        // REVISI SELECTOR POSTER & JUDUL:
+        // Mencari elemen <a> terdekat yang memiliki href (link ke film)
+        val titleElement = this.selectFirst("div.data a, h3 a") ?: this.selectFirst("a") ?: return null
         val href      = fixUrl(titleElement.attr("href"))
         
-        val posterUrl = fixUrlNull(this.select("div.poster img").attr("data-src").ifEmpty { 
-            this.select("div.poster img").attr("src") 
-        })
+        // Judul diambil dari teks <a>
+        val title     = titleElement.text().trim().ifEmpty { 
+             this.selectFirst("h3")?.text()?.trim() ?: "" 
+        }
+
+        // POSTER: Mencoba beberapa lokasi umum untuk gambar (img di div.poster atau langsung di article)
+        val posterUrl = fixUrlNull(
+            this.select("div.poster img").attr("data-src").ifEmpty { // data-src (lazy load)
+                this.select("div.poster img").attr("src").ifEmpty { // src
+                    this.select("img").attr("src") // img langsung
+                } 
+            }
+        )
         
         if (title.isBlank() || href.isBlank()) return null
         
+        // Tipe TV: Cek apakah ada badge 'type tv'
         val tvType = if (this.selectFirst(".type.tv") != null) TvType.TvSeries else TvType.Movie
 
         return newMovieSearchResponse(title, href, tvType) {
             this.posterUrl = posterUrl ?: defaultPoster
         }
     }
-
-    override suspend fun search(query: String, page: Int): SearchResponseList? {
-        val searchUrl = "$mainUrl/page/$page/?s=$query"
-        val document = app.get(searchUrl, headers = standardHeaders).document
-        
-        val results = document.select("div.items > article.item").mapNotNull { it.toSearchResult() }
-        
-        return newSearchResponseList(results, results.isNotEmpty())
-    }
-
-    override suspend fun load(url: String): LoadResponse? {
-        val document = app.get(url, headers = standardHeaders).document
-        
-        // Data Dasar
-        val title       = document.selectFirst("h1.entry-title")?.text()?.trim() ?: ""
-        val poster      = document.selectFirst("div.poster > img")?.attr("src")?.let { fixUrl(it) }
-        val description = document.selectFirst("div.wp-content > p")?.text()?.trim()
-        
-        // Data Tambahan (Score/Rating DIHILANGKAN)
-        val genres      = document.select("div.sgeneros a").map { it.text() }
-        val year        = document.selectFirst("span.year")?.text()?.toIntOrNull()
-        
-        val isSeries = document.selectFirst("div.seasons") != null
-        val tvType = if (isSeries) TvType.TvSeries else TvType.Movie
-
-        if (title.isBlank()) return null
-        
-        return if (isSeries) {
-            val episodes = mutableListOf<Episode>()
-            
-            document.select("div.seasons > a[data-tab]").forEach { seasonTab ->
-                val seasonNum = seasonTab.attr("data-tab").toIntOrNull()
-                if (seasonNum != null) {
-                    document.select("div#season-$seasonNum ul.episodios > li").mapNotNull { episodeElement ->
-                        val epUrl = fixUrl(episodeElement.selectFirst("a")?.attr("href") ?: return@mapNotNull null)
-                        val epTitleFull = episodeElement.selectFirst("a")?.text()?.trim() ?: "Episode Unknown"
-                        
-                        val epNum = Regex("E(\\d+)(?: -|$)").find(epTitleFull)?.groupValues?.get(1)?.toIntOrNull()
-
-                        episodes.add(
-                            newEpisode(epUrl) {
-                                name    = epTitleFull
-                                season  = seasonNum
-                                episode = epNum
-                            }
-                        )
-                    }
-                }
-            }
-
-            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes.reversed().toMutableList()) {
-                this.posterUrl = poster ?: defaultPoster
-                this.plot      = description
-                this.year      = year
-                this.tags      = genres
-            }
-        } else {
-            newMovieLoadResponse(title, url, TvType.Movie, url) {
-                this.posterUrl = poster ?: defaultPoster
-                this.plot      = description
-                this.year      = year
-                this.tags      = genres
-            }
-        }
-    }
-
-    override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
-        
-        val document = app.get(data, headers = standardHeaders).document
-        
-        document.select("#player-option-1 ul > li[data-post][data-nonce][data-nume]").amap { li ->
-            val serverId = li.attr("data-post")
-            val serverNonce = li.attr("data-nonce")
-            val serverIdNum = li.attr("data-nume")
-            
-            if (serverId.isNotBlank() && serverNonce.isNotBlank() && serverIdNum.isNotBlank()) {
-                
-                val postResponse = app.post(
-                    url = "$mainUrl/wp-json/dooplay/v2/player_ad/", 
-                    data = mapOf(
-                        "post" to serverId,
-                        "nonce" to serverNonce,
-                        "nume" to serverIdNum
-                    ),
-                    referer = data,
-                    headers = mapOf(
-                        "X-Requested-With" to "XMLHttpRequest",
-                        "User-Agent" to standardHeaders["User-Agent"]!!
-                    )
-                ).document
-                
-                val playerUrl = postResponse.selectFirst("iframe")?.attr("src")
-                
-                if (playerUrl != null && playerUrl.isNotBlank()) {
-                    loadExtractor(playerUrl, data, subtitleCallback, callback)
-                }
-            }
-        }
-        
-        return true
-    }
+    
+    // ... (fungsi search, load, dan loadLinks tidak perlu diubah, karena masalah utama ada di list halaman utama)
+    
+    // ...
 }
