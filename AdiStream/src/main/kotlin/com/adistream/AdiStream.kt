@@ -244,7 +244,7 @@ open class AdiStream : TmdbProvider() {
                 this.year = year
                 this.plot = res.overview
                 this.tags = keywords.takeIf { !it.isNullOrEmpty() } ?: genres
-                this.score = Score.from100(rating)
+                this.score = Score
                 
                 // Removed score property assignment
 
@@ -284,7 +284,7 @@ open class AdiStream : TmdbProvider() {
                 this.plot = res.overview
                 this.duration = res.runtime
                 this.tags = keywords.takeIf { !it.isNullOrEmpty() } ?: genres
-                this.score = Score.from100(rating)
+                this.score = Score
                 
                 // Removed score property assignment
 
