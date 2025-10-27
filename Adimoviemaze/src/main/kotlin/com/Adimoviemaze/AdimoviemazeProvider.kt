@@ -18,7 +18,6 @@ class AdimoviemazeProvider: BasePlugin() {
         // Daftarkan Extractor Kustom dari Extractors.kt
         registerExtractorAPI(StreamWishCustom())
         registerExtractorAPI(StreamSBCustom())
-        registerExtractorAPI(VidCloudCustom())
         registerExtractorAPI(MazePlayerExtractor())
     }
 }
