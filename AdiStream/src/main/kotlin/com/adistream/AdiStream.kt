@@ -13,6 +13,7 @@ import com.adistream.AdiExtractor.invokeVidsrccc
 import com.adistream.AdiExtractor.invokeVidsrccx
 import com.adistream.AdiExtractor.invokeVixsrc
 import com.adistream.AdiExtractor.invokeWatchsomuch
+import com.adistream.AdiExtractor.invokeWyzie // FIX: Tambahkan import yang hilang
 import com.adistream.AdiExtractor.invokeXprime
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
@@ -164,7 +165,10 @@ open class AdiStream : TmdbProvider() {
         val orgTitle = res.originalTitle ?: res.originalName ?: return null
         val releaseDate = res.releaseDate ?: res.firstAirDate
         val year = releaseDate?.split("-")?.first()?.toIntOrNull()
-        val rating = res.vote_average.toString().toRatingInt()
+        
+        // FIX: Menggunakan Score.from10() untuk skor
+        val score = res.vote_average?.let { Score.from10(it) }
+
         val genres = res.genres?.mapNotNull { it.name }
 
         val isCartoon = genres?.contains("Animation") ?: false
@@ -222,7 +226,10 @@ open class AdiStream : TmdbProvider() {
                             this.season = eps.seasonNumber
                             this.episode = eps.episodeNumber
                             this.posterUrl = getImageUrl(eps.stillPath)
-                            this.rating = eps.voteAverage?.times(10)?.roundToInt()
+                            
+                            // FIX: Menggunakan this.score = Score.from10(Double?)
+                            this.score = eps.voteAverage?.let { Score.from10(it) }
+
                             this.description = eps.overview
                         }.apply {
                             this.addDate(eps.airDate)
@@ -240,7 +247,10 @@ open class AdiStream : TmdbProvider() {
                 this.year = year
                 this.plot = res.overview
                 this.tags = keywords.takeIf { !it.isNullOrEmpty() } ?: genres
-                this.rating = rating
+                
+                // FIX: Menggunakan this.score
+                this.score = score
+
                 this.showStatus = getStatus(res.status)
                 this.recommendations = recommendations
                 this.actors = actors
@@ -277,7 +287,10 @@ open class AdiStream : TmdbProvider() {
                 this.plot = res.overview
                 this.duration = res.runtime
                 this.tags = keywords.takeIf { !it.isNullOrEmpty() } ?: genres
-                this.rating = rating
+                
+                // FIX: Menggunakan this.score
+                this.score = score
+
                 this.recommendations = recommendations
                 this.actors = actors
                 this.contentRating = fetchContentRating(data.id, "US")
