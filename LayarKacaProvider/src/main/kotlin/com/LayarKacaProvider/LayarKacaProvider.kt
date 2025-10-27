@@ -81,7 +81,8 @@ class LayarKacaProvider : MainAPI() {
         }
     }
 
-    override suspend fun search(query: String): List<SearchResponse> {
+    // ================== PERBAIKAN 1 DI SINI ==================
+    override suspend fun search(query: String): List<SearchResponse>? {
         val res = app.get("$searchurl/search.php?s=$query").text
         val results = mutableListOf<SearchResponse>()
 
@@ -166,7 +167,7 @@ class LayarKacaProvider : MainAPI() {
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                this.score = Score.from10(rating)
+                this.score = Score.from10(rating) // Ini sudah benar, kerja bagus!
                 this.recommendations = recommendations
                 addTrailer(trailer)
             }
@@ -177,13 +178,14 @@ class LayarKacaProvider : MainAPI() {
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                this.score = Score.from10(rating)
+                this.score = Score.from10(rating) // Ini sudah benar, kerja bagus!
                 this.recommendations = recommendations
                 addTrailer(trailer)
             }
         }
     }
 
+    // ================== PERBAIKAN 2 DI SINI ==================
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -193,17 +195,19 @@ class LayarKacaProvider : MainAPI() {
         val document = app.get(data).document
         document.select("ul#player-list > li").map {
                 fixUrl(it.select("a").attr("href"))
-            }.amap {
-            val test=it.getIframe()
-            val referer=getBaseUrl(it)
-            Log.d("Phisher",test)
-            loadExtractor(it.getIframe(), referer, subtitleCallback, callback)
+            }.amap { link -> // Mengganti 'it' menjadi 'link' agar lebih jelas
+            val iframeSrc = link.getIframe() // Panggil .getIframe() sekali saja
+            val referer = getBaseUrl(link)
+            Log.d("Phisher", iframeSrc)
+            loadExtractor(iframeSrc, referer, subtitleCallback, callback) // Gunakan variabel iframeSrc
         }
         return true
     }
 
+    // ================== PERBAIKAN 3 DI SINI ==================
     private suspend fun String.getIframe(): String {
-        return app.get(this, referer = "$seriesUrl/").document.select("div.embed-container iframe")
+        // Menggunakan referer dinamis berdasarkan link-nya
+        return app.get(this, referer = getBaseUrl(this)).document.select("div.embed-container iframe")
             .attr("src")
     }
 
