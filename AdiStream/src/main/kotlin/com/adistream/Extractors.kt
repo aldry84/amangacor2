@@ -9,7 +9,7 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.getAndUnpack
 import com.lagradost.cloudstream3.utils.newExtractorLink
-import com.lagradost.cloudstream3.utils.newSubtitleFile // Import this for the fix
+import com.lagradost.cloudstream3.utils.newSubtitleFile // FIX: Import yang hilang ditambahkan di sini
 
 open class Jeniusplay2 : ExtractorApi() {
     override val name = "Jeniusplay"
@@ -50,7 +50,7 @@ open class Jeniusplay2 : ExtractorApi() {
                     getAndUnpack(script.data()).substringAfter("\"tracks\":[").substringBefore("],")
                 tryParseJson<List<Tracks>>("[$subData]")?.map { subtitle ->
                     subtitleCallback.invoke(
-                        newSubtitleFile( // FIX: Menggunakan newSubtitleFile
+                        newSubtitleFile(
                             getLanguage(subtitle.label ?: ""),
                             subtitle.file
                         )
@@ -63,8 +63,8 @@ open class Jeniusplay2 : ExtractorApi() {
     private fun getLanguage(str: String): String {
         return when {
             str.contains("indonesia", true) || str
-                .contains("bahasa", true) -> "id" // Menggunakan IETF BCP 47 tag
-            else -> str.lowercase().replace(" ", "-") // Menjaga format untuk bahasa lain
+                .contains("bahasa", true) -> "id"
+            else -> str.lowercase().replace(" ", "-")
         }
     }
 
