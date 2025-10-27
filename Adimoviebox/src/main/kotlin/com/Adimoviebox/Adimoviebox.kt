@@ -197,10 +197,14 @@ class Adimoviebox : MainAPI() {
             referer = referer
         ).parsedSafe<Media>()?.data?.captions?.map { subtitle ->
             subtitleCallback.invoke(
-                SubtitleFile(
+                // ===================================
+                // PERBAIKAN DI SINI
+                // ===================================
+                newSubtitleFile( 
                     subtitle.lanName ?: "",
                     subtitle.url ?: return@map
                 )
+                // ===================================
             )
         }
 
@@ -220,7 +224,7 @@ class Adimoviebox : MainAPI() {
     ) {
         data class Data(
             @JsonProperty("subjectList") val subjectList: ArrayList<Items>? = arrayListOf(),
-            @JsonProperty("items") val items: ArrayList<Items>? = arrayListOf(),
+            @JsonProperty("items") val items: ArrayList<Items>? = arrayF(),
             @JsonProperty("streams") val streams: ArrayList<Streams>? = arrayListOf(),
             @JsonProperty("captions") val captions: ArrayList<Captions>? = arrayListOf(),
         ) {
@@ -250,7 +254,7 @@ class Adimoviebox : MainAPI() {
             data class Stars(
                 @JsonProperty("name") val name: String? = null,
                 @JsonProperty("character") val character: String? = null,
-                @JsonProperty("avatarUrl") val avatarUrl: String? = null,
+                @JsonProperty("avatarUrl") val avatarUrl: String? =null,
             )
 
             data class Resource(
