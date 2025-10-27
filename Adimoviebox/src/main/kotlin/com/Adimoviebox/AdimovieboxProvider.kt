@@ -1,18 +1,15 @@
-package com.Adimoviemaze
+package com.Adimoviebox
 
-import com.lagradost.cloudstream3.extractors.StreamTape
 import com.lagradost.cloudstream3.plugins.BasePlugin
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
-import com.lagradost.cloudstream3.extractors.Uqload
 
 @CloudstreamPlugin
-class AdimoviemazeProvider: BasePlugin() {
+class AdimovieboxProvider: BasePlugin() {
     override fun load() {
-        registerMainAPI(Adimoviemaze())
-        
-        // Beberapa extractor umum yang mungkin digunakan
-        registerExtractorAPI(StreamTape())
-        registerExtractorAPI(Uqload()) 
-        // Tambahkan extractor kustom jika Anda menemukannya di moviemaze.cc
+        registerMainAPI(Adimoviebox())
+        // Karena Moviebox Anda menggunakan tautan stream langsung (INFER_TYPE), 
+        // dan tidak menggunakan extractor spesifik, saya tidak mendaftarkan extractor di sini.
+        // Jika link-nya adalah extractor yang terpisah (seperti dari BanglaPlex), 
+        // Anda perlu mendaftarkannya.
     }
 }
