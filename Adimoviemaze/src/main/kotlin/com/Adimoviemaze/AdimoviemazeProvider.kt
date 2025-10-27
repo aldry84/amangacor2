@@ -1,21 +1,24 @@
 package com.Adimoviemaze
 
 import com.lagradost.cloudstream3.extractors.StreamTape
-import com.lagradost.cloudstream3.extractors.VidCloud
-import com.lagradost.cloudstream3.extractors.StreamWish
+import com.lagradost.cloudstream3.extractors.Uqload
 import com.lagradost.cloudstream3.plugins.BasePlugin
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
-import com.lagradost.cloudstream3.extractors.Uqload
 
 @CloudstreamPlugin
 class AdimoviemazeProvider: BasePlugin() {
     override fun load() {
+        // Daftarkan Main API
         registerMainAPI(Adimoviemaze())
         
-        // Extractor umum dan terpercaya
+        // Daftarkan Extractor umum dari CloudStream
         registerExtractorAPI(StreamTape())
         registerExtractorAPI(Uqload()) 
-        registerExtractorAPI(StreamWish())
-        // Anda dapat menambahkan extractor kustom di sini jika diperlukan
+        
+        // Daftarkan Extractor Kustom dari Extractors.kt
+        registerExtractorAPI(StreamWishCustom())
+        registerExtractorAPI(StreamSBCustom())
+        registerExtractorAPI(VidCloudCustom())
+        registerExtractorAPI(MazePlayerExtractor())
     }
 }
