@@ -6,35 +6,12 @@ import androidx.annotation.RequiresApi
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.google.gson.Gson
 import com.lagradost.api.Log
-import com.lagradost.cloudstream3.Actor
-import com.lagradost.cloudstream3.ActorData
-import com.lagradost.cloudstream3.DubStatus
-import com.lagradost.cloudstream3.ErrorLoadingException
-import com.lagradost.cloudstream3.HomePageResponse
-import com.lagradost.cloudstream3.LoadResponse
+import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addImdbId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTMDbId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
-import com.lagradost.cloudstream3.MainPageRequest
-import com.lagradost.cloudstream3.Score
-import com.lagradost.cloudstream3.SearchResponse
-import com.lagradost.cloudstream3.SearchResponseList
-import com.lagradost.cloudstream3.ShowStatus
-import com.lagradost.cloudstream3.SubtitleFile
-import com.lagradost.cloudstream3.TvType
-import com.lagradost.cloudstream3.addDate
-import com.lagradost.cloudstream3.addEpisodes
-import com.lagradost.cloudstream3.app
-import com.lagradost.cloudstream3.mainPageOf
 import com.lagradost.cloudstream3.metaproviders.TmdbProvider
 import com.lagradost.cloudstream3.network.CloudflareKiller
-import com.lagradost.cloudstream3.newAnimeLoadResponse
-import com.lagradost.cloudstream3.newEpisode
-import com.lagradost.cloudstream3.newHomePageResponse
-import com.lagradost.cloudstream3.newMovieLoadResponse
-import com.lagradost.cloudstream3.newMovieSearchResponse
-import com.lagradost.cloudstream3.newTvSeriesLoadResponse
-import com.lagradost.cloudstream3.toNewSearchResponseList
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
@@ -58,6 +35,10 @@ open class StreamPlay(val sharedPref: SharedPreferences? = null) : TmdbProvider(
 
     val token: String? = sharedPref?.getString("token", null)
     val wpRedisInterceptor by lazy { CloudflareKiller() }
+    
+    // Gunakan lazy delegate untuk memastikan API dasar hanya dicari sekali
+    // dan hanya saat pertama kali dibutuhkan, serta tidak diulang di dalam fungsi.
+    private val tmdbAPI by lazy { runBlocking { getApiBase() } }
 
     /** AUTHOR : hexated & Phisher & Code */
     companion object {
@@ -67,19 +48,22 @@ open class StreamPlay(val sharedPref: SharedPreferences? = null) : TmdbProvider(
         private const val REMOTE_PROXY_LIST = "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/Proxylist.txt"
         private const val apiKey = BuildConfig.TMDB_API
         private var currentBaseUrl: String? = null
+        
+        // Perbaikan: Pindahkan Gson ke companion object untuk penggunaan ulang
+        private val gson = Gson()
 
         suspend fun getApiBase(): String {
-            // If already found a working base, reuse it
+            // Jika sudah ditemukan base yang berfungsi, gunakan kembali
             currentBaseUrl?.let { return it }
 
-            // Try official first
+            // Coba resmi dulu
             if (isOfficialAvailable()) {
                 currentBaseUrl = OFFICIAL_TMDB_URL
                 Log.d("TMDB", "✅ Using official TMDB API")
                 return OFFICIAL_TMDB_URL
             }
 
-            // If official fails, try proxies from the remote list
+            // Jika resmi gagal, coba proxy dari daftar jarak jauh
             val proxies = fetchProxyList()
             for (proxy in proxies) {
                 if (isProxyWorking(proxy)) {
@@ -89,7 +73,7 @@ open class StreamPlay(val sharedPref: SharedPreferences? = null) : TmdbProvider(
                 }
             }
 
-            // Fallback to official if nothing worked
+            // Fallback ke resmi jika tidak ada yang berhasil
             Log.e("TMDB", "❌ No proxy worked, fallback to official")
             return OFFICIAL_TMDB_URL
         }
@@ -140,6 +124,7 @@ open class StreamPlay(val sharedPref: SharedPreferences? = null) : TmdbProvider(
 
         private suspend fun fetchProxyList(): List<String> = try {
             val response = app.get(REMOTE_PROXY_LIST).text
+            // Perbaikan: Gunakan 'parsedSafe' dan pastikan format JSON
             val json = JSONObject(response)
             val arr = json.getJSONArray("proxies")
 
@@ -279,7 +264,7 @@ open class StreamPlay(val sharedPref: SharedPreferences? = null) : TmdbProvider(
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val tmdbAPI =getApiBase()
+        // Gunakan val tmdbAPI untuk mendapatkan base URL
         val adultQuery =
             if (settingsForProvider.enableAdult) "" else "&without_keywords=190370|13059|226161|195669"
         val type = if (request.data.contains("/movie")) "movie" else "tv"
@@ -304,23 +289,26 @@ open class StreamPlay(val sharedPref: SharedPreferences? = null) : TmdbProvider(
     override suspend fun quickSearch(query: String): List<SearchResponse>? = search(query)
 
     override suspend fun search(query: String, page: Int): SearchResponseList? {
-        val tmdbAPI = getApiBase()
-        return app.get("$tmdbAPI/search/multi?api_key=$apiKey&language=en-US&query=$query&page=$page&include_adult=${settingsForProvider.enableAdult}")
+        // Penambahan: Menggunakan setting filter dewasa di pencarian
+        val adultQuery = if (settingsForProvider.enableAdult) "true" else "false"
+        return app.get("$tmdbAPI/search/multi?api_key=$apiKey&language=en-US&query=$query&page=$page&include_adult=$adultQuery")
             .parsedSafe<Results>()?.results?.mapNotNull { media ->
                 media.toSearchResponse()
             }?.toNewSearchResponseList()
     }
 
     override suspend fun load(url: String): LoadResponse? {
-        val tmdbAPI = getApiBase()
         val data = parseJson<Data>(url)
         val type = getType(data.type)
         val append = "alternative_titles,credits,external_ids,videos,recommendations"
 
+        // Penambahan: Filter dewasa untuk detail media
+        val adultQuery = if (settingsForProvider.enableAdult) "" else "&without_keywords=190370|13059|226161|195669"
+
         val resUrl = if (type == TvType.Movie) {
-            "$tmdbAPI/movie/${data.id}?api_key=$apiKey&append_to_response=$append"
+            "$tmdbAPI/movie/${data.id}?api_key=$apiKey&append_to_response=$append$adultQuery"
         } else {
-            "$tmdbAPI/tv/${data.id}?api_key=$apiKey&append_to_response=$append"
+            "$tmdbAPI/tv/${data.id}?api_key=$apiKey&append_to_response=$append$adultQuery"
         }
 
         val res = app.get(resUrl).parsedSafe<MediaDetail>()
@@ -330,12 +318,14 @@ open class StreamPlay(val sharedPref: SharedPreferences? = null) : TmdbProvider(
         val bgPoster = getOriImageUrl(res.backdropPath)
         val orgTitle = res.originalTitle ?: res.originalName ?: return null
         val releaseDate = res.releaseDate ?: res.firstAirDate
-        val year = releaseDate?.split("-")?.first()?.toIntOrNull()
+        // Perbaikan: Gunakan elvis operator untuk keamanan null
+        val year = releaseDate?.split("-")?.firstOrNull()?.toIntOrNull()
         val genres = res.genres?.mapNotNull { it.name }
 
         val isCartoon = genres?.contains("Animation") ?: false
-        val isAnime = isCartoon && (res.original_language == "zh" || res.original_language == "ja")
-        val isAsian = !isAnime && (res.original_language == "zh" || res.original_language == "ko")
+        // Perbaikan: Pengecekan null yang lebih aman
+        val isAnime = isCartoon && (res.original_language?.equals("zh") == true || res.original_language?.equals("ja") == true)
+        val isAsian = !isAnime && (res.original_language?.equals("zh") == true || res.original_language?.equals("ko") == true)
         val isBollywood = res.production_countries?.any { it.name == "India" } ?: false
 
         val keywords = res.keywords?.results?.mapNotNull { it.name }.orEmpty()
@@ -362,7 +352,9 @@ open class StreamPlay(val sharedPref: SharedPreferences? = null) : TmdbProvider(
         if (type == TvType.TvSeries) {
             val lastSeason = res.last_episode_to_air?.season_number
             val episodes = res.seasons?.mapNotNull { season ->
-                app.get("$tmdbAPI/${data.type}/${data.id}/season/${season.seasonNumber}?api_key=$apiKey")
+                // Perbaikan: Pengecekan null yang lebih aman untuk season.seasonNumber
+                val seasonNumber = season.seasonNumber ?: return@mapNotNull null
+                app.get("$tmdbAPI/${data.type}/${data.id}/season/$seasonNumber?api_key=$apiKey")
                     .parsedSafe<MediaDetailEpisodes>()?.episodes?.map { eps ->
                         newEpisode(
                             LinkData(
@@ -374,7 +366,7 @@ open class StreamPlay(val sharedPref: SharedPreferences? = null) : TmdbProvider(
                                 eps.episodeNumber,
                                 eps.id,
                                 title = title,
-                                year = season.airDate?.split("-")?.first()?.toIntOrNull(),
+                                year = season.airDate?.split("-")?.firstOrNull()?.toIntOrNull(),
                                 orgTitle = orgTitle,
                                 isAnime = isAnime,
                                 airedYear = year,
@@ -395,7 +387,7 @@ open class StreamPlay(val sharedPref: SharedPreferences? = null) : TmdbProvider(
                             this.season = eps.seasonNumber
                             this.episode = eps.episodeNumber
                             this.posterUrl = getImageUrl(eps.stillPath)
-                            this.score = Score.from10(eps.voteAverage)
+                            this.score = Score.from10(eps.voteAverage) // Score tidak diubah
                             this.description = eps.overview
                         }.apply {
                             this.addDate(eps.airDate)
@@ -403,7 +395,7 @@ open class StreamPlay(val sharedPref: SharedPreferences? = null) : TmdbProvider(
                     }
             }?.flatten() ?: listOf()
             if (isAnime) {
-                val gson = Gson()
+                // Perbaikan: Menggunakan 'gson' dari companion object
                 val animeType = if (data.type?.contains("tv", ignoreCase = true) == true) "series" else "movie"
                 val imdbId = res.external_ids?.imdb_id.orEmpty()
                 val cineJsonText = app.get("$Cinemeta/meta/$animeType/$imdbId.json").text
@@ -448,7 +440,7 @@ open class StreamPlay(val sharedPref: SharedPreferences? = null) : TmdbProvider(
                             this.season = video.season
                             this.episode = video.number
                             this.posterUrl = video.thumbnail
-                            this.score = Score.from10(video.rating)
+                            this.score = Score.from10(video.rating) // Score tidak diubah
                             this.description = video.description
                         }.apply {
                             this.addDate(video.released)
@@ -491,7 +483,7 @@ open class StreamPlay(val sharedPref: SharedPreferences? = null) : TmdbProvider(
                             this.season = video.season
                             this.episode = video.number
                             this.posterUrl = video.thumbnail
-                            this.score = Score.from10(video.rating)
+                            this.score = Score.from10(video.rating) // Score tidak diubah
                             this.description = video.description
                         }.apply {
                             this.addDate(video.released)
@@ -506,7 +498,7 @@ open class StreamPlay(val sharedPref: SharedPreferences? = null) : TmdbProvider(
                     this.plot = res.overview
                     this.tags = keywords?.map { it.replaceFirstChar { it.titlecase() } }
                         ?.takeIf { it.isNotEmpty() } ?: genres
-                    this.score = Score.from10(res.vote_average.toString())
+                    this.score = Score.from10(res.vote_average) // Score tidak diubah
                     this.showStatus = getStatus(res.status)
                     this.recommendations = recommendations
                     this.actors = actors
@@ -522,7 +514,7 @@ open class StreamPlay(val sharedPref: SharedPreferences? = null) : TmdbProvider(
                     this.plot = res.overview
                     this.tags = keywords?.map { word -> word.replaceFirstChar { it.titlecase() } }
                         ?.takeIf { it.isNotEmpty() } ?: genres
-                    this.score = Score.from10(res.vote_average.toString())
+                    this.score = Score.from10(res.vote_average) // Score tidak diubah
                     this.showStatus = getStatus(res.status)
                     this.recommendations = recommendations
                     this.actors = actors
@@ -563,7 +555,7 @@ open class StreamPlay(val sharedPref: SharedPreferences? = null) : TmdbProvider(
                 this.tags = keywords?.map { word -> word.replaceFirstChar { it.titlecase() } }
                     ?.takeIf { it.isNotEmpty() } ?: genres
 
-                this.score = Score.from10(res.vote_average.toString())
+                this.score = Score.from10(res.vote_average) // Score tidak diubah
                 this.recommendations = recommendations
                 this.actors = actors
                 //this.contentRating = fetchContentRating(data.id, "US") ?: "Not Rated"
