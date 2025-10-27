@@ -18,6 +18,8 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.phisher98.StreamPlayExtractor.invokeSubtitleAPI
 import com.phisher98.StreamPlayExtractor.invokeWyZIESUBAPI
 import kotlinx.coroutines.withTimeoutOrNull
+// FIX: Tambahkan impor untuk runBlocking agar dapat memanggil getApiBase() di properti lazy
+import kotlinx.coroutines.runBlocking 
 import org.json.JSONObject
 
 open class StreamPlay(val sharedPref: SharedPreferences? = null) : TmdbProvider() {
@@ -36,8 +38,7 @@ open class StreamPlay(val sharedPref: SharedPreferences? = null) : TmdbProvider(
     val token: String? = sharedPref?.getString("token", null)
     val wpRedisInterceptor by lazy { CloudflareKiller() }
     
-    // Gunakan lazy delegate untuk memastikan API dasar hanya dicari sekali
-    // dan hanya saat pertama kali dibutuhkan, serta tidak diulang di dalam fungsi.
+    // FIX: Menggunakan runBlocking untuk memanggil suspend function di properti lazy.
     private val tmdbAPI by lazy { runBlocking { getApiBase() } }
 
     /** AUTHOR : hexated & Phisher & Code */
@@ -498,7 +499,8 @@ open class StreamPlay(val sharedPref: SharedPreferences? = null) : TmdbProvider(
                     this.plot = res.overview
                     this.tags = keywords?.map { it.replaceFirstChar { it.titlecase() } }
                         ?.takeIf { it.isNotEmpty() } ?: genres
-                    this.score = Score.from10(res.vote_average) // Score tidak diubah
+                    // FIX: Konversi Any? ke String untuk menghindari error Score.from10
+                    this.score = Score.from10(res.vote_average?.toString()) 
                     this.showStatus = getStatus(res.status)
                     this.recommendations = recommendations
                     this.actors = actors
@@ -514,7 +516,8 @@ open class StreamPlay(val sharedPref: SharedPreferences? = null) : TmdbProvider(
                     this.plot = res.overview
                     this.tags = keywords?.map { word -> word.replaceFirstChar { it.titlecase() } }
                         ?.takeIf { it.isNotEmpty() } ?: genres
-                    this.score = Score.from10(res.vote_average) // Score tidak diubah
+                    // FIX: Konversi Any? ke String untuk menghindari error Score.from10
+                    this.score = Score.from10(res.vote_average?.toString()) 
                     this.showStatus = getStatus(res.status)
                     this.recommendations = recommendations
                     this.actors = actors
@@ -555,7 +558,8 @@ open class StreamPlay(val sharedPref: SharedPreferences? = null) : TmdbProvider(
                 this.tags = keywords?.map { word -> word.replaceFirstChar { it.titlecase() } }
                     ?.takeIf { it.isNotEmpty() } ?: genres
 
-                this.score = Score.from10(res.vote_average) // Score tidak diubah
+                // FIX: Konversi Any? ke String untuk menghindari error Score.from10
+                this.score = Score.from10(res.vote_average?.toString())
                 this.recommendations = recommendations
                 this.actors = actors
                 //this.contentRating = fetchContentRating(data.id, "US") ?: "Not Rated"
