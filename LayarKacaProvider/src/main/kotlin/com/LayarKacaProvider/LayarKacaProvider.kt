@@ -12,7 +12,7 @@ class LayarKacaProvider : MainAPI() {
 
     override var mainUrl = "https://tv6.lk21official.cc"
     private var seriesUrl = "https://tv1.nontondrama.my"
-    private var searchurl= "https://d21.team"
+    private var searchurl= "search.lk21.party"
 
     override var name = "LayarKaca"
     override val hasMainPage = true
