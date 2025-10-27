@@ -248,7 +248,6 @@ fun String?.createSlug(): String? {
 }
 
 fun getLanguage(str: String): String {
-    // Mengubah menjadi kode 2-huruf yang lebih standar
     return if (str.contains("(in_ID)")) "id" else str
 }
 
@@ -321,19 +320,16 @@ fun getFDoviesQuality(str: String): String {
 }
 
 fun getVipLanguage(str: String): String {
-    // FIX: Menggunakan SubtitleHelper.fromTwoLettersToLanguage (walaupun usang) untuk sementara
-    // dan mengubah "in_ID" ke "id" (IETF tag)
     return when (str) {
         "in_ID" -> "id"
-        "pt" -> "pt" // menjaga 2 huruf
+        "pt" -> "pt"
         else -> str.split("_").first().let {
-            SubtitleHelper.fromTwoLettersToLanguage(it) ?: it // jika gagal, kembalikan kode 2-huruf
+            SubtitleHelper.fromTwoLettersToLanguage(it) ?: it
         }
     }
 }
 
 fun fixCrunchyrollLang(language: String?): String? {
-    // FIX: Menggunakan SubtitleHelper.fromTwoLettersToLanguage (walaupun usang) untuk sementara
     return SubtitleHelper.fromTwoLettersToLanguage(language ?: return null)
         ?: SubtitleHelper.fromTwoLettersToLanguage(language.substringBefore("-"))
         ?: language
