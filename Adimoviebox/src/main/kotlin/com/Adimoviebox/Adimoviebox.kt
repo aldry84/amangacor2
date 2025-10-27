@@ -93,10 +93,7 @@ class Adimoviebox : MainAPI() {
         val description = subject?.description
         val trailer = subject?.trailer?.videoAddress?.url
         
-        // --- Bagian Skor Dihilangkan ---
-        // Kode yang bermasalah: val imdbRating = subject?.imdbRatingValue?.toFloatOrNull()
-        // Kode yang bermasalah: this.toScore(...)
-        // ---
+        // --- Bagian Skor DIHILANGKAN (sesuai permintaan) ---
 
         val actors = document?.stars?.mapNotNull { cast ->
             ActorData(
@@ -196,15 +193,12 @@ class Adimoviebox : MainAPI() {
             "$apiUrl/wefeed-h5-bff/web/subject/caption?format=$format&id=$id&subjectId=${media.id}",
             referer = referer
         ).parsedSafe<Media>()?.data?.captions?.map { subtitle ->
+            // PERBAIKAN: Mengganti konstruktor SubtitleFile yang deprecated dengan newSubtitleFile
             subtitleCallback.invoke(
-                // ===================================
-                // PERBAIKAN DI SINI
-                // ===================================
-                newSubtitleFile( 
+                newSubtitleFile( // Perubahan di sini
                     subtitle.lanName ?: "",
                     subtitle.url ?: return@map
                 )
-                // ===================================
             )
         }
 
@@ -224,7 +218,7 @@ class Adimoviebox : MainAPI() {
     ) {
         data class Data(
             @JsonProperty("subjectList") val subjectList: ArrayList<Items>? = arrayListOf(),
-            @JsonProperty("items") val items: ArrayList<Items>? = arrayF(),
+            @JsonProperty("items") val items: ArrayList<Items>? = arrayListOf(),
             @JsonProperty("streams") val streams: ArrayList<Streams>? = arrayListOf(),
             @JsonProperty("captions") val captions: ArrayList<Captions>? = arrayListOf(),
         ) {
@@ -254,7 +248,7 @@ class Adimoviebox : MainAPI() {
             data class Stars(
                 @JsonProperty("name") val name: String? = null,
                 @JsonProperty("character") val character: String? = null,
-                @JsonProperty("avatarUrl") val avatarUrl: String? =null,
+                @JsonProperty("avatarUrl") val avatarUrl: String? = null,
             )
 
             data class Resource(
