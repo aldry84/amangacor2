@@ -168,8 +168,9 @@ class DramaDrip : MainAPI() {
 
         val hrefs: List<String> = document.select("div.wp-block-button > a")
             .mapNotNull { linkElement ->
+                // Perubahan: Mengubah cinematickitloadBypass menjadi link saja
                 val link = linkElement.attr("href")
-                val actual=cinematickitloadBypass(link) ?: return@mapNotNull null
+                val actual = link // Tidak menggunakan bypass lain saat mengumpulkan hrefs
                 val page = app.get(actual).document
                 page.select("div.wp-block-button.movie_btn a")
                     .eachAttr("href")
@@ -218,7 +219,8 @@ class DramaDrip : MainAPI() {
 
                         for (qualityPageLink in qualityLinks) {
                             try {
-                                val rawqualityPageLink=if (qualityPageLink.contains("modpro")) qualityPageLink else cinematickitloadBypass(qualityPageLink) ?: ""
+                                // Perubahan: Menghapus cinematickitloadBypass di sini juga
+                                val rawqualityPageLink = qualityPageLink
                                 val response = app.get(rawqualityPageLink)
                                 val episodeDoc = response.document
 
@@ -328,17 +330,15 @@ class DramaDrip : MainAPI() {
         // SUMBER VIDEO/EXTRACTOR LINKS
         for (link in links) {
             try {
-                // **Menggunakan bypassMoviebox sebagai sumber utama (pengecekan pertama)**
+                // HANYA gunakan bypassMoviebox sebagai pengecekan eksplisit
                 val finalLink = when {
                     "moviebox.ph" in link || "inmoviebox.com" in link -> bypassMoviebox(link) 
-                    "safelink=" in link -> cinematickitBypass(link)
-                    "unblockedgames" in link -> bypassHrefli(link)
-                    "examzculture" in link -> bypassHrefli(link)
-                    else -> link
+                    else -> link // Semua link lain akan langsung diteruskan (tidak ada bypass lain)
                 }
 
                 if (finalLink != null) {
                     Log.d("LoadLinks", "Memuat sumber video dari: $finalLink")
+                    // Menggunakan loadExtractor untuk mengekstrak video dari finalLink
                     loadExtractor(finalLink, subtitleCallback, callback)
                 } else {
                     Log.w("LoadLinks", "Bypass returned null for link: $link")
