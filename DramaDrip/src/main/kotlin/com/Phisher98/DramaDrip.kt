@@ -10,8 +10,7 @@ import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
 import com.lagradost.cloudstream3.LoadResponse.Companion.addImdbId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTMDbId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
-// Tambahan impor yang diperlukan untuk Score
-import com.lagradost.cloudstream3.Score 
+import com.lagradost.cloudstream3.Score // Tambahan impor Score
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import kotlinx.coroutines.runBlocking
@@ -270,8 +269,9 @@ class DramaDrip : MainAPI() {
                 addActors(cast)
                 addImdbId(imdbId)
                 addTMDbId(tmdbId)
-                // Perbaikan: Mengganti addScore dengan penetapan properti score
+                // Penulisan Score yang mirip dengan kode StreamPlay
                 this.score = rating?.let { Score.from10(it.toString()) }
+                // Menghapus this.subtitles untuk menghindari kesalahan. Subtitle ditangani di loadLinks.
             }
         } else {
             return newMovieLoadResponse(title, url, TvType.Movie, hrefs) {
@@ -284,8 +284,9 @@ class DramaDrip : MainAPI() {
                 addActors(cast)
                 addImdbId(imdbId)
                 addTMDbId(tmdbId)
-                // Perbaikan: Mengganti addScore dengan penetapan properti score
+                // Penulisan Score yang mirip dengan kode StreamPlay
                 this.score = rating?.let { Score.from10(it.toString()) }
+                // Menghapus this.subtitles untuk menghindari kesalahan. Subtitle ditangani di loadLinks.
             }
         }
     }
@@ -312,6 +313,7 @@ class DramaDrip : MainAPI() {
                 }
 
                 if (finalLink != null) {
+                    // Penulisan Subtitle: Subtitle ditambahkan di sini melalui subtitleCallback
                     loadExtractor(finalLink, subtitleCallback, callback)
                 } else {
                     Log.w("LoadLinks", "Bypass returned null for link: $link")
