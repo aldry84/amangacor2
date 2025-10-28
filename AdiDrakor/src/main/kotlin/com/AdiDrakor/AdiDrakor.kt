@@ -20,16 +20,21 @@ class AdiDrakor : MainAPI() {
     override val hasQuickSearch = true
     override var lang = "en"
     
+    // PERBAIKAN: Tambahkan TvType.Movie kembali, namun difilter ketat
     override val supportedTypes = setOf(
+        TvType.Movie, // <-- DITAMBAHKAN KEMBALI
         TvType.TvSeries, 
         TvType.AsianDrama 
     )
 
+    // PENAMBAHAN: Kategori Movie (ID 1)
     override val mainPage: List<MainPageData> = mainPageOf(
         "2,ForYou" to "Drakor Pilihan",
         "2,Hottest" to "Drakor Terpopuler",
         "2,Latest" to "Drakor Terbaru",
         "2,Rating" to "Drakor Rating Tertinggi",
+        "1,Latest" to "Movie Korea Terbaru", // <-- KATEGORI BARU
+        "1,Rating" to "Movie Korea Rating Tertinggi", // <-- KATEGORI BARU
     )
 
     override suspend fun getMainPage(
@@ -38,7 +43,8 @@ class AdiDrakor : MainAPI() {
     ): HomePageResponse {
         val params = request.data.split(",")
         
-        if (params.first() != "2") throw ErrorLoadingException("Halaman utama AdiDrakor hanya untuk TvSeries (Drakor).")
+        // Memungkinkan ID 1 (Movie) dan ID 2 (TvSeries)
+        if (params.first() != "2" && params.first() != "1") throw ErrorLoadingException("Halaman utama AdiDrakor hanya untuk Movie (1) dan TvSeries (2).")
 
         val body = mapOf(
             "channelId" to params.first(),
@@ -49,14 +55,14 @@ class AdiDrakor : MainAPI() {
 
         val home = app.post("$mainUrl/wefeed-h5-bff/web/filter", requestBody = body)
             .parsedSafe<Media>()?.data?.items
-            // FILTER KETAT: subjectType harus 2 (TvSeries) DAN countryName harus mengandung "Korea"
+            // FILTER KETAT: subjectType harus 1 (Movie) atau 2 (TvSeries) DAN dari Korea
             ?.filter { 
-                it.subjectType == 2 && 
+                (it.subjectType == 1 || it.subjectType == 2) && // Filter Movie atau TvSeries
                 it.countryName?.contains("Korea", ignoreCase = true) == true
             } 
             ?.map {
                 it.toSearchResponse(this)
-            } ?: throw ErrorLoadingException("Tidak ada Data Drakor Ditemukan")
+            } ?: throw ErrorLoadingException("Tidak ada Data Korea Ditemukan")
 
         return newHomePageResponse(request.name, home)
     }
@@ -65,18 +71,19 @@ class AdiDrakor : MainAPI() {
         return search(query) ?: emptyList()
     }
 
+    // PERBAIKAN PENCARIAN: subjectType diubah menjadi '0' untuk mencari semua, lalu difilter.
     override suspend fun search(query: String): List<SearchResponse>? {
         val results = app.post(
             "$mainUrl/wefeed-h5-bff/web/subject/search", requestBody = mapOf(
                 "keyword" to query,
                 "page" to "1",
                 "perPage" to "0",
-                "subjectType" to "2", // MEMBATASI PENCARIAN HANYA PADA TV SERIES (2)
+                "subjectType" to "0", // <-- PERBAIKAN: Cari semua tipe (Movie, TvSeries)
             ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
         ).parsedSafe<Media>()?.data?.items
-            // FILTER KETAT: Pastikan hasil pencarian adalah TvSeries (2) DAN dari Korea
+            // FILTER KETAT: subjectType harus 1 (Movie) atau 2 (TvSeries) DAN dari Korea
             ?.filter { 
-                it.subjectType == 2 && 
+                (it.subjectType == 1 || it.subjectType == 2) && // Filter Movie atau TvSeries
                 it.countryName?.contains("Korea", ignoreCase = true) == true
             }
             ?.map { it.toSearchResponse(this) }
@@ -91,9 +98,12 @@ class AdiDrakor : MainAPI() {
             .parsedSafe<MediaDetail>()?.data
         val subject = document?.subject
         
-        // PEMERIKSAAN KETAT: Tolak jika bukan TvSeries/Drama (2) atau bukan dari Korea
-        if (subject?.subjectType != 2 || subject.countryName?.contains("Korea", ignoreCase = true) != true) {
-             throw ErrorLoadingException("Konten ini bukan Drama Korea yang valid. Tipe: ${subject?.subjectType}, Negara: ${subject?.countryName}")
+        // PEMERIKSAAN KETAT: Tolak jika bukan Movie (1) atau TvSeries (2) atau bukan dari Korea
+        val isValidType = subject?.subjectType == 1 || subject?.subjectType == 2
+        val isKorean = subject.countryName?.contains("Korea", ignoreCase = true) == true
+        
+        if (!isValidType || !isKorean) {
+             throw ErrorLoadingException("Konten ini bukan Movie/Drama Korea yang valid. Tipe: ${subject?.subjectType}, Negara: ${subject?.countryName}")
         }
         
         val title = subject.title ?: ""
@@ -101,7 +111,8 @@ class AdiDrakor : MainAPI() {
         val tags = subject.genre?.split(",")?.map { it.trim() }
 
         val year = subject.releaseDate?.substringBefore("-")?.toIntOrNull()
-        val tvType = TvType.TvSeries 
+        // PERBAIKAN: Tetapkan TvType berdasarkan subjectType
+        val tvType = if (subject.subjectType == 2) TvType.TvSeries else TvType.Movie 
         
         val description = subject.description
         val trailer = subject.trailer?.videoAddress?.url
@@ -119,16 +130,18 @@ class AdiDrakor : MainAPI() {
         val recommendations =
             app.get("$mainUrl/wefeed-h5-bff/web/subject/detail-rec?subjectId=$id&page=1&perPage=12")
                 .parsedSafe<Media>()?.data?.items
-                // FILTER KETAT: Hanya rekomendasikan Drakor
+                // FILTER KETAT: Movie (1) atau TvSeries (2) dari Korea
                 ?.filter { 
-                    it.subjectType == 2 && 
+                    (it.subjectType == 1 || it.subjectType == 2) && 
                     it.countryName?.contains("Korea", ignoreCase = true) == true 
                 }
                 ?.map {
                     it.toSearchResponse(this)
                 }
 
-        return newTvSeriesLoadResponse(title, url, TvType.TvSeries, 
+        // PERBAIKAN: Gunakan logika if/else untuk Movie atau TvSeries
+        return if (tvType == TvType.TvSeries) {
+            newTvSeriesLoadResponse(title, url, TvType.TvSeries, 
                 document.resource?.seasons?.map { seasons ->
                 (if (seasons.allEp.isNullOrEmpty()) (1..seasons.maxEp!!) else seasons.allEp.split(",")
                     .map { it.toInt() })
@@ -155,6 +168,24 @@ class AdiDrakor : MainAPI() {
                 this.recommendations = recommendations
                 addTrailer(trailer, addRaw = true)
             }
+        } else {
+             // Movie Load Response
+             newMovieLoadResponse(
+                title,
+                url,
+                TvType.Movie,
+                LoadData(id, detailPath = subject.detailPath).toJson()
+            ) {
+                this.posterUrl = poster
+                this.year = year
+                this.plot = description
+                this.tags = tags
+                this.score = Score.from10(subject.imdbRatingValue)
+                this.actors = actors
+                this.recommendations = recommendations
+                addTrailer(trailer, addRaw = true)
+            }
+        }
     }
 
     override suspend fun loadLinks(
@@ -163,14 +194,14 @@ class AdiDrakor : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
+        // ... (Fungsi loadLinks tidak berubah)
         val media = parseJson<LoadData>(data)
         
-        // Referer yang diperlukan untuk memanggil stream
         val streamReferer = "$apiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&lang=en"
 
         val streams = app.get(
             "$apiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}",
-            referer = streamReferer // Menggunakan referer untuk mendapatkan stream
+            referer = streamReferer 
         ).parsedSafe<Media>()?.data?.streams
 
         streams?.reversed()?.distinctBy { it.url }?.map { source ->
@@ -181,7 +212,6 @@ class AdiDrakor : MainAPI() {
                     source.url ?: return@map,
                     INFER_TYPE
                 ) {
-                    // PERBAIKAN: Gunakan streamReferer sebagai referer untuk link stream itu sendiri
                     this.referer = streamReferer 
                     this.quality = getQualityFromName(source.resolutions)
                 }
@@ -193,7 +223,7 @@ class AdiDrakor : MainAPI() {
 
         app.get(
             "$apiUrl/wefeed-h5-bff/web/subject/caption?format=$format&id=$id&subjectId=${media.id}",
-            referer = streamReferer // Menggunakan referer untuk subtitle
+            referer = streamReferer 
         ).parsedSafe<Media>()?.data?.captions?.map { subtitle ->
             subtitleCallback.invoke(
                 newSubtitleFile(
@@ -206,7 +236,7 @@ class AdiDrakor : MainAPI() {
         return true
     }
     
-    // --- DATA CLASSES ---
+    // --- DATA CLASSES --- (Tidak ada perubahan di sini)
     
     data class LoadData(
         val id: String? = null,
@@ -281,7 +311,12 @@ class AdiDrakor : MainAPI() {
     ) {
 
         fun toSearchResponse(provider: AdiDrakor): SearchResponse {
-            val type = TvType.TvSeries
+            // Tipe sekarang bisa Movie atau TvSeries
+            val type = when (subjectType) {
+                1 -> TvType.Movie
+                2 -> TvType.TvSeries
+                else -> TvType.Movie // Default ke Movie jika tidak jelas
+            }
             
             return provider.newMovieSearchResponse(
                 title ?: "",
