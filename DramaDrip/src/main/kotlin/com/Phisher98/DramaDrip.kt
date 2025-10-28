@@ -70,10 +70,17 @@ class DramaDrip : MainAPI() {
             ?.first
 
         val posterUrl = highestResUrl ?: imgElement?.attr("src")
+
+        // Penambahan Logika Score untuk Daftar Film
+        val scoreElementText = this.selectFirst(".entry-content p")?.text() ?: ""
+        val scoreMatch = Regex("""Rating:\s*(\d+)(?:\.\d+)?%?""").find(scoreElementText)
+        val scoreValue = scoreMatch?.groupValues?.getOrNull(1)?.toIntOrNull() // Ambil angka
+
         return newMovieSearchResponse(title, href, TvType.Movie) {
             this.posterUrl = posterUrl
+            // Menetapkan score menggunakan format yang diminta
+            this.score = scoreValue?.let { Score.from10(it.toString()) }
         }
-
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
@@ -271,7 +278,6 @@ class DramaDrip : MainAPI() {
                 addTMDbId(tmdbId)
                 // Penulisan Score yang mirip dengan kode StreamPlay
                 this.score = rating?.let { Score.from10(it.toString()) }
-                // Menghapus this.subtitles untuk menghindari kesalahan. Subtitle ditangani di loadLinks.
             }
         } else {
             return newMovieLoadResponse(title, url, TvType.Movie, hrefs) {
@@ -286,7 +292,6 @@ class DramaDrip : MainAPI() {
                 addTMDbId(tmdbId)
                 // Penulisan Score yang mirip dengan kode StreamPlay
                 this.score = rating?.let { Score.from10(it.toString()) }
-                // Menghapus this.subtitles untuk menghindari kesalahan. Subtitle ditangani di loadLinks.
             }
         }
     }
@@ -313,7 +318,6 @@ class DramaDrip : MainAPI() {
                 }
 
                 if (finalLink != null) {
-                    // Penulisan Subtitle: Subtitle ditambahkan di sini melalui subtitleCallback
                     loadExtractor(finalLink, subtitleCallback, callback)
                 } else {
                     Log.w("LoadLinks", "Bypass returned null for link: $link")
