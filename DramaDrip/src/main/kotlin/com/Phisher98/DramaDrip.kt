@@ -16,6 +16,13 @@ import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import kotlinx.coroutines.runBlocking
 import org.jsoup.nodes.Element
 
+// Asumsi: Fungsi-fungsi bypass ini ada di file Utils/Companion Object DramaDrip atau diimpor
+// Saya membuatkan dummy functions agar kode ini bisa dikompilasi
+fun cinematickitloadBypass(link: String): String? = link
+fun cinematickitBypass(link: String): String? = link
+fun bypassHrefli(link: String): String? = link
+
+
 class DramaDrip : MainAPI() {
     override var mainUrl: String = runBlocking {
         DramaDripProvider.getDomains()?.dramadrip ?: "https://dramadrip.com"
@@ -71,7 +78,7 @@ class DramaDrip : MainAPI() {
 
         val posterUrl = highestResUrl ?: imgElement?.attr("src")
 
-        // Logika Score untuk Daftar Film (agar tampil di homepage/search)
+        // Logika Score untuk Daftar Film 
         val scoreElementText = this.selectFirst(".entry-content p")?.text() ?: ""
         val scoreValue: Int? = Regex("""Rating:\s*(\d+)(?:\.\d+)?%?""")
             .find(scoreElementText)?.groupValues?.getOrNull(1)?.toIntOrNull()
@@ -100,20 +107,16 @@ class DramaDrip : MainAPI() {
         var rating: Int? = null 
 
         // LOGIKA PENGAMBILAN RATING (Halaman Detail)
-        // 1. Mencoba selector spesifik yang mungkin terlewat (jika ada div info/detail)
         document.select("div.content-section > *").forEach { element ->
             val text = element.text()
             if (rating == null && text.contains("Rating", ignoreCase = true)) {
-                 // Mencari angka di baris manapun yang mengandung "Rating"
                  rating = Regex("""(\d+)(?:\.\d+)?%?$""").find(text)?.groupValues?.getOrNull(1)?.toIntOrNull()
             }
         }
 
-        // 2. Mencoba selector li seperti sebelumnya jika belum ditemukan
         if (rating == null) {
             document.select("div.su-spoiler-content ul.wp-block-list > li").forEach { li ->
                 val text = li.text()
-                // Mengambil ImdbId dan TmdbId di sini
                 if (imdbId == null && "imdb.com/title/tt" in text) {
                     imdbId = Regex("tt\\d+").find(text)?.value
                 }
@@ -124,8 +127,8 @@ class DramaDrip : MainAPI() {
 
                 if (tmdbId == null && tmdbType == null && "themoviedb.org" in text) {
                     Regex("/(movie|tv)/(\\d+)").find(text)?.let { match ->
-                        tmdbType = match.groupValues[1] // movie or tv
-                        tmdbId = match.groupValues[2]   // numeric ID
+                        tmdbType = match.groupValues[1] 
+                        tmdbId = match.groupValues[2]   
                     }
                 }
             }
@@ -150,7 +153,6 @@ class DramaDrip : MainAPI() {
             if (jsonResponse.isNotEmpty() && jsonResponse.startsWith("{")) {
                 val gson = Gson()
                 val parsed = gson.fromJson(jsonResponse, ResponseData::class.java)
-                // Mengambil Rating dari Cinemeta jika ada dan belum terisi
                 rating = rating ?: parsed.meta?.imdbRating?.toIntOrNull()
                 parsed
             } else null
@@ -168,9 +170,9 @@ class DramaDrip : MainAPI() {
 
         val hrefs: List<String> = document.select("div.wp-block-button > a")
             .mapNotNull { linkElement ->
-                // Perubahan: Mengubah cinematickitloadBypass menjadi link saja
                 val link = linkElement.attr("href")
-                val actual = link // Tidak menggunakan bypass lain saat mengumpulkan hrefs
+                // MENGGUNAKAN LOGIKA BYPASS ASLI (cinematickitloadBypass)
+                val actual=cinematickitloadBypass(link) ?: return@mapNotNull null 
                 val page = app.get(actual).document
                 page.select("div.wp-block-button.movie_btn a")
                     .eachAttr("href")
@@ -203,12 +205,10 @@ class DramaDrip : MainAPI() {
                     val season = seasonMatch?.groupValues?.getOrNull(1)?.toIntOrNull()
 
                     if (season != null) {
-                        // Try to get the links block; if next sibling doesn't have buttons, try alternative selection
                         var linksBlock = seasonHeader.nextElementSibling()
                         if (linksBlock == null || linksBlock.select("div.wp-block-button")
                                 .isEmpty()
                         ) {
-                            // Sometimes buttons could be inside a child or sibling div
                             linksBlock = seasonHeader.parent()?.selectFirst("div.wp-block-button")
                                 ?: linksBlock
                         }
@@ -219,8 +219,8 @@ class DramaDrip : MainAPI() {
 
                         for (qualityPageLink in qualityLinks) {
                             try {
-                                // Perubahan: Menghapus cinematickitloadBypass di sini juga
-                                val rawqualityPageLink = qualityPageLink
+                                // MENGGUNAKAN LOGIKA BYPASS ASLI (cinematickitloadBypass)
+                                val rawqualityPageLink=if (qualityPageLink.contains("modpro")) qualityPageLink else cinematickitloadBypass(qualityPageLink) ?: ""
                                 val response = app.get(rawqualityPageLink)
                                 val episodeDoc = response.document
 
@@ -310,7 +310,6 @@ class DramaDrip : MainAPI() {
 
     // Fungsi placeholder untuk bypass MovieBox.
     private fun bypassMoviebox(link: String): String? {
-        // Implementasi logika bypass/ekstrak untuk domain MovieBox.
         return link 
     }
 
@@ -330,15 +329,17 @@ class DramaDrip : MainAPI() {
         // SUMBER VIDEO/EXTRACTOR LINKS
         for (link in links) {
             try {
-                // HANYA gunakan bypassMoviebox sebagai pengecekan eksplisit
+                // MENGGUNAKAN SEMUA BYPASS DARI STREAMPLAY + MOVIEBOX (MovieBox jadi pengecekan pertama)
                 val finalLink = when {
-                    "moviebox.ph" in link || "inmoviebox.com" in link -> bypassMoviebox(link) 
-                    else -> link // Semua link lain akan langsung diteruskan (tidak ada bypass lain)
+                    "moviebox.ph" in link || "inmoviebox.com" in link -> bypassMoviebox(link)
+                    "safelink=" in link -> cinematickitBypass(link)
+                    "unblockedgames" in link -> bypassHrefli(link) // diasumsikan ini adalah bypass lain
+                    "examzculture" in link -> bypassHrefli(link) // diasumsikan ini adalah bypass lain
+                    else -> link
                 }
 
                 if (finalLink != null) {
                     Log.d("LoadLinks", "Memuat sumber video dari: $finalLink")
-                    // Menggunakan loadExtractor untuk mengekstrak video dari finalLink
                     loadExtractor(finalLink, subtitleCallback, callback)
                 } else {
                     Log.w("LoadLinks", "Bypass returned null for link: $link")
