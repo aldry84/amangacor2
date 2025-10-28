@@ -71,15 +71,14 @@ class DramaDrip : MainAPI() {
 
         val posterUrl = highestResUrl ?: imgElement?.attr("src")
 
-        // Penambahan Logika Score untuk Daftar Film
-        val scoreElementText = this.selectFirst(".entry-content p")?.text() ?: ""
-        val scoreMatch = Regex("""Rating:\s*(\d+)(?:\.\d+)?%?""").find(scoreElementText)
-        val scoreValue = scoreMatch?.groupValues?.getOrNull(1)?.toIntOrNull() // Ambil angka
+        // Logika Score untuk Daftar Film (agar tampil di homepage/search)
+        val scoreElementText = this.selectFirst(".entry-content p")?.text() ?: "" 
+        val scoreValue: Int? = Regex("""Rating:\s*(\d+)(?:\.\d+)?%?""")
+            .find(scoreElementText)?.groupValues?.getOrNull(1)?.toIntOrNull()
 
         return newMovieSearchResponse(title, href, TvType.Movie) {
             this.posterUrl = posterUrl
-            // Menetapkan score menggunakan format yang diminta
-            this.score = scoreValue?.let { Score.from10(it.toString()) }
+            this.score = scoreValue?.let { Score.from10(it.toString()) } 
         }
     }
 
@@ -100,26 +99,40 @@ class DramaDrip : MainAPI() {
         var tmdbType: String? = null
         var rating: Int? = null 
 
-        document.select("div.su-spoiler-content ul.wp-block-list > li").forEach { li ->
-            val text = li.text()
-            if (imdbId == null && "imdb.com/title/tt" in text) {
-                imdbId = Regex("tt\\d+").find(text)?.value
-            }
-            
-            // Logika untuk mengambil Rating/Score
-            if (rating == null && "Rating" in text) {
-                 // Mencari angka di akhir baris, bisa berupa '8.5' atau '85%'
+        // **LOGIKA PENGAMBILAN RATING BARU (Halaman Detail) - Mencoba selector umum**
+        
+        // 1. Mencoba selector spesifik yang mungkin terlewat (jika ada div info/detail)
+        document.select("div.content-section > *").forEach { element ->
+            val text = element.text()
+            if (rating == null && text.contains("Rating", ignoreCase = true)) {
+                 // Mencari angka di baris manapun yang mengandung "Rating"
                  rating = Regex("""(\d+)(?:\.\d+)?%?$""").find(text)?.groupValues?.getOrNull(1)?.toIntOrNull()
             }
-            // Akhir dari Logika Rating
+        }
 
-            if (tmdbId == null && tmdbType == null && "themoviedb.org" in text) {
-                Regex("/(movie|tv)/(\\d+)").find(text)?.let { match ->
-                    tmdbType = match.groupValues[1] // movie or tv
-                    tmdbId = match.groupValues[2]   // numeric ID
+        // 2. Mencoba selector li seperti sebelumnya jika belum ditemukan
+        if (rating == null) {
+            document.select("div.su-spoiler-content ul.wp-block-list > li").forEach { li ->
+                val text = li.text()
+                if (rating == null && "imdb.com/title/tt" in text) {
+                    imdbId = Regex("tt\\d+").find(text)?.value
+                }
+                
+                if (rating == null && "Rating" in text) {
+                    rating = Regex("""(\d+)(?:\.\d+)?%?$""").find(text)?.groupValues?.getOrNull(1)?.toIntOrNull()
+                }
+
+                if (tmdbId == null && tmdbType == null && "themoviedb.org" in text) {
+                    Regex("/(movie|tv)/(\\d+)").find(text)?.let { match ->
+                        tmdbType = match.groupValues[1] // movie or tv
+                        tmdbId = match.groupValues[2]   // numeric ID
+                    }
                 }
             }
         }
+        // **AKHIR LOGIKA PENGAMBILAN RATING BARU**
+
+
         val tvType = when (true) {
             (tmdbType?.contains("Movie", ignoreCase = true) == true) -> TvType.Movie
             else -> TvType.TvSeries
@@ -276,7 +289,7 @@ class DramaDrip : MainAPI() {
                 addActors(cast)
                 addImdbId(imdbId)
                 addTMDbId(tmdbId)
-                // Penulisan Score yang mirip dengan kode StreamPlay
+                // Penulisan Score untuk Halaman Detail
                 this.score = rating?.let { Score.from10(it.toString()) }
             }
         } else {
@@ -290,7 +303,7 @@ class DramaDrip : MainAPI() {
                 addActors(cast)
                 addImdbId(imdbId)
                 addTMDbId(tmdbId)
-                // Penulisan Score yang mirip dengan kode StreamPlay
+                // Penulisan Score untuk Halaman Detail
                 this.score = rating?.let { Score.from10(it.toString()) }
             }
         }
