@@ -16,12 +16,9 @@ import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import kotlinx.coroutines.runBlocking
 import org.jsoup.nodes.Element
 
-// Asumsi: Fungsi-fungsi bypass ini ada di file Utils/Companion Object DramaDrip atau diimpor
-// Saya membuatkan dummy functions agar kode ini bisa dikompilasi
-fun cinematickitloadBypass(link: String): String? = link
-fun cinematickitBypass(link: String): String? = link
-fun bypassHrefli(link: String): String? = link
-
+// CATATAN: DUMMY FUNCTIONS YANG MENYEBABKAN KONFLIK DIHAPUS DARI SINI.
+// Fungsi cinematickitloadBypass, cinematickitBypass, dan bypassHrefli
+// diasumsikan sudah ada di file Utils.kt dan dideklarasikan sebagai 'suspend fun'.
 
 class DramaDrip : MainAPI() {
     override var mainUrl: String = runBlocking {
@@ -171,7 +168,7 @@ class DramaDrip : MainAPI() {
         val hrefs: List<String> = document.select("div.wp-block-button > a")
             .mapNotNull { linkElement ->
                 val link = linkElement.attr("href")
-                // MENGGUNAKAN LOGIKA BYPASS ASLI (cinematickitloadBypass)
+                // MENGGUNAKAN FUNGSI SUSPEND ASLI DARI Utils.kt
                 val actual=cinematickitloadBypass(link) ?: return@mapNotNull null 
                 val page = app.get(actual).document
                 page.select("div.wp-block-button.movie_btn a")
@@ -219,7 +216,7 @@ class DramaDrip : MainAPI() {
 
                         for (qualityPageLink in qualityLinks) {
                             try {
-                                // MENGGUNAKAN LOGIKA BYPASS ASLI (cinematickitloadBypass)
+                                // MENGGUNAKAN FUNGSI SUSPEND ASLI DARI Utils.kt
                                 val rawqualityPageLink=if (qualityPageLink.contains("modpro")) qualityPageLink else cinematickitloadBypass(qualityPageLink) ?: ""
                                 val response = app.get(rawqualityPageLink)
                                 val episodeDoc = response.document
@@ -329,12 +326,12 @@ class DramaDrip : MainAPI() {
         // SUMBER VIDEO/EXTRACTOR LINKS
         for (link in links) {
             try {
-                // MENGGUNAKAN SEMUA BYPASS DARI STREAMPLAY + MOVIEBOX (MovieBox jadi pengecekan pertama)
+                // MENGGUNAKAN SEMUA BYPASS SUSPEND DARI Utils.kt + MOVIEBOX
                 val finalLink = when {
                     "moviebox.ph" in link || "inmoviebox.com" in link -> bypassMoviebox(link)
                     "safelink=" in link -> cinematickitBypass(link)
-                    "unblockedgames" in link -> bypassHrefli(link) // diasumsikan ini adalah bypass lain
-                    "examzculture" in link -> bypassHrefli(link) // diasumsikan ini adalah bypass lain
+                    "unblockedgames" in link -> bypassHrefli(link) 
+                    "examzculture" in link -> bypassHrefli(link) 
                     else -> link
                 }
 
