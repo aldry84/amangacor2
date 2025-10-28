@@ -15,12 +15,8 @@ import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import kotlinx.coroutines.runBlocking
 import org.jsoup.nodes.Element
 
-// CATATAN: KELAS DATA DIHAPUS DARI SINI UNTUK MENGHINDARI REDECLARATION!
-// Asumsi: ResponseData, Meta, dan EpisodeDetails (untuk VideoData) telah dideklarasikan di Utils.kt
-
 class DramaDrip : MainAPI() {
     override var mainUrl: String = runBlocking {
-        // Asumsi DramaDripProvider dan getDomains() ada
         DramaDripProvider.getDomains()?.dramadrip ?: "https://dramadrip.com"
     }
     override var name = "DramaDrip"
@@ -121,38 +117,27 @@ class DramaDrip : MainAPI() {
             ?.substringAfter("(")?.substringBefore(")")?.toIntOrNull()
         val descriptions = document.selectFirst("div.content-section p.mt-4")?.text()?.trim()
         val typeset = if (tvType == TvType.TvSeries) "series" else "movie"
-        
-        val metaId = if (tmdbId.isNullOrEmpty()) imdbId else tmdbId
-        val responseData = if (metaId?.isNotEmpty() == true) {
-            val endpoint = if (imdbId?.startsWith("tt") == true) "$typeset/$imdbId.json" else "$typeset/tmdbId:$metaId.json"
-            val jsonResponse = app.get("$cinemeta_url/$endpoint").text
-
+        val responseData = if (tmdbId?.isNotEmpty() == true) {
+            val jsonResponse = app.get("$cinemeta_url/$typeset/$imdbId.json").text
             if (jsonResponse.isNotEmpty() && jsonResponse.startsWith("{")) {
                 val gson = Gson()
-                // Memastikan ResponseData diimpor/dikenal dari Utils.kt
                 gson.fromJson(jsonResponse, ResponseData::class.java)
             } else null
         } else null
-        
         var cast: List<String> = emptyList()
+
         var background: String = image
         var description: String? = null
-        var rating: Double? = null // Variabel rating (0.0-10.0)
-        
         if (responseData != null) {
             description = responseData.meta?.description ?: descriptions
             cast = responseData.meta?.cast ?: emptyList()
             background = responseData.meta?.background ?: image
-            
-            // PERBAIKAN UNRESOLVED REFERENCE: Mengganti imdb_rating dengan imdbRating
-            rating = responseData.meta?.imdbRating 
         }
 
 
         val hrefs: List<String> = document.select("div.wp-block-button > a")
             .mapNotNull { linkElement ->
                 val link = linkElement.attr("href")
-                // Asumsi cinematickitloadBypass tersedia
                 val actual=cinematickitloadBypass(link) ?: return@mapNotNull null
                 val page = app.get(actual).document
                 page.select("div.wp-block-button.movie_btn a")
@@ -186,10 +171,12 @@ class DramaDrip : MainAPI() {
                     val season = seasonMatch?.groupValues?.getOrNull(1)?.toIntOrNull()
 
                     if (season != null) {
+                        // Try to get the links block; if next sibling doesn't have buttons, try alternative selection
                         var linksBlock = seasonHeader.nextElementSibling()
                         if (linksBlock == null || linksBlock.select("div.wp-block-button")
                                 .isEmpty()
                         ) {
+                            // Sometimes buttons could be inside a child or sibling div
                             linksBlock = seasonHeader.parent()?.selectFirst("div.wp-block-button")
                                 ?: linksBlock
                         }
@@ -270,8 +257,6 @@ class DramaDrip : MainAPI() {
                 addActors(cast)
                 addImdbId(imdbId)
                 addTMDbId(tmdbId)
-                // Score: Menggunakan Score(name: String, score: Int)
-                this.score = rating?.let { Score("IMDb", (it * 10).toInt()) }
             }
         } else {
             return newMovieLoadResponse(title, url, TvType.Movie, hrefs) {
@@ -284,8 +269,6 @@ class DramaDrip : MainAPI() {
                 addActors(cast)
                 addImdbId(imdbId)
                 addTMDbId(tmdbId)
-                // Score: Menggunakan Score(name: String, score: Int)
-                this.score = rating?.let { Score("IMDb", (it * 10).toInt()) }
             }
         }
     }
