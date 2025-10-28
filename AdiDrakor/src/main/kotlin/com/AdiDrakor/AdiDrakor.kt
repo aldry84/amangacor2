@@ -26,39 +26,50 @@ class AdiDrakor : MainAPI() {
         TvType.AsianDrama 
     )
 
+    // Kategori Movie (ID 1) dan Drakor (ID 2)
     override val mainPage: List<MainPageData> = mainPageOf(
         "2,ForYou" to "Drakor Pilihan",
         "2,Hottest" to "Drakor Terpopuler",
         "2,Latest" to "Drakor Terbaru",
         "2,Rating" to "Drakor Rating Tertinggi",
-        "1,Latest" to "Movie Korea Terbaru",
-        "1,Rating" to "Movie Korea Rating Tertinggi",
+        "1,Latest" to "Movie Korea Terbaru", 
+        "1,Rating" to "Movie Korea Rating Tertinggi", 
     )
 
+    // PERBAIKAN UTAMA: Memastikan filter berdasarkan channelId (1 atau 2)
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse {
         val params = request.data.split(",")
-        
-        if (params.first() != "2" && params.first() != "1") throw ErrorLoadingException("Halaman utama AdiDrakor hanya untuk Movie (1) dan TvSeries (2).")
+        val channelId = params.first() 
+        val sort = params.last()
+
+        if (channelId != "2" && channelId != "1") throw ErrorLoadingException("Halaman utama AdiDrakor hanya untuk Movie (1) dan TvSeries (2).")
 
         val body = mapOf(
-            "channelId" to params.first(),
+            "channelId" to channelId,
             "page" to page,
             "perPage" to "24",
-            "sort" to params.last()
+            "sort" to sort
         ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
 
         val home = app.post("$mainUrl/wefeed-h5-bff/web/filter", requestBody = body)
             .parsedSafe<Media>()?.data?.items
             ?.filter { 
-                (it.subjectType == 1 || it.subjectType == 2) && 
-                it.countryName?.contains("Korea", ignoreCase = true) == true
+                val itemType = it.subjectType 
+                val isKorean = it.countryName?.contains("Korea", ignoreCase = true) == true
+                
+                // Filter ketat: Pastikan tipe yang dikembalikan sesuai dengan channelId yang diminta DAN dari Korea
+                when (channelId) {
+                    "1" -> itemType == 1 && isKorean // Harus Movie Korea
+                    "2" -> itemType == 2 && isKorean // Harus Drama Korea
+                    else -> false
+                }
             } 
             ?.map {
                 it.toSearchResponse(this)
-            } ?: throw ErrorLoadingException("Tidak ada Data Korea Ditemukan")
+            } ?: throw ErrorLoadingException("Tidak ada Data Korea Ditemukan untuk channelId $channelId")
 
         return newHomePageResponse(request.name, home)
     }
@@ -76,6 +87,7 @@ class AdiDrakor : MainAPI() {
                 "subjectType" to "0", // Cari semua tipe (Movie, TvSeries)
             ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
         ).parsedSafe<Media>()?.data?.items
+            // Filter: subjectType harus 1 (Movie) atau 2 (TvSeries) DAN dari Korea
             ?.filter { 
                 (it.subjectType == 1 || it.subjectType == 2) && 
                 it.countryName?.contains("Korea", ignoreCase = true) == true
@@ -96,15 +108,13 @@ class AdiDrakor : MainAPI() {
         val isValidType = subject?.subjectType == 1 || subject?.subjectType == 2
         val isKorean = subject?.countryName?.contains("Korea", ignoreCase = true) == true
         
-        // Perbaikan: Lemparkan exception jika subject null atau gagal validasi
         if (subject == null || !isValidType || !isKorean) {
              throw ErrorLoadingException("Konten ini bukan Movie/Drama Korea yang valid. Tipe: ${subject?.subjectType}, Negara: ${subject?.countryName}")
         }
         
-        // Menggunakan variabel non-nullable lokal (smart cast) setelah pengecekan null di atas.
+        // Menggunakan variabel non-nullable lokal
         val s = subject 
         
-        // Line 103 (sudah diperbaiki):
         val title = s.title ?: ""
         val poster = s.cover?.url
         val tags = s.genre?.split(",")?.map { it.trim() }
