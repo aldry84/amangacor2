@@ -10,7 +10,7 @@ import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
 import com.lagradost.cloudstream3.LoadResponse.Companion.addImdbId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTMDbId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
-import com.lagradost.cloudstream3.Score
+import com.lagradost.cloudstream3.Score // Diperlukan untuk Score.from10
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import kotlinx.coroutines.runBlocking
@@ -71,14 +71,15 @@ class DramaDrip : MainAPI() {
 
         val posterUrl = highestResUrl ?: imgElement?.attr("src")
 
-        // Logika Score untuk Daftar Film (agar tampil di homepage/search)
+        // Penambahan Logika Score untuk Daftar Film (agar tampil di homepage/search)
         val scoreElementText = this.selectFirst(".entry-content p")?.text() ?: ""
         val scoreValue: Int? = Regex("""Rating:\s*(\d+)(?:\.\d+)?%?""")
             .find(scoreElementText)?.groupValues?.getOrNull(1)?.toIntOrNull()
 
         return newMovieSearchResponse(title, href, TvType.Movie) {
             this.posterUrl = posterUrl
-            this.score = scoreValue?.let { Score.from10(it.toString()) } 
+            // Menggunakan format Score.from10 yang diminta
+            this.score = scoreValue?.let { Score.from10(it.toString()) }
         }
     }
 
@@ -113,7 +114,8 @@ class DramaDrip : MainAPI() {
         if (rating == null) {
             document.select("div.su-spoiler-content ul.wp-block-list > li").forEach { li ->
                 val text = li.text()
-                if (rating == null && "imdb.com/title/tt" in text) {
+                // Mengambil ImdbId dan TmdbId di sini
+                if (imdbId == null && "imdb.com/title/tt" in text) {
                     imdbId = Regex("tt\\d+").find(text)?.value
                 }
                 
@@ -287,6 +289,7 @@ class DramaDrip : MainAPI() {
                 addActors(cast)
                 addImdbId(imdbId)
                 addTMDbId(tmdbId)
+                // Penulisan Score yang benar untuk Halaman Detail
                 this.score = rating?.let { Score.from10(it.toString()) }
             }
         } else {
@@ -300,25 +303,20 @@ class DramaDrip : MainAPI() {
                 addActors(cast)
                 addImdbId(imdbId)
                 addTMDbId(tmdbId)
+                // Penulisan Score yang benar untuk Halaman Detail
                 this.score = rating?.let { Score.from10(it.toString()) }
             }
         }
     }
 
-    // Fungsi placeholder untuk pencarian subtitle eksternal
-    private suspend fun searchExternalSubtitles(imdbId: String?, season: Int?, episode: Int?, subtitleCallback: (SubtitleFile) -> Unit) {
-        // Contoh: Memanggil API OpenSubtitles
-        // val osdbUrl = "https://opensubtitles.com/api/v1/subtitles"
-        // Anda perlu mengimplementasikan logika autentikasi dan pencarian di sini.
-        // Untuk saat ini, kita hanya akan memanggilnya agar struktur terlihat benar.
-
-        // Jika Anda memiliki OpenSubtitles API URL atau sejenisnya, tambahkan kode di sini
-        // Log.d("Subtitles", "Mencari subtitle eksternal untuk ID IMDB: $imdbId, S${season}E${episode}")
-
-        // Contoh bagaimana subtitle ditambahkan:
-        // subtitleCallback(SubtitleFile("Indonesian", "https://link.to/subtitle.srt"))
+    // Fungsi placeholder untuk bypass MovieBox. Implementasi ekstrak link perlu ditambahkan.
+    private fun bypassMoviebox(link: String): String? {
+        // Jika link MovieBox dapat langsung digunakan oleh loadExtractor,
+        // Anda hanya perlu mengembalikan link tersebut.
+        // Jika memerlukan parsing tambahan, tambahkan logika di sini.
+        // Untuk saat ini, asumsikan link langsung dapat diekstrak.
+        return link 
     }
-
 
     @RequiresApi(Build.VERSION_CODES.O)
     override suspend fun loadLinks(
@@ -333,26 +331,18 @@ class DramaDrip : MainAPI() {
             return false
         }
         
-        // **LOGIKA SUBTITLE TAMBAHAN (Lebih Lengkap)**
-        // Kita akan mencoba mengurai IMDB ID dan info episode/musim dari 'data' 
-        // jika Anda menyimpannya sebagai LinkData yang lebih kompleks (seperti di StreamPlay)
-        // Saat ini, data hanya berisi list of links. Kita hanya bisa memanggil pencarian 
-        // subtitle eksternal satu kali (atau Anda harus memastikan 'data' di-toJson 
-        // dengan IMDB ID dan episode/musim info).
-
-        // Logika saat ini hanya akan mencari subtitle saat ekstrak link dimulai. 
-        // Jika Anda ingin pencarian subtitle yang lebih kompleks, Anda harus mengubah
-        // bagaimana 'data' dibuat di fungsi 'load' agar mengandung IMDB ID, season, dan episode.
-        
-        // Jika 'data' adalah JSON dari LinkData, Anda bisa mengurai di sini:
-        // val linkData = tryParseJson<LinkData>(data)
-        // searchExternalSubtitles(linkData?.imdbId, linkData?.season, linkData?.episode, subtitleCallback)
+        // Logika Subtitle Eksternal yang lebih lengkap akan ditambahkan di sini 
+        // jika data LinkData yang lengkap tersedia (IMDB ID, episode, dll.)
 
 
-        // **SUMBER VIDEO/EXTRACTOR LINKS**
+        // SUMBER VIDEO/EXTRACTOR LINKS
         for (link in links) {
             try {
                 val finalLink = when {
+                    // Penambahan MovieBox
+                    "moviebox.ph" in link -> bypassMoviebox(link)
+                    "inmoviebox.com" in link -> bypassMoviebox(link) 
+                    // Link bypass lainnya
                     "safelink=" in link -> cinematickitBypass(link)
                     "unblockedgames" in link -> bypassHrefli(link)
                     "examzculture" in link -> bypassHrefli(link)
@@ -360,9 +350,6 @@ class DramaDrip : MainAPI() {
                 }
 
                 if (finalLink != null) {
-                    // **MENAMBAHKAN SUMBER VIDEO**
-                    // Fungsi loadExtractor akan mengambil sumber video (ExtractorLink) 
-                    // dari finalLink dan memanggil 'callback' untuk menampilkannya.
                     Log.d("LoadLinks", "Memuat sumber video dari: $finalLink")
                     loadExtractor(finalLink, subtitleCallback, callback)
                 } else {
