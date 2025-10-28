@@ -26,17 +26,18 @@ class AdiDrakor : MainAPI() {
         TvType.AsianDrama 
     )
 
-    // Kategori Movie (ID 1) dan Drakor (ID 2)
+    // PERBAIKAN: Gunakan ID "0" (Semua) untuk kategori Movie Korea, 
+    // lalu kita filter secara ketat di getMainPage.
     override val mainPage: List<MainPageData> = mainPageOf(
         "2,ForYou" to "Drakor Pilihan",
         "2,Hottest" to "Drakor Terpopuler",
         "2,Latest" to "Drakor Terbaru",
         "2,Rating" to "Drakor Rating Tertinggi",
-        "1,Latest" to "Movie Korea Terbaru", 
-        "1,Rating" to "Movie Korea Rating Tertinggi", 
+        "0,Latest" to "Movie Korea Terbaru", // <-- Mengambil dari ID 0 (Semua)
+        "0,Rating" to "Movie Korea Rating Tertinggi", // <-- Mengambil dari ID 0 (Semua)
     )
 
-    // PERBAIKAN UTAMA: Memastikan filter berdasarkan channelId (1 atau 2)
+    // PERBAIKAN UTAMA: Filter Movie dan Drakor sekarang bekerja berdasarkan ID yang diminta.
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest,
@@ -45,7 +46,7 @@ class AdiDrakor : MainAPI() {
         val channelId = params.first() 
         val sort = params.last()
 
-        if (channelId != "2" && channelId != "1") throw ErrorLoadingException("Halaman utama AdiDrakor hanya untuk Movie (1) dan TvSeries (2).")
+        if (channelId != "0" && channelId != "2") throw ErrorLoadingException("Halaman utama AdiDrakor hanya untuk Movie (0/1) dan TvSeries (2).")
 
         val body = mapOf(
             "channelId" to channelId,
@@ -60,11 +61,14 @@ class AdiDrakor : MainAPI() {
                 val itemType = it.subjectType 
                 val isKorean = it.countryName?.contains("Korea", ignoreCase = true) == true
                 
-                // Filter ketat: Pastikan tipe yang dikembalikan sesuai dengan channelId yang diminta DAN dari Korea
-                when (channelId) {
-                    "1" -> itemType == 1 && isKorean // Harus Movie Korea
-                    "2" -> itemType == 2 && isKorean // Harus Drama Korea
-                    else -> false
+                // Jika channelId adalah 2 (Drakor), filter ketat untuk TvSeries Korea.
+                if (channelId == "2") {
+                    itemType == 2 && isKorean 
+                // Jika channelId adalah 0 (Movie Korea), filter ketat hanya untuk Movie Korea (Tipe 1).
+                } else if (channelId == "0") {
+                    itemType == 1 && isKorean // Harus Movie Korea (Tipe 1)
+                } else {
+                    false
                 }
             } 
             ?.map {
@@ -104,7 +108,6 @@ class AdiDrakor : MainAPI() {
             .parsedSafe<MediaDetail>()?.data
         val subject = document?.subject
         
-        // PEMERIKSAAN KETAT
         val isValidType = subject?.subjectType == 1 || subject?.subjectType == 2
         val isKorean = subject?.countryName?.contains("Korea", ignoreCase = true) == true
         
@@ -112,7 +115,6 @@ class AdiDrakor : MainAPI() {
              throw ErrorLoadingException("Konten ini bukan Movie/Drama Korea yang valid. Tipe: ${subject?.subjectType}, Negara: ${subject?.countryName}")
         }
         
-        // Menggunakan variabel non-nullable lokal
         val s = subject 
         
         val title = s.title ?: ""
