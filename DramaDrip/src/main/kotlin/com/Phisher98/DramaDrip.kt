@@ -10,7 +10,7 @@ import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
 import com.lagradost.cloudstream3.LoadResponse.Companion.addImdbId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTMDbId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
-import com.lagradost.cloudstream3.Score // Diperlukan untuk Score.from10
+import com.lagradost.cloudstream3.Score
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import kotlinx.coroutines.runBlocking
@@ -71,15 +71,14 @@ class DramaDrip : MainAPI() {
 
         val posterUrl = highestResUrl ?: imgElement?.attr("src")
 
-        // Penambahan Logika Score untuk Daftar Film (agar tampil di homepage/search)
+        // Logika Score untuk Daftar Film (agar tampil di homepage/search)
         val scoreElementText = this.selectFirst(".entry-content p")?.text() ?: ""
         val scoreValue: Int? = Regex("""Rating:\s*(\d+)(?:\.\d+)?%?""")
             .find(scoreElementText)?.groupValues?.getOrNull(1)?.toIntOrNull()
 
         return newMovieSearchResponse(title, href, TvType.Movie) {
             this.posterUrl = posterUrl
-            // Menggunakan format Score.from10 yang diminta
-            this.score = scoreValue?.let { Score.from10(it.toString()) }
+            this.score = scoreValue?.let { Score.from10(it.toString()) } 
         }
     }
 
@@ -289,7 +288,6 @@ class DramaDrip : MainAPI() {
                 addActors(cast)
                 addImdbId(imdbId)
                 addTMDbId(tmdbId)
-                // Penulisan Score yang benar untuk Halaman Detail
                 this.score = rating?.let { Score.from10(it.toString()) }
             }
         } else {
@@ -303,18 +301,14 @@ class DramaDrip : MainAPI() {
                 addActors(cast)
                 addImdbId(imdbId)
                 addTMDbId(tmdbId)
-                // Penulisan Score yang benar untuk Halaman Detail
                 this.score = rating?.let { Score.from10(it.toString()) }
             }
         }
     }
 
-    // Fungsi placeholder untuk bypass MovieBox. Implementasi ekstrak link perlu ditambahkan.
+    // Fungsi placeholder untuk bypass MovieBox.
     private fun bypassMoviebox(link: String): String? {
-        // Jika link MovieBox dapat langsung digunakan oleh loadExtractor,
-        // Anda hanya perlu mengembalikan link tersebut.
-        // Jika memerlukan parsing tambahan, tambahkan logika di sini.
-        // Untuk saat ini, asumsikan link langsung dapat diekstrak.
+        // Implementasi logika bypass/ekstrak untuk domain MovieBox.
         return link 
     }
 
@@ -331,18 +325,12 @@ class DramaDrip : MainAPI() {
             return false
         }
         
-        // Logika Subtitle Eksternal yang lebih lengkap akan ditambahkan di sini 
-        // jika data LinkData yang lengkap tersedia (IMDB ID, episode, dll.)
-
-
         // SUMBER VIDEO/EXTRACTOR LINKS
         for (link in links) {
             try {
+                // **Menggunakan bypassMoviebox sebagai sumber utama (pengecekan pertama)**
                 val finalLink = when {
-                    // Penambahan MovieBox
-                    "moviebox.ph" in link -> bypassMoviebox(link)
-                    "inmoviebox.com" in link -> bypassMoviebox(link) 
-                    // Link bypass lainnya
+                    "moviebox.ph" in link || "inmoviebox.com" in link -> bypassMoviebox(link) 
                     "safelink=" in link -> cinematickitBypass(link)
                     "unblockedgames" in link -> bypassHrefli(link)
                     "examzculture" in link -> bypassHrefli(link)
