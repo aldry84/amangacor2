@@ -10,8 +10,8 @@ import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
 import com.lagradost.cloudstream3.LoadResponse.Companion.addImdbId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTMDbId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
-// Perubahan: Mengganti addRating dengan addScore.
-import com.lagradost.cloudstream3.LoadResponse.Companion.addScore 
+// Tambahan impor yang diperlukan untuk Score
+import com.lagradost.cloudstream3.Score 
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import kotlinx.coroutines.runBlocking
@@ -92,8 +92,6 @@ class DramaDrip : MainAPI() {
         var imdbId: String? = null
         var tmdbId: String? = null
         var tmdbType: String? = null
-        // Perubahan: Menghapus variabel 'subtitles' karena tidak ada properti tersebut di LoadResponse. 
-        // Subtitle ditangani di loadLinks.
         var rating: Int? = null 
 
         document.select("div.su-spoiler-content ul.wp-block-list > li").forEach { li ->
@@ -136,7 +134,6 @@ class DramaDrip : MainAPI() {
                 val parsed = gson.fromJson(jsonResponse, ResponseData::class.java)
                 // Mengambil Rating dari Cinemeta jika ada dan belum terisi
                 rating = rating ?: parsed.meta?.imdbRating?.toIntOrNull()
-                // Perubahan: Menghapus baris 'subtitles = parsed.meta?.subtitles'
                 parsed
             } else null
         } else null
@@ -273,9 +270,8 @@ class DramaDrip : MainAPI() {
                 addActors(cast)
                 addImdbId(imdbId)
                 addTMDbId(tmdbId)
-                // Perubahan: Mengganti addRating dengan addScore
-                rating?.let { addScore(it) } 
-                // Perubahan: Menghapus baris 'this.subtitles = subtitles'
+                // Perbaikan: Mengganti addScore dengan penetapan properti score
+                this.score = rating?.let { Score.from10(it.toString()) }
             }
         } else {
             return newMovieLoadResponse(title, url, TvType.Movie, hrefs) {
@@ -288,9 +284,8 @@ class DramaDrip : MainAPI() {
                 addActors(cast)
                 addImdbId(imdbId)
                 addTMDbId(tmdbId)
-                // Perubahan: Mengganti addRating dengan addScore
-                rating?.let { addScore(it) } 
-                // Perubahan: Menghapus baris 'this.subtitles = subtitles'
+                // Perbaikan: Mengganti addScore dengan penetapan properti score
+                this.score = rating?.let { Score.from10(it.toString()) }
             }
         }
     }
