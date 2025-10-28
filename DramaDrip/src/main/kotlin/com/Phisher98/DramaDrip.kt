@@ -15,33 +15,8 @@ import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import kotlinx.coroutines.runBlocking
 import org.jsoup.nodes.Element
 
-// CATATAN PENTING: Untuk mengatasi kesalahan 'Redeclaration' (Redeclaration: data class ResponseData : Any),
-// PASTIKAN Anda MENGHAPUS deklarasi kelas data (ResponseData, MetaData, VideoData) 
-// DARI SALAH SATU LOKASI (baik dari sini atau dari file Utils.kt).
-// Saya asumsikan Anda akan mengimpor atau memastikan kelas ini dideklarasikan dengan benar.
-// Di bawah ini adalah contoh bagaimana kelas tersebut seharusnya jika Anda PERLU menyimpannya di sini:
-
-/*
-data class ResponseData(
-    val meta: MetaData?
-)
-
-data class MetaData(
-    val description: String? = null,
-    val cast: List<String>? = emptyList(),
-    val background: String? = null,
-    val videos: List<VideoData>? = emptyList(),
-    val imdb_rating: Double? = null
-)
-
-data class VideoData(
-    val name: String? = null,
-    val season: Int? = null,
-    val episode: Int? = null,
-    val thumbnail: String? = null,
-    val overview: String? = null,
-)
-*/
+// CATATAN: KELAS DATA DIHAPUS DARI SINI UNTUK MENGHINDARI REDECLARATION!
+// Asumsi: ResponseData, Meta, dan EpisodeDetails (untuk VideoData) telah dideklarasikan di Utils.kt
 
 class DramaDrip : MainAPI() {
     override var mainUrl: String = runBlocking {
@@ -154,7 +129,7 @@ class DramaDrip : MainAPI() {
 
             if (jsonResponse.isNotEmpty() && jsonResponse.startsWith("{")) {
                 val gson = Gson()
-                // Memastikan ResponseData diimpor atau dideklarasikan
+                // Memastikan ResponseData diimpor/dikenal dari Utils.kt
                 gson.fromJson(jsonResponse, ResponseData::class.java)
             } else null
         } else null
@@ -168,7 +143,9 @@ class DramaDrip : MainAPI() {
             description = responseData.meta?.description ?: descriptions
             cast = responseData.meta?.cast ?: emptyList()
             background = responseData.meta?.background ?: image
-            rating = responseData.meta?.imdb_rating // Mengambil rating
+            
+            // PERBAIKAN UNRESOLVED REFERENCE: Mengganti imdb_rating dengan imdbRating
+            rating = responseData.meta?.imdbRating 
         }
 
 
@@ -293,8 +270,8 @@ class DramaDrip : MainAPI() {
                 addActors(cast)
                 addImdbId(imdbId)
                 addTMDbId(tmdbId)
-                // PERBAIKAN SCORE/RATING BARU: Menggunakan Score(score: Int, name: String)
-                this.score = rating?.let { Score((it * 10).toInt(), "IMDb") } 
+                // Score: Menggunakan Score(name: String, score: Int)
+                this.score = rating?.let { Score("IMDb", (it * 10).toInt()) }
             }
         } else {
             return newMovieLoadResponse(title, url, TvType.Movie, hrefs) {
@@ -307,8 +284,8 @@ class DramaDrip : MainAPI() {
                 addActors(cast)
                 addImdbId(imdbId)
                 addTMDbId(tmdbId)
-                // PERBAIKAN SCORE/RATING BARU: Menggunakan Score(score: Int, name: String)
-                this.score = rating?.let { Score((it * 10).toInt(), "IMDb") }
+                // Score: Menggunakan Score(name: String, score: Int)
+                this.score = rating?.let { Score("IMDb", (it * 10).toInt()) }
             }
         }
     }
@@ -317,7 +294,7 @@ class DramaDrip : MainAPI() {
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
-        subtitleCallback: (SubtitleFile) -> Unit, // Subtitle
+        subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val links = tryParseJson<List<String>>(data).orEmpty()
@@ -327,7 +304,6 @@ class DramaDrip : MainAPI() {
         }
         for (link in links) {
             try {
-                // Asumsi cinematickitBypass dan bypassHrefli tersedia
                 val finalLink = when {
                     "safelink=" in link -> cinematickitBypass(link)
                     "unblockedgames" in link -> bypassHrefli(link)
@@ -336,7 +312,6 @@ class DramaDrip : MainAPI() {
                 }
 
                 if (finalLink != null) {
-                    // loadExtractor akan secara otomatis mencoba mencari subtitle
                     loadExtractor(finalLink, subtitleCallback, callback)
                 } else {
                     Log.w("LoadLinks", "Bypass returned null for link: $link")
