@@ -10,7 +10,7 @@ import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
 import com.lagradost.cloudstream3.LoadResponse.Companion.addImdbId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTMDbId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
-import com.lagradost.cloudstream3.Score // Tambahan impor Score
+import com.lagradost.cloudstream3.Score
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import kotlinx.coroutines.runBlocking
@@ -72,7 +72,7 @@ class DramaDrip : MainAPI() {
         val posterUrl = highestResUrl ?: imgElement?.attr("src")
 
         // Logika Score untuk Daftar Film (agar tampil di homepage/search)
-        val scoreElementText = this.selectFirst(".entry-content p")?.text() ?: "" 
+        val scoreElementText = this.selectFirst(".entry-content p")?.text() ?: ""
         val scoreValue: Int? = Regex("""Rating:\s*(\d+)(?:\.\d+)?%?""")
             .find(scoreElementText)?.groupValues?.getOrNull(1)?.toIntOrNull()
 
@@ -99,8 +99,7 @@ class DramaDrip : MainAPI() {
         var tmdbType: String? = null
         var rating: Int? = null 
 
-        // **LOGIKA PENGAMBILAN RATING BARU (Halaman Detail) - Mencoba selector umum**
-        
+        // LOGIKA PENGAMBILAN RATING (Halaman Detail)
         // 1. Mencoba selector spesifik yang mungkin terlewat (jika ada div info/detail)
         document.select("div.content-section > *").forEach { element ->
             val text = element.text()
@@ -130,8 +129,7 @@ class DramaDrip : MainAPI() {
                 }
             }
         }
-        // **AKHIR LOGIKA PENGAMBILAN RATING BARU**
-
+        // AKHIR LOGIKA PENGAMBILAN RATING
 
         val tvType = when (true) {
             (tmdbType?.contains("Movie", ignoreCase = true) == true) -> TvType.Movie
@@ -289,7 +287,6 @@ class DramaDrip : MainAPI() {
                 addActors(cast)
                 addImdbId(imdbId)
                 addTMDbId(tmdbId)
-                // Penulisan Score untuk Halaman Detail
                 this.score = rating?.let { Score.from10(it.toString()) }
             }
         } else {
@@ -303,11 +300,25 @@ class DramaDrip : MainAPI() {
                 addActors(cast)
                 addImdbId(imdbId)
                 addTMDbId(tmdbId)
-                // Penulisan Score untuk Halaman Detail
                 this.score = rating?.let { Score.from10(it.toString()) }
             }
         }
     }
+
+    // Fungsi placeholder untuk pencarian subtitle eksternal
+    private suspend fun searchExternalSubtitles(imdbId: String?, season: Int?, episode: Int?, subtitleCallback: (SubtitleFile) -> Unit) {
+        // Contoh: Memanggil API OpenSubtitles
+        // val osdbUrl = "https://opensubtitles.com/api/v1/subtitles"
+        // Anda perlu mengimplementasikan logika autentikasi dan pencarian di sini.
+        // Untuk saat ini, kita hanya akan memanggilnya agar struktur terlihat benar.
+
+        // Jika Anda memiliki OpenSubtitles API URL atau sejenisnya, tambahkan kode di sini
+        // Log.d("Subtitles", "Mencari subtitle eksternal untuk ID IMDB: $imdbId, S${season}E${episode}")
+
+        // Contoh bagaimana subtitle ditambahkan:
+        // subtitleCallback(SubtitleFile("Indonesian", "https://link.to/subtitle.srt"))
+    }
+
 
     @RequiresApi(Build.VERSION_CODES.O)
     override suspend fun loadLinks(
@@ -321,6 +332,24 @@ class DramaDrip : MainAPI() {
             Log.e("LoadLinks", "No links found in data: $data")
             return false
         }
+        
+        // **LOGIKA SUBTITLE TAMBAHAN (Lebih Lengkap)**
+        // Kita akan mencoba mengurai IMDB ID dan info episode/musim dari 'data' 
+        // jika Anda menyimpannya sebagai LinkData yang lebih kompleks (seperti di StreamPlay)
+        // Saat ini, data hanya berisi list of links. Kita hanya bisa memanggil pencarian 
+        // subtitle eksternal satu kali (atau Anda harus memastikan 'data' di-toJson 
+        // dengan IMDB ID dan episode/musim info).
+
+        // Logika saat ini hanya akan mencari subtitle saat ekstrak link dimulai. 
+        // Jika Anda ingin pencarian subtitle yang lebih kompleks, Anda harus mengubah
+        // bagaimana 'data' dibuat di fungsi 'load' agar mengandung IMDB ID, season, dan episode.
+        
+        // Jika 'data' adalah JSON dari LinkData, Anda bisa mengurai di sini:
+        // val linkData = tryParseJson<LinkData>(data)
+        // searchExternalSubtitles(linkData?.imdbId, linkData?.season, linkData?.episode, subtitleCallback)
+
+
+        // **SUMBER VIDEO/EXTRACTOR LINKS**
         for (link in links) {
             try {
                 val finalLink = when {
@@ -331,6 +360,10 @@ class DramaDrip : MainAPI() {
                 }
 
                 if (finalLink != null) {
+                    // **MENAMBAHKAN SUMBER VIDEO**
+                    // Fungsi loadExtractor akan mengambil sumber video (ExtractorLink) 
+                    // dari finalLink dan memanggil 'callback' untuk menampilkannya.
+                    Log.d("LoadLinks", "Memuat sumber video dari: $finalLink")
                     loadExtractor(finalLink, subtitleCallback, callback)
                 } else {
                     Log.w("LoadLinks", "Bypass returned null for link: $link")
