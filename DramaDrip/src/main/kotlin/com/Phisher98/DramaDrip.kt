@@ -10,6 +10,7 @@ import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
 import com.lagradost.cloudstream3.LoadResponse.Companion.addImdbId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTMDbId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
+import com.lagradost.cloudstream3.LoadResponse.Companion.addRating
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import kotlinx.coroutines.runBlocking
@@ -90,12 +91,23 @@ class DramaDrip : MainAPI() {
         var imdbId: String? = null
         var tmdbId: String? = null
         var tmdbType: String? = null
+        // **Subtitle dan Rating/Score tambahan**
+        var rating: Int? = null 
+        var subtitles: String? = null
+        // Akhir dari tambahan
 
         document.select("div.su-spoiler-content ul.wp-block-list > li").forEach { li ->
             val text = li.text()
             if (imdbId == null && "imdb.com/title/tt" in text) {
                 imdbId = Regex("tt\\d+").find(text)?.value
             }
+            
+            // **Logika untuk mengambil Rating/Score**
+            if (rating == null && "Rating" in text) {
+                 // Mencari angka di akhir baris, bisa berupa '8.5' atau '85%'
+                 rating = Regex("""(\d+)(?:\.\d+)?%?$""").find(text)?.groupValues?.getOrNull(1)?.toIntOrNull()
+            }
+            // Akhir dari Logika Rating
 
             if (tmdbId == null && tmdbType == null && "themoviedb.org" in text) {
                 Regex("/(movie|tv)/(\\d+)").find(text)?.let { match ->
@@ -121,7 +133,12 @@ class DramaDrip : MainAPI() {
             val jsonResponse = app.get("$cinemeta_url/$typeset/$imdbId.json").text
             if (jsonResponse.isNotEmpty() && jsonResponse.startsWith("{")) {
                 val gson = Gson()
-                gson.fromJson(jsonResponse, ResponseData::class.java)
+                val parsed = gson.fromJson(jsonResponse, ResponseData::class.java)
+                // **Mengambil Rating dan Subtitle dari Cinemeta jika ada dan belum terisi**
+                rating = rating ?: parsed.meta?.imdbRating?.toIntOrNull()
+                subtitles = parsed.meta?.subtitles
+                // Akhir dari penambahan Cinemeta
+                parsed
             } else null
         } else null
         var cast: List<String> = emptyList()
@@ -257,6 +274,10 @@ class DramaDrip : MainAPI() {
                 addActors(cast)
                 addImdbId(imdbId)
                 addTMDbId(tmdbId)
+                // **Tambahan Score/Rating**
+                rating?.let { addRating(it) }
+                // **Tambahan Subtitle**
+                this.subtitles = subtitles
             }
         } else {
             return newMovieLoadResponse(title, url, TvType.Movie, hrefs) {
@@ -269,6 +290,10 @@ class DramaDrip : MainAPI() {
                 addActors(cast)
                 addImdbId(imdbId)
                 addTMDbId(tmdbId)
+                // **Tambahan Score/Rating**
+                rating?.let { addRating(it) }
+                // **Tambahan Subtitle**
+                this.subtitles = subtitles
             }
         }
     }
