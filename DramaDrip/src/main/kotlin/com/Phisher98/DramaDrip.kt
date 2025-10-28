@@ -15,7 +15,9 @@ import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import kotlinx.coroutines.runBlocking
 import org.jsoup.nodes.Element
 
-// --- 1. PERBAIKAN: MENAMBAH RATING KE STRUKTUR DATA CINEMETA ---
+// --- 1. KELAS DATA UNTUK MENGHINDARI REDECLARATION DAN MENAMBAH RATING/SCORE ---
+// Jika kelas ini ada di file lain (misalnya Utils.kt), hapus dari sini dan gunakan import.
+// Jika kode ini menyebabkan redeclaration, HANYA simpan di satu tempat.
 data class ResponseData(
     val meta: MetaData?
 )
@@ -25,12 +27,10 @@ data class MetaData(
     val cast: List<String>? = emptyList(),
     val background: String? = null,
     val videos: List<VideoData>? = emptyList(),
-    // Properti ini diambil dari respons Cinemeta. Nama properti harus sesuai dengan JSON-nya.
-    // Contoh: Cinemeta sering menggunakan "imdb_rating"
+    // Menambahkan properti untuk mengambil rating dari Cinemeta (misal: 8.5/10)
     val imdb_rating: Double? = null
 )
 
-// Struktur yang ada, dipertahankan
 data class VideoData(
     val name: String? = null,
     val season: Int? = null,
@@ -39,6 +39,7 @@ data class VideoData(
     val overview: String? = null,
 )
 
+// -----------------------------------------------------------------------------
 
 class DramaDrip : MainAPI() {
     override var mainUrl: String = runBlocking {
@@ -143,9 +144,7 @@ class DramaDrip : MainAPI() {
         val descriptions = document.selectFirst("div.content-section p.mt-4")?.text()?.trim()
         val typeset = if (tvType == TvType.TvSeries) "series" else "movie"
         
-        // Memastikan tmdbId digunakan dalam URL jika imdbId kosong/tidak valid. 
-        // Cinemeta menggunakan ID Stremio, yang biasanya berupa tmdbId:<id> atau imdbId:<id>. 
-        // Kita menggunakan imdbId karena itu yang ada di logika asli, tetapi perlu hati-hati.
+        // Membangun endpoint Cinemeta yang lebih fleksibel
         val metaId = if (tmdbId.isNullOrEmpty()) imdbId else tmdbId
         val responseData = if (metaId?.isNotEmpty() == true) {
             val endpoint = if (imdbId?.startsWith("tt") == true) "$typeset/$imdbId.json" else "$typeset/tmdbId:$metaId.json"
@@ -160,7 +159,7 @@ class DramaDrip : MainAPI() {
         var cast: List<String> = emptyList()
         var background: String = image
         var description: String? = null
-        var rating: Double? = null // Menambahkan variabel rating
+        var rating: Double? = null // Variabel rating (0.0-10.0)
         
         if (responseData != null) {
             description = responseData.meta?.description ?: descriptions
@@ -191,7 +190,6 @@ class DramaDrip : MainAPI() {
                 }
             }
 
-        // --- PERBAIKAN: MENAMBAH RATING KE LOAD RESPONSE TV SERIES ---
         if (tvType == TvType.TvSeries) {
             val tvSeriesEpisodes = mutableMapOf<Pair<Int, Int>, MutableList<String>>()
 
@@ -293,10 +291,10 @@ class DramaDrip : MainAPI() {
                 addActors(cast)
                 addImdbId(imdbId)
                 addTMDbId(tmdbId)
-                this.rating = rating?.toString() // MENAMBAH RATING
+                // MENAMBAH SCORE: Mengonversi 0-10 (IMDb) ke 0-100 (score)
+                this.score = rating?.let { (it * 10).toInt() } 
             }
         } else {
-            // --- PERBAIKAN: MENAMBAH RATING KE LOAD RESPONSE MOVIE ---
             return newMovieLoadResponse(title, url, TvType.Movie, hrefs) {
                 this.backgroundPosterUrl = background
                 this.year = year
@@ -307,7 +305,8 @@ class DramaDrip : MainAPI() {
                 addActors(cast)
                 addImdbId(imdbId)
                 addTMDbId(tmdbId)
-                this.rating = rating?.toString() // MENAMBAH RATING
+                // MENAMBAH SCORE: Mengonversi 0-10 (IMDb) ke 0-100 (score)
+                this.score = rating?.let { (it * 10).toInt() }
             }
         }
     }
@@ -316,7 +315,7 @@ class DramaDrip : MainAPI() {
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
-        subtitleCallback: (SubtitleFile) -> Unit,
+        subtitleCallback: (SubtitleFile) -> Unit, // Subtitle callback dipertahankan
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val links = tryParseJson<List<String>>(data).orEmpty()
@@ -334,24 +333,8 @@ class DramaDrip : MainAPI() {
                 }
 
                 if (finalLink != null) {
-                    
-                    // --- 2. PERBAIKAN: MENAMBAH LOGIKA SUBTITLE DI SINI ---
-                    /* Logika Kustom Subtitle (Opsional): 
-                    Jika Anda tahu situs tersebut menyediakan tautan subtitle di dekat tautan video:
-                    
-                    val document = app.get(finalLink).document
-                    document.select("selector_subtitle").forEach { subtitleElement ->
-                        subtitleCallback(
-                            SubtitleFile(
-                                lang = subtitleElement.attr("lang_attribute_key"),
-                                url = subtitleElement.attr("href_attribute_key"),
-                            )
-                        )
-                    }
-                    */
-
-                    // Meneruskan subtitleCallback ke loadExtractor, yang akan
-                    // secara otomatis mencoba mencari subtitle (misalnya dari VCDN)
+                    // Penanganan Subtitle: loadExtractor akan mencoba mendeteksi dan 
+                    // mengembalikan subtitle melalui subtitleCallback
                     loadExtractor(finalLink, subtitleCallback, callback)
                 } else {
                     Log.w("LoadLinks", "Bypass returned null for link: $link")
