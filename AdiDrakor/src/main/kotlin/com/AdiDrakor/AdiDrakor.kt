@@ -22,12 +22,12 @@ class AdiDrakor : MainAPI() {
     override val supportedTypes = setOf(
         TvType.TvSeries,
         TvType.AsianDrama,
-        TvType.Movie // Tambahkan Movie karena akan ada kategori Drakor Movie
+        TvType.Movie // Tambahkan Movie
     )
 
     // Kategori Baru "Drakor Movie" (Non-Serial) ditambahkan di atas "Drakor Pilihan"
     override val mainPage: List<MainPageData> = mainPageOf(
-        // '1' untuk Movie (Non-Serial). Filter negara akan dilakukan di getMainPage.
+        // '1' untuk Movie (Non-Serial)
         "1,ForYou" to "Drakor Movie", 
         "2,ForYou" to "Drakor Pilihan",
         "2,Hottest" to "Drakor Terpopuler",
@@ -52,7 +52,7 @@ class AdiDrakor : MainAPI() {
 
         val home = app.post("$mainUrl/wefeed-h5-bff/web/filter", requestBody = body)
             .parsedSafe<Media>()?.data?.items
-            // Filter: Hanya Drama/Serial (channelId=2) atau Movie (channelId=1) YANG BERASAL DARI KOREA
+            // Filter: Hanya Movie/Series DARI KOREA
             ?.filter { it.countryName?.contains("Korea", ignoreCase = true) == true } 
             ?.map {
                 it.toSearchResponse(this)
@@ -74,13 +74,12 @@ class AdiDrakor : MainAPI() {
                 "subjectType" to "0", // Cari semua tipe (0)
             ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
         ).parsedSafe<Media>()?.data?.items
-            // LOGIKA PENCARIAN BARU:
-            // 1. Prioritaskan hasil Drama Korea (subjectType 1 atau 2 DENGAN countryName Korea) di bagian atas.
-            // 2. Sertakan SEMUA hasil lainnya (di luar drakor) setelahnya.
+            // Map ke SearchResponse
             ?.map { it.toSearchResponse(this) }
+            // LOGIKA PENGURUTAN: Prioritaskan TvSeries (Drakor) di atas Movie/lainnya
+            // Ini memastikan akurasi Drakor lebih tinggi, tetapi hasil non-drakor tetap ditemukan.
             ?.sortedByDescending { 
-                // Beri bobot lebih tinggi ke konten Korea (untuk akurasi Drakor)
-                if (it.url.contains("Korea", ignoreCase = true) || it.type == TvType.TvSeries) 1 else 0
+                if (it.type == TvType.TvSeries) 1 else 0
             }
             ?: return null
             
@@ -105,10 +104,6 @@ class AdiDrakor : MainAPI() {
             else -> TvType.TvSeries // Default ke TvSeries jika tidak jelas
         }
         
-        // **CATATAN PENTING:** Meskipun fokus Drakor, karena Anda ingin film non-drakor 
-        // tetap bisa ditemukan di pencarian, saya HAPUS pengecekan ketat di sini.
-        // Pengecekan hanya untuk memastikan tipe konten (Movie/Series) sudah benar.
-
         val description = subject?.description
         val trailer = subject?.trailer?.videoAddress?.url
         
@@ -125,8 +120,8 @@ class AdiDrakor : MainAPI() {
         val recommendations =
             app.get("$mainUrl/wefeed-h5-bff/web/subject/detail-rec?subjectId=$id&page=1&perPage=12")
                 .parsedSafe<Media>()?.data?.items
-                // Filter rekomendasi untuk Drama Korea saja (subjectType 1 atau 2)
-                ?.filter { it.countryName?.contains("Korea", ignoreCase = true) == true || it.subjectType == 1 || it.subjectType == 2 }
+                // Filter rekomendasi untuk Movie atau Series
+                ?.filter { it.subjectType == 1 || it.subjectType == 2 }
                 ?.map {
                     it.toSearchResponse(this)
                 }
@@ -222,7 +217,7 @@ class AdiDrakor : MainAPI() {
         return true
     }
     
-    // Semua Data Class dipertahankan tanpa perubahan besar.
+    // Semua Data Class dipertahankan
     data class LoadData(
         val id: String? = null,
         val season: Int? = null,
@@ -303,19 +298,17 @@ class AdiDrakor : MainAPI() {
                 else -> TvType.TvSeries
             }
             
-            // Perlu menggunakan subjectId sebagai 'url' karena inilah yang digunakan di 'load'
+            // Gunakan subjectId sebagai bagian dari URL, yang akan diparsing di load().
+            val finalUrl = "${provider.mainUrl}/$subjectId"
+            
             return provider.newMovieSearchResponse(
                 title ?: "",
-                // subjectId digunakan sebagai url di dalam provider ini.
-                // Tambahkan subjectId ke URL untuk diparsing di load(): "subjectId" akan digunakan sebagai "url"
-                "${provider.mainUrl}/$subjectId",
+                finalUrl, // URL yang digunakan di load()
                 type, 
                 false
             ) {
                 this.posterUrl = cover?.url
                 this.score = Score.from10(imdbRatingValue)
-                // Tambahkan 'countryName' ke url (di-encode) agar bisa di-filter di search
-                this.url = "${provider.mainUrl}/$subjectId#${countryName}" 
             }
         }
 
