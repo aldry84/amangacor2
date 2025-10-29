@@ -1,37 +1,62 @@
-apply plugin: 'com.android.library'
-apply plugin: 'kotlin-android'
-apply plugin: 'kotlin-kapt'
-apply plugin: 'com.lagradost.cloudstream3'
-
-android {
-    compileSdkVersion 34
-    defaultConfig {
-        minSdkVersion 21
-        targetSdkVersion 34
-        versionCode 1
-        versionName "1.0.0" 
-    }
-    buildTypes {
-        release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-        }
-    }
-    namespace 'com.AdiOMDb'
+// Import library dan konfigurasi Android Studio standar
+plugins {
+    id("com.android.library")
+    id("kotlin-android")
+    id("kotlin-kapt")
+    id("com.lagradost.cloudstream3") version "1.7.0" // Ganti dengan versi CS3 terbaru
 }
+
+// Gunakan nama paket baru Anda
+group = "com.AdiOMDb"
+
+// Konfigurasi Android
+android {
+    namespace = "com.AdiOMDb"
+    compileSdk = 34
+
+    defaultConfig {
+        minSdk = 21
+        targetSdk = 34
+        versionCode = 1
+        versionName = "1.0.0" 
+    }
+}
+
+// --- CLOUDSTREAM PLUGIN CONFIGURATION ---
+
+// use an integer for version numbers
+version = 1
 
 cloudstream {
-    // ID Unik Plugin Anda
-    url = 'AdiOMDb.com' 
-    // Nama Provider yang akan ditampilkan di Cloudstream3
-    desc = 'Menggabungkan Metadata OMDb dan Streaming Fmoviesunblocked'
-    authors = listOf("Adi")
+    // Nama Plugin, gunakan OMDb dan Fmovies sebagai deskripsi
+    description = "AdiOMDb: Metadata dari OMDb, Streaming dari Fmoviesunblocked.net" 
+    language    = "en" 
+    authors = listOf("AdiUser") 
+
+    /**
+    * Status int as the following:
+    * 0: Down
+    * 1: Ok
+    * 2: Slow
+    * 3: Beta only
+    * */
+    status = 1 
+
+    // Tipe Konten yang didukung. Tambahkan AsianDrama jika ingin difilter
+    tvTypes = listOf("TvSeries", "Movie") 
+
+    // Icon (Mengambil favicon dari domain utama OMDb)
+    iconUrl="https://www.google.com/s2/favicons?domain=omdbapi.com&sz=%size%"
+
+    isCrossPlatform = true
 }
 
+// Dependensi yang dibutuhkan oleh Cloudstream3
 dependencies {
-    implementation fileTree(dir: 'libs', include: ['*.jar'])
-    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
-    implementation "androidx.core:core-ktx:1.12.0"
-    implementation "androidx.appcompat:appcompat:1.6.1"
-    implementation project(':lib:cloudstream-impl')
+    implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.jar"))))
+    implementation("androidx.core:core-ktx:1.12.0")
+    implementation("androidx.appcompat:appcompat:1.6.1")
+    
+    // Cloudstream3 Core
+    implementation(project(":lib:cloudstream-impl"))
 }
