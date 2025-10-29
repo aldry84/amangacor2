@@ -6,10 +6,10 @@ import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
-import com.lagradost.cloudstream3.utils.Extensions.toUrl // <--- BARIS TAMBAHAN UNTUK FIX
 import com.lagradost.nicehttp.RequestBodyTypes
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.net.URLEncoder // <-- IMPOR BARU UNTUK ENCODE
 
 class AdiOMDb : MainAPI() {
     // 1. Sumber Metadata (OMDb API)
@@ -52,10 +52,10 @@ class AdiOMDb : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse>? {
-        // Panggil OMDb API untuk mencari judul
-        // MENGGANTI urlEncode() MENJADI toUrl()
+        // Panggil OMDb API untuk mencari judul - Menggunakan URLEncoder.encode
+        val encodedQuery = URLEncoder.encode(query, "utf-8") // <-- PERBAIKAN
         val results = app.get(
-            "$mainUrl/?s=${query.toUrl()}&apikey=$omdbApiKey&type=series" 
+            "$mainUrl/?s=$encodedQuery&apikey=$omdbApiKey&type=series" 
         ).parsedSafe<OmdbSearch>()?.Search
         
         return results?.map { it.toSearchResponse(this) }
@@ -63,10 +63,10 @@ class AdiOMDb : MainAPI() {
 
     override suspend fun load(imdbID: String): LoadResponse { 
         
-        // 1. Ambil Detail Film/Serial dari OMDb
-        // MENGGANTI urlEncode() MENJADI toUrl()
+        // 1. Ambil Detail Film/Serial dari OMDb - Menggunakan URLEncoder.encode
+        val encodedImdbID = URLEncoder.encode(imdbID, "utf-8") // <-- PERBAIKAN
         val detail = app.get(
-            "$mainUrl/?i=${imdbID.toUrl()}&plot=full&apikey=$omdbApiKey"
+            "$mainUrl/?i=$encodedImdbID&plot=full&apikey=$omdbApiKey"
         ).parsedSafe<OmdbItemDetail>()
 
         // 2. Cari ID unik Fmovies berdasarkan Judul OMDb
@@ -78,9 +78,9 @@ class AdiOMDb : MainAPI() {
 
         // 3. Loop untuk Mengambil Semua Season dan Episode dari OMDb
         for (season in 1..totalSeasons) {
-            // MENGGANTI urlEncode() MENJADI toUrl()
+            // Menggunakan URLEncoder.encode
             val seasonDetail = app.get(
-                "$mainUrl/?i=${imdbID.toUrl()}&Season=$season&apikey=$omdbApiKey"
+                "$mainUrl/?i=$encodedImdbID&Season=$season&apikey=$omdbApiKey" // <-- MENGGUNAKAN VARIABEL YG SUDAH DI-ENCODE
             ).parsedSafe<OmdbSeason>()
             
             seasonDetail?.Episodes?.forEach { ep ->
