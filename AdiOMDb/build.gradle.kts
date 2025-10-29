@@ -3,7 +3,16 @@ plugins {
     id("com.android.library")
     id("kotlin-android")
     id("kotlin-kapt")
-    id("com.lagradost.cloudstream3") version "1.7.0" // Ganti dengan versi CS3 terbaru
+    // JANGAN masukkan versi di sini, versi didefinisikan di file root atau settings.gradle.kts
+    id("com.lagradost.cloudstream3")
+}
+
+// Tambahkan definisi repositori untuk Gradle menemukan plugin dan dependensi
+repositories {
+    google() // WAJIB untuk dependensi Android dan plugin Google
+    mavenCentral() // WAJIB untuk dependensi umum
+    // Tambahkan repositori Cloudstream3 jika ada (jika tidak ditemukan di Maven Central)
+    // maven("https://repo.cloudstream.dev/release") 
 }
 
 // Gunakan nama paket baru Anda
@@ -24,30 +33,15 @@ android {
 
 // --- CLOUDSTREAM PLUGIN CONFIGURATION ---
 
-// use an integer for version numbers
 version = 1
 
 cloudstream {
-    // Nama Plugin, gunakan OMDb dan Fmovies sebagai deskripsi
     description = "AdiOMDb: Metadata dari OMDb, Streaming dari Fmoviesunblocked.net" 
     language    = "en" 
     authors = listOf("AdiUser") 
-
-    /**
-    * Status int as the following:
-    * 0: Down
-    * 1: Ok
-    * 2: Slow
-    * 3: Beta only
-    * */
     status = 1 
-
-    // Tipe Konten yang didukung. Tambahkan AsianDrama jika ingin difilter
     tvTypes = listOf("TvSeries", "Movie") 
-
-    // Icon (Mengambil favicon dari domain utama OMDb)
     iconUrl="https://www.google.com/s2/favicons?domain=omdbapi.com&sz=%size%"
-
     isCrossPlatform = true
 }
 
