@@ -21,7 +21,7 @@ class AdiOMDb : MainAPI() {
     // Konfigurasi Cloudstream3
     override val instantLinkLoading = false 
     override var name = "AdiOMDb"
-    override val hasMainPage = false // Kita fokus pada Search karena OMDb tidak punya Main Page
+    override val hasMainPage = false 
     override val hasQuickSearch = true
     override var lang = "en"
     override val supportedTypes = setOf(
@@ -43,26 +43,23 @@ class AdiOMDb : MainAPI() {
                 "keyword" to query,
                 "page" to "1",
                 "perPage" to "1",
-                "subjectType" to "0", // Cari semua tipe
+                "subjectType" to "0", 
             ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
         ).parsedSafe<Media>()?.data?.items?.firstOrNull() 
         
-        // Kembalikan subjectId (ID fmoviesunblocked.net)
         return result?.subjectId
     }
 
     override suspend fun search(query: String): List<SearchResponse>? {
         // Panggil OMDb API untuk mencari judul
         val results = app.get(
-            // Mencari Series dan Movie
             "$mainUrl/?s=${query.urlEncode()}&apikey=$omdbApiKey&type=series" 
         ).parsedSafe<OmdbSearch>()?.Search
         
-        // Mapping hasil ke SearchResponse
         return results?.map { it.toSearchResponse(this) }
     }
 
-    override suspend fun load(imdbID: String): LoadResponse { // imdbID adalah 'url' dari SearchResponse
+    override suspend fun load(imdbID: String): LoadResponse { 
         
         // 1. Ambil Detail Film/Serial dari OMDb
         val detail = app.get(
@@ -89,7 +86,7 @@ class AdiOMDb : MainAPI() {
                 val epData = EpisodeData(imdbID, season, episodeNum ?: 1, fmoviesID) 
                 
                 episodes.add(
-                    newEpisode(epData.toJson()) { // Simpan EpisodeData sebagai data unik
+                    newEpisode(epData.toJson()) { 
                         this.name = ep.Title
                         this.season = season
                         this.episode = episodeNum
@@ -116,10 +113,8 @@ class AdiOMDb : MainAPI() {
     ): Boolean {
         val episodeData = parseJson<EpisodeData>(data)
         
-        // Fmovies ID adalah ID streaming unik yang kita butuhkan
         val fmoviesID = episodeData.streamingPath 
         
-        // URL referer untuk otorisasi (menggunakan fmoviesunblocked.net)
         val referer = "$apiUrl/spa/videoPlayPage/movies/$fmoviesID?id=$fmoviesID&type=/movie/detail&lang=en"
 
         // 1. Ambil Link Streaming dari fmoviesunblocked.net
@@ -179,7 +174,7 @@ class AdiOMDb : MainAPI() {
     data class OmdbItem(
         @JsonProperty("Title") val Title: String? = null,
         @JsonProperty("Year") val Year: String? = null,
-        @JsonProperty("imdbID") val imdbID: String? = null, // Digunakan sebagai ID utama
+        @JsonProperty("imdbID") val imdbID: String? = null, 
         @JsonProperty("Type") val Type: String? = null,
         @JsonProperty("Poster") val Poster: String? = null,
     ) {
@@ -222,9 +217,9 @@ class AdiOMDb : MainAPI() {
         @JsonProperty("data") val data: Data? = null,
     ) {
         data class Data(
-            @JsonProperty("items") val items: ArrayList<Items>? = arrayListOf(), // Untuk FindFmoviesID
-            @JsonProperty("streams") val streams: ArrayList<Streams>? = arrayListOf(), // Untuk loadLinks
-            @JsonProperty("captions") val captions: ArrayList<Captions>? = arrayListOf(), // Untuk loadLinks
+            @JsonProperty("items") val items: ArrayList<Items>? = arrayListOf(), 
+            @JsonProperty("streams") val streams: ArrayList<Streams>? = arrayListOf(), 
+            @JsonProperty("captions") val captions: ArrayList<Captions>? = arrayListOf(), 
         ) {
             data class Streams(
                 @JsonProperty("id") val id: String? = null,
@@ -241,7 +236,7 @@ class AdiOMDb : MainAPI() {
     }
 
     data class Items(
-        @JsonProperty("subjectId") val subjectId: String? = null, // ID yang kita butuhkan
+        @JsonProperty("subjectId") val subjectId: String? = null, 
         @JsonProperty("title") val title: String? = null,
         @JsonProperty("cover") val cover: Cover? = null,
     ) {
