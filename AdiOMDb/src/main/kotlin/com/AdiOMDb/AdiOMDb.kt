@@ -6,6 +6,7 @@ import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
+import com.lagradost.cloudstream3.utils.Extensions.toUrl // <--- BARIS TAMBAHAN UNTUK FIX
 import com.lagradost.nicehttp.RequestBodyTypes
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -52,8 +53,9 @@ class AdiOMDb : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse>? {
         // Panggil OMDb API untuk mencari judul
+        // MENGGANTI urlEncode() MENJADI toUrl()
         val results = app.get(
-            "$mainUrl/?s=${query.urlEncode()}&apikey=$omdbApiKey&type=series" 
+            "$mainUrl/?s=${query.toUrl()}&apikey=$omdbApiKey&type=series" 
         ).parsedSafe<OmdbSearch>()?.Search
         
         return results?.map { it.toSearchResponse(this) }
@@ -62,8 +64,9 @@ class AdiOMDb : MainAPI() {
     override suspend fun load(imdbID: String): LoadResponse { 
         
         // 1. Ambil Detail Film/Serial dari OMDb
+        // MENGGANTI urlEncode() MENJADI toUrl()
         val detail = app.get(
-            "$mainUrl/?i=${imdbID.urlEncode()}&plot=full&apikey=$omdbApiKey"
+            "$mainUrl/?i=${imdbID.toUrl()}&plot=full&apikey=$omdbApiKey"
         ).parsedSafe<OmdbItemDetail>()
 
         // 2. Cari ID unik Fmovies berdasarkan Judul OMDb
@@ -75,8 +78,9 @@ class AdiOMDb : MainAPI() {
 
         // 3. Loop untuk Mengambil Semua Season dan Episode dari OMDb
         for (season in 1..totalSeasons) {
+            // MENGGANTI urlEncode() MENJADI toUrl()
             val seasonDetail = app.get(
-                "$mainUrl/?i=${imdbID.urlEncode()}&Season=$season&apikey=$omdbApiKey"
+                "$mainUrl/?i=${imdbID.toUrl()}&Season=$season&apikey=$omdbApiKey"
             ).parsedSafe<OmdbSeason>()
             
             seasonDetail?.Episodes?.forEach { ep ->
