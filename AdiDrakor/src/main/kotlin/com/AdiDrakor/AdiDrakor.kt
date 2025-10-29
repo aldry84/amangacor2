@@ -75,8 +75,9 @@ class AdiDrakor : MainAPI() {
                 "subjectType" to "0", // Cari semua tipe (0)
             ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
         ).parsedSafe<Media>()?.data?.items
-            // Filter hasil pencarian hanya yang berpotensi Drama Korea
-            ?.filter { it.countryName?.contains("Korea", ignoreCase = true) == true || it.subjectType == 2 }
+            // Filter hasil pencarian untuk hanya menyertakan yang berpotensi Drama Korea/Serial TV.
+            // subjectType == 2 (Serial TV/Drama) atau memiliki label "Korea".
+            ?.filter { it.subjectType == 2 || it.countryName?.contains("Korea", ignoreCase = true) == true }
             ?.map { it.toSearchResponse(this) }
             ?: return null
             
@@ -280,13 +281,9 @@ class AdiDrakor : MainAPI() {
     ) {
 
         fun toSearchResponse(provider: AdiDrakor): SearchResponse {
-            // Jika konten bukan Drama (subjectType != 2) dan bukan dari Korea, 
-            // kita bisa mengembalikannya sebagai tipe Movie untuk memastikan tidak ada kesalahan
-            // tetapi ini akan difilter di pemanggil (MainPage/Search)
-            val type = when (subjectType) {
-                2 -> TvType.TvSeries
-                else -> TvType.Movie // Tipe default jika tidak jelas, meskipun seharusnya sudah difilter
-            }
+            // Perbaikan: Paksa tipe ke TvSeries karena fokus aplikasi adalah Drakor (Serial TV).
+            // Ini konsisten dengan `supportedTypes` dan `load` yang dipaksa ke TvSeries.
+            val type = TvType.TvSeries
             
             return provider.newMovieSearchResponse(
                 title ?: "",
