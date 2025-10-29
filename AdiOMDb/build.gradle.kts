@@ -1,19 +1,22 @@
-// Import library dan konfigurasi Android Studio standar
+// --- BLOK WAJIB UNTUK GRADLE/ANDROID ---
 plugins {
     id("com.android.library")
     id("kotlin-android")
     id("kotlin-kapt")
-    id("com.lagradost.cloudstream3") version "1.7.0" // Ganti dengan versi CS3 terbaru
+    // Plugin utama Cloudstream3
+    id("com.lagradost.cloudstream3")
 }
 
-// Gunakan nama paket baru Anda
-group = "com.AdiOMDb"
+// Tambahkan definisi repositori agar Gradle dapat menemukan dependensi
+repositories {
+    google()
+    mavenCentral()
+}
 
-// Konfigurasi Android
+// Konfigurasi Android (Wajib ada)
 android {
-    namespace = "com.AdiOMDb"
+    namespace = "com.AdiOMDb" // Menggunakan namespace AdiOMDb yang benar
     compileSdk = 34
-
     defaultConfig {
         minSdk = 21
         targetSdk = 34
@@ -21,17 +24,20 @@ android {
         versionName = "1.0.0" 
     }
 }
+// --- AKHIR BLOK WAJIB ---
 
-// --- CLOUDSTREAM PLUGIN CONFIGURATION ---
 
 // use an integer for version numbers
 version = 1
 
 cloudstream {
-    // Nama Plugin, gunakan OMDb dan Fmovies sebagai deskripsi
-    description = "AdiOMDb: Metadata dari OMDb, Streaming dari Fmoviesunblocked.net" 
+    // All of these properties are optional, you can safely remove them
+
+    // DIUBAH: Deskripsi mencerminkan fungsionalitas OMDb/Fmovies
+    description = "AdiOMDb (Metadata OMDb dan Streaming Fmoviesunblocked.net)" 
     language    = "en" 
-    authors = listOf("AdiUser") 
+    // DIUBAH: Nama penulis yang terkait dengan proyek AdiOMDb
+    authors = listOf("AdiOMDbUser") 
 
     /**
     * Status int as the following:
@@ -40,23 +46,22 @@ cloudstream {
     * 2: Slow
     * 3: Beta only
     * */
-    status = 1 
+    status = 1 // will be 3 if unspecified
 
-    // Tipe Konten yang didukung. Tambahkan AsianDrama jika ingin difilter
-    tvTypes = listOf("TvSeries", "Movie") 
+    // List of video source types. Users are able to filter for extensions in a given category.
+    // Menggunakan tipe yang fleksibel sesuai OMDb dan fokus drama
+    tvTypes = listOf("TvSeries", "AsianDrama", "Movie")
 
-    // Icon (Mengambil favicon dari domain utama OMDb)
-    iconUrl="https://www.google.com/s2/favicons?domain=omdbapi.com&sz=%size%"
+    // DIUBAH: Ikon menggunakan domain fmoviesunblocked.net (sumber media Anda)
+    iconUrl="https://www.google.com/s2/favicons?domain=fmoviesunblocked.net&sz=%size%"
 
     isCrossPlatform = true
 }
 
-// Dependensi yang dibutuhkan oleh Cloudstream3
+// Dependensi yang diperlukan (Wajib ada)
 dependencies {
     implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.jar"))))
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.appcompat:appcompat:1.6.1")
-    
-    // Cloudstream3 Core
     implementation(project(":lib:cloudstream-impl"))
 }
