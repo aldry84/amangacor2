@@ -33,26 +33,14 @@ version = 1
 cloudstream {
     // All of these properties are optional, you can safely remove them
 
-    // DIUBAH: Deskripsi mencerminkan fungsionalitas OMDb/Fmovies
     description = "AdiOMDb (Metadata OMDb dan Streaming Fmoviesunblocked.net)" 
     language    = "en" 
-    // DIUBAH: Nama penulis yang terkait dengan proyek AdiOMDb
     authors = listOf("AdiOMDbUser") 
 
-    /**
-    * Status int as the following:
-    * 0: Down
-    * 1: Ok
-    * 2: Slow
-    * 3: Beta only
-    * */
-    status = 1 // will be 3 if unspecified
+    status = 1 
 
-    // List of video source types. Users are able to filter for extensions in a given category.
-    // Menggunakan tipe yang fleksibel sesuai OMDb dan fokus drama
     tvTypes = listOf("TvSeries", "AsianDrama", "Movie")
 
-    // DIUBAH: Ikon menggunakan domain fmoviesunblocked.net (sumber media Anda)
     iconUrl="https://www.google.com/s2/favicons?domain=fmoviesunblocked.net&sz=%size%"
 
     isCrossPlatform = true
