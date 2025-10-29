@@ -1,11 +1,12 @@
 package com.AdiOMDb
 
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
-import com.lagradost.cloudstream3.plugins.Plugin
+import com.lagradost.cloudstream3.plugins.Plugin // <--- Ganti PluginRepository
+import android.content.Context
 
 @CloudstreamPlugin
-class AdiOMDbProvider: Plugin() { // Ganti PluginRepository menjadi Plugin()
-    override fun load() { // Hapus parameter 'context' dan kata kunci 'override' pada 'load' (atau pastikan 'load()' adalah fungsi yang benar untuk di-override)
+class AdiOMDbProvider: Plugin() { // <--- Ganti PluginRepository menjadi Plugin
+    override fun load() { // <--- load() tanpa parameter Context
         // Mendaftarkan MainAPI
         registerMainAPI(AdiOMDb())
     }
