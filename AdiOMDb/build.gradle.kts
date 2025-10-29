@@ -1,14 +1,25 @@
-// --- BLOK WAJIB: MENDUKUNG PLUGIN DAN ANDROID ---
-
-plugins {
-    id("com.android.library")
-    id("kotlin-android")
-    id("kotlin-kapt")
-    // Plugin utama Cloudstream3
-    id("com.lagradost.cloudstream3")
+// --- BLOK WAJIB: DEFINISI PLUGINS DAN REPOSITORI ---
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        // Mendefinisikan versi plugin yang diperlukan di buildscript
+        classpath("com.lagradost.cloudstream3:cloudstream-plugin:1.7.0") 
+        classpath("com.android.tools.build:gradle:8.2.0") // Android Gradle Plugin (AGP)
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.0") // Kotlin Plugin
+    }
 }
 
-// Tambahkan definisi repositori agar Gradle dapat menemukan dependensi
+// Mengaplikasikan Plugin (Mengganti Blok 'plugins' dengan 'apply')
+apply(plugin = "com.android.library")
+apply(plugin = "kotlin-android")
+apply(plugin = "kotlin-kapt")
+apply(plugin = "com.lagradost.cloudstream3")
+
+
+// Tambahkan definisi repositori untuk dependensi utama project
 repositories {
     google()
     mavenCentral()
@@ -52,5 +63,6 @@ dependencies {
     implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.jar"))))
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.appcompat:appcompat:1.6.1")
-    implementation(project(":lib:cloudstream-impl"))
+    // Ini mengasumsikan folder proyek Anda memiliki modul ':lib:cloudstream-impl'
+    implementation(project(":lib:cloudstream-impl")) 
 }
