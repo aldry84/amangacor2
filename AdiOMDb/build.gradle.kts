@@ -1,13 +1,10 @@
 // AdiOMDb/build.gradle.kts
 
 // use an integer for version numbers
-version = 1
+version = 5
 
 
 cloudstream {
-    // PERBAIKAN: Gunakan fungsi setter 'setid()' karena ini adalah properti wajib.
-    setid("com.AdiOMDb")
-
     // All of these properties are optional, you can safely remove them
 
     description = "AdiOMDb (OMDb)" 
