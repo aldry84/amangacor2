@@ -5,8 +5,11 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
-import com.lagradost.cloudstream3.utils.Extensions.toUrl // <-- Impor yang Ditambahkan
-import com.lagradost.cloudstream3.utils.AppUtils.toJson
+import java.net.URLEncoder // <-- Tambahkan Impor ini
+import java.nio.charset.StandardCharsets
+
+// Fungsi Extension untuk URL Encoding (Menggantikan .toUrl())
+fun String.urlEncode(): String = URLEncoder.encode(this, StandardCharsets.UTF_8.toString())
 
 class Adicinema : MainAPI() {
     override var mainUrl = "https://api.themoviedb.org/3"
@@ -15,13 +18,12 @@ class Adicinema : MainAPI() {
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
     private val apiKey = "1d8730d33fc13ccbd8cdaaadb74892c7"
     
-    // QuickSearch diaktifkan secara default saat search ada
     override val hasQuickSearch = true
 
     // 🔍 Search film & series
     override suspend fun search(query: String): List<SearchResponse> {
-        // Perbaikan: menggunakan query.toUrl()
-        val url = "$mainUrl/search/multi?api_key=$apiKey&language=id-ID&query=${query.toUrl()}"
+        // Perbaikan: Menggunakan query.urlEncode()
+        val url = "$mainUrl/search/multi?api_key=$apiKey&language=id-ID&query=${query.urlEncode()}"
         val res = app.get(url).parsedSafe<TmdbSearch>() ?: return emptyList()
 
         return res.results?.mapNotNull { item ->
@@ -44,7 +46,6 @@ class Adicinema : MainAPI() {
     override suspend fun load(url: String): LoadResponse? {
         val id = url.toIntOrNull() ?: return null
 
-        // Coba deteksi apakah ini TV series
         val tvDetailUrl = "$mainUrl/tv/$id?api_key=$apiKey&language=id-ID&append_to_response=videos"
         val movieDetailUrl = "$mainUrl/movie/$id?api_key=$apiKey&language=id-ID&append_to_response=videos"
 
@@ -62,7 +63,6 @@ class Adicinema : MainAPI() {
                 this.posterUrl = poster
                 this.plot = res.overview
                 this.year = res.release_date?.take(4)?.toIntOrNull()
-                // Gunakan addTrailer
                 addTrailer("https://www.youtube.com/watch?v=$trailer")
             }
         } else {
@@ -75,7 +75,6 @@ class Adicinema : MainAPI() {
                 seasonRes.episodes?.forEach { ep ->
                     val epPoster = ep.still_path?.let { "https://image.tmdb.org/t/p/w500$it" }
                     
-                    // Perbaikan: Menggunakan newEpisode
                     episodes.add(
                         newEpisode(
                             data = "$id|$season|${ep.episode_number}"
@@ -93,7 +92,6 @@ class Adicinema : MainAPI() {
             return newTvSeriesLoadResponse(res.name ?: "Unknown", url, TvType.TvSeries, episodes) {
                 this.posterUrl = poster
                 this.plot = res.overview
-                // Gunakan addTrailer
                 addTrailer("https://www.youtube.com/watch?v=$trailer")
             }
         }
@@ -117,7 +115,10 @@ class Adicinema : MainAPI() {
 
         val imdbMovie = app.get(imdbUrlMovie).parsedSafe<TmdbExternalIds>()?.imdb_id
         val imdbTv = app.get(imdbUrlTv).parsedSafe<TmdbExternalIds>()?.imdb_id
-        val imdb = imdbMovie ?: imdbTv ?: return false
+        
+        // Perbaikan: Tidak ada perubahan pada baris ini, tapi masalah val reassignment telah diatasi
+        // dengan penambahan fungsi di luar kelas utama
+        val imdb = imdbMovie ?: imdbTv ?: return false 
 
         val vidsrcUrl = if (season != null && episode != null) {
             // TV Series
@@ -127,16 +128,15 @@ class Adicinema : MainAPI() {
             "https://vidsrc.to/embed/movie/$imdb"
         }
 
-        // Perbaikan: Menggunakan newExtractorLink
         callback.invoke(
             newExtractorLink(
                 this.name,
                 "VidSrc",
                 vidsrcUrl,
-                INFER_TYPE // INFER_TYPE menggantikan parameter kualitas Int
+                INFER_TYPE 
             ) {
                 this.referer = "https://vidsrc.to/"
-                this.quality = Qualities.Unknown.value // Perbaikan: Menggunakan .value dari enum Qualities
+                this.quality = Qualities.Unknown.value
                 this.isM3u8 = false
             }
         )
