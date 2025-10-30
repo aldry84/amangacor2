@@ -5,10 +5,10 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
-import java.net.URLEncoder // <-- Tambahkan Impor ini
+import java.net.URLEncoder 
 import java.nio.charset.StandardCharsets
 
-// Fungsi Extension untuk URL Encoding (Menggantikan .toUrl())
+// Fungsi Extension untuk URL Encoding
 fun String.urlEncode(): String = URLEncoder.encode(this, StandardCharsets.UTF_8.toString())
 
 class Adicinema : MainAPI() {
@@ -22,7 +22,6 @@ class Adicinema : MainAPI() {
 
     // 🔍 Search film & series
     override suspend fun search(query: String): List<SearchResponse> {
-        // Perbaikan: Menggunakan query.urlEncode()
         val url = "$mainUrl/search/multi?api_key=$apiKey&language=id-ID&query=${query.urlEncode()}"
         val res = app.get(url).parsedSafe<TmdbSearch>() ?: return emptyList()
 
@@ -116,10 +115,9 @@ class Adicinema : MainAPI() {
         val imdbMovie = app.get(imdbUrlMovie).parsedSafe<TmdbExternalIds>()?.imdb_id
         val imdbTv = app.get(imdbUrlTv).parsedSafe<TmdbExternalIds>()?.imdb_id
         
-        // Perbaikan: Tidak ada perubahan pada baris ini, tapi masalah val reassignment telah diatasi
-        // dengan penambahan fungsi di luar kelas utama
-        val imdb = imdbMovie ?: imdbTv ?: return false 
-
+        // PERBAIKAN val reassign: Menggunakan let untuk menetapkan nilai IMDB ID sekali.
+        val imdb = (imdbMovie ?: imdbTv).let { it ?: return false }
+        
         val vidsrcUrl = if (season != null && episode != null) {
             // TV Series
             "https://vidsrc.to/embed/tv/$imdb/$season/$episode"
