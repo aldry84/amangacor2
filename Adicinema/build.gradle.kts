@@ -1,4 +1,9 @@
 // Adicinema/build.gradle.kts
+dependencies {
+    // ... dependensi lainnya ...
+    implementation("com.lagradost:cloudstream3:latest_version") // Ganti latest_version dengan versi terbaru
+}
+
 
 version = 6 // Naikkan jika update plugin
 
