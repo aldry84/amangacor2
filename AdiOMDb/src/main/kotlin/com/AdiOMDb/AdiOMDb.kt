@@ -1,3 +1,5 @@
+// AdiOMDb/src/main/kotlin/com/AdiOMDb/AdiOMDb.kt
+
 package com.AdiOMDb
 
 import com.fasterxml.jackson.annotation.JsonProperty
@@ -13,12 +15,11 @@ import java.net.URLEncoder
 
 class AdiOMDb : MainAPI() {
     // 1. Sumber Metadata (OMDb API)
-    // Gunakan 'tt' sebagai fallback untuk IMDB ID jika diperlukan
     override var mainUrl = "https://www.omdbapi.com" 
     private val omdbApiKey = "8aabbe50" 
     
-    // 2. Sumber Media (fmoviesunblocked.net)
-    private val apiUrl = "https://fmoviesunblocked.net" 
+    // 2. Sumber Media (fmoviesunblocked.net) - Disesuaikan dengan URL dari Adimoviebox
+    private val apiUrl = "https://fmoviesunblocked.net" // Tetap menggunakan fmoviesunblocked.net
     
     // Konfigurasi Cloudstream3
     override val instantLinkLoading = false 
@@ -39,6 +40,7 @@ class AdiOMDb : MainAPI() {
     
     // Fungsi Helper: Cari ID fmoviesunblocked.net menggunakan Judul OMDb
     private suspend fun findFmoviesID(query: String): String? {
+        // Menggunakan endpoint dan struktur request yang sama dengan Adimoviebox
         val jsonBody = mapOf(
             "keyword" to query,
             "page" to "1",
@@ -57,21 +59,18 @@ class AdiOMDb : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse>? {
-        // Panggil OMDb API untuk mencari judul (tanpa batasan tipe)
-        // URLEncoder.encode sangat penting untuk query pencarian
+        // Panggil OMDb API - Hapus &type=series untuk mendukung Movie dan Series
         val encodedQuery = URLEncoder.encode(query, "utf-8") 
         
         val results = app.get(
-            "$mainUrl/?s=$encodedQuery&apikey=$omdbApiKey" // Menghapus &type=series
+            "$mainUrl/?s=$encodedQuery&apikey=$omdbApiKey" 
         ).parsedSafe<OmdbSearch>()?.Search
         
-        // Filter out items that couldn't be converted (missing ID/Title)
         return results?.mapNotNull { it.toSearchResponse(this) }
     }
 
     override suspend fun load(imdbID: String): LoadResponse { 
         
-        // OMDb ID tidak perlu di-encode jika murni ttXXXXXX, tapi tidak masalah jika di-encode
         val encodedImdbID = URLEncoder.encode(imdbID, "utf-8") 
         
         // 1. Ambil Detail Film/Serial dari OMDb
@@ -79,11 +78,11 @@ class AdiOMDb : MainAPI() {
             "$mainUrl/?i=$encodedImdbID&plot=full&apikey=$omdbApiKey"
         ).parsedSafe<OmdbItemDetail>()
         
-        // Validasi Detail
         val title = detail?.Title ?: throw ErrorLoadingException("Detail OMDb tidak ditemukan untuk ID: $imdbID")
         val isSeries = detail.Type.equals("series", ignoreCase = true)
         
         // 2. Cari ID unik Fmovies berdasarkan Judul OMDb
+        // MENGGUNAKAN title dari OMDb (lebih akurat daripada hanya imdbID)
         val fmoviesID = findFmoviesID(title) 
              ?: throw ErrorLoadingException("ID Streaming Fmovies tidak ditemukan untuk $title")
         
@@ -100,7 +99,6 @@ class AdiOMDb : MainAPI() {
             val episodes = mutableListOf<Episode>()
             val totalSeasons = detail.totalSeasons?.toIntOrNull() ?: 1
 
-            // Loop hanya jika ini adalah Series
             for (season in 1..totalSeasons) {
                 val seasonDetail = app.get(
                     "$mainUrl/?i=$encodedImdbID&Season=$season&apikey=$omdbApiKey" 
@@ -109,7 +107,7 @@ class AdiOMDb : MainAPI() {
                 seasonDetail?.Episodes?.forEach { ep ->
                     val episodeNum = ep.Episode?.toIntOrNull()
                     
-                    // Simpan Fmovies ID sebagai ID streaming unik di EpisodeData
+                    // Gunakan fmoviesID sebagai streamingPath
                     val epData = EpisodeData(imdbID, season, episodeNum ?: 1, fmoviesID) 
                     
                     episodes.add(
@@ -131,8 +129,7 @@ class AdiOMDb : MainAPI() {
                 this.score = score
             }
         } else {
-            // Ini adalah Movie (atau tipe lain seperti Game/Episode yang akan diperlakukan sebagai Movie)
-            // Simpan Fmovies ID di EpisodeData
+            // Movie
             val epData = EpisodeData(imdbID, 1, 1, fmoviesID) 
 
             // Kembalikan LoadResponse untuk Movie
@@ -152,16 +149,15 @@ class AdiOMDb : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // Menggunakan parseJsonSafe untuk penanganan error yang lebih baik
+        // Menggunakan struktur LoadData yang sama dengan Adimoviebox, tapi dengan field berbeda
         val episodeData = parseJson<EpisodeData>(data)
         
         val fmoviesID = episodeData.streamingPath 
-        
-        // 'se' dan 'ep' akan tetap 1 jika itu Movie.
         val seasonNum = episodeData.seasonNum 
         val episodeNum = episodeData.episodeNum
         
-        val referer = "$apiUrl/spa/videoPlayPage/movies/$fmoviesID?id=$fmoviesID&type=/movie/detail&lang=en"
+        // Referer menggunakan fmoviesID sebagai detailPath-nya
+        val referer = "$apiUrl/spa/videoPlayPage/movies/$fmoviesID?id=${episodeData.imdbID}&type=/movie/detail&lang=en"
 
         // 1. Ambil Link Streaming dari fmoviesunblocked.net
         val streams = app.get(
@@ -169,7 +165,6 @@ class AdiOMDb : MainAPI() {
             referer = referer
         ).parsedSafe<Media>()?.data?.streams
 
-        // Pastikan streams tidak null sebelum mapping
         streams?.reversed()?.distinctBy { it.url }?.mapNotNull { source ->
             source.url?.let { url ->
                 callback.invoke(
@@ -180,7 +175,7 @@ class AdiOMDb : MainAPI() {
                         INFER_TYPE
                     ) {
                         this.referer = "$apiUrl/"
-                        // Memanggil getQualityFromName dengan null-safety
+                        // Penanganan kualitas yang aman dari Adimoviebox
                         this.quality = source.resolutions?.let { getQualityFromName(it) } ?: Qualities.Unknown.value
                     }
                 )
@@ -197,7 +192,6 @@ class AdiOMDb : MainAPI() {
                 "$apiUrl/wefeed-h5-bff/web/subject/caption?format=$format&id=$id&subjectId=$fmoviesID",
                 referer = referer
             ).parsedSafe<Media>()?.data?.captions?.mapNotNull { subtitle ->
-                // Pastikan URL Subtitle tidak null
                 subtitle.url?.let { url ->
                     subtitleCallback.invoke(
                         newSubtitleFile(
@@ -211,14 +205,14 @@ class AdiOMDb : MainAPI() {
 
         return true
     }
-
-    // --- DATA CLASS UNTUK OMDb ---
+    
+    // --- DATA CLASS UNTUK OMDb (Dipertahankan) ---
     
     data class EpisodeData(
         val imdbID: String, 
-        val seasonNum: Int, // Akan menjadi 1 untuk Movie
-        val episodeNum: Int, // Akan menjadi 1 untuk Movie
-        val streamingPath: String // Ini menyimpan Fmovies ID
+        val seasonNum: Int,
+        val episodeNum: Int,
+        val streamingPath: String // Ini menyimpan Fmovies ID (detailPath)
     )
     
     data class OmdbSearch(
@@ -232,14 +226,11 @@ class AdiOMDb : MainAPI() {
         @JsonProperty("Type") val Type: String? = null,
         @JsonProperty("Poster") val Poster: String? = null,
     ) {
-        // Mengembalikan SearchResponse? untuk menangani null ID/Title
         fun toSearchResponse(provider: AdiOMDb): SearchResponse? {
-            // Memastikan ID dan Title ada
             if (imdbID.isNullOrBlank() || Title.isNullOrBlank()) {
                 return null
             }
             
-            // Tentukan tipe
             val type = if (Type.equals("series", ignoreCase = true)) TvType.TvSeries else TvType.Movie
             
             return provider.newMovieSearchResponse(
@@ -262,7 +253,7 @@ class AdiOMDb : MainAPI() {
         @JsonProperty("imdbRating") val imdbRating: String? = null, 
         @JsonProperty("totalSeasons") val totalSeasons: String? = null,
         @JsonProperty("Poster") val Poster: String? = null,
-        @JsonProperty("Type") val Type: String? = null // Menambahkan Type untuk membedakan Movie/Series
+        @JsonProperty("Type") val Type: String? = null // Wajib
     )
 
     data class OmdbSeason(
@@ -274,7 +265,7 @@ class AdiOMDb : MainAPI() {
         @JsonProperty("Episode") val Episode: String? = null
     )
 
-    // --- DATA CLASS UNTUK Fmovies (Media) ---
+    // --- DATA CLASS UNTUK Fmovies (Media) - Disesuaikan dari Adimoviebox ---
     
     data class Media(
         @JsonProperty("data") val data: Data? = null,
