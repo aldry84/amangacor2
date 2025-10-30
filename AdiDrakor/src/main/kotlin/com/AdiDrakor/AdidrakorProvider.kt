@@ -7,6 +7,5 @@ import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 class AdidrakorProvider: BasePlugin() {
     override fun load() {
         registerMainAPI(AdiDrakor())
-        // Tidak ada extractor tambahan yang didaftarkan.
     }
 }
