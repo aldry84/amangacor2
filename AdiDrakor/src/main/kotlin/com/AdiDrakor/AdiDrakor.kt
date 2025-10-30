@@ -1,4 +1,4 @@
-package com.AdiDrakor // PERBAIKAN: Pastikan ini adalah baris pertama file tanpa spasi di atasnya
+package com.AdiDrakor
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
@@ -11,9 +11,8 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 
 class AdiDrakor : MainAPI() {
-    override var mainUrl = "https://moviebox.ph"
-    private val apiUrl = "https://fmoviesunblocked.net"
-    
+    override var mainUrl = ""
+    private val apiUrl = ""
     override val instantLinkLoading = true
     override var name = "AdiDrakor"
     override val hasMainPage = true
@@ -22,7 +21,7 @@ class AdiDrakor : MainAPI() {
     override val supportedTypes = setOf(
         TvType.TvSeries,
         TvType.AsianDrama,
-        TvType.Movie // Ditambahkan untuk mendukung pencarian non-Drakor
+        TvType.Movie
     )
 
     override val mainPage: List<MainPageData> = mainPageOf(
@@ -37,7 +36,7 @@ class AdiDrakor : MainAPI() {
         request: MainPageRequest,
     ): HomePageResponse {
         val params = request.data.split(",")
-        
+
         val body = mapOf(
             "channelId" to params.first(),
             "page" to page,
@@ -47,7 +46,7 @@ class AdiDrakor : MainAPI() {
 
         val home = app.post("$mainUrl/wefeed-h5-bff/web/filter", requestBody = body)
             .parsedSafe<Media>()?.data?.items
-            ?.filter { it.countryName?.contains("Korea", ignoreCase = true) == true || it.subjectType == 2 } 
+            ?.filter { it.countryName?.contains("Korea", ignoreCase = true) == true || it.subjectType == 2 }
             ?.map {
                 it.toSearchResponse(this)
             } ?: throw ErrorLoadingException("Tidak ada Data Drakor Ditemukan")
@@ -59,21 +58,20 @@ class AdiDrakor : MainAPI() {
         return search(query) ?: emptyList()
     }
 
-    // FUNGSI INI DIUBAH: Menghilangkan filter agar semua konten muncul di hasil pencarian
     override suspend fun search(query: String): List<SearchResponse>? {
         val results = app.post(
             "$mainUrl/wefeed-h5-bff/web/subject/search", requestBody = mapOf(
                 "keyword" to query,
                 "page" to "1",
                 "perPage" to "0",
-                "subjectType" to "0", // Cari semua tipe (0)
+                "subjectType" to "0",
             ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
         ).parsedSafe<Media>()?.data?.items
-            // Hapus filter konten Korea/Drama di sini
+            ?.filter { it.countryName?.contains("Korea", ignoreCase = true) == true } // Filter hanya Drakor
             ?.map { it.toSearchResponse(this) }
             ?: return null
-            
-        return results 
+
+        return results
     }
 
     override suspend fun load(url: String): LoadResponse {
@@ -84,20 +82,18 @@ class AdiDrakor : MainAPI() {
         val title = subject?.title ?: ""
         val poster = subject?.cover?.url
         val tags = subject?.genre?.split(",")?.map { it.trim() }
-
         val year = subject?.releaseDate?.substringBefore("-")?.toIntOrNull()
-        
-        // Tentukan tipe yang benar
+
         val tvType = when (subject?.subjectType) {
             1 -> TvType.Movie
             2 -> TvType.TvSeries
             1006 -> TvType.Anime
             else -> TvType.Movie
         }
-        
+
         val description = subject?.description
         val trailer = subject?.trailer?.videoAddress?.url
-        
+
         val actors = document?.stars?.mapNotNull { cast ->
             ActorData(
                 Actor(
@@ -111,15 +107,13 @@ class AdiDrakor : MainAPI() {
         val recommendations =
             app.get("$mainUrl/wefeed-h5-bff/web/subject/detail-rec?subjectId=$id&page=1&perPage=12")
                 .parsedSafe<Media>()?.data?.items
-                // Pertahankan filter rekomendasi untuk Drama Korea
                 ?.filter { it.countryName?.contains("Korea", ignoreCase = true) == true || it.subjectType == 2 }
                 ?.map {
                     it.toSearchResponse(this)
                 }
 
-        // LOGIKA BARU: Jika Movie, gunakan MovieLoadResponse
         if (tvType == TvType.Movie) {
-             return newMovieLoadResponse(title, url, TvType.Movie, document?.resource?.seasons?.firstOrNull()?.allEp?.split(",")?.map { it.toInt() }?.map { ep ->
+            return newMovieLoadResponse(title, url, TvType.Movie, document?.resource?.seasons?.firstOrNull()?.allEp?.split(",")?.map { it.toInt() }?.map { ep ->
                 newEpisode(
                     LoadData(
                         id,
@@ -131,20 +125,19 @@ class AdiDrakor : MainAPI() {
                     this.episode = ep
                 }
             } ?: emptyList()) {
-                 this.posterUrl = poster
-                 this.year = year
-                 this.plot = description
-                 this.tags = tags
-                 this.score = Score.from10(subject?.imdbRatingValue) 
-                 this.actors = actors
-                 this.recommendations = recommendations
-                 addTrailer(trailer, addRaw = true)
+                this.posterUrl = poster
+                this.year = year
+                this.plot = description
+                this.tags = tags
+                this.score = Score.from10(subject?.imdbRatingValue)
+                this.actors = actors
+                this.recommendations = recommendations
+                addTrailer(trailer, addRaw = true)
             }
         }
-        
-        // Logika TvSeries (Drakor/Serial)
+
         return newTvSeriesLoadResponse(title, url, TvType.TvSeries,
-                document?.resource?.seasons?.map { seasons ->
+            document?.resource?.seasons?.map { seasons ->
                 (if (seasons.allEp.isNullOrEmpty()) (1..seasons.maxEp!!) else seasons.allEp.split(",")
                     .map { it.toInt() })
                     .map { episode ->
@@ -161,15 +154,15 @@ class AdiDrakor : MainAPI() {
                         }
                     }
             }?.flatten() ?: emptyList()) {
-                this.posterUrl = poster
-                this.year = year
-                this.plot = description
-                this.tags = tags
-                this.score = Score.from10(subject?.imdbRatingValue) 
-                this.actors = actors
-                this.recommendations = recommendations
-                addTrailer(trailer, addRaw = true)
-            }
+            this.posterUrl = poster
+            this.year = year
+            this.plot = description
+            this.tags = tags
+            this.score = Score.from10(subject?.imdbRatingValue)
+            this.actors = actors
+            this.recommendations = recommendations
+            addTrailer(trailer, addRaw = true)
+        }
     }
 
     override suspend fun loadLinks(
@@ -180,12 +173,10 @@ class AdiDrakor : MainAPI() {
     ): Boolean {
         val media = parseJson<LoadData>(data)
         val referer = "$apiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&lang=en"
-
         val streams = app.get(
             "$apiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}",
             referer = referer
         ).parsedSafe<Media>()?.data?.streams
-
         streams?.reversed()?.distinctBy { it.url }?.map { source ->
             callback.invoke(
                 newExtractorLink(
@@ -199,10 +190,8 @@ class AdiDrakor : MainAPI() {
                 }
             )
         }
-
         val id = streams?.first()?.id
         val format = streams?.first()?.format
-
         app.get(
             "$apiUrl/wefeed-h5-bff/web/subject/caption?format=$format&id=$id&subjectId=${media.id}",
             referer = referer
@@ -214,10 +203,9 @@ class AdiDrakor : MainAPI() {
                 )
             )
         }
-
         return true
     }
-    
+
     data class LoadData(
         val id: String? = null,
         val season: Int? = null,
@@ -289,8 +277,6 @@ class AdiDrakor : MainAPI() {
         @JsonProperty("trailer") val trailer: Trailer? = null,
         @JsonProperty("detailPath") val detailPath: String? = null,
     ) {
-
-        // FUNGSI INI DIUBAH: Menggunakan tipe yang benar untuk hasil pencarian
         fun toSearchResponse(provider: AdiDrakor): SearchResponse {
             val type = when (subjectType) {
                 1 -> TvType.Movie
@@ -298,7 +284,7 @@ class AdiDrakor : MainAPI() {
                 1006 -> TvType.Anime
                 else -> TvType.Movie
             }
-            
+
             return provider.newMovieSearchResponse(
                 title ?: "",
                 subjectId ?: "",
