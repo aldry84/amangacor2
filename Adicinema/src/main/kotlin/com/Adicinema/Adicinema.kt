@@ -115,8 +115,10 @@ class Adicinema : MainAPI() {
         val imdbMovie = app.get(imdbUrlMovie).parsedSafe<TmdbExternalIds>()?.imdb_id
         val imdbTv = app.get(imdbUrlTv).parsedSafe<TmdbExternalIds>()?.imdb_id
         
-        // PERBAIKAN val reassign: Menggunakan let untuk menetapkan nilai IMDB ID sekali.
-        val imdb = (imdbMovie ?: imdbTv).let { it ?: return false }
+        // PERBAIKAN VAL REASSIGNMENT PADA BARIS INI
+        val imdb = run {
+            imdbMovie ?: imdbTv ?: return false
+        }
         
         val vidsrcUrl = if (season != null && episode != null) {
             // TV Series
