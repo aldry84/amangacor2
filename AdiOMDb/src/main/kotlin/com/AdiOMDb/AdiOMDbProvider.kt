@@ -1,13 +1,12 @@
 package com.AdiOMDb
 
-import com.lagradost.cloudstream3.plugins.CloudstreamPlugin 
-import com.lagradost.cloudstream3.plugins.Plugin // Class dasar yang digunakan untuk pendaftaran
+import com.lagradost.cloudstream3.plugins.BasePlugin
+import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 
+// MENGGUNAKAN BasePlugin SEPERTI PADA Adimoviebox
 @CloudstreamPlugin
-class AdiOMDbProvider: Plugin() { 
-    // Pastikan Anda menggunakan fungsi 'registerMainAPI' di dalam 'load'
-    override fun load() { 
-        // Logika sederhana untuk mendaftarkan API utama Anda
+class AdiOMDbProvider: BasePlugin() { 
+    override fun load() {
         registerMainAPI(AdiOMDb())
     }
 }
