@@ -3,13 +3,15 @@ package com.Adicinema
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
-import com.lagradost.cloudstream3.mvvm.suspendSafe
+import com.lagradost.cloudstream3.mvvm.suspendSafe // Perbaikan 1: Import 'suspendSafe'
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.nicehttp.RequestBodyTypes
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.async
 
 class Adicinema : MainAPI() {
     // API key telah dimasukkan
@@ -17,9 +19,6 @@ class Adicinema : MainAPI() {
     
     // Base URL TMDb untuk API data
     override var mainUrl = "https://api.themoviedb.org/3" 
-    
-    // URL ini dipertahankan, dan TIDAK LAGI DIGUNAKAN untuk loadLinks/extractor
-    // private val apiUrl = "https://fmoviesunblocked.net" // Dihapus karena tidak relevan
     
     override val instantLinkLoading = true
     override var name = "Adicinema" 
@@ -33,7 +32,7 @@ class Adicinema : MainAPI() {
         TvType.AsianDrama
     )
 
-    // PERUBAHAN: Mengubah Main Page untuk mencerminkan endpoint TMDb
+    // ... (getMainPage, quickSearch, search - TIDAK ADA PERUBAHAN) ...
     override val mainPage: List<MainPageData> = mainPageOf(
         "movie/popular" to "Movies Popular",
         "movie/top_rated" to "Movies Top Rated",
@@ -81,7 +80,11 @@ class Adicinema : MainAPI() {
             
         return results 
     }
-
+    
+    // ---
+    
+    ## Perbaikan Fungsi load()
+    
     override suspend fun load(url: String): LoadResponse {
         // Mengambil ID TMDb dari URL, misal: /movie/123456 -> 123456
         val id = url.substringAfterLast("/")
@@ -96,13 +99,10 @@ class Adicinema : MainAPI() {
         
         val title = document?.title ?: document?.name ?: ""
         
-        // Menggunakan mapNotNull untuk menghindari 'Assignment type mismatch' pada tags
         val tags = document?.genres?.mapNotNull { it.name }
 
-        // Mendapatkan URL poster
         val poster = document?.poster_path?.let { "https://image.tmdb.org/t/p/w500$it" }
         
-        // Tanggal rilis atau tanggal tayang pertama
         val releaseDate = document?.release_date ?: document?.first_air_date
         val year = releaseDate?.substringBefore("-")?.toIntOrNull()
         
@@ -114,7 +114,6 @@ class Adicinema : MainAPI() {
         
         val description = document?.overview
         
-        // Mengambil trailer
         val trailer = document?.videos?.results?.firstOrNull { it.type == "Trailer" }?.key?.let { 
             "https://www.youtube.com/watch?v=$it"
         }
@@ -140,37 +139,51 @@ class Adicinema : MainAPI() {
 
         return if (tvType == TvType.TvSeries) {
             
-            // 1. Ambil data Season dari TMDb
-            val seasons = document?.seasons?.mapNotNull { season ->
-                // Jangan masukkan Special Season (Season 0) jika ada season lain
-                if (season.season_number == 0 && (document.seasons.size > 1)) return@mapNotNull null
+            // Perbaikan 2: Menggunakan coroutineScope dan async untuk memuat detail season secara paralel
+            val seasons = coroutineScope {
+                document.seasons?.mapNotNull { season ->
+                    // Jangan masukkan Special Season (Season 0) jika ada season lain
+                    if (season.season_number == 0 && (document.seasons.size > 1)) return@mapNotNull null
 
-                // URL untuk detail Season
-                val seasonEpisodesUrl = "$mainUrl/tv/$id/season/${season.season_number}?api_key=$API_KEY"
-                val episodesDoc = suspendSafe { app.get(seasonEpisodesUrl).parsedSafe<TMDbSeasonDetail>() }?.getOrNull()
+                    async { // Memuat detail season secara asinkron
+                        // URL untuk detail Season
+                        val seasonEpisodesUrl = "$mainUrl/tv/$id/season/${season.season_number}?api_key=$API_KEY"
+                        
+                        // Perbaikan 3: Menggunakan 'suspendSafe' dari impor yang ditambahkan
+                        val episodesDoc = suspendSafe { app.get(seasonEpisodesUrl).parsedSafe<TMDbSeasonDetail>() }
+                            .getOrNull()
 
-                // 2. Map Episode ke EpisodeEntry
-                val episodes = episodesDoc?.episodes?.map { episode ->
-                    // Data yang akan disimpan untuk loadLinks()
-                    val epLoadData = LoadData(
-                        imdbId = imdbId,
-                        season = episode.season_number,
-                        episode = episode.episode_number,
-                        isMovie = false
-                    )
+                        // 4. Map Episode ke EpisodeEntry
+                        val episodes = episodesDoc?.episodes?.map { episode ->
+                            // Perbaikan 4: Referensi properti yang benar dari objek 'episode'
+                            val epLoadData = LoadData(
+                                imdbId = imdbId,
+                                season = episode.season_number,
+                                episode = episode.episode_number,
+                                isMovie = false
+                            )
 
-                    newEpisode(epLoadData.toJson()) {
-                        this.name = "E${episode.episode_number}: ${episode.name}"
-                        this.description = episode.overview
-                        this.date = episode.air_date
-                        this.rating = episode.vote_average?.times(10)?.toInt()
-                        this.posterUrl = episode.still_path?.let { "https://image.tmdb.org/t/p/w500$it" }
+                            newEpisode(epLoadData.toJson()) {
+                                this.name = "E${episode.episode_number}: ${episode.name}"
+                                this.description = episode.overview
+                                this.date = episode.air_date
+                                // Perbaikan 5: Menggunakan 'score' alih-alih 'rating'
+                                this.score = episode.vote_average?.times(10)?.toInt()
+                                // Perbaikan 6: Menggunakan 'posterUrl' untuk gambar still
+                                this.posterUrl = episode.still_path?.let { "https://image.tmdb.org/t/p/w500$it" }
+                            }
+                        } ?: emptyList()
+
+                        // Perbaikan 7: Menggunakan SeasonData CloudStream
+                        SeasonData(
+                            season.name ?: "Season ${season.season_number}", 
+                            null, 
+                            episodes
+                        )
                     }
-                } ?: emptyList()
-
-                // Buat Season untuk SeasonList
-                newSeason(season.name ?: "Season ${season.season_number}", episodes)
+                }?.awaitAll() // Menunggu semua hasil async
             } ?: emptyList()
+
 
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, seasons) {
                 this.posterUrl = poster
@@ -206,7 +219,11 @@ class Adicinema : MainAPI() {
             }
         }
     }
-
+    
+    // ---
+    
+    ## Perbaikan Fungsi loadLinks()
+    
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -220,16 +237,20 @@ class Adicinema : MainAPI() {
         // Tentukan path untuk film atau serial TV
         val type = if (media.isMovie) "movie" else "tv"
         // Movie: tt1234567. TV: tt1234567/1/1
-        val path = if (media.isMovie) imdbId else "$imdbId/${media.season}/${media.episode}"
+        val path = if (media.isMovie) imdbId else "${imdbId}/${media.season}/${media.episode}"
 
         // Menggunakan VidSrc.to sebagai agregator utama karena dapat menggunakan IMDB ID
-        // VidSrc sering menggunakan sumber seperti VidBinge, FlixHQ, SuperStream, dll.
         val finalUrl = "https://vidsrc.to/embed/$type/$path"
 
-        // Menggunakan loadExtractor untuk memuat pemutar dari URL VidSrc.to
-        // Ekstraktor VidSrc.to akan secara otomatis mencoba berbagai sumber/player
+        // Perbaikan 8: loadExtractor membutuhkan URL, referer (optional), dan callback. 
+        // SubtitleCallback diurus secara internal oleh loadExtractor jika didukung oleh VidSrc.to
+        // Menggunakan imdbId sebagai referer (meskipun tidak mutlak diperlukan, tetapi baik untuk keamanan)
         return loadExtractor(finalUrl, imdbId, callback)
     }
+    
+    // ---
+    
+    ## Data Class
     
     // Data Class BARU untuk menyimpan data yang diperlukan untuk loadLinks
     data class LoadData(
@@ -335,6 +356,4 @@ class Adicinema : MainAPI() {
         @JsonProperty("season_number") val season_number: Int? = null,
         @JsonProperty("still_path") val still_path: String? = null
     )
-    
-    // Data Class lama telah dihapus (Media, Data, Streams, Captions)
 }
