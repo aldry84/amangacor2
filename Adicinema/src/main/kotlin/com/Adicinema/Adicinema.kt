@@ -3,10 +3,8 @@ package com.Adicinema
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
-import com.lagradost.cloudstream3.mvvm.suspendSafe // PERBAIKAN: Memastikan import ini ada
-import com.lagradost.cloudstream3.utils.*
-import com.lagradost.cloudstream3.utils.AppUtils.parseJson
-import com.lagradost.cloudstream3.utils.AppUtils.toJson
+import com.lagradost.cloudstream3.mvvm.suspendSafe // PERBAIKAN: Memastikan import ini ada di sini
+import com.lagradost.cloudstream3.utils.* // PERBAIKAN: Menggunakan wildcard untuk utils
 import com.lagradost.nicehttp.RequestBodyTypes
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.async
@@ -125,7 +123,7 @@ class Adicinema : MainAPI() {
                     async { // Memuat detail season secara asinkron
                         val seasonEpisodesUrl = "$mainUrl/tv/$id/season/${season.season_number}?api_key=$API_KEY"
                         
-                        // Perbaikan: suspendSafe dipanggil di sini
+                        // Perbaikan: suspendSafe dipanggil di dalam async/coroutine scope
                         val episodesDoc = suspendSafe { app.get(seasonEpisodesUrl).parsedSafe<TMDbSeasonDetail>() }
                             .getOrNull()
 
@@ -157,7 +155,7 @@ class Adicinema : MainAPI() {
             } ?: emptyList()
 
 
-            newTvSeriesLoadResponse(title, url, TvType.TvSeries, seasons) { // seasons adalah List<SeasonData> (benar)
+            newTvSeriesLoadResponse(title, url, TvType.TvSeries, seasons) { 
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
@@ -199,13 +197,12 @@ class Adicinema : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // PERBAIKAN: Fungsi ini TIDAK lagi memanggil loadExtractor dengan subtitleCallback
-        val media = parseJson<LoadData>(data)
+        // loadLinks seharusnya sudah diperbaiki di kode sebelumnya.
+        val media = AppUtils.parseJson<LoadData>(data)
         val imdbId = media.imdbId ?: return false
 
         val type = if (media.isMovie) "movie" else "tv"
         
-        // Menggunakan Elvis operator untuk memastikan season dan episode tidak null untuk TV
         val path = if (media.isMovie) imdbId else "${imdbId}/${media.season ?: 1}/${media.episode ?: 1}"
 
         val finalUrl = "https://vidsrc.to/embed/$type/$path"
