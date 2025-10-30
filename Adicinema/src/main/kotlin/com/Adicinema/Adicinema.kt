@@ -4,64 +4,43 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.*
-import com.lagradost.cloudstream3.utils.AppUtils.parseJson
-import com.lagradost.cloudstream3.utils.AppUtils.toJson
-import com.lagradost.nicehttp.RequestBodyTypes
-import okhttp3.MediaType.Companion.toMediaTypeOrNull
-import okhttp3.RequestBody.Companion.toRequestBody
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 
 class Adicinema : MainAPI() {
-    // API key telah dimasukkan
-    private val API_KEY = "1d8730d33fc13ccbd8cdaaadb74892c7" 
+    // 🔹 TMDb API Key
+    private val apiKey = "1d8730d33fc13ccbd8cdaaadb74892c7"
     
-    // Base URL TMDb untuk API data
-    override var mainUrl = "https://api.themoviedb.org/3" 
-    
-    // URL ini dipertahankan, dan akan digunakan untuk loadLinks/extractor
-    private val apiUrl = "https://fmoviesunblocked.net" 
-    
-    override val instantLinkLoading = true
-    override var name = "Adicinema" 
+    override var mainUrl = "https://api.themoviedb.org/3"
+    override var name = "Adicinema"
     override val hasMainPage = true
     override val hasQuickSearch = true
-    override var lang = "en"
     override val supportedTypes = setOf(
         TvType.Movie,
         TvType.TvSeries,
-        TvType.Anime,
-        TvType.AsianDrama
+        TvType.Anime
     )
 
-    // PERUBAHAN: Mengubah Main Page untuk mencerminkan endpoint TMDb
-    override val mainPage: List<MainPageData> = mainPageOf(
-        "movie/popular" to "Movies Popular",
-        "movie/top_rated" to "Movies Top Rated",
-        "tv/popular" to "TV Shows Popular",
-        "tv/top_rated" to "TV Shows Top Rated",
-        "discover/movie?with_genres=16" to "Animation (Discover)", // Genre ID 16 untuk Animation/Kartun
+    override val lang = "en"
+    override val instantLinkLoading = true
+
+    override val mainPage = mainPageOf(
+        "$mainUrl/trending/movie/day?api_key=$apiKey" to "Trending Movies",
+        "$mainUrl/movie/popular?api_key=$apiKey" to "Popular Movies",
+        "$mainUrl/movie/top_rated?api_key=$apiKey" to "Top Rated Movies",
+        "$mainUrl/tv/popular?api_key=$apiKey" to "Popular TV Shows",
+        "$mainUrl/tv/top_rated?api_key=$apiKey" to "Top Rated TV Shows",
+        "$mainUrl/discover/movie?api_key=$apiKey&with_genres=16" to "Animation"
     )
 
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse {
-        val typeAndSort = request.data
-        
-        // Membangun URL untuk endpoint TMDb dengan API key dan parameter
-        val url = if (typeAndSort.contains("discover")) {
-            // Untuk endpoint discover, tambahkan page di akhir
-            "$mainUrl/$typeAndSort&api_key=$API_KEY&page=$page"
-        } else {
-            // Untuk endpoint popular/top_rated, tambahkan page di akhir
-            "$mainUrl/$typeAndSort?api_key=$API_KEY&page=$page"
-        }
-
-        val home = app.get(url)
-            .parsedSafe<TMDbPageResult>()?.results?.map {
-                it.toSearchResponse(this)
-            } ?: throw ErrorLoadingException("No Data Found")
-
-        return newHomePageResponse(request.name, home)
+        val url = "${request.data}&page=$page"
+        val response = app.get(url).parsedSafe<TmdbListResponse>()
+        val items = response?.results?.mapNotNull { it.toSearchResponse(this) }
+        return newHomePageResponse(request.name, items ?: emptyList())
     }
 
     override suspend fun quickSearch(query: String): List<SearchResponse> {
@@ -69,104 +48,67 @@ class Adicinema : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse>? {
-        // Menggunakan endpoint search/multi
-        val url = "$mainUrl/search/multi?api_key=$API_KEY&query=$query" 
-
-        val results = app.get(url)
-            .parsedSafe<TMDbPageResult>()?.results
-            ?.filter { it.media_type != "person" } // Filter hasil yang berupa orang
-            ?.map { it.toSearchResponse(this) }
-            ?: return null
-            
-        return results 
+        val url = "$mainUrl/search/multi?api_key=$apiKey&query=${query.encodeUrl()}"
+        val response = app.get(url).parsedSafe<TmdbListResponse>()
+        return response?.results?.mapNotNull { it.toSearchResponse(this) }
     }
 
     override suspend fun load(url: String): LoadResponse {
-        // Mengambil ID TMDb dari URL, misal: /movie/123456 -> 123456
         val id = url.substringAfterLast("/")
-        val mediaType = if (url.contains("/tv/")) "tv" else "movie"
+        val isTv = url.contains("/tv/")
+        val endpoint = if (isTv) "tv" else "movie"
 
-        // Endpoint detail TMDb dengan append info tambahan
-        val detailUrl = "$mainUrl/$mediaType/$id?api_key=$API_KEY&append_to_response=videos,credits,recommendations"
-        
-        // Memuat detail dari TMDb
-        val document = app.get(detailUrl)
-            .parsedSafe<TMDbDetailResult>()
-        
-        val title = document?.title ?: document?.name ?: ""
-        
-        // Menggunakan mapNotNull untuk menghindari 'Assignment type mismatch' pada tags
-        val tags = document?.genres?.mapNotNull { it.name }
+        val detailUrl = "$mainUrl/$endpoint/$id?api_key=$apiKey&append_to_response=videos,credits,recommendations"
+        val detail = app.get(detailUrl).parsedSafe<TmdbDetail>() ?: throw ErrorLoadingException("No Data")
 
-        // Mendapatkan URL poster
-        val poster = document?.poster_path?.let { "https://image.tmdb.org/t/p/w500$it" }
-        
-        // Tanggal rilis atau tanggal tayang pertama
-        val releaseDate = document?.release_date ?: document?.first_air_date
-        val year = releaseDate?.substringBefore("-")?.toIntOrNull()
-        
-        val tvType = when(document?.media_type) {
-            "tv" -> TvType.TvSeries
-            "movie" -> TvType.Movie
-            else -> TvType.Movie
-        }
-        
-        val description = document?.overview
-        
-        // Mengambil trailer
-        val trailer = document?.videos?.results?.firstOrNull { it.type == "Trailer" }?.key?.let { 
+        val title = detail.title ?: detail.name ?: "Unknown"
+        val poster = "https://image.tmdb.org/t/p/w500${detail.posterPath}"
+        val description = detail.overview
+        val year = detail.releaseDate?.take(4)?.toIntOrNull()
+        val tags = detail.genres?.mapNotNull { it.name }
+        val score = Score.from10(detail.voteAverage?.toString())
+        val trailer = detail.videos?.results?.firstOrNull { it.site == "YouTube" && it.type == "Trailer" }?.key?.let {
             "https://www.youtube.com/watch?v=$it"
         }
-        
-        val actors = document?.credits?.cast?.mapNotNull { cast ->
-            ActorData(
-                Actor(
-                    cast.name ?: return@mapNotNull null,
-                    cast.profile_path?.let { "https://image.tmdb.org/t/p/w500$it" }
-                ),
-                roleString = cast.character
-            )
-        }?.distinctBy { it.actor }
 
-        val recommendations =
-            document?.recommendations?.results?.map {
-                it.toSearchResponse(this)
-            }
+        val actors = detail.credits?.cast?.map {
+            ActorData(Actor(it.name ?: "", "https://image.tmdb.org/t/p/w500${it.profilePath}"))
+        }
 
+        val recommendations = detail.recommendations?.results?.mapNotNull { it.toSearchResponse(this) }
 
-        // Mempertahankan struktur load links lama
-        val loadData = LoadData(
-            id,
-            null, 
-            null,
-            null 
-        )
+        val type = if (isTv) TvType.TvSeries else TvType.Movie
 
-        return if (tvType == TvType.TvSeries) {
-            val episodeList = listOf(newEpisode(loadData.toJson()))
-            
-            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodeList) {
+        return if (type == TvType.TvSeries) {
+            val episodes = detail.seasons?.flatMap { season ->
+                (1..(season.episodeCount ?: 0)).map { ep ->
+                    newEpisode(
+                        LoadData(id, seasonNumber = season.seasonNumber, episodeNumber = ep).toJson()
+                    ) {
+                        this.name = "Episode $ep"
+                        this.season = season.seasonNumber
+                        this.episode = ep
+                    }
+                }
+            } ?: emptyList()
+
+            newTvSeriesLoadResponse(title, url, type, episodes) {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
-                this.tags = tags // Perbaikan type mismatch diterapkan di sini
-                this.score = Score.from10(document?.vote_average?.toFloat()) 
+                this.tags = tags
+                this.score = score
                 this.actors = actors
                 this.recommendations = recommendations
                 addTrailer(trailer, addRaw = true)
             }
         } else {
-            newMovieLoadResponse(
-                title,
-                url,
-                TvType.Movie,
-                loadData.toJson()
-            ) {
+            newMovieLoadResponse(title, url, type, data = id) {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
-                this.tags = tags // Perbaikan type mismatch diterapkan di sini
-                this.score = Score.from10(document?.vote_average?.toFloat())
+                this.tags = tags
+                this.score = score
                 this.actors = actors
                 this.recommendations = recommendations
                 addTrailer(trailer, addRaw = true)
@@ -180,135 +122,77 @@ class Adicinema : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // Bagian ini TIDAK DIUBAH (menggunakan apiUrl lama)
-        val media = parseJson<LoadData>(data)
-        val referer = "$apiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&lang=en"
-
-        val streams = app.get(
-            "$apiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}",
-            referer = referer
-        ).parsedSafe<Media>()?.data?.streams
-
-        streams?.reversed()?.distinctBy { it.url }?.map { source ->
-            callback.invoke(
-                newExtractorLink(
-                    this.name,
-                    this.name,
-                    source.url ?: return@map,
-                    INFER_TYPE
-                ) {
-                    this.referer = "$apiUrl/"
-                    this.quality = getQualityFromName(source.resolutions)
-                }
-            )
-        }
-
-        val id = streams?.first()?.id
-        val format = streams?.first()?.format
-
-        app.get(
-            "$apiUrl/wefeed-h5-bff/web/subject/caption?format=$format&id=$id&subjectId=${media.id}",
-            referer = referer
-        ).parsedSafe<Media>()?.data?.captions?.map { subtitle ->
-            subtitleCallback.invoke(
-                newSubtitleFile(
-                    subtitle.lanName ?: "",
-                    subtitle.url ?: return@map
-                )
-            )
-        }
-
-        return true
+        // TMDb tidak menyediakan streaming langsung.
+        // Biasanya dihubungkan ke sumber eksternal (misal: JustWatch, dll)
+        // Di sini kita buat placeholder.
+        return false
     }
-    
-    // Data Class untuk menyimpan data lama yang diperlukan untuk loadLinks
-    data class LoadData(
-        val id: String? = null,
-        val season: Int? = null,
-        val episode: Int? = null,
-        val detailPath: String? = null,
+
+    // ==== Data Class TMDb ====
+
+    data class TmdbListResponse(
+        @JsonProperty("results") val results: List<TmdbItem>? = null
     )
 
-    // Data Class untuk hasil list dari TMDb (getMainPage dan search)
-    data class TMDbPageResult(
-        @JsonProperty("results") val results: ArrayList<TMDbSearchItem>? = arrayListOf(),
-    )
-
-    // Data Class untuk item list dari TMDb
-    data class TMDbSearchItem(
+    data class TmdbItem(
         @JsonProperty("id") val id: Int? = null,
-        @JsonProperty("media_type") val media_type: String? = null,
+        @JsonProperty("media_type") val mediaType: String? = null,
         @JsonProperty("title") val title: String? = null,
-        @JsonProperty("name") val name: String? = null, // Untuk TV Series
-        @JsonProperty("poster_path") val poster_path: String? = null,
-        @JsonProperty("vote_average") val vote_average: Double? = null,
+        @JsonProperty("name") val name: String? = null,
+        @JsonProperty("poster_path") val posterPath: String? = null,
+        @JsonProperty("vote_average") val voteAverage: Double? = null
     ) {
-        fun toSearchResponse(provider: Adicinema): SearchResponse {
-            val type = when (media_type) {
+        fun toSearchResponse(provider: Adicinema): SearchResponse? {
+            val realType = when (mediaType) {
                 "tv" -> TvType.TvSeries
                 "movie" -> TvType.Movie
                 else -> TvType.Movie
             }
-            // URL baru akan berupa /tipe/id untuk digunakan di load()
-            val url = "/$media_type/$id" 
-            
-            return provider.newMovieSearchResponse(
-                title ?: name ?: "",
-                url, // Menggunakan URL sebagai ID untuk load
-                type,
-                false
-            ) {
-                this.posterUrl = poster_path?.let { "https://image.tmdb.org/t/p/w500$it" }
-                this.score = Score.from10(vote_average?.toFloat())
+            val realTitle = title ?: name ?: return null
+            val realPoster = posterPath?.let { "https://image.tmdb.org/t/p/w500$it" }
+
+            return provider.newMovieSearchResponse(realTitle, "${provider.mainUrl}/$mediaType/$id", realType) {
+                this.posterUrl = realPoster
+                this.score = Score.from10(voteAverage?.toString())
             }
         }
     }
 
-    // Data Class untuk detail dari TMDb (load)
-    data class TMDbDetailResult(
+    data class TmdbDetail(
+        @JsonProperty("id") val id: Int? = null,
         @JsonProperty("title") val title: String? = null,
-        @JsonProperty("name") val name: String? = null, // Untuk TV Series
-        @JsonProperty("media_type") val media_type: String? = null,
-        @JsonProperty("poster_path") val poster_path: String? = null,
+        @JsonProperty("name") val name: String? = null,
         @JsonProperty("overview") val overview: String? = null,
-        @JsonProperty("release_date") val release_date: String? = null,
-        @JsonProperty("first_air_date") val first_air_date: String? = null, // Untuk TV Series
-        @JsonProperty("vote_average") val vote_average: Double? = null,
+        @JsonProperty("poster_path") val posterPath: String? = null,
+        @JsonProperty("release_date") val releaseDate: String? = null,
+        @JsonProperty("vote_average") val voteAverage: Double? = null,
         @JsonProperty("genres") val genres: List<Genre>? = null,
         @JsonProperty("videos") val videos: Videos? = null,
         @JsonProperty("credits") val credits: Credits? = null,
-        @JsonProperty("recommendations") val recommendations: TMDbPageResult? = null,
+        @JsonProperty("recommendations") val recommendations: TmdbListResponse? = null,
+        @JsonProperty("seasons") val seasons: List<Season>? = null,
     ) {
         data class Genre(@JsonProperty("name") val name: String? = null)
-        data class Videos(@JsonProperty("results") val results: List<VideoItem>? = null)
-        data class VideoItem(@JsonProperty("key") val key: String? = null, @JsonProperty("type") val type: String? = null)
-        data class Credits(@JsonProperty("cast") val cast: List<CastItem>? = null)
-        data class CastItem(
+        data class Videos(@JsonProperty("results") val results: List<Video>? = null)
+        data class Video(
+            @JsonProperty("key") val key: String? = null,
+            @JsonProperty("site") val site: String? = null,
+            @JsonProperty("type") val type: String? = null,
+        )
+        data class Credits(@JsonProperty("cast") val cast: List<Cast>? = null)
+        data class Cast(
             @JsonProperty("name") val name: String? = null,
-            @JsonProperty("character") val character: String? = null,
-            @JsonProperty("profile_path") val profile_path: String? = null
+            @JsonProperty("profile_path") val profilePath: String? = null,
+        )
+        data class Season(
+            @JsonProperty("season_number") val seasonNumber: Int? = null,
+            @JsonProperty("episode_count") val episodeCount: Int? = null,
         )
     }
 
-    // Data Class lama (dipertahankan hanya untuk loadLinks/extractor)
-    data class Media(
-        @JsonProperty("data") val data: Data? = null,
-    ) {
-        data class Data(
-            @JsonProperty("streams") val streams: ArrayList<Streams>? = arrayListOf(),
-            @JsonProperty("captions") val captions: ArrayList<Captions>? = arrayListOf(),
-        ) {
-            data class Streams(
-                @JsonProperty("id") val id: String? = null,
-                @JsonProperty("format") val format: String? = null,
-                @JsonProperty("url") val url: String? = null,
-                @JsonProperty("resolutions") val resolutions: String? = null,
-            )
-
-            data class Captions(
-                @JsonProperty("lanName") val lanName: String? = null,
-                @JsonProperty("url") val url: String? = null,
-            )
-        }
-    }
+    data class LoadData(
+        val id: String,
+        val seasonNumber: Int? = null,
+        val episodeNumber: Int? = null
+    )
 }
