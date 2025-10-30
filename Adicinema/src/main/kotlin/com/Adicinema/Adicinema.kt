@@ -4,13 +4,14 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.*
+import com.lagradost.cloudstream3.utils.AppUtils.encodeUrl
+import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 
 class Adicinema : MainAPI() {
-    // 🔹 TMDb API Key
     private val apiKey = "1d8730d33fc13ccbd8cdaaadb74892c7"
-    
+
     override var mainUrl = "https://api.themoviedb.org/3"
     override var name = "Adicinema"
     override val hasMainPage = true
@@ -21,7 +22,7 @@ class Adicinema : MainAPI() {
         TvType.Anime
     )
 
-    override val lang = "en"
+    override var lang = "en"
     override val instantLinkLoading = true
 
     override val mainPage = mainPageOf(
@@ -82,13 +83,13 @@ class Adicinema : MainAPI() {
         return if (type == TvType.TvSeries) {
             val episodes = detail.seasons?.flatMap { season ->
                 (1..(season.episodeCount ?: 0)).map { ep ->
-                    newEpisode(
+                    val episode = newEpisode(
                         LoadData(id, seasonNumber = season.seasonNumber, episodeNumber = ep).toJson()
-                    ) {
-                        this.name = "Episode $ep"
-                        this.season = season.seasonNumber
-                        this.episode = ep
-                    }
+                    )
+                    episode.name = "Episode $ep"
+                    episode.season = season.seasonNumber
+                    episode.episode = ep
+                    episode
                 }
             } ?: emptyList()
 
@@ -123,8 +124,6 @@ class Adicinema : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         // TMDb tidak menyediakan streaming langsung.
-        // Biasanya dihubungkan ke sumber eksternal (misal: JustWatch, dll)
-        // Di sini kita buat placeholder.
         return false
     }
 
