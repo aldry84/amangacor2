@@ -11,7 +11,6 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 
 class Adicinema : MainAPI() {
-    // API key telah dimasukkan
     private val API_KEY = "1d8730d33fc13ccbd8cdaaadb74892c7"
 
     // Base URL TMDb untuk API data
@@ -32,7 +31,6 @@ class Adicinema : MainAPI() {
         TvType.AsianDrama
     )
 
-    // PERUBAHAN: Mengubah Main Page untuk mencerminkan endpoint TMDb
     override val mainPage: List<MainPageData> = mainPageOf(
         "movie/popular" to "Movies Popular",
         "movie/top_rated" to "Movies Top Rated",
@@ -46,13 +44,12 @@ class Adicinema : MainAPI() {
         request: MainPageRequest,
     ): HomePageResponse {
         val typeAndSort = request.data
-        // Membangun URL untuk endpoint TMDb dengan API key dan parameter
         val url = if (typeAndSort.contains("discover")) {
-            // Untuk endpoint discover, tambahkan page di akhir
-            "$mainUrl/$typeAndSort&api_key=$API_KEY&page=$page"
+            // Ditambahkan &language=en-US (praktik baik)
+            "$mainUrl/$typeAndSort&api_key=$API_KEY&language=en-US&page=$page"
         } else {
-            // Untuk endpoint popular/top_rated, tambahkan page di akhir
-            "$mainUrl/$typeAndSort?api_key=$API_KEY&page=$page"
+            // Ditambahkan &language=en-US (praktik baik)
+            "$mainUrl/$typeAndSort?api_key=$API_KEY&language=en-US&page=$page"
         }
         val home = app.get(url)
             .parsedSafe<TMDbPageResult>()?.results?.map { it.toSearchResponse(this) }
@@ -65,8 +62,8 @@ class Adicinema : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse>? {
-        // Menggunakan endpoint search/multi
-        val url = "$mainUrl/search/multi?api_key=$API_KEY&query=$query"
+        // Menggunakan endpoint search/multi dengan language dan filter dewasa
+        val url = "$mainUrl/search/multi?api_key=$API_KEY&query=$query&language=en-US&include_adult=false"
 
         val results = app.get(url)
             .parsedSafe<TMDbPageResult>()?.results
@@ -80,21 +77,17 @@ class Adicinema : MainAPI() {
         // Mengambil ID TMDb dari URL, misal: /movie/123456 -> 123456
         val id = url.substringAfterLast("/")
         val mediaType = if (url.contains("/tv/")) "tv" else "movie"
-        // Endpoint detail TMDb dengan append info tambahan
-        val detailUrl = "$mainUrl/$mediaType/$id?api_key=$API_KEY&append_to_response=videos,credits,recommendations"
+        
+        // PERBAIKAN KRITIS 1: Menambahkan external_ids untuk mendapatkan IMDb ID
+        val detailUrl = "$mainUrl/$mediaType/$id?api_key=$API_KEY&append_to_response=videos,credits,recommendations,external_ids"
 
         // Memuat detail dari TMDb
         val document = app.get(detailUrl)
             .parsedSafe<TMDbDetailResult>()
 
         val title = document?.title ?: document?.name ?: ""
-
-        // Menggunakan mapNotNull untuk menghindari 'Assignment type mismatch' pada tags
         val tags = document?.genres?.mapNotNull { it.name }
-        // Mendapatkan URL poster
         val poster = document?.poster_path?.let { "https://image.tmdb.org/t/p/w500$it" }
-
-        // Tanggal rilis atau tanggal tayang pertama
         val releaseDate = document?.release_date ?: document?.first_air_date
         val year = releaseDate?.substringBefore("-")?.toIntOrNull()
 
@@ -106,7 +99,6 @@ class Adicinema : MainAPI() {
 
         val description = document?.overview
 
-        // Mengambil trailer
         val trailer = document?.videos?.results?.firstOrNull { it.type == "Trailer" }?.key?.let {
             "https://www.youtube.com/watch?v=$it"
         }
@@ -121,20 +113,24 @@ class Adicinema : MainAPI() {
             )
         }?.distinctBy { it.actor }
         val recommendations = document?.recommendations?.results?.map { it.toSearchResponse(this) }
-        // Mempertahankan struktur load links lama
+        
+        // PERBAIKAN KRITIS 2: Menyimpan IMDb ID ke dalam LoadData
+        val imdbId = document?.external_ids?.imdb_id
+
         val loadData = LoadData(
             id,
-            null,
+            imdbId, // Menyimpan IMDb ID
             null,
             null
         )
+        
         return if (tvType == TvType.TvSeries) {
             val episodeList = listOf(newEpisode(loadData.toJson()))
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodeList) {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
-                this.tags = tags // Perbaikan type mismatch diterapkan di sini
+                this.tags = tags
                 this.score = Score.from10(document?.vote_average?.toFloat())
                 this.actors = actors
                 this.recommendations = recommendations
@@ -150,7 +146,7 @@ class Adicinema : MainAPI() {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
-                this.tags = tags // Perbaikan type mismatch diterapkan di sini
+                this.tags = tags
                 this.score = Score.from10(document?.vote_average?.toFloat())
                 this.actors = actors
                 this.recommendations = recommendations
@@ -166,8 +162,11 @@ class Adicinema : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val media = parseJson<LoadData>(data)
-        val imdbId = media.id ?: return false // Pastikan ID ada
-
+        
+        // PERBAIKAN KRITIS 3: Mengutamakan IMDb ID. Fallback ke TMDb ID jika IMDb ID kosong.
+        // Sumber link pihak ketiga umumnya menggunakan IMDb ID.
+        val contentId = media.imdbId ?: media.id ?: return false 
+        
         val sources = listOf(
             "VidSrc.to",
             "flixhq.to",
@@ -177,7 +176,7 @@ class Adicinema : MainAPI() {
         )
 
         val searchResults = sources.flatMap { source ->
-            getLinksFromSource(source, imdbId)
+            getLinksFromSource(source, contentId)
         }
 
         searchResults.forEach { link ->
@@ -187,65 +186,64 @@ class Adicinema : MainAPI() {
         return searchResults.isNotEmpty()
     }
 
-    private suspend fun getLinksFromSource(source: String, imdbId: String): List<ExtractorLink> {
+    private suspend fun getLinksFromSource(source: String, contentId: String): List<ExtractorLink> {
+        // Karena sebagian besar sumber link eksternal menggunakan IMDb ID,
+        // kita akan menggunakannya sebagai 'contentId' di sini.
+        // Format link di bawah ini masih merupakan placeholder.
         return when (source) {
-            "VidSrc.to" -> searchVidSrc(imdbId)
-            "flixhq.to" -> searchFlixHQ(imdbId)
-            "moviesapi.club" -> searchMoviesAPI(imdbId)
-            "superstream.lol" -> searchSuperStream(imdbId)
-            "vidbinge.com" -> searchVidBinge(imdbId)
+            "VidSrc.to" -> searchVidSrc(contentId)
+            "flixhq.to" -> searchFlixHQ(contentId)
+            "moviesapi.club" -> searchMoviesAPI(contentId)
+            "superstream.lol" -> searchSuperStream(contentId)
+            "vidbinge.com" -> searchVidBinge(contentId)
             else -> emptyList()
         }
     }
 
-    private suspend fun searchVidSrc(imdbId: String): List<ExtractorLink> {
+    // Fungsi-fungsi pencarian link tetap merupakan placeholder.
+    private suspend fun searchVidSrc(contentId: String): List<ExtractorLink> {
         // Implementasi untuk mencari dan mendapatkan link dari VidSrc.to
-        // Contoh:
-        val url = "https://vidsrc.to/embed/movie/$imdbId" // Sesuaikan URL
-        val response = app.get(url).text
-        // Parse response untuk mendapatkan link
+        // Pastikan Anda membedakan antara ID film (muatan ID) dan ID serial TV.
+        val url = "https://vidsrc.to/embed/movie/$contentId" // Ganti 'movie' dengan 'tv' jika serial
         // ...
-        return listOf(newExtractorLink("VidSrc", "VidSrc", "example.com/link", INFER_TYPE))
+        return listOf(newExtractorLink("VidSrc", "VidSrc", "example.com/link-vidsrc", INFER_TYPE))
     }
 
-    private suspend fun searchFlixHQ(imdbId: String): List<ExtractorLink> {
-        // Implementasi untuk mencari dan mendapatkan link dari flixhq.to
+    private suspend fun searchFlixHQ(contentId: String): List<ExtractorLink> {
         // ...
-        return listOf(newExtractorLink("FlixHQ", "FlixHQ", "example.com/link", INFER_TYPE))
+        return listOf(newExtractorLink("FlixHQ", "FlixHQ", "example.com/link-flixhq", INFER_TYPE))
     }
 
-    private suspend fun searchMoviesAPI(imdbId: String): List<ExtractorLink> {
-        // Implementasi untuk mencari dan mendapatkan link dari moviesapi.club
+    private suspend fun searchMoviesAPI(contentId: String): List<ExtractorLink> {
         // ...
-        return listOf(newExtractorLink("MoviesAPI", "MoviesAPI", "example.com/link", INFER_TYPE))
+        return listOf(newExtractorLink("MoviesAPI", "MoviesAPI", "example.com/link-moviesapi", INFER_TYPE))
     }
 
-    private suspend fun searchSuperStream(imdbId: String): List<ExtractorLink> {
-        // Implementasi untuk mencari dan mendapatkan link dari superstream.lol
+    private suspend fun searchSuperStream(contentId: String): List<ExtractorLink> {
         // ...
-        return listOf(newExtractorLink("SuperStream", "SuperStream", "example.com/link", INFER_TYPE))
+        return listOf(newExtractorLink("SuperStream", "SuperStream", "example.com/link-superstream", INFER_TYPE))
     }
 
-    private suspend fun searchVidBinge(imdbId: String): List<ExtractorLink> {
-        // Implementasi untuk mencari dan mendapatkan link dari vidbinge.com
+    private suspend fun searchVidBinge(contentId: String): List<ExtractorLink> {
         // ...
-        return listOf(newExtractorLink("VidBinge", "VidBinge", "example.com/link", INFER_TYPE))
+        return listOf(newExtractorLink("VidBinge", "VidBinge", "example.com/link-vidbinge", INFER_TYPE))
     }
 
-    // Data Class untuk menyimpan data lama yang diperlukan untuk loadLinks
+    // PERBAIKAN DATA CLASS: Menambahkan 'imdbId'
     data class LoadData(
-        val id: String? = null,
+        val id: String? = null, // TMDb ID
+        val imdbId: String? = null, // IMDb ID - BARU
         val season: Int? = null,
         val episode: Int? = null,
         val detailPath: String? = null,
     )
 
-    // Data Class untuk hasil list dari TMDb (getMainPage dan search)
+    // Data Class untuk hasil list dari TMDb (getMainPage dan search) - TIDAK ADA PERUBAHAN
     data class TMDbPageResult(
         @JsonProperty("results") val results: ArrayList<TMDbSearchItem>? = arrayListOf(),
     )
 
-    // Data Class untuk item list dari TMDb
+    // Data Class untuk item list dari TMDb - TIDAK ADA PERUBAHAN
     data class TMDbSearchItem(
         @JsonProperty("id") val id: Int? = null,
         @JsonProperty("media_type") val media_type: String? = null,
@@ -260,7 +258,6 @@ class Adicinema : MainAPI() {
                 "movie" -> TvType.Movie
                 else -> TvType.Movie
             }
-            // URL baru akan berupa /tipe/id untuk digunakan di load()
             val url = "/$media_type/$id"
 
             return provider.newMovieSearchResponse(
@@ -274,20 +271,21 @@ class Adicinema : MainAPI() {
         }
     }
 
-    // Data Class untuk detail dari TMDb (load)
+    // PERBAIKAN DATA CLASS: Menambahkan ExternalIds
     data class TMDbDetailResult(
         @JsonProperty("title") val title: String? = null,
-        @JsonProperty("name") val name: String? = null, // Untuk TV Series
+        @JsonProperty("name") val name: String? = null,
         @JsonProperty("media_type") val media_type: String? = null,
         @JsonProperty("poster_path") val poster_path: String? = null,
         @JsonProperty("overview") val overview: String? = null,
         @JsonProperty("release_date") val release_date: String? = null,
-        @JsonProperty("first_air_date") val first_air_date: String? = null, // Untuk TV Series
+        @JsonProperty("first_air_date") val first_air_date: String? = null,
         @JsonProperty("vote_average") val vote_average: Double? = null,
         @JsonProperty("genres") val genres: List<Genre>? = null,
         @JsonProperty("videos") val videos: Videos? = null,
         @JsonProperty("credits") val credits: Credits? = null,
         @JsonProperty("recommendations") val recommendations: TMDbPageResult? = null,
+        @JsonProperty("external_ids") val external_ids: ExternalIds? = null, // <-- BARU
     ) {
         data class Genre(@JsonProperty("name") val name: String? = null)
         data class Videos(@JsonProperty("results") val results: List<VideoItem>? = null)
@@ -298,9 +296,11 @@ class Adicinema : MainAPI() {
             @JsonProperty("character") val character: String? = null,
             @JsonProperty("profile_path") val profile_path: String? = null
         )
+        // BARU: Data Class untuk External ID
+        data class ExternalIds(@JsonProperty("imdb_id") val imdb_id: String? = null)
     }
 
-    // Data Class lama (dipertahankan hanya untuk loadLinks/extractor)
+    // Data Class lama (dipertahankan)
     data class Media(
         @JsonProperty("data") val data: Data? = null,
     ) {
