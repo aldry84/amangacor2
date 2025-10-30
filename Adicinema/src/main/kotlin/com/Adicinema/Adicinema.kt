@@ -1,14 +1,31 @@
 package com.Adicinema
 
 import com.fasterxml.jackson.annotation.JsonProperty
-import com.lagradost.cloudstream3.* // Impor utama: mencakup LoadResponse.Companion, MainAPI, dll.
-import com.lagradost.cloudstream3.utils.* // Impor utilitas
+// Impor Eksplisit untuk Cloudstream3
+import com.lagradost.cloudstream3.LoadResponse
+import com.lagradost.cloudstream3.LoadResponse.Companion.addCast
+import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
+import com.lagradost.cloudstream3.MainAPI
+import com.lagradost.cloudstream3.TvType
+import com.lagradost.cloudstream3.model.Cast
+import com.lagradost.cloudstream3.model.Episode
+import com.lagradost.cloudstream3.model.ExtractorLink
+import com.lagradost.cloudstream3.model.ResultType
+import com.lagradost.cloudstream3.model.SearchResponse
+import com.lagradost.cloudstream3.model.SubtitleFile
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
+import com.lagradost.cloudstream3.utils.getQualityFromName
+import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.ErrorLoadingException
+import com.lagradost.cloudstream3.utils.INFER_TYPE
+import com.lagradost.cloudstream3.model.Score
 import com.lagradost.nicehttp.RequestBodyTypes
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.net.URLEncoder
+
+// Memastikan semua fungsi/kelas utama didefinisikan secara eksplisit.
 
 class Adicinema : MainAPI() {
     // === KONFIGURASI API ===
@@ -63,7 +80,6 @@ class Adicinema : MainAPI() {
         
         val trailer = detail.videos?.results?.firstOrNull { it.type == "Trailer" && it.site == "YouTube" }
         
-        // Perbaikan: Kelas Cast seharusnya sudah diimpor melalui com.lagradost.cloudstream3.*
         val cast = detail.credits?.cast?.take(10)?.mapNotNull { 
             Cast(it.name ?: return@mapNotNull null, it.character ?: return@mapNotNull null, null, null)
         }
@@ -97,8 +113,9 @@ class Adicinema : MainAPI() {
                 this.plot = plot
                 this.tags = tags
                 this.score = score
+                // Perbaikan sintaksis
                 trailer?.key?.let { addTrailer("https://www.youtube.com/watch?v=$it") }
-                cast?.let { addCast(it) } // Perbaikan: addCast seharusnya bekerja sekarang
+                cast?.let { addCast(it) } 
             }
         } else {
             val epData = EpisodeData(tmdbID, 1, 1, fmoviesID)
@@ -108,8 +125,9 @@ class Adicinema : MainAPI() {
                 this.plot = plot
                 this.tags = tags
                 this.score = score
+                // Perbaikan sintaksis
                 trailer?.key?.let { addTrailer("https://www.youtube.com/watch?v=$it") }
-                cast?.let { addCast(it) } // Perbaikan: addCast seharusnya bekerja sekarang
+                cast?.let { addCast(it) }
             }
         }
     }
