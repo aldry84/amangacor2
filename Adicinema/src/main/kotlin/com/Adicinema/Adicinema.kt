@@ -32,8 +32,7 @@ class Adicinema : MainAPI() {
         TvType.AsianDrama
     )
 
-    // PERUBAHAN: Mengubah Main Page untuk mencerminkan endpoint TMDb yang lebih umum
-    // Menggunakan endpoint discover dan popular/top_rated
+    // PERUBAHAN: Mengubah Main Page untuk mencerminkan endpoint TMDb
     override val mainPage: List<MainPageData> = mainPageOf(
         "movie/popular" to "Movies Popular",
         "movie/top_rated" to "Movies Top Rated",
@@ -57,7 +56,6 @@ class Adicinema : MainAPI() {
             "$mainUrl/$typeAndSort?api_key=$API_KEY&page=$page"
         }
 
-        // PERUBAHAN UTAMA: Mengganti post dengan get, dan endpoint ke standar TMDb
         val home = app.get(url)
             .parsedSafe<TMDbPageResult>()?.results?.map {
                 it.toSearchResponse(this)
@@ -71,12 +69,12 @@ class Adicinema : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse>? {
-        // PERUBAHAN UTAMA: Mengganti endpoint pencarian ke standar TMDb
+        // Menggunakan endpoint search/multi
         val url = "$mainUrl/search/multi?api_key=$API_KEY&query=$query" 
 
         val results = app.get(url)
             .parsedSafe<TMDbPageResult>()?.results
-            ?.filter { it.media_type != "person" } // Filter out results that are people
+            ?.filter { it.media_type != "person" } // Filter hasil yang berupa orang
             ?.map { it.toSearchResponse(this) }
             ?: return null
             
@@ -84,12 +82,11 @@ class Adicinema : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        // Asumsi URL berisi tipe media dan ID TMDb, misal: /movie/123456
-        // Karena ini tidak ada di kode asli, saya akan menggunakan URL asli untuk ID
+        // Mengambil ID TMDb dari URL, misal: /movie/123456 -> 123456
         val id = url.substringAfterLast("/")
         val mediaType = if (url.contains("/tv/")) "tv" else "movie"
 
-        // PERUBAHAN UTAMA: Mengganti endpoint detail ke standar TMDb
+        // Endpoint detail TMDb dengan append info tambahan
         val detailUrl = "$mainUrl/$mediaType/$id?api_key=$API_KEY&append_to_response=videos,credits,recommendations"
         
         // Memuat detail dari TMDb
@@ -97,23 +94,26 @@ class Adicinema : MainAPI() {
             .parsedSafe<TMDbDetailResult>()
         
         val title = document?.title ?: document?.name ?: ""
-        // TMDb menggunakan poster_path, bukan subject?.cover?.url
-        val poster = document?.poster_path?.let { "https://image.tmdb.org/t/p/w500$it" }
-        val tags = document?.genres?.map { it.name }
+        
+        // Menggunakan mapNotNull untuk menghindari 'Assignment type mismatch' pada tags
+        val tags = document?.genres?.mapNotNull { it.name }
 
-        // Untuk TMDb, tanggal rilis atau tanggal tayang pertama
+        // Mendapatkan URL poster
+        val poster = document?.poster_path?.let { "https://image.tmdb.org/t/p/w500$it" }
+        
+        // Tanggal rilis atau tanggal tayang pertama
         val releaseDate = document?.release_date ?: document?.first_air_date
         val year = releaseDate?.substringBefore("-")?.toIntOrNull()
         
         val tvType = when(document?.media_type) {
             "tv" -> TvType.TvSeries
             "movie" -> TvType.Movie
-            else -> TvType.Movie // Default jika media_type tidak jelas
+            else -> TvType.Movie
         }
         
         val description = document?.overview
         
-        // Mengambil trailer/video dari 'videos' yang di-append
+        // Mengambil trailer
         val trailer = document?.videos?.results?.firstOrNull { it.type == "Trailer" }?.key?.let { 
             "https://www.youtube.com/watch?v=$it"
         }
@@ -134,32 +134,22 @@ class Adicinema : MainAPI() {
             }
 
 
-        // CATATAN: Karena kita mendapatkan data dari TMDb, kita TIDAK mendapatkan data episode dari API TMDb.
-        // Data episode untuk TvSeries harus diambil secara terpisah dari Season.
-        // Namun, agar kode link loading tetap berjalan dengan URL lama Anda, 
-        // kita akan menggunakan URL kustom lama Anda untuk data loadLinks.
-
         // Mempertahankan struktur load links lama
         val loadData = LoadData(
             id,
-            null, // Season & Episode tidak tersedia di detail TMDb utama
+            null, 
             null,
-            null // detailPath tidak ada di TMDb
+            null 
         )
 
         return if (tvType == TvType.TvSeries) {
-            // Karena data episode dari TMDb memerlukan panggilan tambahan yang kompleks,
-            // dan kode asli tidak menggunakan TMDb untuk episode, saya akan menggunakan struktur 
-            // LoadData yang kosong/default untuk TV Series.
-            
-            // CATATAN: Kode ini TIDAK akan mengambil daftar episode. Ini hanya akan menyiapkan objek TvSeries.
             val episodeList = listOf(newEpisode(loadData.toJson()))
             
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodeList) {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
-                this.tags = tags
+                this.tags = tags // Perbaikan type mismatch diterapkan di sini
                 this.score = Score.from10(document?.vote_average?.toFloat()) 
                 this.actors = actors
                 this.recommendations = recommendations
@@ -175,7 +165,7 @@ class Adicinema : MainAPI() {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
-                this.tags = tags
+                this.tags = tags // Perbaikan type mismatch diterapkan di sini
                 this.score = Score.from10(document?.vote_average?.toFloat())
                 this.actors = actors
                 this.recommendations = recommendations
@@ -190,7 +180,7 @@ class Adicinema : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // Bagian ini TIDAK DIUBAH karena menggunakan 'apiUrl' yang lama
+        // Bagian ini TIDAK DIUBAH (menggunakan apiUrl lama)
         val media = parseJson<LoadData>(data)
         val referer = "$apiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&lang=en"
 
@@ -230,8 +220,6 @@ class Adicinema : MainAPI() {
 
         return true
     }
-    
-    // Semua Data Class yang diperlukan untuk TMDb dan API lama
     
     // Data Class untuk menyimpan data lama yang diperlukan untuk loadLinks
     data class LoadData(
