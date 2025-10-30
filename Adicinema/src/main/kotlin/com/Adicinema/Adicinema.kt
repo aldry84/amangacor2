@@ -115,9 +115,14 @@ class Adicinema : MainAPI() {
         val imdbMovie = app.get(imdbUrlMovie).parsedSafe<TmdbExternalIds>()?.imdb_id
         val imdbTv = app.get(imdbUrlTv).parsedSafe<TmdbExternalIds>()?.imdb_id
         
-        // SOLUSI PALING AMAN: Memecah baris agar tidak ada ambiguitas val reassign
-        val tempImdb = imdbMovie ?: imdbTv
-        val imdb = tempImdb ?: return false 
+        // SOLUSI MUTLAK: Menggunakan var sementara untuk menghindari ambiguitas val reassign
+        var tempImdb: String? = imdbMovie ?: imdbTv
+        
+        // Periksa null secara eksplisit dan return jika null
+        if (tempImdb == null) return false
+        
+        // Tetapkan ke val akhir setelah pemeriksaan null
+        val imdb = tempImdb
         
         val vidsrcUrl = if (season != null && episode != null) {
             // TV Series
