@@ -17,8 +17,8 @@ class Adicinema : MainAPI() {
     // Base URL TMDb untuk API data
     override var mainUrl = "https://api.themoviedb.org/3" 
     
-    // URL ini dipertahankan, dan akan digunakan untuk loadLinks/extractor
-    private val apiUrl = "https://fmoviesunblocked.net" 
+    // URL ini tidak lagi digunakan untuk loadLinks/extractor, tetapi dipertahankan (dihapus karena tidak relevan)
+    // private val apiUrl = "https://fmoviesunblocked.net" 
     
     override val instantLinkLoading = true
     override var name = "Adicinema" 
@@ -86,8 +86,8 @@ class Adicinema : MainAPI() {
         val id = url.substringAfterLast("/")
         val mediaType = if (url.contains("/tv/")) "tv" else "movie"
 
-        // Endpoint detail TMDb dengan append info tambahan
-        val detailUrl = "$mainUrl/$mediaType/$id?api_key=$API_KEY&append_to_response=videos,credits,recommendations"
+        // PERUBAHAN: Menambahkan external_ids untuk mendapatkan imdb_id
+        val detailUrl = "$mainUrl/$mediaType/$id?api_key=$API_KEY&append_to_response=videos,credits,recommendations,external_ids"
         
         // Memuat detail dari TMDb
         val document = app.get(detailUrl)
@@ -134,15 +134,16 @@ class Adicinema : MainAPI() {
             }
 
 
-        // Mempertahankan struktur load links lama
+        // PERUBAHAN: Mengisi LoadData hanya dengan data yang dibutuhkan untuk VidSrc.to
         val loadData = LoadData(
-            id,
-            null, 
-            null,
-            null 
+            imdbId = document?.external_ids?.imdb_id, // IMDb ID yang baru diambil
+            mediaType = mediaType, // Tipe media (movie/tv)
+            season = null, 
+            episode = null 
         )
 
         return if (tvType == TvType.TvSeries) {
+            // Untuk TV Series, loadLinks akan dipanggil per episode, jadi season/episode harus diisi pada step berikutnya.
             val episodeList = listOf(newEpisode(loadData.toJson()))
             
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodeList) {
@@ -160,7 +161,7 @@ class Adicinema : MainAPI() {
                 title,
                 url,
                 TvType.Movie,
-                loadData.toJson()
+                loadData.toJson() // Menggunakan LoadData baru
             ) {
                 this.posterUrl = poster
                 this.year = year
@@ -180,53 +181,52 @@ class Adicinema : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // Bagian ini TIDAK DIUBAH (menggunakan apiUrl lama)
+        // PERUBAHAN: Logika baru untuk VidSrc.to
         val media = parseJson<LoadData>(data)
-        val referer = "$apiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&lang=en"
-
-        val streams = app.get(
-            "$apiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}",
-            referer = referer
-        ).parsedSafe<Media>()?.data?.streams
-
-        streams?.reversed()?.distinctBy { it.url }?.map { source ->
-            callback.invoke(
-                newExtractorLink(
-                    this.name,
-                    this.name,
-                    source.url ?: return@map,
-                    INFER_TYPE
-                ) {
-                    this.referer = "$apiUrl/"
-                    this.quality = getQualityFromName(source.resolutions)
-                }
-            )
+        val imdbId = media.imdbId
+        
+        // Wajib ada IMDb ID untuk VidSrc.to
+        if (imdbId.isNullOrBlank()) {
+            return false 
         }
 
-        val id = streams?.first()?.id
-        val format = streams?.first()?.format
-
-        app.get(
-            "$apiUrl/wefeed-h5-bff/web/subject/caption?format=$format&id=$id&subjectId=${media.id}",
-            referer = referer
-        ).parsedSafe<Media>()?.data?.captions?.map { subtitle ->
-            subtitleCallback.invoke(
-                newSubtitleFile(
-                    subtitle.lanName ?: "",
-                    subtitle.url ?: return@map
-                )
-            )
+        val embedUrl = when (media.mediaType) {
+            "tv" -> {
+                // Catatan: Asumsi season dan episode 1 jika tidak ada data episode yang lebih spesifik.
+                // Implementasi load episode lebih lanjut diperlukan untuk mengisi media.season/media.episode.
+                val s = media.season ?: 1
+                val e = media.episode ?: 1
+                // Format VidSrc TV: /embed/tv/IMDB_ID/SEASON/EPISODE
+                "https://vidsrc.to/embed/tv/$imdbId/$s/$e"
+            }
+            "movie" -> {
+                // Format VidSrc Movie: /embed/movie/IMDB_ID
+                "https://vidsrc.to/embed/movie/$imdbId"
+            }
+            else -> return false
         }
+        
+        // VidSrc.to ditambahkan sebagai sumber
+        callback.invoke(
+            ExtractorLink(
+                this.name, // source name
+                "VidSrc.to ($imdbId)", // name
+                embedUrl, // URL ke VidSrc embed
+                referer = "https://vidsrc.to/", // Referer untuk halaman embed
+                quality = Qualities.Unknown.value, // Kualitas tidak diketahui, biarkan extractor yang menanganinya
+                isM3u8 = true // Asumsi HLS/M3U8
+            )
+        )
 
         return true
     }
     
-    // Data Class untuk menyimpan data lama yang diperlukan untuk loadLinks
+    // PERUBAHAN: Data Class untuk menyimpan data yang dibutuhkan untuk VidSrc.to
     data class LoadData(
-        val id: String? = null,
-        val season: Int? = null,
-        val episode: Int? = null,
-        val detailPath: String? = null,
+        val imdbId: String? = null, // IMDb ID needed for VidSrc
+        val mediaType: String? = null, // "movie" or "tv" needed for VidSrc path
+        val season: Int? = null, // Untuk TV Series
+        val episode: Int? = null, // Untuk TV Series
     )
 
     // Data Class untuk hasil list dari TMDb (getMainPage dan search)
@@ -278,6 +278,8 @@ class Adicinema : MainAPI() {
         @JsonProperty("videos") val videos: Videos? = null,
         @JsonProperty("credits") val credits: Credits? = null,
         @JsonProperty("recommendations") val recommendations: TMDbPageResult? = null,
+        // PERUBAHAN: Menambahkan external_ids
+        @JsonProperty("external_ids") val external_ids: ExternalIds? = null,
     ) {
         data class Genre(@JsonProperty("name") val name: String? = null)
         data class Videos(@JsonProperty("results") val results: List<VideoItem>? = null)
@@ -288,27 +290,12 @@ class Adicinema : MainAPI() {
             @JsonProperty("character") val character: String? = null,
             @JsonProperty("profile_path") val profile_path: String? = null
         )
+        // PERUBAHAN: Data Class untuk menampung IMDb ID
+        data class ExternalIds(
+            @JsonProperty("imdb_id") val imdb_id: String? = null
+        )
     }
-
-    // Data Class lama (dipertahankan hanya untuk loadLinks/extractor)
-    data class Media(
-        @JsonProperty("data") val data: Data? = null,
-    ) {
-        data class Data(
-            @JsonProperty("streams") val streams: ArrayList<Streams>? = arrayListOf(),
-            @JsonProperty("captions") val captions: ArrayList<Captions>? = arrayListOf(),
-        ) {
-            data class Streams(
-                @JsonProperty("id") val id: String? = null,
-                @JsonProperty("format") val format: String? = null,
-                @JsonProperty("url") val url: String? = null,
-                @JsonProperty("resolutions") val resolutions: String? = null,
-            )
-
-            data class Captions(
-                @JsonProperty("lanName") val lanName: String? = null,
-                @JsonProperty("url") val url: String? = null,
-            )
-        }
-    }
+    
+    // CATATAN: Data Class lama (Media dan turunannya) telah dihapus karena tidak lagi relevan
+    // setelah mengganti sumber video ke VidSrc.to.
 }
