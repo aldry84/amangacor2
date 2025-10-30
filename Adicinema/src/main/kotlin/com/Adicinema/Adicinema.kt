@@ -11,6 +11,11 @@ import com.lagradost.nicehttp.RequestBodyTypes
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 
+import com.lagradost.cloudstream3.utils.ExtractorApi
+import com.lagradost.cloudstream3.utils.getExtractorUrl
+import com.lagradost.cloudstream3.SubtitleFile
+import com.lagradost.cloudstream3.ExtractorLink
+
 class Adicinema : MainAPI() {
     // API key telah dimasukkan
     private val API_KEY = "1d8730d33fc13ccbd8cdaaadb74892c7"
