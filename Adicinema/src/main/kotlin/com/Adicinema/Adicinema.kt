@@ -5,6 +5,8 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
+import com.lagradost.cloudstream3.utils.Extensions.toUrl // <-- Impor yang Ditambahkan
+import com.lagradost.cloudstream3.utils.AppUtils.toJson
 
 class Adicinema : MainAPI() {
     override var mainUrl = "https://api.themoviedb.org/3"
@@ -12,10 +14,14 @@ class Adicinema : MainAPI() {
     override var lang = "id"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
     private val apiKey = "1d8730d33fc13ccbd8cdaaadb74892c7"
+    
+    // QuickSearch diaktifkan secara default saat search ada
+    override val hasQuickSearch = true
 
     // 🔍 Search film & series
     override suspend fun search(query: String): List<SearchResponse> {
-        val url = "$mainUrl/search/multi?api_key=$apiKey&language=id-ID&query=${query.encode()}"
+        // Perbaikan: menggunakan query.toUrl()
+        val url = "$mainUrl/search/multi?api_key=$apiKey&language=id-ID&query=${query.toUrl()}"
         val res = app.get(url).parsedSafe<TmdbSearch>() ?: return emptyList()
 
         return res.results?.mapNotNull { item ->
@@ -56,6 +62,7 @@ class Adicinema : MainAPI() {
                 this.posterUrl = poster
                 this.plot = res.overview
                 this.year = res.release_date?.take(4)?.toIntOrNull()
+                // Gunakan addTrailer
                 addTrailer("https://www.youtube.com/watch?v=$trailer")
             }
         } else {
@@ -67,15 +74,18 @@ class Adicinema : MainAPI() {
 
                 seasonRes.episodes?.forEach { ep ->
                     val epPoster = ep.still_path?.let { "https://image.tmdb.org/t/p/w500$it" }
+                    
+                    // Perbaikan: Menggunakan newEpisode
                     episodes.add(
-                        Episode(
-                            data = "$id|$season|${ep.episode_number}",
-                            name = ep.name,
-                            season = season,
-                            episode = ep.episode_number,
-                            posterUrl = epPoster,
-                            description = ep.overview
-                        )
+                        newEpisode(
+                            data = "$id|$season|${ep.episode_number}"
+                        ) {
+                            this.name = ep.name
+                            this.season = season
+                            this.episode = ep.episode_number
+                            this.posterUrl = epPoster
+                            this.description = ep.overview
+                        }
                     )
                 }
             }
@@ -83,6 +93,7 @@ class Adicinema : MainAPI() {
             return newTvSeriesLoadResponse(res.name ?: "Unknown", url, TvType.TvSeries, episodes) {
                 this.posterUrl = poster
                 this.plot = res.overview
+                // Gunakan addTrailer
                 addTrailer("https://www.youtube.com/watch?v=$trailer")
             }
         }
@@ -116,15 +127,18 @@ class Adicinema : MainAPI() {
             "https://vidsrc.to/embed/movie/$imdb"
         }
 
+        // Perbaikan: Menggunakan newExtractorLink
         callback.invoke(
-            ExtractorLink(
+            newExtractorLink(
                 this.name,
                 "VidSrc",
                 vidsrcUrl,
-                referer = "https://vidsrc.to/",
-                quality = Qualities.Unknown,
-                isM3u8 = false
-            )
+                INFER_TYPE // INFER_TYPE menggantikan parameter kualitas Int
+            ) {
+                this.referer = "https://vidsrc.to/"
+                this.quality = Qualities.Unknown.value // Perbaikan: Menggunakan .value dari enum Qualities
+                this.isM3u8 = false
+            }
         )
         return true
     }
