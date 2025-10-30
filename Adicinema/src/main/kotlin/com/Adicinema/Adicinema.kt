@@ -1,4 +1,4 @@
-package com.Adicinema // Diperbaiki
+package com.Adicinema
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
@@ -11,13 +11,13 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.net.URLEncoder
 
-class Adicinema : MainAPI() { // Diperbaiki
+class Adicinema : MainAPI() {
     // === KONFIGURASI DASAR ===
     override var mainUrl = "https://www.omdbapi.com"
     private val omdbApiKey = "8aabbe50" // Kunci API OMDb Anda
-    private val apiUrl = "https://fmoviesunblocked.net"
+    private val apiUrl = "https://fmoviesto.cc" // Diubah ke domain yang berpotensi baru
 
-    override var name = "Adicinema" // Diperbaiki
+    override var name = "Adicinema"
     override val hasMainPage = false
     override val hasQuickSearch = true
     override val instantLinkLoading = false
@@ -26,6 +26,11 @@ class Adicinema : MainAPI() { // Diperbaiki
 
     // Cache sederhana untuk mempercepat load
     private val omdbCache = mutableMapOf<String, OmdbItemDetail>()
+
+    // Headers yang sering diperlukan oleh situs streaming
+    private val apiHeaders = mapOf(
+        "x-requested-with" to "XMLHttpRequest"
+    )
 
     // === PENCARIAN CEPAT ===
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query) ?: emptyList()
@@ -49,8 +54,8 @@ class Adicinema : MainAPI() { // Diperbaiki
         val title = detail.Title ?: throw ErrorLoadingException("Title not found in OMDb")
         val isSeries = detail.Type.equals("series", ignoreCase = true)
 
-        // Cek fmoviesID. Jika ini gagal, ekstensi tidak akan dimuat.
-        val fmoviesID = findFmoviesID(title) ?: throw ErrorLoadingException("No Fmovies ID found for $title (API mungkin berubah/down)")
+        // Cari ID streaming di Fmovies
+        val fmoviesID = findFmoviesID(title) ?: throw ErrorLoadingException("No Fmovies ID found for $title (Cek API URL)")
 
         val posterUrl = detail.Poster
         val year = detail.Year?.substringBefore("-")?.toIntOrNull()
@@ -109,13 +114,12 @@ class Adicinema : MainAPI() { // Diperbaiki
         val seasonNum = episodeData.seasonNum
         val episodeNum = episodeData.episodeNum
 
-        // Referer yang lebih umum untuk fleksibilitas
-        val referer = "$apiUrl/" 
+        val referer = "$apiUrl/"
 
         val streams = app.get(
-            // Cek apakah endpoint play ini masih valid
             "$apiUrl/wefeed-h5-bff/web/subject/play?subjectId=$fmoviesID&se=$seasonNum&ep=$episodeNum",
-            referer = referer
+            referer = referer,
+            headers = apiHeaders // Gunakan headers baru
         ).parsedSafe<Media>()?.data?.streams
 
         streams?.reversed()?.distinctBy { it.url }?.forEach { src ->
@@ -141,7 +145,8 @@ class Adicinema : MainAPI() { // Diperbaiki
         if (id != null && format != null) {
             app.get(
                 "$apiUrl/wefeed-h5-bff/web/subject/caption?format=$format&id=$id&subjectId=$fmoviesID",
-                referer = referer
+                referer = referer,
+                headers = apiHeaders // Gunakan headers baru
             ).parsedSafe<Media>()?.data?.captions?.forEach { sub ->
                 val url = sub.url ?: return@forEach
                 subtitleCallback(
@@ -164,7 +169,11 @@ class Adicinema : MainAPI() { // Diperbaiki
                 "subjectType" to type
             ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
 
-            val result = app.post("$apiUrl/wefeed-h5-bff/web/subject/search", requestBody = bodyWithType)
+            val result = app.post(
+                "$apiUrl/wefeed-h5-bff/web/subject/search", 
+                requestBody = bodyWithType,
+                headers = apiHeaders // Gunakan headers baru
+            )
                 .parsedSafe<Media>()
                 ?.data
                 ?.items
@@ -195,7 +204,7 @@ class Adicinema : MainAPI() { // Diperbaiki
         @JsonProperty("Type") val Type: String? = null,
         @JsonProperty("Poster") val Poster: String? = null,
     ) {
-        fun toSearchResponse(provider: Adicinema): SearchResponse? { // Diperbaiki
+        fun toSearchResponse(provider: Adicinema): SearchResponse? {
             if (imdbID.isNullOrBlank() || Title.isNullOrBlank()) return null
             val type = if (Type.equals("series", ignoreCase = true)) TvType.TvSeries else TvType.Movie
             return provider.newMovieSearchResponse(Title, imdbID, type, true) {
@@ -204,8 +213,7 @@ class Adicinema : MainAPI() { // Diperbaiki
             }
         }
     }
-    // ... data classes sisanya (OmdbItemDetail, OmdbSeason, Media, dll.) tetap sama ...
-    
+
     data class OmdbItemDetail(
         @JsonProperty("Title") val Title: String? = null,
         @JsonProperty("Year") val Year: String? = null,
