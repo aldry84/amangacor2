@@ -8,10 +8,12 @@ buildscript {
     repositories {
         google()
         mavenCentral()
+        // Jika plugin ada di repositori lain, tambahkan di sini
+        // maven { url = "URL_REPOSITORI" }
     }
     dependencies {
         classpath("com.android.tools.build:gradle:8.1.3")
-        classpath("com.github.recloudstream:gradle:master-SNAPSHOT")
+        classpath("com.github.recloudstream:gradle:VERSION_YANG_VALID") // Ganti dengan versi yang valid
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.20")
     }
 }
@@ -20,6 +22,8 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+        // Jika plugin ada di repositori lain, tambahkan di sini
+        // maven { url = "URL_REPOSITORI" }
     }
 }
 
