@@ -14,7 +14,7 @@ class AdiCinema : MainAPI() {
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
     private val tmdb = "https://api.themoviedb.org/3"
-    private val apiKey = "ISI_API_KEY_TMDB_KAMU"
+    private val apiKey = "1d8730d33fc13ccbd8cdaaadb74892c7"
 
     // ======== DATA MODEL UNTUK SERIALISASI ========
     data class LoadData(
@@ -46,18 +46,21 @@ class AdiCinema : MainAPI() {
         val data = parseJson<LoadData>(url)
 
         val detailUrl = if (data.isMovie)
-            "$tmdb/movie/${data.id}?api_key=$apiKey&language=en-US"
+            "$tmdb/movie/${data.id}?api_key=$apiKey&language=en-US&append_to_response=videos"
         else
-            "$tmdb/tv/${data.id}?api_key=$apiKey&language=en-US"
+            "$tmdb/tv/${data.id}?api_key=$apiKey&language=en-US&append_to_response=videos"
 
         val res = app.get(detailUrl).text
         val json = parseJson<TmdbDetails>(res)
+
+        val trailerKey = json.videos?.results?.firstOrNull()?.key
+        val trailerUrl = trailerKey?.let { "https://www.youtube.com/watch?v=$it" }
 
         return if (data.isMovie) {
             newMovieLoadResponse(json.title ?: "Unknown", data.toJson()) {
                 posterUrl = "https://image.tmdb.org/t/p/w500${json.poster_path}"
                 plot = json.overview
-                addTrailer(json.trailerUrl)
+                addTrailer(trailerUrl)
             }
         } else {
             val episodes = json.seasons?.flatMap { season ->
@@ -141,8 +144,16 @@ class AdiCinema : MainAPI() {
         @JsonProperty("name") val name: String?,
         @JsonProperty("overview") val overview: String?,
         @JsonProperty("poster_path") val poster_path: String?,
-        @JsonProperty("trailer") val trailerUrl: String? = null,
+        @JsonProperty("videos") val videos: TmdbVideos?,
         @JsonProperty("seasons") val seasons: List<TmdbSeason>?
+    )
+
+    data class TmdbVideos(
+        @JsonProperty("results") val results: List<TmdbVideo>
+    )
+
+    data class TmdbVideo(
+        @JsonProperty("key") val key: String?
     )
 
     data class TmdbSeason(
