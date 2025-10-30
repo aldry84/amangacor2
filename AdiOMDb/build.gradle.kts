@@ -1,13 +1,18 @@
+// AdiOMDb/build.gradle.kts
+
 // use an integer for version numbers
 version = 1
 
 
 cloudstream {
+    // Properti ID unik ini WAJIB ADA dan harus cocok dengan package name Anda
+    id = "com.AdiOMDb" 
+
     // All of these properties are optional, you can safely remove them
 
-    description = "AdiOMDb (OMDb)" // Deskripsi yang diperbarui
-    language    = "en" // Bahasa dari OMDb
-    authors = listOf("AdiOMDb") // Ganti sesuai keinginan Anda
+    description = "AdiOMDb (OMDb)" 
+    language    = "en" 
+    authors = listOf("AdiOMDb") 
 
     /**
     * Status int as the following:
@@ -16,10 +21,9 @@ cloudstream {
     * 2: Slow
     * 3: Beta only
     * */
-    status = 1 // will be 3 if unspecified
+    status = 1 
 
-    // List of video source types. Users are able to filter for extensions in a given category.
-    // Anda mendukung semua tipe dari Moviebox
+    // List of video source types.
     tvTypes = listOf("Movie","TvSeries","Anime","AsianDrama")
 
     iconUrl="https://www.google.com/s2/favicons?domain=moviebox.ph&sz=%size%"
