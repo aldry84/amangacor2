@@ -17,9 +17,6 @@ class Adicinema : MainAPI() {
     // Base URL TMDb untuk API data
     override var mainUrl = "https://api.themoviedb.org/3" 
     
-    // URL lama dihapus karena tidak lagi digunakan
-    // private val apiUrl = "https://fmoviesunblocked.net" 
-    
     override val instantLinkLoading = true
     override var name = "Adicinema" 
     override val hasMainPage = true
@@ -80,7 +77,7 @@ class Adicinema : MainAPI() {
         val id = url.substringAfterLast("/")
         val mediaType = if (url.contains("/tv/")) "tv" else "movie"
 
-        // Menambahkan external_ids untuk mendapatkan imdb_id
+        // Mengambil external_ids untuk imdb_id
         val detailUrl = "$mainUrl/$mediaType/$id?api_key=$API_KEY&append_to_response=videos,credits,recommendations,external_ids"
         
         val document = app.get(detailUrl)
@@ -119,7 +116,7 @@ class Adicinema : MainAPI() {
                 it.toSearchResponse(this)
             }
 
-        // LoadData baru untuk VidSrc.to
+        // LoadData baru untuk VidSrc.to (menyimpan imdbId dan mediaType)
         val loadData = LoadData(
             imdbId = document?.external_ids?.imdb_id,
             mediaType = mediaType,
@@ -128,6 +125,7 @@ class Adicinema : MainAPI() {
         )
 
         return if (tvType == TvType.TvSeries) {
+            // Untuk TV Series, loadLinks akan dipanggil pada episode
             val episodeList = listOf(newEpisode(loadData.toJson()))
             
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodeList) {
@@ -174,7 +172,7 @@ class Adicinema : MainAPI() {
 
         val embedUrl = when (media.mediaType) {
             "tv" -> {
-                // Asumsi season dan episode 1 jika tidak ada data episode yang lebih spesifik
+                // Asumsi season dan episode 1 (perlu implementasi load/get episode lebih lanjut)
                 val s = media.season ?: 1
                 val e = media.episode ?: 1
                 "https://vidsrc.to/embed/tv/$imdbId/$s/$e"
@@ -185,14 +183,14 @@ class Adicinema : MainAPI() {
             else -> return false
         }
         
-        // PERBAIKAN: Menggunakan newExtractorLink, menghilangkan peringatan deprecated
+        // PERBAIKAN: Menggunakan newExtractorLink dan memindahkan referer ke dalam blok konfigurasi
         callback.invoke(
             newExtractorLink(
                 this.name,
                 "VidSrc.to ($imdbId)", 
-                embedUrl, 
-                referer = "https://vidsrc.to/"
+                embedUrl 
             ) {
+                this.referer = "https://vidsrc.to/" // Referer dipindah ke sini
                 this.quality = Qualities.Unknown.value 
                 this.isM3u8 = true // Asumsi HLS/M3U8
             }
