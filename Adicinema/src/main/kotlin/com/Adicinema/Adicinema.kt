@@ -6,6 +6,7 @@ import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
+import com.lagradost.nicehttp.NiceResponse
 import com.lagradost.nicehttp.RequestBodyTypes
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -130,11 +131,14 @@ class Adicinema : MainAPI() {
         // Mendapatkan IMDB ID
         val imdbId = document?.external_ids?.imdb_id
 
+        println("IMDB ID: $imdbId") // Tambahkan ini untuk debugging
+
         val loadData = LoadData(
             id = imdbId, // Simpan IMDB ID disini
             season = null,
             episode = null,
-            detailPath = null
+            detailPath = null,
+            tvType = tvType // Menyimpan tipe media
         )
 
         return if (tvType == TvType.TvSeries) {
@@ -177,12 +181,28 @@ class Adicinema : MainAPI() {
     ): Boolean {
         val media = parseJson<LoadData>(data)
         val imdbId = media.id ?: return false // Ambil IMDB ID dari data
+        val tvType = media.tvType
 
-        // Construct VidSrc URL
-        val vidSrcUrl = "https://vidsrc.to/embed/movie/$imdbId" // Atau sesuaikan untuk TV series
+        // Construct VidSrc URL berdasarkan tipe media
+        val vidSrcUrl = if (tvType == TvType.TvSeries) {
+            "https://vidsrc.to/embed/tv/$imdbId" // URL untuk TV series
+        } else {
+            "https://vidsrc.to/embed/movie/$imdbId" // URL untuk film
+        }
 
-        // Use VidSrc extractor here, example:
-        loadExtractor(vidSrcUrl, referer = mainUrl, subtitleCallback, callback)
+        println("VidSrc URL: $vidSrcUrl") // Tambahkan untuk debugging
+
+        try {
+            val response: NiceResponse = app.get(vidSrcUrl, referer = mainUrl)
+            if (response.code == 200) {
+                println("VidSrc Response: ${response.text}") // Log isi respons
+                loadExtractor(vidSrcUrl, referer = mainUrl, subtitleCallback, callback)
+            } else {
+                println("VidSrc Error: Status Code ${response.code}")
+            }
+        } catch (e: Exception) {
+            println("VidSrc Exception: ${e.message}")
+        }
 
         return true
     }
@@ -194,6 +214,7 @@ class Adicinema : MainAPI() {
         val season: Int? = null,
         val episode: Int? = null,
         val detailPath: String? = null,
+        val tvType: TvType? = null // Tambahkan tipe media
     )
 
     // Data Class untuk hasil list dari TMDb (getMainPage dan search)
@@ -276,6 +297,18 @@ class Adicinema : MainAPI() {
                 @JsonProperty("lanName") val lanName: String? = null,
                 @JsonProperty("url") val url: String? = null,
             )
+        }
+    }
+
+    // Fungsi loadExtractor
+    suspend fun loadExtractor(
+        url: String,
+        referer: String? = null,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        getExtractorUrl(url, referer) { link ->
+            callback.invoke(link)
         }
     }
 }
