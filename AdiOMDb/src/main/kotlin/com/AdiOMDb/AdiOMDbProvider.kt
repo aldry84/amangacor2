@@ -1,8 +1,7 @@
 package com.AdiOMDb
 
-import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
-import com.lagradost.cloudstream3.plugins.Plugin 
-import android.content.Context // <-- Baris ini harus ada
+import com.lagradost.cloudstream3.plugins.BasePlugin
+import com.lagradost.cloudstream3.plugins.CloudstreamPlugin 
 
 @CloudstreamPlugin
 class AdiOMDbProvider: Plugin() { 
