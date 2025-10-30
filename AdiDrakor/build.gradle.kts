@@ -1,30 +1,35 @@
 // AdiDrakor/build.gradle.kts
 
-// use an integer for version numbers
+plugins {
+    kotlin("jvm")
+    id("com.lagradost.cloudstream3.gradleplugin") version "1.0.0"
+}
+
+// Gunakan angka untuk versi plugin
 version = 1
 
 cloudstream {
-    // All of these properties are optional, you can safely remove them
+    // Semua properti ini opsional
 
-    description = "AdiDrakor (Khusus Drama Korea dari moviebox.ph)" // Deskripsi yang diperbarui untuk Drakor
-    language    = "en" // Bahasa dari Moviebox
-    authors = listOf("AdiDrakorUser") // Ganti sesuai keinginan Anda
+    description = "AdiDrakor (Khusus Drama Korea dari moviebox.ph)"
+    language = "en"
+    authors = listOf("AdiDrakorUser")
 
     /**
-    * Status int as the following:
-    * 0: Down
-    * 1: Ok
-    * 2: Slow
-    * 3: Beta only
-    * */
-    status = 1 // will be 3 if unspecified
+     * Status:
+     * 0: Down
+     * 1: Ok
+     * 2: Slow
+     * 3: Beta only
+     */
+    status = 1
 
-    // List of video source types. Users are able to filter for extensions in a given category.
-    // Fokuskan hanya pada tipe yang didukung untuk Drakor
+    // Jenis tayangan yang didukung
     tvTypes = listOf("TvSeries", "AsianDrama")
 
-    // Ganti nama paket untuk iconURL
-    iconUrl="https://www.google.com/s2/favicons?domain=moviebox.ph&sz=%size%"
+    // URL ikon ekstensi
+    iconUrl = "https://www.google.com/s2/favicons?domain=moviebox.ph&sz=%size%"
 
+    // Dapat digunakan lintas platform (PC, Android, dll)
     isCrossPlatform = true
 }
