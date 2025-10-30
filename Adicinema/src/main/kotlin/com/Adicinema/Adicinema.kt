@@ -2,171 +2,123 @@ package com.Adicinema
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.*
-import com.lagradost.cloudstream3.utils.AppUtils.parseJson
+import org.jsoup.nodes.Element
 
-class AdiCinema : MainAPI() {
-    override var mainUrl = "https://vidsrc.to"
+class Adicinema : MainAPI() {
+    override var mainUrl = "https://api.themoviedb.org/3"
     override var name = "AdiCinema"
     override val hasMainPage = true
     override var lang = "id"
-    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
-
-    private val tmdb = "https://api.themoviedb.org/3"
+    override val hasDownloadSupport = false
     private val apiKey = "1d8730d33fc13ccbd8cdaaadb74892c7"
+    private val imageUrl = "https://image.tmdb.org/t/p/w500"
 
-    // ======== DATA MODEL UNTUK SERIALISASI ========
-    data class LoadData(
-        @JsonProperty("id") val id: Int,
-        @JsonProperty("imdbId") val imdbId: String?,
-        @JsonProperty("isMovie") val isMovie: Boolean,
-        @JsonProperty("season") val season: Int? = null,
-        @JsonProperty("episode") val episode: Int? = null
+    override val mainPage = mainPageOf(
+        "$mainUrl/movie/popular?api_key=$apiKey&language=en-US&page=1" to "Film Populer",
+        "$mainUrl/tv/popular?api_key=$apiKey&language=en-US&page=1" to "Serial Populer"
     )
 
-    // ======== SEARCH / HOME ========
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val res = app.get("$tmdb/movie/popular?api_key=$apiKey&language=en-US&page=$page").text
-        val json = parseJson<JsonMovieList>(res)
-        val list = json.results.mapNotNull {
-            newMovieSearchResponse(
-                it.title ?: return@mapNotNull null,
-                LoadData(it.id, it.imdb_id, true).toJson(),
-                TvType.Movie
-            ) {
-                posterUrl = "https://image.tmdb.org/t/p/w500${it.poster_path}"
+        val res = app.get(request.data)
+        val json = tryParseJson<TMDBList>(res.text) ?: return newHomePageResponse(request.name, listOf())
+        val results = json.results.mapNotNull { media ->
+            val title = media.title ?: media.name ?: return@mapNotNull null
+            val poster = media.poster_path?.let { "$imageUrl$it" }
+            val href = if (media.media_type == "tv" || media.first_air_date != null) {
+                "$mainUrl/tv/${media.id}?api_key=$apiKey&language=en-US"
+            } else {
+                "$mainUrl/movie/${media.id}?api_key=$apiKey&language=en-US"
+            }
+
+            newTvSeriesSearchResponse(title, href, TvType.Movie) {
+                this.posterUrl = poster
+                this.year = media.release_date?.take(4)?.toIntOrNull()
             }
         }
-        return newHomePageResponse("Popular Movies", list)
+        return newHomePageResponse(request.name, results)
     }
 
-    // ======== DETAIL FILM / SERIES ========
+    override suspend fun search(query: String): List<SearchResponse> {
+        val url = "$mainUrl/search/multi?api_key=$apiKey&language=en-US&query=${query.encodeUrl()}"
+        val res = app.get(url)
+        val json = tryParseJson<TMDBList>(res.text) ?: return emptyList()
+
+        return json.results.mapNotNull { media ->
+            val title = media.title ?: media.name ?: return@mapNotNull null
+            val poster = media.poster_path?.let { "$imageUrl$it" }
+            val link = if (media.media_type == "tv" || media.first_air_date != null) {
+                "$mainUrl/tv/${media.id}?api_key=$apiKey&language=en-US"
+            } else {
+                "$mainUrl/movie/${media.id}?api_key=$apiKey&language=en-US"
+            }
+
+            newMovieSearchResponse(title, link, TvType.Movie) {
+                this.posterUrl = poster
+            }
+        }
+    }
+
     override suspend fun load(url: String): LoadResponse {
-        val data = parseJson<LoadData>(url)
+        val res = app.get(url)
+        val detail = tryParseJson<TMDBDetail>(res.text) ?: throw ErrorLoadingException("Gagal parse JSON")
 
-        val detailUrl = if (data.isMovie)
-            "$tmdb/movie/${data.id}?api_key=$apiKey&language=en-US&append_to_response=videos"
-        else
-            "$tmdb/tv/${data.id}?api_key=$apiKey&language=en-US&append_to_response=videos"
+        val title = detail.title ?: detail.name ?: "Tidak diketahui"
+        val poster = detail.poster_path?.let { "$imageUrl$it" }
+        val desc = detail.overview ?: ""
+        val rating = detail.vote_average?.div(10.0)
 
-        val res = app.get(detailUrl).text
-        val json = parseJson<TmdbDetails>(res)
-
-        val trailerKey = json.videos?.results?.firstOrNull()?.key
-        val trailerUrl = trailerKey?.let { "https://www.youtube.com/watch?v=$it" }
-
-        return if (data.isMovie) {
-            newMovieLoadResponse(json.title ?: "Unknown", data.toJson()) {
-                posterUrl = "https://image.tmdb.org/t/p/w500${json.poster_path}"
-                plot = json.overview
-                addTrailer(trailerUrl)
+        return if (detail.first_air_date != null) {
+            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes = listOf()) {
+                this.posterUrl = poster
+                this.plot = desc
+                this.year = detail.first_air_date?.take(4)?.toIntOrNull()
+                this.rating = rating
             }
         } else {
-            val episodes = json.seasons?.flatMap { season ->
-                val seasonNum = season.season_number ?: return@flatMap emptyList()
-                val epRes = app.get("$tmdb/tv/${data.id}/season/$seasonNum?api_key=$apiKey&language=en-US").text
-                val epJson = parseJson<TmdbSeason>(epRes)
-                epJson.episodes.mapNotNull { ep ->
-                    newEpisode(ep.name ?: "Episode ${ep.episode_number}") {
-                        this.season = seasonNum
-                        this.episode = ep.episode_number
-                        posterUrl = "https://image.tmdb.org/t/p/w500${ep.still_path}"
-                        description = ep.overview
-                        date = parseDate(ep.air_date)
-                        score = Score(ep.vote_average ?: 0.0)
-                    }
-                }
-            } ?: emptyList()
-
-            newTvSeriesLoadResponse(json.name ?: "Unknown", data.toJson()) {
-                posterUrl = "https://image.tmdb.org/t/p/w500${json.poster_path}"
-                plot = json.overview
-                addEpisodes(DubStatus.Subbed, episodes)
+            newMovieLoadResponse(title, url, TvType.Movie, dataUrl = url) {
+                this.posterUrl = poster
+                this.plot = desc
+                this.year = detail.release_date?.take(4)?.toIntOrNull()
+                this.rating = rating
             }
         }
     }
 
-    // ======== LINK EXTRACTOR DENGAN FALLBACK ========
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val media = parseJson<LoadData>(data)
-        val imdbId = media.imdbId ?: return false
-
-        val type = if (media.isMovie) "movie" else "tv"
-        val path = if (media.isMovie) imdbId else "$imdbId/${media.season}/${media.episode}"
-
-        val sources = listOf(
-            "https://vidsrc.to/embed/$type/$path",
-            "https://vidsrc.me/embed/$type/$path",
-            "https://vidbinge.to/embed/$type/$path",
-            "https://2embed.cc/embed/$type/$path",
-            "https://streamwish.to/e/$imdbId"
-        )
-
-        var success = false
-        for (source in sources) {
-            try {
-                val result = loadExtractor(source, referer = mainUrl, subtitleCallback, callback)
-                if (result) {
-                    println("✅ Link ditemukan di: $source")
-                    success = true
-                    break
-                }
-            } catch (e: Exception) {
-                println("⚠️ Gagal memuat dari: $source (${e.message})")
-                continue
-            }
-        }
-        if (!success) println("❌ Tidak ada sumber yang menyediakan link untuk $imdbId")
-        return success
+        // Tidak ada link langsung dari TMDB, biasanya hanya metadata
+        // Kamu bisa menambahkan extractor eksternal di sini jika ingin
+        return true
     }
 
-    // ======== MODEL TMDB ========
-    data class JsonMovieList(
-        @JsonProperty("results") val results: List<TmdbItem>
+    // ======= JSON Model Classes =======
+    data class TMDBList(
+        @JsonProperty("results") val results: List<TMDBMedia> = emptyList()
     )
 
-    data class TmdbItem(
+    data class TMDBMedia(
         @JsonProperty("id") val id: Int,
-        @JsonProperty("imdb_id") val imdb_id: String?,
         @JsonProperty("title") val title: String?,
-        @JsonProperty("poster_path") val poster_path: String?
+        @JsonProperty("name") val name: String?,
+        @JsonProperty("poster_path") val poster_path: String?,
+        @JsonProperty("release_date") val release_date: String?,
+        @JsonProperty("first_air_date") val first_air_date: String?,
+        @JsonProperty("media_type") val media_type: String? = null
     )
 
-    data class TmdbDetails(
+    data class TMDBDetail(
         @JsonProperty("id") val id: Int,
         @JsonProperty("title") val title: String?,
         @JsonProperty("name") val name: String?,
         @JsonProperty("overview") val overview: String?,
         @JsonProperty("poster_path") val poster_path: String?,
-        @JsonProperty("videos") val videos: TmdbVideos?,
-        @JsonProperty("seasons") val seasons: List<TmdbSeason>?
-    )
-
-    data class TmdbVideos(
-        @JsonProperty("results") val results: List<TmdbVideo>
-    )
-
-    data class TmdbVideo(
-        @JsonProperty("key") val key: String?
-    )
-
-    data class TmdbSeason(
-        @JsonProperty("season_number") val season_number: Int?,
-        @JsonProperty("episodes") val episodes: List<TmdbEpisode>
-    )
-
-    data class TmdbEpisode(
-        @JsonProperty("name") val name: String?,
-        @JsonProperty("overview") val overview: String?,
-        @JsonProperty("air_date") val air_date: String?,
-        @JsonProperty("episode_number") val episode_number: Int?,
-        @JsonProperty("vote_average") val vote_average: Double?,
-        @JsonProperty("still_path") val still_path: String?
+        @JsonProperty("release_date") val release_date: String?,
+        @JsonProperty("first_air_date") val first_air_date: String?,
+        @JsonProperty("vote_average") val vote_average: Double?
     )
 }
