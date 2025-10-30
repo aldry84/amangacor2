@@ -1,11 +1,8 @@
 package com.Adicinema
 
 import com.fasterxml.jackson.annotation.JsonProperty
-import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.LoadResponse.Companion.addCast // Perbaikan: addCast diimpor
-import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
-import com.lagradost.cloudstream3.model.Cast // Perbaikan: model diimpor
-import com.lagradost.cloudstream3.utils.*
+import com.lagradost.cloudstream3.* // Impor utama: mencakup LoadResponse.Companion, MainAPI, dll.
+import com.lagradost.cloudstream3.utils.* // Impor utilitas
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.nicehttp.RequestBodyTypes
@@ -43,7 +40,7 @@ class Adicinema : MainAPI() {
         
         val response = app.get(url).parsedSafe<TmdbSearch>()?.results
         
-        return response?.mapNotNull { it.toSearchResponse(this) } // Perbaikan: toSearchResponse sekarang ada di TmdbItem
+        return response?.mapNotNull { it.toSearchResponse(this) }
     }
 
     // === LOAD DETAIL FILM / SERIAL (TMDB) ===
@@ -54,11 +51,9 @@ class Adicinema : MainAPI() {
         
         val detailsUrl = getTmdbApiUrl("/$mediaType/$tmdbID", "&append_to_response=videos,credits")
 
-        // Perbaikan: Menghilangkan pengecekan .getOrPut karena tmdb tidak perlu cache di sini.
         val detail = app.get(detailsUrl).parsedSafe<TmdbDetail>()
             ?: throw ErrorLoadingException("TMDB detail not found for $mediaType/$tmdbID")
 
-        // Perbaikan Unresolved Reference: Properti name/title/date ada di TmdbDetail
         val title = detail.name ?: detail.title ?: throw ErrorLoadingException("Title not found in TMDB")
         val year = detail.release_date?.substringBefore("-")?.toIntOrNull() ?: detail.first_air_date?.substringBefore("-")?.toIntOrNull()
         val plot = detail.overview
@@ -68,7 +63,7 @@ class Adicinema : MainAPI() {
         
         val trailer = detail.videos?.results?.firstOrNull { it.type == "Trailer" && it.site == "YouTube" }
         
-        // Perbaikan Unresolved Reference: Cast
+        // Perbaikan: Kelas Cast seharusnya sudah diimpor melalui com.lagradost.cloudstream3.*
         val cast = detail.credits?.cast?.take(10)?.mapNotNull { 
             Cast(it.name ?: return@mapNotNull null, it.character ?: return@mapNotNull null, null, null)
         }
@@ -85,7 +80,7 @@ class Adicinema : MainAPI() {
 
                 seasonDetail?.episodes?.forEach { ep ->
                     val episodeNum = ep.episode_number ?: 1
-                    val epData = EpisodeData(tmdbID, season, episodeNum, fmoviesID) // Perbaikan: EpisodeData
+                    val epData = EpisodeData(tmdbID, season, episodeNum, fmoviesID) 
                     episodes.add(
                         newEpisode(epData.toJson()) {
                             this.name = ep.name
@@ -103,7 +98,7 @@ class Adicinema : MainAPI() {
                 this.tags = tags
                 this.score = score
                 trailer?.key?.let { addTrailer("https://www.youtube.com/watch?v=$it") }
-                cast?.let { addCast(it) } // Perbaikan: addCast
+                cast?.let { addCast(it) } // Perbaikan: addCast seharusnya bekerja sekarang
             }
         } else {
             val epData = EpisodeData(tmdbID, 1, 1, fmoviesID)
@@ -114,7 +109,7 @@ class Adicinema : MainAPI() {
                 this.tags = tags
                 this.score = score
                 trailer?.key?.let { addTrailer("https://www.youtube.com/watch?v=$it") }
-                cast?.let { addCast(it) } // Perbaikan: addCast
+                cast?.let { addCast(it) } // Perbaikan: addCast seharusnya bekerja sekarang
             }
         }
     }
@@ -126,7 +121,6 @@ class Adicinema : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // Perbaikan: Menggunakan EpisodeData yang sudah diperbarui
         val episodeData = parseJson<EpisodeData>(data)
         val fmoviesID = episodeData.streamingPath
         val seasonNum = episodeData.seasonNum
@@ -139,7 +133,7 @@ class Adicinema : MainAPI() {
             "$fmoviesApiUrl/wefeed-h5-bff/web/subject/play?subjectId=$fmoviesID&se=$seasonNum&ep=$episodeNum",
             referer = referer,
             headers = apiHeaders
-        ).parsedSafe<Media>()?.data?.streams // Perbaikan: Data Class Media
+        ).parsedSafe<Media>()?.data?.streams
 
         streams?.reversed()?.distinctBy { it.url }?.forEach { src ->
             val url = src.url ?: return@forEach
@@ -273,12 +267,11 @@ class Adicinema : MainAPI() {
         @JsonProperty("episode_number") val episode_number: Int? = null
     )
 
-    // === DATA CLASS STREAMING (FMOVIES) ===
     data class EpisodeData(
         val tmdbID: String,
         val seasonNum: Int,
         val episodeNum: Int,
-        val streamingPath: String // Ini adalah subjectId Fmovies
+        val streamingPath: String
     )
 
     data class Media(
