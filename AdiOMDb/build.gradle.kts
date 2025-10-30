@@ -5,8 +5,8 @@ version = 1
 
 
 cloudstream {
-    // Properti ID unik ini WAJIB ADA dan harus cocok dengan package name Anda
-    id = "com.AdiOMDb" 
+    // PERBAIKAN: Gunakan fungsi setter 'setid()' karena ini adalah properti wajib.
+    setid("com.AdiOMDb")
 
     // All of these properties are optional, you can safely remove them
 
