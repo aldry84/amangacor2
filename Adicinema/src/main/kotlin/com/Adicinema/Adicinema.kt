@@ -1,4 +1,4 @@
-package com.Adicinema
+package com.Adicinema // Diperbaiki
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
@@ -11,13 +11,13 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.net.URLEncoder
 
-class Adicinema : MainAPI() {
+class Adicinema : MainAPI() { // Diperbaiki
     // === KONFIGURASI DASAR ===
     override var mainUrl = "https://www.omdbapi.com"
-    private val omdbApiKey = "8aabbe50" // Pindahkan ke environment untuk keamanan produksi
+    private val omdbApiKey = "8aabbe50" // Kunci API OMDb Anda
     private val apiUrl = "https://fmoviesunblocked.net"
 
-    override var name = "Adicinema" // Diubah dari AdiOMDb
+    override var name = "Adicinema" // Diperbaiki
     override val hasMainPage = false
     override val hasQuickSearch = true
     override val instantLinkLoading = false
@@ -49,8 +49,8 @@ class Adicinema : MainAPI() {
         val title = detail.Title ?: throw ErrorLoadingException("Title not found in OMDb")
         val isSeries = detail.Type.equals("series", ignoreCase = true)
 
-        // Cari ID streaming di Fmovies (dengan fallback subjectType 0 dan 1)
-        val fmoviesID = findFmoviesID(title) ?: throw ErrorLoadingException("No Fmovies ID found for $title")
+        // Cek fmoviesID. Jika ini gagal, ekstensi tidak akan dimuat.
+        val fmoviesID = findFmoviesID(title) ?: throw ErrorLoadingException("No Fmovies ID found for $title (API mungkin berubah/down)")
 
         val posterUrl = detail.Poster
         val year = detail.Year?.substringBefore("-")?.toIntOrNull()
@@ -109,10 +109,11 @@ class Adicinema : MainAPI() {
         val seasonNum = episodeData.seasonNum
         val episodeNum = episodeData.episodeNum
 
-        val referer =
-            "$apiUrl/spa/videoPlayPage/movies/$fmoviesID?id=${episodeData.imdbID}&type=/movie/detail&lang=en"
+        // Referer yang lebih umum untuk fleksibilitas
+        val referer = "$apiUrl/" 
 
         val streams = app.get(
+            // Cek apakah endpoint play ini masih valid
             "$apiUrl/wefeed-h5-bff/web/subject/play?subjectId=$fmoviesID&se=$seasonNum&ep=$episodeNum",
             referer = referer
         ).parsedSafe<Media>()?.data?.streams
@@ -154,12 +155,6 @@ class Adicinema : MainAPI() {
 
     // === FUNGSI PEMBANTU ===
     private suspend fun findFmoviesID(query: String): String? {
-        val jsonBody = mapOf(
-            "keyword" to query,
-            "page" to "1",
-            "perPage" to "1"
-        ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
-
         // Coba 2 tipe subject: 0 (movie), 1 (series)
         for (type in listOf("0", "1")) {
             val bodyWithType = mapOf(
@@ -200,7 +195,7 @@ class Adicinema : MainAPI() {
         @JsonProperty("Type") val Type: String? = null,
         @JsonProperty("Poster") val Poster: String? = null,
     ) {
-        fun toSearchResponse(provider: Adicinema): SearchResponse? { // Diubah dari AdiOMDb
+        fun toSearchResponse(provider: Adicinema): SearchResponse? { // Diperbaiki
             if (imdbID.isNullOrBlank() || Title.isNullOrBlank()) return null
             val type = if (Type.equals("series", ignoreCase = true)) TvType.TvSeries else TvType.Movie
             return provider.newMovieSearchResponse(Title, imdbID, type, true) {
@@ -209,7 +204,8 @@ class Adicinema : MainAPI() {
             }
         }
     }
-
+    // ... data classes sisanya (OmdbItemDetail, OmdbSeason, Media, dll.) tetap sama ...
+    
     data class OmdbItemDetail(
         @JsonProperty("Title") val Title: String? = null,
         @JsonProperty("Year") val Year: String? = null,
