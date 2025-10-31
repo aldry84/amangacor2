@@ -36,8 +36,8 @@ class AdiDrakor : MainAPI() {
         "2,Latest,Korea,0" to "Drakor Terbaru",
         "1,Latest,Indonesia,0" to "Indonesia Punya",
         "1,Latest,0,Adult" to "Movie Dewasa", // Kriteria genre "Adult"
-        "2,ForYou,0,0" to "Drakor Pilihan", // Dipertahankan, tapi filter mungkin berubah sedikit di getMainPage
-        "2,Rating,0,0" to "Drakor Rating Tertinggi", // Dipertahankan
+        "2,ForYou,0,0" to "Drakor Pilihan", // Dipertahankan
+        // "2,Rating,0,0" to "Drakor Rating Tertinggi", <--- BARIS INI DIHAPUS
     )
 
     override suspend fun getMainPage(
@@ -74,7 +74,7 @@ class AdiDrakor : MainAPI() {
                     else -> true // Tidak ada filter genre
                 }
 
-                // Filter Tipe Konten (Jika subjectType 2, tetap ambil) - Sesuai dengan cara kerja API asli
+                // Filter Tipe Konten
                 val typeMatch = if (subjectType == "2") {
                     item.subjectType == 2 // Hanya ambil Series/Drama
                 } else if (subjectType == "1") {
@@ -143,7 +143,7 @@ class AdiDrakor : MainAPI() {
                 ),
                 roleString = cast.character
             )
-        }?.distinctBy { it.actor }
+        )?.distinctBy { it.actor }
 
         val recommendations =
             app.get("$mainUrl/wefeed-h5-bff/web/subject/detail-rec?subjectId=$id&page=1&perPage=12")
