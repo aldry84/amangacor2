@@ -19,10 +19,11 @@ class AdiDrakor : MainAPI() {
     override val hasMainPage = true
     override val hasQuickSearch = true
     override var lang = "en"
+    
+    // PERUBAHAN 1: Hapus TvType.Movie agar tidak mendukung pencarian film umum
     override val supportedTypes = setOf(
         TvType.TvSeries,
-        TvType.AsianDrama,
-        TvType.Movie // Ditambahkan untuk mendukung pencarian non-Drakor
+        TvType.AsianDrama
     )
 
     override val mainPage: List<MainPageData> = mainPageOf(
@@ -47,8 +48,11 @@ class AdiDrakor : MainAPI() {
 
         // Filter untuk halaman utama (MainPage) dipertahankan
         val home = app.post("$mainUrl/wefeed-h5-bff/web/filter", requestBody = body)
-            .parsedSafe<Media>()?.data?.items
-            ?.filter { it.countryName?.contains("Korea", ignoreCase = true) == true || it.subjectType == 2 } 
+            // Hanya izinkan konten dari 'Korea' dan pastikan itu Series (subjectType 2)
+            ?.parsedSafe<Media>()?.data?.items
+            ?.filter { 
+                 it.countryName?.contains("Korea", ignoreCase = true) == true && it.subjectType == 2
+            } 
             ?.map {
                 it.toSearchResponse(this)
             } ?: throw ErrorLoadingException("Tidak ada Data Drakor Ditemukan")
@@ -60,7 +64,7 @@ class AdiDrakor : MainAPI() {
         return search(query) ?: emptyList()
     }
 
-    // PERUBAHAN KRITIS: Filter di fungsi search HANYA berdasarkan nama negara 'Korea'
+    // PERUBAHAN 2: Filter di fungsi search HANYA berdasarkan negara 'Korea' DAN TIPE SERIES (2)
     override suspend fun search(query: String): List<SearchResponse>? {
         val results = app.post(
             "$mainUrl/wefeed-h5-bff/web/subject/search", requestBody = mapOf(
@@ -70,8 +74,8 @@ class AdiDrakor : MainAPI() {
                 "subjectType" to "0", // Cari semua tipe (0)
             ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
         ).parsedSafe<Media>()?.data?.items
-            // Filter yang lebih STRIKT: HANYA konten dengan countryName mengandung 'Korea'
-            ?.filter { it.countryName?.contains("Korea", ignoreCase = true) == true }
+            // Filter yang lebih STRIKT: HANYA konten dengan countryName mengandung 'Korea' DAN subjectType=2
+            ?.filter { it.countryName?.contains("Korea", ignoreCase = true) == true && it.subjectType == 2 }
             ?.map { it.toSearchResponse(this) }
             ?: return null
             
@@ -91,10 +95,10 @@ class AdiDrakor : MainAPI() {
         
         // Tentukan tipe yang benar
         val tvType = when (subject?.subjectType) {
-            1 -> TvType.Movie
+            // Karena kita hanya menampilkan Drakor, Series (2) dan Movie (1) dari Korea bisa jadi Series atau Movie.
+            1 -> TvType.Movie 
             2 -> TvType.TvSeries
-            1006 -> TvType.Anime
-            else -> TvType.Movie
+            else -> TvType.TvSeries // Default ke TvSeries untuk konten yang lolos filter awal
         }
         
         val description = subject?.description
@@ -113,13 +117,13 @@ class AdiDrakor : MainAPI() {
         val recommendations =
             app.get("$mainUrl/wefeed-h5-bff/web/subject/detail-rec?subjectId=$id&page=1&perPage=12")
                 .parsedSafe<Media>()?.data?.items
-                // Pertahankan filter rekomendasi untuk Drama Korea
-                ?.filter { it.countryName?.contains("Korea", ignoreCase = true) == true || it.subjectType == 2 }
+                // Pertahankan filter rekomendasi HANYA untuk Drama Korea (subjectType 2)
+                ?.filter { it.countryName?.contains("Korea", ignoreCase = true) == true && it.subjectType == 2 }
                 ?.map {
                     it.toSearchResponse(this)
                 }
 
-        // LOGIKA BARU: Jika Movie, gunakan MovieLoadResponse
+        // Logika TvSeries (Drakor/Serial) - Jika data tidak lengkap, asumsikan TvSeries karena filter sudah ketat
         if (tvType == TvType.Movie) {
              return newMovieLoadResponse(title, url, TvType.Movie, document?.resource?.seasons?.firstOrNull()?.allEp?.split(",")?.map { it.toInt() }?.map { ep ->
                 newEpisode(
@@ -144,7 +148,6 @@ class AdiDrakor : MainAPI() {
             }
         }
         
-        // Logika TvSeries (Drakor/Serial)
         return newTvSeriesLoadResponse(title, url, TvType.TvSeries,
                 document?.resource?.seasons?.map { seasons ->
                 (if (seasons.allEp.isNullOrEmpty()) (1..seasons.maxEp!!) else seasons.allEp.split(",")
@@ -292,19 +295,19 @@ class AdiDrakor : MainAPI() {
         @JsonProperty("detailPath") val detailPath: String? = null,
     ) {
 
-        // FUNGSI INI DIUBAH: Menggunakan tipe yang benar untuk hasil pencarian
+        // PERUBAHAN 3: Memastikan hasil pencarian selalu TvSeries/AsianDrama dan mengabaikan tipe lain
         fun toSearchResponse(provider: AdiDrakor): SearchResponse {
             val type = when (subjectType) {
-                1 -> TvType.Movie
-                2 -> TvType.TvSeries
-                1006 -> TvType.Anime
-                else -> TvType.Movie
+                1 -> TvType.Movie // Tipe Film Korea (Jika Lolos Filter)
+                2 -> TvType.TvSeries // Tipe Series Korea
+                else -> TvType.TvSeries // Pastikan selalu TvSeries/AsianDrama
             }
             
             return provider.newMovieSearchResponse(
                 title ?: "",
                 subjectId ?: "",
-                type,
+                // Kita kembalikan sebagai AsianDrama agar dikategorikan sebagai Drama, bukan film umum
+                TvType.AsianDrama, 
                 false
             ) {
                 this.posterUrl = cover?.url
