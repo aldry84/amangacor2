@@ -19,11 +19,10 @@ class AdiDrakor : MainAPI() {
     override val hasMainPage = true
     override val hasQuickSearch = true
     override var lang = "en"
-    
-    // PERUBAHAN 1: Hapus TvType.Movie agar tidak mendukung pencarian film umum
     override val supportedTypes = setOf(
         TvType.TvSeries,
-        TvType.AsianDrama
+        TvType.AsianDrama,
+        TvType.Movie // Pertahankan Movie, tapi akan difilter di fungsi pencarian
     )
 
     override val mainPage: List<MainPageData> = mainPageOf(
@@ -46,13 +45,10 @@ class AdiDrakor : MainAPI() {
             "sort" to params.last()
         ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
 
-        // Filter untuk halaman utama (MainPage) dipertahankan
         val home = app.post("$mainUrl/wefeed-h5-bff/web/filter", requestBody = body)
-            // Hanya izinkan konten dari 'Korea' dan pastikan itu Series (subjectType 2)
-            ?.parsedSafe<Media>()?.data?.items
-            ?.filter { 
-                 it.countryName?.contains("Korea", ignoreCase = true) == true && it.subjectType == 2
-            } 
+            .parsedSafe<Media>()?.data?.items
+            // Filter hanya konten Korea (countryName) atau konten bertipe TvSeries/Drama (subjectType 2)
+            ?.filter { it.countryName?.contains("Korea", ignoreCase = true) == true || it.subjectType == 2 } 
             ?.map {
                 it.toSearchResponse(this)
             } ?: throw ErrorLoadingException("Tidak ada Data Drakor Ditemukan")
@@ -64,18 +60,23 @@ class AdiDrakor : MainAPI() {
         return search(query) ?: emptyList()
     }
 
-    // PERUBAHAN 2: Filter di fungsi search HANYA berdasarkan negara 'Korea' DAN TIPE SERIES (2)
+    // FUNGSI INI DIUBAH: Menambahkan filter untuk hanya menampilkan Drakor (Movie/TvSeries dari Korea)
     override suspend fun search(query: String): List<SearchResponse>? {
         val results = app.post(
             "$mainUrl/wefeed-h5-bff/web/subject/search", requestBody = mapOf(
                 "keyword" to query,
                 "page" to "1",
                 "perPage" to "0",
-                "subjectType" to "0", // Cari semua tipe (0)
+                "subjectType" to "0", // Cari semua tipe (0) di API
             ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
         ).parsedSafe<Media>()?.data?.items
-            // Filter yang lebih STRIKT: HANYA konten dengan countryName mengandung 'Korea' DAN subjectType=2
-            ?.filter { it.countryName?.contains("Korea", ignoreCase = true) == true && it.subjectType == 2 }
+            // BARIS BARU: Filter untuk hanya menyertakan Drakor (Korea DAN Movie/Series, bukan Anime)
+            ?.filter {
+                val isKorean = it.countryName?.contains("Korea", ignoreCase = true) == true
+                val isDrakorType = it.subjectType == 1 || it.subjectType == 2 // 1=Movie, 2=TvSeries/Drama
+                
+                isKorean && isDrakorType
+            }
             ?.map { it.toSearchResponse(this) }
             ?: return null
             
@@ -95,10 +96,10 @@ class AdiDrakor : MainAPI() {
         
         // Tentukan tipe yang benar
         val tvType = when (subject?.subjectType) {
-            // Karena kita hanya menampilkan Drakor, Series (2) dan Movie (1) dari Korea bisa jadi Series atau Movie.
-            1 -> TvType.Movie 
+            1 -> TvType.Movie
             2 -> TvType.TvSeries
-            else -> TvType.TvSeries // Default ke TvSeries untuk konten yang lolos filter awal
+            1006 -> TvType.Anime // Meskipun tidak ditampilkan, kita tetap tentukan tipenya
+            else -> TvType.Movie
         }
         
         val description = subject?.description
@@ -112,18 +113,18 @@ class AdiDrakor : MainAPI() {
                 ),
                 roleString = cast.character
             )
-        }?.distinctBy { it.actor }
+        )?.distinctBy { it.actor }
 
         val recommendations =
             app.get("$mainUrl/wefeed-h5-bff/web/subject/detail-rec?subjectId=$id&page=1&perPage=12")
                 .parsedSafe<Media>()?.data?.items
-                // Pertahankan filter rekomendasi HANYA untuk Drama Korea (subjectType 2)
-                ?.filter { it.countryName?.contains("Korea", ignoreCase = true) == true && it.subjectType == 2 }
+                // Pertahankan filter rekomendasi untuk Drama Korea
+                ?.filter { it.countryName?.contains("Korea", ignoreCase = true) == true || it.subjectType == 2 }
                 ?.map {
                     it.toSearchResponse(this)
                 }
 
-        // Logika TvSeries (Drakor/Serial) - Jika data tidak lengkap, asumsikan TvSeries karena filter sudah ketat
+        // LOGIKA BARU: Jika Movie, gunakan MovieLoadResponse
         if (tvType == TvType.Movie) {
              return newMovieLoadResponse(title, url, TvType.Movie, document?.resource?.seasons?.firstOrNull()?.allEp?.split(",")?.map { it.toInt() }?.map { ep ->
                 newEpisode(
@@ -148,6 +149,7 @@ class AdiDrakor : MainAPI() {
             }
         }
         
+        // Logika TvSeries (Drakor/Serial)
         return newTvSeriesLoadResponse(title, url, TvType.TvSeries,
                 document?.resource?.seasons?.map { seasons ->
                 (if (seasons.allEp.isNullOrEmpty()) (1..seasons.maxEp!!) else seasons.allEp.split(",")
@@ -295,19 +297,20 @@ class AdiDrakor : MainAPI() {
         @JsonProperty("detailPath") val detailPath: String? = null,
     ) {
 
-        // PERUBAHAN 3: Memastikan hasil pencarian selalu TvSeries/AsianDrama dan mengabaikan tipe lain
+        // FUNGSI INI DIUBAH: Menggunakan tipe yang benar untuk hasil pencarian
         fun toSearchResponse(provider: AdiDrakor): SearchResponse {
+            // Karena kita sudah memfilter di fungsi search(), maka hanya tipe Drakor yang akan mencapai titik ini.
+            // Gunakan TvSeries untuk tipe 2, Movie untuk tipe 1.
             val type = when (subjectType) {
-                1 -> TvType.Movie // Tipe Film Korea (Jika Lolos Filter)
-                2 -> TvType.TvSeries // Tipe Series Korea
-                else -> TvType.TvSeries // Pastikan selalu TvSeries/AsianDrama
+                1 -> TvType.Movie
+                2 -> TvType.TvSeries
+                else -> TvType.Movie // Default ke Movie jika tipe tidak terdeteksi/lain
             }
             
             return provider.newMovieSearchResponse(
                 title ?: "",
                 subjectId ?: "",
-                // Kita kembalikan sebagai AsianDrama agar dikategorikan sebagai Drama, bukan film umum
-                TvType.AsianDrama, 
+                type,
                 false
             ) {
                 this.posterUrl = cover?.url
