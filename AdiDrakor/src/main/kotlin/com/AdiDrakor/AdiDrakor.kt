@@ -22,7 +22,7 @@ class AdiDrakor : MainAPI() {
     override val supportedTypes = setOf(
         TvType.TvSeries,
         TvType.AsianDrama,
-        TvType.Movie // Pertahankan Movie, tapi akan difilter di fungsi pencarian
+        TvType.Movie // Dipertahankan, karena Drakor Movie juga termasuk
     )
 
     override val mainPage: List<MainPageData> = mainPageOf(
@@ -46,8 +46,8 @@ class AdiDrakor : MainAPI() {
         ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
 
         val home = app.post("$mainUrl/wefeed-h5-bff/web/filter", requestBody = body)
-            .parsedSafe<Media>()?.data?.items
-            // Filter hanya konten Korea (countryName) atau konten bertipe TvSeries/Drama (subjectType 2)
+            // Filter hanya Drama Korea (countryName contains "Korea") atau memiliki subjectType 2 (TvSeries/Drama)
+            ?.parsedSafe<Media>()?.data?.items
             ?.filter { it.countryName?.contains("Korea", ignoreCase = true) == true || it.subjectType == 2 } 
             ?.map {
                 it.toSearchResponse(this)
@@ -60,23 +60,18 @@ class AdiDrakor : MainAPI() {
         return search(query) ?: emptyList()
     }
 
-    // FUNGSI INI DIUBAH: Menambahkan filter untuk hanya menampilkan Drakor (Movie/TvSeries dari Korea)
+    // FUNGSI INI DIUBAH: Menambahkan filter untuk hanya menampilkan Drakor
     override suspend fun search(query: String): List<SearchResponse>? {
         val results = app.post(
             "$mainUrl/wefeed-h5-bff/web/subject/search", requestBody = mapOf(
                 "keyword" to query,
                 "page" to "1",
                 "perPage" to "0",
-                "subjectType" to "0", // Cari semua tipe (0) di API
+                "subjectType" to "0", // Cari semua tipe (0)
             ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
         ).parsedSafe<Media>()?.data?.items
-            // BARIS BARU: Filter untuk hanya menyertakan Drakor (Korea DAN Movie/Series, bukan Anime)
-            ?.filter {
-                val isKorean = it.countryName?.contains("Korea", ignoreCase = true) == true
-                val isDrakorType = it.subjectType == 1 || it.subjectType == 2 // 1=Movie, 2=TvSeries/Drama
-                
-                isKorean && isDrakorType
-            }
+            // BARU: Filter hanya Drama Korea
+            ?.filter { it.countryName?.contains("Korea", ignoreCase = true) == true || it.subjectType == 2 }
             ?.map { it.toSearchResponse(this) }
             ?: return null
             
@@ -98,7 +93,7 @@ class AdiDrakor : MainAPI() {
         val tvType = when (subject?.subjectType) {
             1 -> TvType.Movie
             2 -> TvType.TvSeries
-            1006 -> TvType.Anime // Meskipun tidak ditampilkan, kita tetap tentukan tipenya
+            1006 -> TvType.Anime
             else -> TvType.Movie
         }
         
@@ -113,7 +108,7 @@ class AdiDrakor : MainAPI() {
                 ),
                 roleString = cast.character
             )
-        )?.distinctBy { it.actor }
+        }?.distinctBy { it.actor }
 
         val recommendations =
             app.get("$mainUrl/wefeed-h5-bff/web/subject/detail-rec?subjectId=$id&page=1&perPage=12")
@@ -297,17 +292,16 @@ class AdiDrakor : MainAPI() {
         @JsonProperty("detailPath") val detailPath: String? = null,
     ) {
 
-        // FUNGSI INI DIUBAH: Menggunakan tipe yang benar untuk hasil pencarian
+        // FUNGSI INI DIUBAH: Memastikan tipe yang dikembalikan selalu Movie atau TvSeries (tidak ada Anime)
         fun toSearchResponse(provider: AdiDrakor): SearchResponse {
-            // Karena kita sudah memfilter di fungsi search(), maka hanya tipe Drakor yang akan mencapai titik ini.
-            // Gunakan TvSeries untuk tipe 2, Movie untuk tipe 1.
             val type = when (subjectType) {
                 1 -> TvType.Movie
                 2 -> TvType.TvSeries
-                else -> TvType.Movie // Default ke Movie jika tipe tidak terdeteksi/lain
+                else -> TvType.Movie // Anggap semua yang lolos filter (yaitu Drakor non-series) sebagai Movie
             }
             
-            return provider.newMovieSearchResponse(
+            // Menggunakan provider.newSearchResponse() dengan tipe yang benar
+            return provider.newSearchResponse(
                 title ?: "",
                 subjectId ?: "",
                 type,
