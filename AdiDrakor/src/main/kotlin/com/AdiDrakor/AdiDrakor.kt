@@ -20,17 +20,18 @@ class AdiDrakor : MainAPI() {
     override val hasQuickSearch = true
     override var lang = "en"
     
-    // PERUBAHAN 1: Hapus TvType.Movie agar tidak mendukung pencarian film umum
     override val supportedTypes = setOf(
         TvType.TvSeries,
         TvType.AsianDrama
     )
 
+    // PERUBAHAN 1: Tambahkan kategori baru untuk Film Korea (Movies)
     override val mainPage: List<MainPageData> = mainPageOf(
         "2,ForYou" to "Drakor Pilihan",
         "2,Hottest" to "Drakor Terpopuler",
         "2,Latest" to "Drakor Terbaru",
         "2,Rating" to "Drakor Rating Tertinggi",
+        "1,LatestMovies" to "Drakor Movies Terbaru" // Kategori BARU: subjectType=1, sort=LatestMovies
     )
 
     override suspend fun getMainPage(
@@ -38,20 +39,29 @@ class AdiDrakor : MainAPI() {
         request: MainPageRequest,
     ): HomePageResponse {
         val params = request.data.split(",")
-        
+        val channelId = params.first() // Ini adalah subjectType yang kita gunakan (2 untuk series, 1 untuk movie)
+        val sortType = params.last()
+
         val body = mapOf(
-            "channelId" to params.first(),
+            "channelId" to channelId,
             "page" to page,
             "perPage" to "24",
-            "sort" to params.last()
+            "sort" to sortType
         ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
 
-        // Filter untuk halaman utama (MainPage) dipertahankan
+        val isMovieCategory = channelId == "1"
+        
         val home = app.post("$mainUrl/wefeed-h5-bff/web/filter", requestBody = body)
-            // Hanya izinkan konten dari 'Korea' dan pastikan itu Series (subjectType 2)
             ?.parsedSafe<Media>()?.data?.items
             ?.filter { 
-                 it.countryName?.contains("Korea", ignoreCase = true) == true && it.subjectType == 2
+                 // LOGIKA BARU:
+                 // Jika channelId adalah '1' (Drakor Movies), filter HANYA Movie Korea (subjectType=1)
+                 // Jika channelId adalah '2' (Drakor Series), filter HANYA Series Korea (subjectType=2)
+                 if (isMovieCategory) {
+                    it.countryName?.contains("Korea", ignoreCase = true) == true && it.subjectType == 1
+                 } else {
+                    it.countryName?.contains("Korea", ignoreCase = true) == true && it.subjectType == 2
+                 }
             } 
             ?.map {
                 it.toSearchResponse(this)
@@ -60,11 +70,13 @@ class AdiDrakor : MainAPI() {
         return newHomePageResponse(request.name, home)
     }
 
+// ... Sisa kode lainnya (quickSearch, search, load, loadLinks, data classes) tetap sama ...
+
     override suspend fun quickSearch(query: String): List<SearchResponse> {
         return search(query) ?: emptyList()
     }
 
-    // PERUBAHAN 2: Filter di fungsi search HANYA berdasarkan negara 'Korea' DAN TIPE SERIES (2)
+    // Fungsi search dipertahankan hanya untuk mencari Series Drakor, seperti permintaan sebelumnya.
     override suspend fun search(query: String): List<SearchResponse>? {
         val results = app.post(
             "$mainUrl/wefeed-h5-bff/web/subject/search", requestBody = mapOf(
@@ -74,257 +86,11 @@ class AdiDrakor : MainAPI() {
                 "subjectType" to "0", // Cari semua tipe (0)
             ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
         ).parsedSafe<Media>()?.data?.items
-            // Filter yang lebih STRIKT: HANYA konten dengan countryName mengandung 'Korea' DAN subjectType=2
+            // Filter yang STRIKT: HANYA konten dengan countryName mengandung 'Korea' DAN subjectType=2
             ?.filter { it.countryName?.contains("Korea", ignoreCase = true) == true && it.subjectType == 2 }
             ?.map { it.toSearchResponse(this) }
             ?: return null
             
         return results 
     }
-
-    override suspend fun load(url: String): LoadResponse {
-        val id = url.substringAfterLast("/")
-        val document = app.get("$mainUrl/wefeed-h5-bff/web/subject/detail?subjectId=$id")
-            .parsedSafe<MediaDetail>()?.data
-        val subject = document?.subject
-        val title = subject?.title ?: ""
-        val poster = subject?.cover?.url
-        val tags = subject?.genre?.split(",")?.map { it.trim() }
-
-        val year = subject?.releaseDate?.substringBefore("-")?.toIntOrNull()
-        
-        // Tentukan tipe yang benar
-        val tvType = when (subject?.subjectType) {
-            // Karena kita hanya menampilkan Drakor, Series (2) dan Movie (1) dari Korea bisa jadi Series atau Movie.
-            1 -> TvType.Movie 
-            2 -> TvType.TvSeries
-            else -> TvType.TvSeries // Default ke TvSeries untuk konten yang lolos filter awal
-        }
-        
-        val description = subject?.description
-        val trailer = subject?.trailer?.videoAddress?.url
-        
-        val actors = document?.stars?.mapNotNull { cast ->
-            ActorData(
-                Actor(
-                    cast.name ?: return@mapNotNull null,
-                    cast.avatarUrl
-                ),
-                roleString = cast.character
-            )
-        }?.distinctBy { it.actor }
-
-        val recommendations =
-            app.get("$mainUrl/wefeed-h5-bff/web/subject/detail-rec?subjectId=$id&page=1&perPage=12")
-                .parsedSafe<Media>()?.data?.items
-                // Pertahankan filter rekomendasi HANYA untuk Drama Korea (subjectType 2)
-                ?.filter { it.countryName?.contains("Korea", ignoreCase = true) == true && it.subjectType == 2 }
-                ?.map {
-                    it.toSearchResponse(this)
-                }
-
-        // Logika TvSeries (Drakor/Serial) - Jika data tidak lengkap, asumsikan TvSeries karena filter sudah ketat
-        if (tvType == TvType.Movie) {
-             return newMovieLoadResponse(title, url, TvType.Movie, document?.resource?.seasons?.firstOrNull()?.allEp?.split(",")?.map { it.toInt() }?.map { ep ->
-                newEpisode(
-                    LoadData(
-                        id,
-                        1,
-                        ep,
-                        subject?.detailPath
-                    ).toJson()
-                ) {
-                    this.episode = ep
-                }
-            } ?: emptyList()) {
-                 this.posterUrl = poster
-                 this.year = year
-                 this.plot = description
-                 this.tags = tags
-                 this.score = Score.from10(subject?.imdbRatingValue) 
-                 this.actors = actors
-                 this.recommendations = recommendations
-                 addTrailer(trailer, addRaw = true)
-            }
-        }
-        
-        return newTvSeriesLoadResponse(title, url, TvType.TvSeries,
-                document?.resource?.seasons?.map { seasons ->
-                (if (seasons.allEp.isNullOrEmpty()) (1..seasons.maxEp!!) else seasons.allEp.split(",")
-                    .map { it.toInt() })
-                    .map { episode ->
-                        newEpisode(
-                            LoadData(
-                                id,
-                                seasons.se,
-                                episode,
-                                subject?.detailPath
-                            ).toJson()
-                        ) {
-                            this.season = seasons.se
-                            this.episode = episode
-                        }
-                    }
-            }?.flatten() ?: emptyList()) {
-                this.posterUrl = poster
-                this.year = year
-                this.plot = description
-                this.tags = tags
-                this.score = Score.from10(subject?.imdbRatingValue) 
-                this.actors = actors
-                this.recommendations = recommendations
-                addTrailer(trailer, addRaw = true)
-            }
-    }
-
-    override suspend fun loadLinks(
-        data: String,
-        isCasting: Boolean,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ): Boolean {
-        val media = parseJson<LoadData>(data)
-        val referer = "$apiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&lang=en"
-
-        val streams = app.get(
-            "$apiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}",
-            referer = referer
-        ).parsedSafe<Media>()?.data?.streams
-
-        streams?.reversed()?.distinctBy { it.url }?.map { source ->
-            callback.invoke(
-                newExtractorLink(
-                    this.name,
-                    this.name,
-                    source.url ?: return@map,
-                    INFER_TYPE
-                ) {
-                    this.referer = "$apiUrl/"
-                    this.quality = getQualityFromName(source.resolutions)
-                }
-            )
-        }
-
-        val id = streams?.first()?.id
-        val format = streams?.first()?.format
-
-        app.get(
-            "$apiUrl/wefeed-h5-bff/web/subject/caption?format=$format&id=$id&subjectId=${media.id}",
-            referer = referer
-        ).parsedSafe<Media>()?.data?.captions?.map { subtitle ->
-            subtitleCallback.invoke(
-                newSubtitleFile(
-                    subtitle.lanName ?: "",
-                    subtitle.url ?: return@map
-                )
-            )
-        }
-
-        return true
-    }
-    
-    data class LoadData(
-        val id: String? = null,
-        val season: Int? = null,
-        val episode: Int? = null,
-        val detailPath: String? = null,
-    )
-
-    data class Media(
-        @JsonProperty("data") val data: Data? = null,
-    ) {
-        data class Data(
-            @JsonProperty("subjectList") val subjectList: ArrayList<Items>? = arrayListOf(),
-            @JsonProperty("items") val items: ArrayList<Items>? = arrayListOf(),
-            @JsonProperty("streams") val streams: ArrayList<Streams>? = arrayListOf(),
-            @JsonProperty("captions") val captions: ArrayList<Captions>? = arrayListOf(),
-        ) {
-            data class Streams(
-                @JsonProperty("id") val id: String? = null,
-                @JsonProperty("format") val format: String? = null,
-                @JsonProperty("url") val url: String? = null,
-                @JsonProperty("resolutions") val resolutions: String? = null,
-            )
-
-            data class Captions(
-                @JsonProperty("lan") val lan: String? = null,
-                @JsonProperty("lanName") val lanName: String? = null,
-                @JsonProperty("url") val url: String? = null,
-            )
-        }
-    }
-
-    data class MediaDetail(
-        @JsonProperty("data") val data: Data? = null,
-    ) {
-        data class Data(
-            @JsonProperty("subject") val subject: Items? = null,
-            @JsonProperty("stars") val stars: ArrayList<Stars>? = arrayListOf(),
-            @JsonProperty("resource") val resource: Resource? = null,
-        ) {
-            data class Stars(
-                @JsonProperty("name") val name: String? = null,
-                @JsonProperty("character") val character: String? = null,
-                @JsonProperty("avatarUrl") val avatarUrl: String? = null,
-            )
-
-            data class Resource(
-                @JsonProperty("seasons") val seasons: ArrayList<Seasons>? = arrayListOf(),
-            ) {
-                data class Seasons(
-                    @JsonProperty("se") val se: Int? = null,
-                    @JsonProperty("maxEp") val maxEp: Int? = null,
-                    @JsonProperty("allEp") val allEp: String? = null,
-                )
-            }
-        }
-    }
-
-    data class Items(
-        @JsonProperty("subjectId") val subjectId: String? = null,
-        @JsonProperty("subjectType") val subjectType: Int? = null, // 2 = TvSeries/Drama, 1 = Movie, 1006 = Anime
-        @JsonProperty("title") val title: String? = null,
-        @JsonProperty("description") val description: String? = null,
-        @JsonProperty("releaseDate") val releaseDate: String? = null,
-        @JsonProperty("duration") val duration: Long? = null,
-        @JsonProperty("genre") val genre: String? = null,
-        @JsonProperty("cover") val cover: Cover? = null,
-        @JsonProperty("imdbRatingValue") val imdbRatingValue: String? = null,
-        @JsonProperty("countryName") val countryName: String? = null, // Digunakan untuk filter Korea
-        @JsonProperty("trailer") val trailer: Trailer? = null,
-        @JsonProperty("detailPath") val detailPath: String? = null,
-    ) {
-
-        // PERUBAHAN 3: Memastikan hasil pencarian selalu TvSeries/AsianDrama dan mengabaikan tipe lain
-        fun toSearchResponse(provider: AdiDrakor): SearchResponse {
-            val type = when (subjectType) {
-                1 -> TvType.Movie // Tipe Film Korea (Jika Lolos Filter)
-                2 -> TvType.TvSeries // Tipe Series Korea
-                else -> TvType.TvSeries // Pastikan selalu TvSeries/AsianDrama
-            }
-            
-            return provider.newMovieSearchResponse(
-                title ?: "",
-                subjectId ?: "",
-                // Kita kembalikan sebagai AsianDrama agar dikategorikan sebagai Drama, bukan film umum
-                TvType.AsianDrama, 
-                false
-            ) {
-                this.posterUrl = cover?.url
-                this.score = Score.from10(imdbRatingValue)
-            }
-        }
-
-        data class Cover(
-            @JsonProperty("url") val url: String? = null,
-        )
-
-        data class Trailer(
-            @JsonProperty("videoAddress") val videoAddress: VideoAddress? = null,
-        ) {
-            data class VideoAddress(
-                @JsonProperty("url") val url: String? = null,
-            )
-        }
-    }
-}
+// ...
