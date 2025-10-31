@@ -1,4 +1,4 @@
-Package com.AdiDrakor // PERBAIKAN: Pastikan ini adalah baris pertama file tanpa spasi di atasnya
+package com.AdiDrakor // PERBAIKAN: Pastikan ini adalah baris pertama file tanpa spasi di atasnya
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
