@@ -1,8 +1,8 @@
-package mytmdbprovider // 🚨 PACKAGE BARU: mytmdbprovider
+package mytmdbprovider 
 
 import com.google.gson.Gson
-import mytmdbprovider.BuildConfig // Ganti impor BuildConfig
-import mytmdbprovider.VidsrcExtractor // Ganti impor VidsrcExtractor
+// HAPUS: import mytmdbprovider.BuildConfig // Import ini tidak diperlukan lagi
+import mytmdbprovider.VidsrcExtractor 
 import dev.shehand.cloudstream.MainApplication.Companion.app
 import dev.shehand.cloudstream.extractor.ExtractorLink
 import dev.shehand.cloudstream.source.MainDiscover
@@ -17,19 +17,20 @@ class MyTMDBProvider : MainDiscover() {
     
     override val name = "My TMDB + Vidsrc" 
     override val mainUrl = "https://api.themoviedb.org"
-    private val API_KEY = BuildConfig.TMDB_API_KEY 
-
+    
+    // ✅ KUNCI API DISIMPAN LANGSUNG DI SINI (Dalam Teks Biasa)
+    private val API_KEY = "1d8730d33fc13ccbd8cdaaadb74892c7" 
+    
     // --- Variabel Pembantu ---
     private val GSON = Gson()
 
-    // --- Implementasi Fungsi (Sama seperti sebelumnya) ---
+    // --- Implementasi Fungsi (Sisanya tetap sama) ---
 
     override suspend fun search(query: String): List<SearchResponse> {
         val searchUrl = "$mainUrl/3/search/multi?api_key=$API_KEY&query=$query"
         val response = app.get(searchUrl).text
         
-        // 🚨 LOGIKA PARSING JSON TMDB di sini.
-        println("TMDB Search JSON Response: $response")
+        // ... Logika parsing ...
         return emptyList() 
     }
 
@@ -37,8 +38,7 @@ class MyTMDBProvider : MainDiscover() {
         val trendingUrl = "$mainUrl/3/trending/all/day?api_key=$API_KEY&page=$page"
         val response = app.get(trendingUrl).text
         
-        // 🚨 LOGIKA PARSING JSON TMDB di sini.
-        println("TMDB Trending JSON Response: $response")
+        // ... Logika parsing ...
         return emptyList() 
     }
     
@@ -47,12 +47,9 @@ class MyTMDBProvider : MainDiscover() {
         val detailUrl = "$mainUrl/3/$mediaType/$tmdbId?api_key=$API_KEY"
         val response = app.get(detailUrl).text
         
-        // 🚨 LOGIKA PARSING JSON TMDB di sini (Detail Media)
-        println("TMDB Detail JSON Response: $response")
+        // ... Logika parsing ...
         return null 
     }
-
-    // --- Fungsi Load Links (JEMBATAN KOLABORASI) ---
 
     override suspend fun loadLinks(
         data: String, 
@@ -61,6 +58,8 @@ class MyTMDBProvider : MainDiscover() {
         
         val extractor = VidsrcExtractor()
         val vidsrcUrl: String
+
+        // ... Logika Load Links (membuat URL Vidsrc) ...
 
         if (isSeries) {
             val parts = data.split("_")
@@ -75,8 +74,6 @@ class MyTMDBProvider : MainDiscover() {
         } else {
             vidsrcUrl = "https://vidsrc.me/embed/movie?tmdb=$data"
         }
-        
-        println("Memanggil Vidsrc Extractor untuk URL: $vidsrcUrl")
         
         return extractor.getLink(vidsrcUrl)
     }
