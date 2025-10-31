@@ -1,15 +1,14 @@
 package mytmdbprovider 
 
 import com.google.gson.Gson
-import mytmdbprovider.BuildConfig 
+// HAPUS: import mytmdbprovider.BuildConfig // TIDAK DIPERLUKAN KARENA KUNCI DISIMPAN LANGSUNG
+
 import mytmdbprovider.VidsrcExtractor 
-// Import CLOUDSTREAM 3 yang benar:
+// PERBAIKAN IMPOR CLOUDSTREAM 3:
 import com.lagradost.cloudstream3.metaproviders.MainDiscover
 import com.lagradost.cloudstream3.APIHolder.Companion.app
 import com.lagradost.cloudstream3.extractor.ExtractorLink
-import com.lagradost.cloudstream3.model.LoadResponse
-import com.lagradost.cloudstream3.model.SearchResponse
-import com.lagradost.cloudstream3.model.HomePageList
+import com.lagradost.cloudstream3.model.* // Import semua model seperti LoadResponse, SearchResponse, HomePageList
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseInt 
 
 class MyTMDBProvider : MainDiscover() {
@@ -18,21 +17,21 @@ class MyTMDBProvider : MainDiscover() {
     
     override val name = "My TMDB + Vidsrc" 
     override val mainUrl = "https://api.themoviedb.org"
-    // Kunci API disisipkan langsung, sesuai permintaan Anda
+    // ✅ KUNCI API disisipkan langsung, sesuai permintaan Anda.
     private val API_KEY = "1d8730d33fc13ccbd8cdaaadb74892c7" 
     
-    // --- Variabel Pembantu ---
+    // ... Sisanya tetap sama
     private val GSON = Gson()
 
-    // --- Implementasi Fungsi ---
-
+    // Fungsi search, getMainPage, dan load sekarang akan me-resolve karena MainDiscover
+    // sudah diimpor dengan benar.
+    
     override suspend fun search(query: String): List<SearchResponse> {
         val searchUrl = "$mainUrl/3/search/multi?api_key=$API_KEY&query=$query"
-        // Menggunakan app.get() yang sudah di-resolve
+        // PERBAIKAN: .get() adalah suspend function, tapi di Cloudstream, app.get().text sudah ok.
         val response = app.get(searchUrl).text 
         
         // 🚨 LOGIKA PARSING JSON TMDB di sini.
-        println("TMDB Search JSON Response: $response")
         return emptyList() 
     }
 
@@ -41,17 +40,15 @@ class MyTMDBProvider : MainDiscover() {
         val response = app.get(trendingUrl).text
         
         // 🚨 LOGIKA PARSING JSON TMDB di sini.
-        println("TMDB Trending JSON Response: $response")
         return emptyList() 
     }
     
-    override suspend fun load(data: String): LoadResponse? { // Menggunakan LoadResponse yang benar
+    override suspend fun load(data: String): LoadResponse? { 
         val (mediaType, tmdbId) = data.split("/", limit = 2)
         val detailUrl = "$mainUrl/3/$mediaType/$tmdbId?api_key=$API_KEY"
         val response = app.get(detailUrl).text
         
-        // 🚨 LOGIKA PARSING JSON TMDB di sini
-        println("TMDB Detail JSON Response: $response")
+        // 🚨 LOGIKA PARSING JSON TMDB di sini.
         return null 
     }
 
@@ -68,7 +65,7 @@ class MyTMDBProvider : MainDiscover() {
             if (parts.size != 3) return emptyList()
             
             val tmdbId = parts[0]
-            val season = parts[1].tryParseInt() // tryParseInt sudah di-resolve
+            val season = parts[1].tryParseInt() 
             val episode = parts[2].tryParseInt()
             
             vidsrcUrl = "https://vidsrc.me/embed/tv?tmdb=$tmdbId&season=$season&episode=$episode"
