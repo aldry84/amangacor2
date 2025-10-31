@@ -59,7 +59,7 @@ class AdiDrakor : MainAPI() {
         return search(query) ?: emptyList()
     }
 
-    // FUNGSI INI DIUBAH: Menghilangkan filter agar semua konten muncul di hasil pencarian
+    // FUNGSI INI DIUBAH: Menambahkan kembali filter untuk hanya menampilkan Drakor
     override suspend fun search(query: String): List<SearchResponse>? {
         val results = app.post(
             "$mainUrl/wefeed-h5-bff/web/subject/search", requestBody = mapOf(
@@ -69,7 +69,8 @@ class AdiDrakor : MainAPI() {
                 "subjectType" to "0", // Cari semua tipe (0)
             ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
         ).parsedSafe<Media>()?.data?.items
-            // Hapus filter konten Korea/Drama di sini
+            // FILTER BARU: Hanya izinkan konten dari 'Korea' atau yang bertipe 'TvSeries' (subjectType=2)
+            ?.filter { it.countryName?.contains("Korea", ignoreCase = true) == true || it.subjectType == 2 }
             ?.map { it.toSearchResponse(this) }
             ?: return null
             
