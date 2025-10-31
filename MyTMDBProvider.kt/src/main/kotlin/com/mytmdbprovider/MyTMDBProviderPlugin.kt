@@ -1,11 +1,14 @@
-package mytmdbprovider // 🚨 PACKAGE BARU: mytmdbprovider
+package mytmdbprovider 
 
-import dev.shehand.cloudstream.source.Plugin
+import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
+import com.lagradost.cloudstream3.APIHolder.Companion.registerMainAPI // Mengganti registerMainPageSource
+import android.content.Context // Diperlukan untuk fungsi load()
 
 // Kelas ini adalah TITIK MASUK (entry point) ekstensi Anda
-class MyTMDBProviderPlugin: Plugin() {
-    override fun load() {
+class MyTMDBProviderPlugin: CloudstreamPlugin() { 
+    // Fungsi load() Cloudstream memerlukan parameter context
+    override fun load(context: Context) { 
         // Daftarkan Source utama Anda
-        registerMainPageSource(MyTMDBProvider())
+        registerMainAPI(MyTMDBProvider()) 
     }
 }
