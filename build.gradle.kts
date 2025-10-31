@@ -30,7 +30,6 @@ fun Project.cloudstream(configuration: CloudstreamExtension.() -> Unit) = extens
 
 fun Project.android(configuration: BaseExtension.() -> Unit) = extensions.getByName<BaseExtension>("android").configuration()
 
-// --- BLOK SUBPROJECTS ASLI ANDA ---
 subprojects {
     apply(plugin = "com.android.library")
     apply(plugin = "kotlin-android")
@@ -90,50 +89,6 @@ subprojects {
         implementation("org.bouncycastle:bcpkix-jdk15on:1.70")
     }
 }
-
-// --- BLOK BARU: EKSTENSI MYTMBPROVIDER dengan KUNCI API V3 TMDB ---
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-
-project(":mytmdbprovider") {
-    
-    apply(plugin = "com.android.library")
-    apply(plugin = "kotlin-android")
-    apply(plugin = "com.lagradost.cloudstream3.gradle")
-    
-    cloudstream {
-        authors = listOf("MyTMDBProviderAuthor") 
-    }
-
-    android {
-        namespace = "mytmdbprovider"
-
-        defaultConfig {
-            
-            // ✅ KUNCI API TMDB V3 YANG SUDAH DIPERBARUI
-            buildConfigField("String", "TMDB_API_KEY", "\"1d8730d33fc13ccbd8cdaaadb74892c7\"")
-            
-            minSdk = 21
-            compileSdkVersion(35)
-            targetSdk = 35
-        }
-
-        tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile> {
-            compilerOptions {
-                jvmTarget.set(JvmTarget.JVM_1_8)
-            }
-        }
-    }
-    
-    dependencies {
-        val implementation by configurations
-        val cloudstream by configurations
-        
-        cloudstream("com.lagradost:cloudstream3:pre-release")
-        implementation("com.google.code.gson:gson:2.11.0") 
-    }
-}
-// --- AKHIR BLOK BARU ---
-
 
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
