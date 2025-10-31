@@ -292,23 +292,35 @@ class AdiDrakor : MainAPI() {
         @JsonProperty("detailPath") val detailPath: String? = null,
     ) {
 
-        // FUNGSI INI DIUBAH: Memastikan tipe yang dikembalikan selalu Movie atau TvSeries (tidak ada Anime)
+        // FUNGSI INI DIPERBAIKI
         fun toSearchResponse(provider: AdiDrakor): SearchResponse {
             val type = when (subjectType) {
                 1 -> TvType.Movie
                 2 -> TvType.TvSeries
-                else -> TvType.Movie // Anggap semua yang lolos filter (yaitu Drakor non-series) sebagai Movie
+                else -> TvType.Movie // Anggap semua yang lolos filter sebagai Movie jika bukan TvSeries
             }
-            
-            // Menggunakan provider.newSearchResponse() dengan tipe yang benar
-            return provider.newSearchResponse(
-                title ?: "",
-                subjectId ?: "",
-                type,
-                false
-            ) {
-                this.posterUrl = cover?.url
-                this.score = Score.from10(imdbRatingValue)
+
+            // Memilih fungsi pembuat SearchResponse yang tepat berdasarkan tipe:
+            return if (type == TvType.Movie) {
+                provider.newMovieSearchResponse(
+                    title ?: "",
+                    subjectId ?: "",
+                    type,
+                    false
+                ) {
+                    this.posterUrl = cover?.url
+                    this.score = Score.from10(imdbRatingValue)
+                }
+            } else { // TvType.TvSeries
+                 provider.newTvSeriesSearchResponse(
+                    title ?: "",
+                    subjectId ?: "",
+                    type,
+                    false
+                ) {
+                    this.posterUrl = cover?.url
+                    this.score = Score.from10(imdbRatingValue)
+                }
             }
         }
 
