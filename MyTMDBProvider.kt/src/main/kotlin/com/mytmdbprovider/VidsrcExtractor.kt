@@ -4,8 +4,8 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.lagradost.cloudstream3.APIHolder.Companion.app
 import com.lagradost.cloudstream3.extractors.ExtractorLink 
-import mytmdbprovider.SourceData // Mengimport dari DataClasses.kt
-// Hapus semua redeklarasi data class di sini!
+import mytmdbprovider.SourceData // Mengimpor dari DataClasses.kt
+import org.jsoup.Jsoup // Diperlukan untuk parsing (jika app.get().document tidak bekerja)
 
 // Inisialisasi GSON sekali
 private val GSON = Gson()
@@ -18,23 +18,20 @@ class VidsrcExtractor {
         
         val finalLinks = mutableListOf<ExtractorLink>()
         
-        // 1. Mendapatkan URL Player
         val playerUrl = extractPlayerUrl(vidsrcUrl)
         if (playerUrl.isNullOrEmpty()) return emptyList()
 
-        // 2. Mengambil Halaman Player DENGAN REFERER (Wajib!)
         val playerPage = try {
-            app.get(playerUrl, referer = vidsrcReferer).document() // Memperbaiki pemanggilan .document()
+            // PERBAIKAN: Menggunakan .document properti, BUKAN fungsi .document()
+            app.get(playerUrl, referer = vidsrcReferer).document 
         } catch (e: Exception) {
             println("VidsrcExtractor: Gagal memuat halaman player: ${e.message}")
             return emptyList()
         }
 
-        // 3. Ekstraksi JSON dari Skrip JS
         val scriptData = playerPage.select("script:containsData(sources)").html()
         val sourcesJson = extractJsonUsingRegex(scriptData, "sources")
         
-        // 4. Parsing Sources JSON dan Membuat ExtractorLinks
         if (sourcesJson.isNotEmpty()) {
             try {
                 val listSourceType = object : TypeToken<List<SourceData>>() {}.type
@@ -45,7 +42,7 @@ class VidsrcExtractor {
                         ExtractorLink(
                             name = "Vidsrc - ${source.label}", 
                             url = source.file, 
-                            referer = vidsrcReferer // Wajib!
+                            referer = vidsrcReferer
                         )
                     )
                 }
@@ -59,9 +56,10 @@ class VidsrcExtractor {
     
     // --- Helper Functions ---
 
-    private fun extractPlayerUrl(vidsrcUrl: String): String? {
+    private suspend fun extractPlayerUrl(vidsrcUrl: String): String? { // TAMBAHKAN 'suspend'
         return try {
-            val doc = app.get(vidsrcUrl, referer = vidsrcReferer).document() // Memperbaiki pemanggilan .document()
+            // PERBAIKAN: Menggunakan .document properti
+            val doc = app.get(vidsrcUrl, referer = vidsrcReferer).document 
             val playerFrame = doc.select("iframe#player_frame") 
             
             if (playerFrame.isEmpty()) return null
