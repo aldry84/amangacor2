@@ -22,7 +22,7 @@ class AdiDrakor : MainAPI() {
     override val supportedTypes = setOf(
         TvType.TvSeries,
         TvType.AsianDrama,
-        TvType.Movie // Dipertahankan, karena Drakor Movie juga termasuk
+        TvType.Movie 
     )
 
     override val mainPage: List<MainPageData> = mainPageOf(
@@ -46,7 +46,7 @@ class AdiDrakor : MainAPI() {
         ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
 
         val home = app.post("$mainUrl/wefeed-h5-bff/web/filter", requestBody = body)
-            // Filter hanya Drama Korea (countryName contains "Korea") atau memiliki subjectType 2 (TvSeries/Drama)
+            // Filter hanya Drama Korea atau memiliki subjectType 2 (TvSeries/Drama)
             ?.parsedSafe<Media>()?.data?.items
             ?.filter { it.countryName?.contains("Korea", ignoreCase = true) == true || it.subjectType == 2 } 
             ?.map {
@@ -292,15 +292,14 @@ class AdiDrakor : MainAPI() {
         @JsonProperty("detailPath") val detailPath: String? = null,
     ) {
 
-        // FUNGSI INI DIPERBAIKI
+        // FUNGSI INI DIPERBAIKI (logika pembuat objek sudah benar)
         fun toSearchResponse(provider: AdiDrakor): SearchResponse {
             val type = when (subjectType) {
                 1 -> TvType.Movie
                 2 -> TvType.TvSeries
-                else -> TvType.Movie // Anggap semua yang lolos filter sebagai Movie jika bukan TvSeries
+                else -> TvType.Movie 
             }
 
-            // Memilih fungsi pembuat SearchResponse yang tepat berdasarkan tipe:
             return if (type == TvType.Movie) {
                 provider.newMovieSearchResponse(
                     title ?: "",
