@@ -27,32 +27,31 @@ class AdiDrakor : MainAPI() {
 
     // PERUBAHAN UTAMA DI SINI
     override val mainPage: List<MainPageData> = mainPageOf(
-        // Format: "subjectType,sort,countryName,genre" -> subjectType: 0=all, 1=Movie, 2=Series. countryName: Korea/Indonesia/0. genre: Adult/0
-        "1,Hottest,0,0" to "Movies Populer",
-        "1,Latest,0,0" to "Movies Terbaru",
-        "2,Hottest,0,0" to "Series Populer",
-        "2,Latest,0,0" to "Series Terbaru",
-        "2,Hottest,Korea,0" to "Drakor Populer",
-        "2,Latest,Korea,0" to "Drakor Terbaru",
-        "1,Latest,Indonesia,0" to "Indonesia Punya",
-        "1,Latest,0,Adult" to "Movie Dewasa", // Kriteria genre "Adult"
-        "2,ForYou,0,0" to "Drakor Pilihan", // Dipertahankan
-        // "2,Rating,0,0" to "Drakor Rating Tertinggi", <--- BARIS INI DIHAPUS
+        // Catatan: Saya menggunakan '1' untuk Film/Movie dan '2' untuk Series/Drama/TV Series
+        // Serta menggunakan 'Hottest' untuk Populer dan 'Latest' untuk Terbaru.
+        "1,Hottest" to "Movies Populer",
+        "1,Latest" to "Movies Terbaru",
+        "2,Hottest" to "Series Populer",
+        "2,Latest" to "Series Terbaru",
+        "2,ForYou,Korea" to "Drakor Populer (khusus drama korea populer)", // Asumsi 'ForYou' adalah filter populer yang lebih ketat, ditambahkan filter 'Korea'
+        "2,Latest,Korea" to "Drakor Terbaru (khusus drama korea terbaru)", // Ditambahkan filter 'Korea'
+        "1,Rating,Indonesia" to "Indonesia Punya (khusus film indonesia)", // Asumsi '1' (Movie) dan 'Rating' (untuk yang terbaik/pilihan), ditambahkan filter 'Indonesia'
+        "1,Rating,Adult" to "Movie Dewasa (khusus film dewasa)", // Asumsi '1' (Movie) dan 'Rating', ditambahkan filter 'Adult'
     )
+    // AKHIR PERUBAHAN UTAMA
 
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse {
-        // Format: "subjectType,sort,countryName,genre"
         val params = request.data.split(",")
-        val subjectType = params.getOrNull(0) ?: "0" // 0: All, 1: Movie, 2: Series
-        val sort = params.getOrNull(1) ?: "Hottest"
-        val countryFilter = params.getOrNull(2) ?: "0" // "Korea", "Indonesia" atau "0"
-        val genreFilter = params.getOrNull(3) ?: "0" // "Adult" atau "0"
+        val channelId = params.first()
+        val sort = params[1] // Ambil sort dari parameter kedua (Hottest, Latest, Rating)
+        val countryFilter = params.getOrNull(2) // Ambil filter negara jika ada
+
         
         val body = mapOf(
-            "channelId" to subjectType, // channelId digunakan untuk subjectType di API ini (1=Movie, 2=Series)
+            "channelId" to channelId,
             "page" to page,
             "perPage" to "24",
             "sort" to sort
@@ -60,30 +59,14 @@ class AdiDrakor : MainAPI() {
 
         val home = app.post("$mainUrl/wefeed-h5-bff/web/filter", requestBody = body)
             .parsedSafe<Media>()?.data?.items
+            // LOGIKA FILTER DIPERBARUI: Terapkan filter negara jika ada di MainPageData
             ?.filter { item ->
-                // Filter Konten Berdasarkan Negara
-                val countryMatch = when (countryFilter) {
-                    "Korea" -> item.countryName?.contains("Korea", ignoreCase = true) == true
-                    "Indonesia" -> item.countryName?.contains("Indonesia", ignoreCase = true) == true
-                    else -> true // Tidak ada filter negara
+                when (countryFilter) {
+                    "Korea" -> item.countryName?.contains("Korea", ignoreCase = true) == true && item.subjectType == 2
+                    "Indonesia" -> item.countryName?.contains("Indonesia", ignoreCase = true) == true && item.subjectType == 1
+                    "Adult" -> item.genre?.contains("Adult", ignoreCase = true) == true || item.genre?.contains("Dewasa", ignoreCase = true) == true
+                    else -> true // Tidak ada filter tambahan
                 }
-
-                // Filter Konten Berdasarkan Genre (Dewasa)
-                val genreMatch = when (genreFilter) {
-                    "Adult" -> item.genre?.contains("Adult", ignoreCase = true) == true
-                    else -> true // Tidak ada filter genre
-                }
-
-                // Filter Tipe Konten
-                val typeMatch = if (subjectType == "2") {
-                    item.subjectType == 2 // Hanya ambil Series/Drama
-                } else if (subjectType == "1") {
-                    item.subjectType == 1 // Hanya ambil Movie
-                } else {
-                    true // subjectType "0" atau lainnya, ambil semua
-                }
-                
-                countryMatch && genreMatch && typeMatch
             } 
             ?.map {
                 it.toSearchResponse(this)
@@ -143,12 +126,12 @@ class AdiDrakor : MainAPI() {
                 ),
                 roleString = cast.character
             )
-        )?.distinctBy { it.actor }
+        }?.distinctBy { it.actor }
 
         val recommendations =
             app.get("$mainUrl/wefeed-h5-bff/web/subject/detail-rec?subjectId=$id&page=1&perPage=12")
                 .parsedSafe<Media>()?.data?.items
-                // Pertahankan filter rekomendasi untuk Drama Korea (diasumsikan karena nama classnya AdiDrakor)
+                // Pertahankan filter rekomendasi untuk Drama Korea
                 ?.filter { it.countryName?.contains("Korea", ignoreCase = true) == true || it.subjectType == 2 }
                 ?.map {
                     it.toSearchResponse(this)
@@ -322,7 +305,7 @@ class AdiDrakor : MainAPI() {
         @JsonProperty("genre") val genre: String? = null,
         @JsonProperty("cover") val cover: Cover? = null,
         @JsonProperty("imdbRatingValue") val imdbRatingValue: String? = null,
-        @JsonProperty("countryName") val countryName: String? = null, // Digunakan untuk filter Korea/Indonesia
+        @JsonProperty("countryName") val countryName: String? = null, // Digunakan untuk filter Korea
         @JsonProperty("trailer") val trailer: Trailer? = null,
         @JsonProperty("detailPath") val detailPath: String? = null,
     ) {
