@@ -30,6 +30,7 @@ fun Project.cloudstream(configuration: CloudstreamExtension.() -> Unit) = extens
 
 fun Project.android(configuration: BaseExtension.() -> Unit) = extensions.getByName<BaseExtension>("android").configuration()
 
+// --- BLOK SUBPROJECTS ASLI ANDA ---
 subprojects {
     apply(plugin = "com.android.library")
     apply(plugin = "kotlin-android")
@@ -90,43 +91,32 @@ subprojects {
     }
 }
 
-tasks.register<Delete>("clean") {
-    delete(rootProject.layout.buildDirectory)
-}
+// --- BLOK BARU: EKSTENSI MYTMBPROVIDER dengan KUNCI API V3 TMDB ---
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
-// build.gradle.kts (Tambahan di Akhir File)
-
-// Blok ini mendefinisikan ekstensi TMDB + VIDSRC Anda.
 project(":mytmdbprovider") {
     
-    // Terapkan semua plugin dasar yang dibutuhkan CloudStream
     apply(plugin = "com.android.library")
     apply(plugin = "kotlin-android")
     apply(plugin = "com.lagradost.cloudstream3.gradle")
     
-    // Konfigurasi Cloudstream untuk ekstensi spesifik ini
     cloudstream {
-        // Asumsi penulis untuk ekstensi ini sama, atau Anda bisa menentukannya:
-        authors = listOf("Phisher98", "MyTMDBProviderAuthor")
+        authors = listOf("MyTMDBProviderAuthor") 
     }
 
     android {
-        // 🚨 PENTING: GANTI NAMESPACE
-        // Ini harus sesuai persis dengan nama package: mytmdbprovider
         namespace = "mytmdbprovider"
 
         defaultConfig {
             
-            // 🚨 SUNTIKKAN KUNCI API TMDB (Wajib untuk keamanan)
-            // GANTI "YOUR_TMDB_API_KEY_HERE" dengan Kunci API V3 TMDB Anda
-            buildConfigField("String", "TMDB_API_KEY", "\"YOUR_TMDB_API_KEY_HERE\"")
+            // ✅ KUNCI API TMDB V3 YANG SUDAH DIPERBARUI
+            buildConfigField("String", "TMDB_API_KEY", "\"1d8730d33fc13ccbd8cdaaadb74892c7\"")
             
             minSdk = 21
             compileSdkVersion(35)
             targetSdk = 35
         }
 
-        // Pastikan opsi kompilasi Kotlin sama
         tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile> {
             compilerOptions {
                 jvmTarget.set(JvmTarget.JVM_1_8)
@@ -138,15 +128,13 @@ project(":mytmdbprovider") {
         val implementation by configurations
         val cloudstream by configurations
         
-        // Dependensi Cloudstream (Sama dengan konfigurasi subprojects Anda)
         cloudstream("com.lagradost:cloudstream3:pre-release")
-
-        // Dependensi tambahan yang Anda butuhkan (GSON, Jsoup, dll.)
-        // Jsoup sudah ada di subprojects, tetapi Gson kita pastikan versinya
-        // GSON sudah terdaftar di blok 'subprojects' Anda, jadi kita tidak perlu menambahkannya lagi 
-        // kecuali Anda butuh versi tertentu yang berbeda.
-        
-        implementation(kotlin("stdlib"))
-        implementation("com.google.code.gson:gson:2.11.0") // Memastikan GSON tersedia
+        implementation("com.google.code.gson:gson:2.11.0") 
     }
+}
+// --- AKHIR BLOK BARU ---
+
+
+tasks.register<Delete>("clean") {
+    delete(rootProject.layout.buildDirectory)
 }
