@@ -4,8 +4,8 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.mvvm.safeApiCall
-// MENAMBAH INI UNTUK MEMASTIKAN 'toRating' DITEMUKAN
-import com.lagradost.cloudstream3.utils.* import org.jsoup.nodes.Element
+import com.lagradost.cloudstream3.utils.* // Memastikan semua utilitas terimpor
+import org.jsoup.nodes.Element
 
 class PRMoviesProvider : MainAPI() {
 
@@ -85,8 +85,8 @@ class PRMoviesProvider : MainAPI() {
         val description = document.selectFirst("p.f-desc")?.text()?.trim()
         val trailer = fixUrlNull(document.select("iframe#iframe-trailer").attr("src"))
         
-        // PERBAIKAN: toRating() sekarang sudah terimpor
-        val score = document.select("div.mvici-right > div.imdb_r span").text().toRating(TvType.Movie)
+        // PERBAIKAN: Mengganti toRating() yang bermasalah dengan toScore()
+        val score = document.select("div.mvici-right > div.imdb_r span").text().toScore(TvType.Movie)
         val actors = document.select("div.mvici-left p:nth-child(3) a").map { it.text() }
         val recommendations = document.select("div.ml-item").mapNotNull {
             it.toSearchResult()
@@ -98,20 +98,22 @@ class PRMoviesProvider : MainAPI() {
             ) {
                 document.select("ul.idTabs li").map {
                     val id = it.select("a").attr("href")
-                    // PERBAIKAN SINTAKSIS: Mengganti 'data =' dengan 'url =' dan HAPUS 'name ='
+                    // PERBAIKAN KRITIS SINTAKSIS: Menggunakan trailing lambda untuk nama
                     newEpisode(
-                        url = fixUrl(document.select("div$id iframe").attr("src")),
-                        it.select("strong").text().replace("Server Ep", "Episode") // Hapus 'name ='
-                    )
+                        url = fixUrl(document.select("div$id iframe").attr("src"))
+                    ) {
+                        name = it.select("strong").text().replace("Server Ep", "Episode")
+                    }
                 }
 
             } else {
                 document.select("div.les-content a").map {
-                    // PERBAIKAN SINTAKSIS: Mengganti 'data =' dengan 'url =' dan HAPUS 'name ='
+                    // PERBAIKAN KRITIS SINTAKSIS: Menggunakan trailing lambda untuk nama
                     newEpisode(
-                        url = it.attr("href"),
-                        it.text().replace("Server Ep", "Episode").trim(), // Hapus 'name ='
-                    )
+                        url = it.attr("href")
+                    ) {
+                        name = it.text().replace("Server Ep", "Episode").trim()
+                    }
                 }
             }
 
