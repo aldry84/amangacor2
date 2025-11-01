@@ -25,49 +25,31 @@ class AdiDrakor : MainAPI() {
         TvType.Movie // Ditambahkan untuk mendukung pencarian non-Drakor
     )
 
-    // PERUBAHAN UTAMA DI SINI
+    // Kategori film diubah sesuai permintaan: "Movies Populer, Movies Terbaru, Series Populer, Series Terbaru"
     override val mainPage: List<MainPageData> = mainPageOf(
-        // Catatan: Saya menggunakan '1' untuk Film/Movie dan '2' untuk Series/Drama/TV Series
-        // Serta menggunakan 'Hottest' untuk Populer dan 'Latest' untuk Terbaru.
-        "1,Hottest" to "Movies Populer",
-        "1,Latest" to "Movies Terbaru",
-        "2,Hottest" to "Series Populer",
-        "2,Latest" to "Series Terbaru",
-        "2,ForYou,Korea" to "Drakor Populer (khusus drama korea populer)", // Asumsi 'ForYou' adalah filter populer yang lebih ketat, ditambahkan filter 'Korea'
-        "2,Latest,Korea" to "Drakor Terbaru (khusus drama korea terbaru)", // Ditambahkan filter 'Korea'
-        "1,Rating,Indonesia" to "Indonesia Punya (khusus film indonesia)", // Asumsi '1' (Movie) dan 'Rating' (untuk yang terbaik/pilihan), ditambahkan filter 'Indonesia'
-        "1,Rating,Adult" to "Movie Dewasa (khusus film dewasa)", // Asumsi '1' (Movie) dan 'Rating', ditambahkan filter 'Adult'
+        "1,Hottest" to "Movies Populer", // subjectType 1 = Movie, sort Hottest
+        "1,Latest" to "Movies Terbaru", // subjectType 1 = Movie, sort Latest
+        "2,Hottest" to "Series Populer", // subjectType 2 = Series, sort Hottest
+        "2,Latest" to "Series Terbaru", // subjectType 2 = Series, sort Latest
     )
-    // AKHIR PERUBAHAN UTAMA
 
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse {
         val params = request.data.split(",")
-        val channelId = params.first()
-        val sort = params[1] // Ambil sort dari parameter kedua (Hottest, Latest, Rating)
-        val countryFilter = params.getOrNull(2) // Ambil filter negara jika ada
-
         
         val body = mapOf(
-            "channelId" to channelId,
+            "channelId" to params.first(), // channelId di sini diubah fungsinya menjadi subjectType (1 untuk Movie, 2 untuk Series)
             "page" to page,
             "perPage" to "24",
-            "sort" to sort
+            "sort" to params.last()
         ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
 
         val home = app.post("$mainUrl/wefeed-h5-bff/web/filter", requestBody = body)
-            .parsedSafe<Media>()?.data?.items
-            // LOGIKA FILTER DIPERBARUI: Terapkan filter negara jika ada di MainPageData
-            ?.filter { item ->
-                when (countryFilter) {
-                    "Korea" -> item.countryName?.contains("Korea", ignoreCase = true) == true && item.subjectType == 2
-                    "Indonesia" -> item.countryName?.contains("Indonesia", ignoreCase = true) == true && item.subjectType == 1
-                    "Adult" -> item.genre?.contains("Adult", ignoreCase = true) == true || item.genre?.contains("Dewasa", ignoreCase = true) == true
-                    else -> true // Tidak ada filter tambahan
-                }
-            } 
+            // FILTER DIHAPUS/DIUBAH: Menghapus filter "Korea" agar kategori baru (Movies/Series) berfungsi
+            // Filter lama: .filter { it.countryName?.contains("Korea", ignoreCase = true) == true || it.subjectType == 2 } 
+            ?.parsedSafe<Media>()?.data?.items
             ?.map {
                 it.toSearchResponse(this)
             } ?: throw ErrorLoadingException("Tidak ada Data Ditemukan")
@@ -126,7 +108,7 @@ class AdiDrakor : MainAPI() {
                 ),
                 roleString = cast.character
             )
-        }?.distinctBy { it.actor }
+        )?.distinctBy { it.actor }
 
         val recommendations =
             app.get("$mainUrl/wefeed-h5-bff/web/subject/detail-rec?subjectId=$id&page=1&perPage=12")
