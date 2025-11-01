@@ -5,7 +5,7 @@ version = 1
 cloudstream {
     // All of these properties are optional, you can safely remove them
 
-    description = "Kdramas and Movies"
+    description = "Film Semi Dewasa"
     authors = listOf("AdiDewasa")
 
     /**
