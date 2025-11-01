@@ -4,9 +4,8 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.mvvm.safeApiCall
-import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.loadExtractor
-import org.jsoup.nodes.Element
+// MENAMBAH INI UNTUK MEMASTIKAN 'toRating' DITEMUKAN
+import com.lagradost.cloudstream3.utils.* import org.jsoup.nodes.Element
 
 class PRMoviesProvider : MainAPI() {
 
@@ -77,7 +76,6 @@ class PRMoviesProvider : MainAPI() {
         val year = document.select("div.mvici-right p:nth-child(3) a").text().trim()
             .toIntOrNull()
 
-        // Perbaikan NPE: Menghilangkan '!!' yang rentan
         val linkCount = document.selectFirst("div.les-content")?.select("a")?.size ?: 0
         
         val tvType = if (linkCount > 1 || document.selectFirst("ul.idTabs li strong")?.text()
@@ -87,7 +85,7 @@ class PRMoviesProvider : MainAPI() {
         val description = document.selectFirst("p.f-desc")?.text()?.trim()
         val trailer = fixUrlNull(document.select("iframe#iframe-trailer").attr("src"))
         
-        // Perbaikan Deprecation: Mengganti toRatingInt() dengan toRating()
+        // PERBAIKAN: toRating() sekarang sudah terimpor
         val score = document.select("div.mvici-right > div.imdb_r span").text().toRating(TvType.Movie)
         val actors = document.select("div.mvici-left p:nth-child(3) a").map { it.text() }
         val recommendations = document.select("div.ml-item").mapNotNull {
@@ -100,19 +98,19 @@ class PRMoviesProvider : MainAPI() {
             ) {
                 document.select("ul.idTabs li").map {
                     val id = it.select("a").attr("href")
-                    // PERBAIKAN SINTAKSIS: Mengganti 'data =' dengan 'url ='
+                    // PERBAIKAN SINTAKSIS: Mengganti 'data =' dengan 'url =' dan HAPUS 'name ='
                     newEpisode(
                         url = fixUrl(document.select("div$id iframe").attr("src")),
-                        name = it.select("strong").text().replace("Server Ep", "Episode")
+                        it.select("strong").text().replace("Server Ep", "Episode") // Hapus 'name ='
                     )
                 }
 
             } else {
                 document.select("div.les-content a").map {
-                    // PERBAIKAN SINTAKSIS: Mengganti 'data =' dengan 'url ='
+                    // PERBAIKAN SINTAKSIS: Mengganti 'data =' dengan 'url =' dan HAPUS 'name ='
                     newEpisode(
                         url = it.attr("href"),
-                        name = it.text().replace("Server Ep", "Episode").trim(),
+                        it.text().replace("Server Ep", "Episode").trim(), // Hapus 'name ='
                     )
                 }
             }
@@ -122,7 +120,6 @@ class PRMoviesProvider : MainAPI() {
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                // Perbaikan Deprecation: Menggunakan score
                 this.score = score 
                 addActors(actors)
                 this.recommendations = recommendations
@@ -136,7 +133,6 @@ class PRMoviesProvider : MainAPI() {
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                // Perbaikan Deprecation: Menggunakan score
                 this.score = score 
                 addActors(actors)
                 this.recommendations = recommendations
@@ -151,7 +147,6 @@ class PRMoviesProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // Perbaikan Deprecation: Menghilangkan apmap dan mengganti dengan forEach
         if (data.startsWith(mainUrl)) {
             val sources = app.get(data).document.select("div.movieplay iframe").map { fixUrl(it.attr("src")) }
             
