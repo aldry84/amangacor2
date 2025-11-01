@@ -24,4 +24,4 @@
 
 1. Pastikan kamu sudah menginstal aplikasi **[CloudStream](https://github.com/recloudstream/cloudstream/releases)**.
 2. Buka **CloudStream → Settings → Extensions → Repositories → Add repository**.
-3. Masukkan URL repo kamu, misalnya:
+4. Copy URL ini https://raw.githubusercontent.com/aldry84/amangacor2/refs/heads/builds/repo.json  dan Masukkan ke URL        repo kamu.
