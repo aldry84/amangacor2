@@ -1,127 +1,212 @@
-package com.adiperbuatan
+package com.adiperbuatan // Ganti package
 
-import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.extractors.GdrivePlayer
-import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.loadExtractor
+import com.lagradost.cloudstream3.HomePageList
+import com.lagradost.cloudstream3.HomePageResponse
+import com.lagradost.cloudstream3.LoadResponse
+import com.lagradost.cloudstream3.MainAPI
+import com.lagradost.cloudstream3.MainPageData
+import com.lagradost.cloudstream3.MainPageRequest
+import com.lagradost.cloudstream3.SearchResponse
+import com.lagradost.cloudstream3.SubtitleFile
+import com.lagradost.cloudstream3.TvType
+import com.lagradost.cloudstream3.app
+import com.lagradost.cloudstream3.fixUrlNull
+import com.lagradost.cloudstream3.newEpisode
+import com.lagradost.cloudstream3.newHomePageResponse
+import com.lagradost.cloudstream3.newMovieLoadResponse
 import com.lagradost.cloudstream3.newMovieSearchResponse
+import com.lagradost.cloudstream3.newSubtitleFile
+import com.lagradost.cloudstream3.newTvSeriesLoadResponse
+import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.newExtractorLink
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
 
-class Adiperbuatan : MainAPI() {
-    override var mainUrl = "https://prmovies.com"
-    override var name = "Adiperbuatan"
+class Adiperbuatan : MainAPI() { // Ganti nama class
+    override var mainUrl = "https://prmovies.com" // Ganti mainUrl
+    override var name = "Adiperbuatan" // Ganti nama
     override val hasMainPage = true
-    override val supportedTypes = setOf(TvType.Movie) 
+    override val hasChromecastSupport = true
+    override val hasDownloadSupport = true
+    override val supportedTypes = setOf(TvType.Movie,TvType.TvSeries,TvType.AsianDrama)
 
     override val mainPage: List<MainPageData>
-        get() = listOf(
-            MainPageData("Latest Movies", ""),
-        )
+        get() {
+            val basePages = mutableListOf(
+                MainPageData("Recently Added", "-1:1"),
+                MainPageData("TV-Shows", "1:3"),
+                MainPageData("Movies", "2:4"),
+                MainPageData("Most Watched", "-1:5")
+            )
+
+            // Only add adult sections if adult mode is enabled
+            if (settingsForProvider.enableAdult) {
+                basePages.addAll(
+                    listOf(
+                        MainPageData("Adult Recently Added", "-1:1:adult"),
+                        MainPageData("Adult Movies", "2:6:adult"),
+                        MainPageData("Adult TV-Shows", "1:3:adult"),
+                        MainPageData("Adult Most Watched", "-1:5:adult"),
+                        )
+                )
+            }
+
+            return basePages
+        }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        // PERBAIKAN URL: Menggunakan pola yang lebih kuat untuk halaman utama
-        val url = if (page == 1) "$mainUrl/movies/" else "$mainUrl/movies/page/$page/"
-        val doc = app.get(url).document
-
-        val items = doc.select("div.TPost.M > article").mapNotNull { element ->
-            val title = element.selectFirst("h2.Title")?.text() ?: return@mapNotNull null
-            val href = element.selectFirst("a")?.attr("href") ?: return@mapNotNull null
-            // Mengambil poster dari atribut 'data-src' karena lazy loading
-            val posterUrl = element.selectFirst("img.lazy")?.attr("data-src")
-
-            newMovieSearchResponse(
-                name = title,
-                url = href,
-                type = TvType.Movie
-            ) {
-                this.posterUrl = posterUrl
-            }
+        val (type, sort, adultFlag) = request.data.split(":").let {
+            val t = it.getOrNull(0) ?: "-1"
+            val s = it.getOrNull(1)?.toIntOrNull() ?: 1
+            val a = it.getOrNull(2) ?: "normal"
+            Triple(t, s, a)
         }
+
+        val isAdultSection = adultFlag == "adult"
+
+        val jsonPayload = """{
+        "page": $page,
+        "type": "$type",
+        "country": -1,
+        "sort": $sort,
+        "adult": ${settingsForProvider.enableAdult},
+        "adultOnly": $isAdultSection,
+        "ignoreWatched": false,
+        "genres": [],
+        "keyword": ""
+        }""".trimIndent()
+
+        val payload = jsonPayload.toRequestBody("application/json".toMediaType())
+
+        val home = app.post("$mainUrl/api/filter", requestBody = payload)
+            .parsedSafe<Home>()
+            ?.data
+            ?.mapNotNull  { it.toSearchResult() }
+            ?: emptyList()
 
         return newHomePageResponse(
             list = HomePageList(
                 name = request.name,
-                list = items,
+                list = home,
+                isHorizontalImages = false
             ),
-            hasNext = true 
+            hasNext = true
         )
     }
 
+    private fun Daum.toSearchResult(): SearchResponse? {
+        if (!settingsForProvider.enableAdult && this.isAdult.toInt() == 1) {
+            return null
+        }
+        val title = this.name
+        val href = "$mainUrl/film/${this.slug}"
+        val poster = mainUrl + this.image
+        return newMovieSearchResponse(title, href, TvType.Movie) {
+            this.posterUrl = poster
+        }
+    }
+
     override suspend fun search(query: String): List<SearchResponse>? {
-        val url = "$mainUrl/?s=$query"
+        val url = "$mainUrl/api/live-search/$query"
+        return app.get(url)
+            .parsedSafe<Search>()
+            ?.data
+            ?.mapNotNull { it.toSearchResult() }
+    }
+
+    override suspend fun load(url: String): LoadResponse {
         val doc = app.get(url).document
+        val title = doc.selectFirst("div.right-info h1")?.text() ?: "UnKnown"
+        val poster = fixUrlNull(doc.selectFirst("meta[property=og:image]")?.attr("content")) ?: ""
+        val genre = doc.select("div.genre-list a").map { it.text() }
+        val year = title.substringAfterLast("(").substringBefore(")").toIntOrNull()
+        val descript = doc.selectFirst("div.right-info p.summary-content")?.text()
+        val type = if (doc.select("div.tab-content.episode-button").isNotEmpty()) TvType.TvSeries else TvType.Movie
+        val href= doc.select("div.last-episode a").attr("href")
 
-        // Selektor yang sama dengan halaman utama, karena prmovies.com sering menggunakan tata letak yang konsisten
-        return doc.select("div.TPost.M > article").mapNotNull { element ->
-            val title = element.selectFirst("h2.Title")?.text() ?: return@mapNotNull null
-            val href = element.selectFirst("a")?.attr("href") ?: return@mapNotNull null
-            val posterUrl = element.selectFirst("img.lazy")?.attr("data-src")
+        val recs = doc.select("div.film_list-wrap div.flw-item").mapNotNull {
+            val a = it.select("img")
+            val title = a.attr("alt")
+            val aImg = a.attr("data-src")
+            val href = it.select("a").attr("href")
+            newMovieSearchResponse(title, href, TvType.Movie)
+            {
+                this.posterUrl = aImg
+            }
+        }
 
-            newMovieSearchResponse(
-                name = title,
-                url = href,
-                type = TvType.Movie
-            ) {
-                this.posterUrl = posterUrl
+
+        if (type == TvType.TvSeries)
+        {
+            val episodes= doc.select("div.episode-item a").map {
+                val title = it.text().substringBefore("(").trim()
+                val epno = title.toIntOrNull()
+                val href=it.attr("href")
+
+                newEpisode(href)
+                {
+                    this.name = "Episode $title"
+                    this.episode = epno
+                }
+
+            }
+            return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes)
+            {
+                this.year = year
+                this.tags = genre
+                this.posterUrl = poster
+                this.plot = descript
+                this.recommendations = recs
+            }
+        }
+        else
+        {
+            return newMovieLoadResponse(title, url, TvType.Movie, href)
+            {
+                this.year = year
+                this.tags = genre
+                this.posterUrl = poster
+                this.plot = descript
+                this.recommendations = recs
             }
         }
     }
 
-    // FUNGSI PARSING UTAMA: MENGAMBIL DETAIL DAN URL PLAYER
-    override suspend fun load(url: String): LoadResponse? {
-        val doc = app.get(url).document
-        
-        val title = doc.selectFirst("h1.Title")?.text() ?: return null
-        val poster = doc.selectFirst("div.Image img.lazy")?.attr("data-src")
-        
-        // Asumsi plot berada di dalam div deskripsi yang luas
-        val descript = doc.selectFirst("div.TPost.Bg p")?.text()
-        
-        // Logika PARSING URL PLAYER: Mencari iframe yang berisi player atau link GDrive.
-        // Ini adalah 'dataUrl' yang akan diteruskan ke loadLinks.
-        val playerEmbedUrl = doc.selectFirst("iframe[src*=\"player\"]")?.attr("src") 
-            ?: doc.selectFirst("iframe[src*=\"drive.google.com\"]")?.attr("src")
-            ?: doc.selectFirst("iframe[src]")?.attr("src") // Coba ambil iframe pertama jika yang lain gagal
-
-        if (playerEmbedUrl == null) {
-            // Jika tidak ada iframe, film ini mungkin tidak dapat dimainkan.
-            return null
-        }
-
-        return newMovieLoadResponse(
-            name = title,
-            url = url,
-            type = TvType.Movie,
-            dataUrl = playerEmbedUrl // Meneruskan URL player/embed sebagai dataUrl
-        ) {
-            this.posterUrl = poster
-            this.plot = descript
-        }
-    }
-
-    // FUNGSI PENARIK TAUTAN (Extractor)
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val embedUrl = data // 'data' adalah URL player/embed dari fungsi load()
+        val doc = app.get(data).document
+        val script = doc.select("script:containsData(signedUrl)").firstOrNull()?.toString() ?: return false
+        val signedUrl = Regex("""window\.signedUrl\s*=\s*"(.+?)"""").find(script)?.groupValues?.get(1)?.replace("\\/","/") ?: return false
 
-        // 1. Menggunakan Extractor CloudStream bawaan (untuk GDrive, StreamSB, dll.)
-        // Ini adalah cara paling efisien dan stabil.
-        if (loadExtractor(embedUrl, mainUrl, subtitleCallback, callback)) {
-            return true
-        }
+        val res = app.get(signedUrl).text
+        val resJson = JSONObject(res)
+        val videoSource = resJson.optJSONObject("video_source") ?: return false
+        val qualities = videoSource.keys().asSequence().toList()
+            .sortedByDescending { it.toIntOrNull() ?: 0 }
+        val bestQualityKey = qualities.firstOrNull() ?: return false
+        val bestQualityUrl = videoSource.optString(bestQualityKey)
 
-        // 2. Fallback GDrive manual (jika loadExtractor tidak berfungsi)
-        if (embedUrl.contains("drive.google.com")) {
-            GdrivePlayer().load(embedUrl, mainUrl, subtitleCallback, callback)
-            return true
+
+        callback(
+            newExtractorLink(
+                name,
+                name,
+                bestQualityUrl
+            )
+        )
+
+        val subJson = resJson.optJSONObject("sub")
+        subJson?.optJSONArray(bestQualityKey)?.let { array ->
+            for (i in 0 until array.length()) {
+                subtitleCallback(newSubtitleFile("English", mainUrl+array.getString(i)))
+            }
         }
-        
-        // Catatan: Extractor kustom PrMoviesCustomExtractor harus diimplementasikan
-        // jika link streaming tidak dapat ditarik oleh loadExtractor standar.
-        
-        return false // Gagal jika tidak ada tautan yang dapat ditarik
+        return true
     }
+
 }
