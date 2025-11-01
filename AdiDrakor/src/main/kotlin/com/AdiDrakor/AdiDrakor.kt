@@ -22,8 +22,7 @@ class AdiDrakor : MainAPI() {
     override val supportedTypes = setOf(
         TvType.TvSeries,
         TvType.AsianDrama,
-        TvType.Movie, // Ditambahkan untuk mendukung pencarian non-Drakor
-        TvType.Adult // ✨ PENAMBAHAN: Mendukung kategori film dewasa
+        TvType.Movie // Ditambahkan untuk mendukung pencarian non-Drakor
     )
 
     override val mainPage: List<MainPageData> = mainPageOf(
