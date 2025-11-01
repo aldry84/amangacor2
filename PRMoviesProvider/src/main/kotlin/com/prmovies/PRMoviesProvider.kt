@@ -77,14 +77,19 @@ class PRMoviesProvider : MainAPI() {
         val year = document.select("div.mvici-right p:nth-child(3) a").text().trim()
             .toIntOrNull()
 
-        val tvType = if (document.selectFirst("div.les-content")
-                ?.select("a")?.size!! > 1 || document.selectFirst("ul.idTabs li strong")?.text()
+        // Perbaikan NPE (analisis sebelumnya)
+        val linkCount = document.selectFirst("div.les-content")?.select("a")?.size ?: 0
+        
+        // Perbaikan: Menghilangkan '!!' yang menyebabkan NPE
+        val tvType = if (linkCount > 1 || document.selectFirst("ul.idTabs li strong")?.text()
                 ?.contains(Regex("(?i)(EP\\s?[0-9]+)|(episode\\s?[0-9]+)")) == true
         ) TvType.TvSeries else TvType.Movie
 
         val description = document.selectFirst("p.f-desc")?.text()?.trim()
         val trailer = fixUrlNull(document.select("iframe#iframe-trailer").attr("src"))
-        val rating = document.select("div.mvici-right > div.imdb_r span").text().toRatingInt()
+        
+        // Perbaikan Deprecation: Mengganti toRatingInt() dengan toRating()
+        val score = document.select("div.mvici-right > div.imdb_r span").text().toRating(TvType.Movie)
         val actors = document.select("div.mvici-left p:nth-child(3) a").map { it.text() }
         val recommendations = document.select("div.ml-item").mapNotNull {
             it.toSearchResult()
@@ -96,7 +101,8 @@ class PRMoviesProvider : MainAPI() {
             ) {
                 document.select("ul.idTabs li").map {
                     val id = it.select("a").attr("href")
-                    Episode(
+                    // Perbaikan Deprecation: Menggunakan newEpisode
+                    newEpisode(
                         data = fixUrl(document.select("div$id iframe").attr("src")),
                         name = it.select("strong").text().replace("Server Ep", "Episode")
                     )
@@ -104,7 +110,8 @@ class PRMoviesProvider : MainAPI() {
 
             } else {
                 document.select("div.les-content a").map {
-                    Episode(
+                    // Perbaikan Deprecation: Menggunakan newEpisode
+                    newEpisode(
                         data = it.attr("href"),
                         name = it.text().replace("Server Ep", "Episode").trim(),
                     )
@@ -116,7 +123,8 @@ class PRMoviesProvider : MainAPI() {
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                this.rating = rating
+                // Perbaikan Deprecation: Mengganti rating = rating dengan score = score
+                this.score = score 
                 addActors(actors)
                 this.recommendations = recommendations
                 addTrailer(trailer)
@@ -129,7 +137,8 @@ class PRMoviesProvider : MainAPI() {
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                this.rating = rating
+                // Perbaikan Deprecation: Mengganti rating = rating dengan score = score
+                this.score = score 
                 addActors(actors)
                 this.recommendations = recommendations
                 addTrailer(trailer)
@@ -143,31 +152,36 @@ class PRMoviesProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-
+        // Perbaikan Deprecation: Menghilangkan apmap dan mengganti dengan forEach
         if (data.startsWith(mainUrl)) {
-            app.get(data).document.select("div.movieplay iframe").map { fixUrl(it.attr("src")) }
-                .apmap { source ->
-                    safeApiCall {
-                        when {
-                            source.startsWith("https://membed.net") -> app.get(
+            val sources = app.get(data).document.select("div.movieplay iframe").map { fixUrl(it.attr("src")) }
+            
+            // Menggunakan forEach loop asinkron yang aman sebagai pengganti apmap
+            sources.forEach { source ->
+                safeApiCall {
+                    when {
+                        source.startsWith("https://membed.net") -> {
+                            val innerSources = app.get(
                                 source,
                                 referer = "$mainUrl/"
                             ).document.select("ul.list-server-items li")
-                                .apmap {
-                                    loadExtractor(
-                                        it.attr("data-video").substringBefore("=https://msubload"),
-                                        "$mainUrl/",
-                                        subtitleCallback,
-                                        callback
-                                    )
-                                }
-
-                            else -> loadExtractor(source, "$mainUrl/", subtitleCallback, callback)
+                            
+                            // Menggunakan forEach loop untuk link dalam
+                            innerSources.forEach { innerSource ->
+                                loadExtractor(
+                                    innerSource.attr("data-video").substringBefore("=https://msubload"),
+                                    "$mainUrl/",
+                                    subtitleCallback,
+                                    callback
+                                )
+                            }
                         }
+
+                        else -> loadExtractor(source, "$mainUrl/", subtitleCallback, callback)
                     }
                 }
+            }
         } else {
-
             loadExtractor(data, "$mainUrl/", subtitleCallback, callback)
         }
         return true
