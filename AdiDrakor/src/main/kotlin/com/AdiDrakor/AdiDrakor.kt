@@ -22,15 +22,15 @@ class AdiDrakor : MainAPI() {
     override val supportedTypes = setOf(
         TvType.TvSeries,
         TvType.AsianDrama,
-        TvType.Movie // Ditambahkan untuk mendukung pencarian non-Drakor
+        TvType.Movie, // Ditambahkan untuk mendukung pencarian non-Drakor
+        TvType.Adult // ✨ PENAMBAHAN: Mendukung kategori film dewasa
     )
 
-    // Kategori film diubah sesuai permintaan: "Movies Populer, Movies Terbaru, Series Populer, Series Terbaru"
     override val mainPage: List<MainPageData> = mainPageOf(
-        "1,Hottest" to "Movies Populer", // subjectType 1 = Movie, sort Hottest
-        "1,Latest" to "Movies Terbaru", // subjectType 1 = Movie, sort Latest
-        "2,Hottest" to "Series Populer", // subjectType 2 = Series, sort Hottest
-        "2,Latest" to "Series Terbaru", // subjectType 2 = Series, sort Latest
+        "2,ForYou" to "Drakor Pilihan",
+        "2,Hottest" to "Drakor Terpopuler",
+        "2,Latest" to "Drakor Terbaru",
+        "2,Rating" to "Drakor Rating Tertinggi",
     )
 
     override suspend fun getMainPage(
@@ -40,19 +40,18 @@ class AdiDrakor : MainAPI() {
         val params = request.data.split(",")
         
         val body = mapOf(
-            "channelId" to params.first(), // channelId di sini diubah fungsinya menjadi subjectType (1 untuk Movie, 2 untuk Series)
+            "channelId" to params.first(),
             "page" to page,
             "perPage" to "24",
             "sort" to params.last()
         ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
 
         val home = app.post("$mainUrl/wefeed-h5-bff/web/filter", requestBody = body)
-            // FILTER DIHAPUS/DIUBAH: Menghapus filter "Korea" agar kategori baru (Movies/Series) berfungsi
-            // Filter lama: .filter { it.countryName?.contains("Korea", ignoreCase = true) == true || it.subjectType == 2 } 
-            ?.parsedSafe<Media>()?.data?.items
+            .parsedSafe<Media>()?.data?.items
+            ?.filter { it.countryName?.contains("Korea", ignoreCase = true) == true || it.subjectType == 2 } 
             ?.map {
                 it.toSearchResponse(this)
-            } ?: throw ErrorLoadingException("Tidak ada Data Ditemukan")
+            } ?: throw ErrorLoadingException("Tidak ada Data Drakor Ditemukan")
 
         return newHomePageResponse(request.name, home)
     }
@@ -108,7 +107,7 @@ class AdiDrakor : MainAPI() {
                 ),
                 roleString = cast.character
             )
-        )?.distinctBy { it.actor }
+        }?.distinctBy { it.actor }
 
         val recommendations =
             app.get("$mainUrl/wefeed-h5-bff/web/subject/detail-rec?subjectId=$id&page=1&perPage=12")
