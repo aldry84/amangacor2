@@ -1,67 +1,27 @@
-# 🎯 Phisher Cloudstream Plugin Server
+# 🎬 AdiCinema+ Player (CloudStream Plugin)
 
-**Shortcode**: `phisherrepo`
+![CloudStream](https://img.shields.io/badge/CloudStream-Plugin-blue?style=for-the-badge)
+![Kotlin](https://img.shields.io/badge/Kotlin-1.9.0-orange?style=for-the-badge&logo=kotlin)
+![License](https://img.shields.io/github/license/username/Adicinema?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-1.0.0-success?style=for-the-badge)
 
----
-
-## 🌐 Plugin Servers
-
-### 🔹 Phisher Cloudstream Plugin Server
-[![Discord](https://invidget.switchblade.xyz/3VmSzGeCTz)](https://discord.com/invite/3VmSzGeCTz)
-
-### 🔸 Cloudstream Plugin Server
-[![Discord](https://invidget.switchblade.xyz/JrGk2MjX7S)](https://discord.com/invite/JrGk2MjX7S)
+> 🔗 **AdiCinema+ Player** adalah ekstensi untuk [CloudStream3](https://github.com/recloudstream/cloudstream) yang menyediakan akses cepat ke berbagai film dan serial dari berbagai sumber.
 
 ---
 
-## 🧰 Tools & Technologies
+## 🚀 Fitur Utama
 
-<p align="left">
-  <a href="https://skillicons.dev">
-    <img src="https://skillicons.dev/icons?i=kotlin,androidstudio,gradle,github,githubactions&theme=light&perline=5" />
-  </a>
-</p>
-
----
-
-## 🔄 Ultima Sync Setup
-
-Want to sync your devices using **Ultima’s Cross Device Watch Sync**?
-
-📘 [View the full setup guide →](docs/ULTIMA_SYNC_SETUP.md)
-
-📘 [View YouTube guide →](https://cloudstream.miraheze.org/wiki/Ultima)
-
-This guide will show you how to use a **private GitHub project** and a **personal access token** to sync playback history across devices.
+- 🔍 Pencarian film & serial otomatis  
+- 🎞️ Pemutar streaming langsung (Hydrax, Vidhide, Streamwish, dll)  
+- 🌎 Dukungan multi-bahasa (termasuk Indonesia)  
+- 🧩 Integrasi dengan TMDB & OMDb API  
+- 💾 Caching untuk pemuatan cepat  
+- 🧠 Desain kode modular dan ringan  
 
 ---
 
-## 💬 Feedback
+## 🛠️ Cara Instalasi
 
-![Feedback](https://github.com/user-attachments/assets/9f7dfe73-f11d-41fe-996c-072de0f6853b)
-
----
-
-## 📄 License
-
-[![GNU GPLv3 Image](https://www.gnu.org/graphics/gplv3-127x51.png)](http://www.gnu.org/licenses/gpl-3.0.en.html)
-
-These extensions are **free software**: you can use, study, share, and modify them as you wish.
-
-They are distributed under the terms of the [GNU General Public License](https://www.gnu.org/licenses/gpl.html) version 3 or later, published by the Free Software Foundation.
-
----
-
-## ⚖️ DMCA Disclaimer
-
-We hereby issue this notice to clarify that these extensions function similarly to a standard web browser by fetching video files from the internet.
-
-- **No content is hosted by this repository or the Cloudstream 3 application.**
-- Any content accessed is hosted by third-party websites.
-- Users are solely responsible for their usage and must comply with their local laws.
-
-If you believe content is violating copyright laws, please contact the **actual file hosts**, **not** the developers of this repository or the Cloudstream 3 app.
-
----
-
-**Thank You for using Phisher Repo!**
+1. Pastikan kamu sudah menginstal aplikasi **[CloudStream](https://github.com/recloudstream/cloudstream/releases)**.
+2. Buka **CloudStream → Settings → Extensions → Repositories → Add repository**.
+3. Masukkan URL repo kamu, misalnya:
