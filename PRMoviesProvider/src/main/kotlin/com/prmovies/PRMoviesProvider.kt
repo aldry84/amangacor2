@@ -4,7 +4,7 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.mvvm.safeApiCall
-import com.lagradost.cloudstream3.utils.* import com.lagradost.cloudstream3.utils.AppUtils.toScore 
+import com.lagradost.cloudstream3.utils.* // BARIS UNRESOLVED REFERENCE DIHAPUS
 import org.jsoup.nodes.Element
 
 class PRMoviesProvider : MainAPI() {
@@ -85,9 +85,6 @@ class PRMoviesProvider : MainAPI() {
         val description = document.selectFirst("p.f-desc")?.text()?.trim()
         val trailer = fixUrlNull(document.select("iframe#iframe-trailer").attr("src"))
         
-        // MENGHAPUS VARIABEL SCORE KARENA ERROR
-        // val score = document.select("div.mvici-right > div.imdb_r span").text().toScore(TvType.Movie)
-        
         val actors = document.select("div.mvici-left p:nth-child(3) a").map { it.text() }
         val recommendations = document.select("div.ml-item").mapNotNull {
             it.toSearchResult()
@@ -121,7 +118,6 @@ class PRMoviesProvider : MainAPI() {
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                // MENGHAPUS 'this.score = score'
                 addActors(actors)
                 this.recommendations = recommendations
                 addTrailer(trailer)
@@ -134,7 +130,6 @@ class PRMoviesProvider : MainAPI() {
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                // MENGHAPUS 'this.score = score'
                 addActors(actors)
                 this.recommendations = recommendations
                 addTrailer(trailer)
