@@ -4,8 +4,9 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.mvvm.safeApiCall
-// Memastikan semua utilitas terimpor, termasuk toScore
-import com.lagradost.cloudstream3.utils.* import org.jsoup.nodes.Element
+import com.lagradost.cloudstream3.utils.* // PERBAIKAN: Menambahkan import eksplisit untuk mengatasi 'Unresolved reference toScore'
+import com.lagradost.cloudstream3.utils.AppUtils.toScore 
+import org.jsoup.nodes.Element
 
 class PRMoviesProvider : MainAPI() {
 
@@ -76,7 +77,6 @@ class PRMoviesProvider : MainAPI() {
         val year = document.select("div.mvici-right p:nth-child(3) a").text().trim()
             .toIntOrNull()
 
-        // Perbaikan NPE: Menghilangkan '!!' yang rentan
         val linkCount = document.selectFirst("div.les-content")?.select("a")?.size ?: 0
         
         val tvType = if (linkCount > 1 || document.selectFirst("ul.idTabs li strong")?.text()
@@ -86,7 +86,7 @@ class PRMoviesProvider : MainAPI() {
         val description = document.selectFirst("p.f-desc")?.text()?.trim()
         val trailer = fixUrlNull(document.select("iframe#iframe-trailer").attr("src"))
         
-        // PERBAIKAN: Menggunakan toScore() sebagai fungsi utilitas standar
+        // Baris 90 (Fungsi 'toScore' yang diperbaiki oleh import baru)
         val score = document.select("div.mvici-right > div.imdb_r span").text().toScore(TvType.Movie)
         val actors = document.select("div.mvici-left p:nth-child(3) a").map { it.text() }
         val recommendations = document.select("div.ml-item").mapNotNull {
@@ -99,7 +99,6 @@ class PRMoviesProvider : MainAPI() {
             ) {
                 document.select("ul.idTabs li").map {
                     val id = it.select("a").attr("href")
-                    // PERBAIKAN SINTAKSIS KRITIS: Menggunakan trailing lambda untuk konfigurasi
                     newEpisode(
                         fixUrl(document.select("div$id iframe").attr("src"))
                     ) {
@@ -109,7 +108,6 @@ class PRMoviesProvider : MainAPI() {
 
             } else {
                 document.select("div.les-content a").map {
-                    // PERBAIKAN SINTAKSIS KRITIS: Menggunakan trailing lambda untuk konfigurasi
                     newEpisode(
                         it.attr("href")
                     ) {
