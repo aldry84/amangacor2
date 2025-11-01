@@ -4,8 +4,7 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.mvvm.safeApiCall
-import com.lagradost.cloudstream3.utils.* // PERBAIKAN: Menambahkan import eksplisit untuk mengatasi 'Unresolved reference toScore'
-import com.lagradost.cloudstream3.utils.AppUtils.toScore 
+import com.lagradost.cloudstream3.utils.* import com.lagradost.cloudstream3.utils.AppUtils.toScore 
 import org.jsoup.nodes.Element
 
 class PRMoviesProvider : MainAPI() {
@@ -86,8 +85,9 @@ class PRMoviesProvider : MainAPI() {
         val description = document.selectFirst("p.f-desc")?.text()?.trim()
         val trailer = fixUrlNull(document.select("iframe#iframe-trailer").attr("src"))
         
-        // Baris 90 (Fungsi 'toScore' yang diperbaiki oleh import baru)
-        val score = document.select("div.mvici-right > div.imdb_r span").text().toScore(TvType.Movie)
+        // MENGHAPUS VARIABEL SCORE KARENA ERROR
+        // val score = document.select("div.mvici-right > div.imdb_r span").text().toScore(TvType.Movie)
+        
         val actors = document.select("div.mvici-left p:nth-child(3) a").map { it.text() }
         val recommendations = document.select("div.ml-item").mapNotNull {
             it.toSearchResult()
@@ -121,7 +121,7 @@ class PRMoviesProvider : MainAPI() {
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                this.score = score 
+                // MENGHAPUS 'this.score = score'
                 addActors(actors)
                 this.recommendations = recommendations
                 addTrailer(trailer)
@@ -134,7 +134,7 @@ class PRMoviesProvider : MainAPI() {
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                this.score = score 
+                // MENGHAPUS 'this.score = score'
                 addActors(actors)
                 this.recommendations = recommendations
                 addTrailer(trailer)
