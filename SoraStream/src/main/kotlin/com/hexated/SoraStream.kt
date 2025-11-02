@@ -157,9 +157,20 @@ open class SoraStream : TmdbProvider() {
             "$tmdbAPI/tv/${data.id}?api_key=$apiKey&append_to_response=$append"
         }
         
-        // Memperbaiki potensi masalah JSON parsing/redirect TMDB API
-        val mediaDetail = app.get(resUrl).parsedSafe<MediaDetail>() 
-            ?: throw ErrorLoadingException("Invalid Json Response. URL: $resUrl")
+        // --- PERBAIKAN DIAGNOSTIK BARIS 584 ---
+        // Menggunakan allowRedirects = false untuk menangkap status 3xx jika terjadi redirect
+        val rawRes = app.get(resUrl, allowRedirects = false) 
+        
+        if (rawRes.code in 300..399) {
+            throw ErrorLoadingException(
+                "TMDB API Redirect Gagal! Status: ${rawRes.code}, Cek API Key & batasan Rate Limit. URL: ${rawRes.url}"
+            )
+        }
+        
+        val mediaDetail = rawRes.parsedSafe<MediaDetail>()
+            ?: throw ErrorLoadingException(
+                "Invalid Json: ${rawRes.code}. Response: ${rawRes.text.take(100)}"
+            )
 
         val title = mediaDetail.title ?: mediaDetail.name ?: return null
         val poster = getOriImageUrl(mediaDetail.posterPath)
@@ -228,7 +239,6 @@ open class SoraStream : TmdbProvider() {
                             this.season = eps.seasonNumber
                             this.episode = eps.episodeNumber
                             this.posterUrl = getImageUrl(eps.stillPath)
-                            // FIX: Menggunakan Score.from10() untuk mengatasi Assignment type mismatch
                             this.score = eps.voteAverage?.let { Score.from10(it) } 
                             this.description = eps.overview
                         }.apply {
