@@ -49,6 +49,7 @@ open class SoraStream : TmdbProvider() {
         const val malsyncAPI = "https://api.malsync.moe"
         const val jikanAPI = "https://api.jikan.moe/v4"
 
+        // KUNCI API TMDB BARU: 1cfadd9dbfc534abf6de40e1e7eaf4c7
         private const val apiKey = "1cfadd9dbfc534abf6de40e1e7eaf4c7"
 
         /** ALL SOURCES */
@@ -108,11 +109,14 @@ open class SoraStream : TmdbProvider() {
 
     private fun getImageUrl(link: String?): String? {
         if (link == null) return null
+        // CATATAN: Fungsi ini menggunakan path gambar TMDB. Untuk menggunakan gambar IMDb,
+        // Anda perlu memanggil API yang menggunakan ID IMDb untuk mengembalikan URL gambar.
         return if (link.startsWith("/")) "https://image.tmdb.org/t/p/w500/$link" else link
     }
 
     private fun getOriImageUrl(link: String?): String? {
         if (link == null) return null
+        // CATATAN: Fungsi ini menggunakan path gambar TMDB.
         return if (link.startsWith("/")) "https://image.tmdb.org/t/p/original/$link" else link
     }
 
@@ -160,15 +164,15 @@ open class SoraStream : TmdbProvider() {
             ?: throw ErrorLoadingException("Invalid Json Response")
 
         val title = res.title ?: res.name ?: return null
+        // Gambar dan detail berikut ini ditarik dari TMDB.
+        // Untuk menggunakan IMDb, Anda perlu melakukan panggilan API tambahan di sini
+        // menggunakan res.external_ids?.imdb_id
         val poster = getOriImageUrl(res.posterPath)
         val bgPoster = getOriImageUrl(res.backdropPath)
         val orgTitle = res.originalTitle ?: res.originalName ?: return null
         val releaseDate = res.releaseDate ?: res.firstAirDate
         val year = releaseDate?.split("-")?.first()?.toIntOrNull()
-        
-        // FIX: Menggunakan Score.from10
-        val mediaScore = res.vote_average.toString().toDoubleOrNull()?.let { Score.from10(it) }
-
+        val rating = res.vote_average.toString().toRatingInt()
         val genres = res.genres?.mapNotNull { it.name }
 
         val isCartoon = genres?.contains("Animation") ?: false
@@ -226,8 +230,7 @@ open class SoraStream : TmdbProvider() {
                             this.season = eps.seasonNumber
                             this.episode = eps.episodeNumber
                             this.posterUrl = getImageUrl(eps.stillPath)
-                            // FIX: Mengganti this.rating dengan this.score dan menggunakan Score.from10()
-                            this.score = eps.voteAverage?.let { Score.from10(it) } 
+                            this.rating = eps.voteAverage?.times(10)?.roundToInt()
                             this.description = eps.overview
                         }.apply {
                             this.addDate(eps.airDate)
@@ -245,13 +248,13 @@ open class SoraStream : TmdbProvider() {
                 this.year = year
                 this.plot = res.overview
                 this.tags = keywords.takeIf { !it.isNullOrEmpty() } ?: genres
-                // FIX: Mengganti this.rating dengan this.score
-                this.score = mediaScore 
+                this.rating = rating
                 this.showStatus = getStatus(res.status)
                 this.recommendations = recommendations
                 this.actors = actors
                 this.contentRating = fetchContentRating(data.id, "US")
                 addTrailer(trailer)
+                // ID IMDb sudah dilampirkan, yang sangat penting
                 addTMDbId(data.id.toString())
                 addImdbId(res.external_ids?.imdb_id)
             }
@@ -283,12 +286,12 @@ open class SoraStream : TmdbProvider() {
                 this.plot = res.overview
                 this.duration = res.runtime
                 this.tags = keywords.takeIf { !it.isNullOrEmpty() } ?: genres
-                // FIX: Mengganti this.rating dengan this.score
-                this.score = mediaScore 
+                this.rating = rating
                 this.recommendations = recommendations
                 this.actors = actors
                 this.contentRating = fetchContentRating(data.id, "US")
                 addTrailer(trailer)
+                // ID IMDb sudah dilampirkan, yang sangat penting
                 addTMDbId(data.id.toString())
                 addImdbId(res.external_ids?.imdb_id)
             }
