@@ -1,4 +1,3 @@
-
 package com.hexated
 
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
@@ -9,7 +8,7 @@ import android.content.Context
 class SoraStreamPlugin: Plugin() {
     override fun load(context: Context) {
         // All providers should be added in this manner. Please don't edit the providers list directly.
-        registerMainAPI(SoraStream())
+        registerMainAPI(SoraStream()) // FIX: Menggunakan SoraStream()
         registerExtractorAPI(Jeniusplay2())
     }
 }
