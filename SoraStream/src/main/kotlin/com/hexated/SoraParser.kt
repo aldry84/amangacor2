@@ -348,7 +348,7 @@ data class SFMoviesAttributes(
     @JsonProperty("video") var video: String? = null,
     @JsonProperty("releaseDate") var releaseDate: String? = null,
     @JsonProperty("seriess") var seriess: ArrayList<ArrayList<SFMoviesSeriess>>? = arrayListOf(),
-    @JsonProperty("contentId") var contentId: String? = null,
+    @JsonProperty("contentId") var contentId: String? = null
 )
 
 data class SFMoviesData(
