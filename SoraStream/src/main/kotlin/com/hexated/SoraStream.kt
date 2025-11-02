@@ -43,11 +43,11 @@ open class SoraStream : TmdbProvider() {
     /** AUTHOR : Hexated & Sora */
     companion object {
         /** TOOLS */
-        private const val tmdbAPI = "https://api.themoviedb.org/3"
+        private const val mainurl = "https://api.themoviedb.org/3" // TELAH DIUBAH DARI tmdbAPI
         const val gdbot = "https://gdtot.pro"
         const val anilistAPI = "https://graphql.anilist.co"
         const val malsyncAPI = "https://api.malsync.moe"
-        const val jikanAPI = "https://api.jikan.moe/v4"
+        const val jikanAPI = "https://api.jikan.moe/4"
 
         private const val apiKey = "1cfadd9dbfc534abf6de40e1e7eaf4c7"
 
@@ -84,26 +84,26 @@ open class SoraStream : TmdbProvider() {
     }
 
     override val mainPage = mainPageOf(
-        "$tmdbAPI/trending/all/day?api_key=$apiKey&region=US" to "Trending",
-        "$tmdbAPI/movie/popular?api_key=$apiKey&region=US" to "Popular Movies",
-        "$tmdbAPI/tv/popular?api_key=$apiKey&region=US&with_original_language=en" to "Popular TV Shows",
-        "$tmdbAPI/tv/airing_today?api_key=$apiKey&region=US&with_original_language=en" to "Airing Today TV Shows",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_networks=213" to "Netflix",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_networks=1024" to "Amazon",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_networks=2739" to "Disney+",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_networks=453" to "Hulu",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_networks=2552" to "Apple TV+",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_networks=49" to "HBO",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_networks=4330" to "Paramount+",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_networks=3353" to "Peacock",
-        "$tmdbAPI/movie/top_rated?api_key=$apiKey&region=US" to "Top Rated Movies",
-        "$tmdbAPI/tv/top_rated?api_key=$apiKey&region=US" to "Top Rated TV Shows",
-        "$tmdbAPI/movie/upcoming?api_key=$apiKey&region=US" to "Upcoming Movies",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko" to "Korean Shows",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_keywords=210024|222243&sort_by=popularity.desc&air_date.lte=${getDate().today}&air_date.gte=${getDate().today}" to "Airing Today Anime",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_keywords=210024|222243&sort_by=popularity.desc&air_date.lte=${getDate().nextWeek}&air_date.gte=${getDate().today}" to "On The Air Anime",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_keywords=210024|222243" to "Anime",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=210024|222243" to "Anime Movies",
+        "$mainurl/trending/all/day?api_key=$apiKey&region=US" to "Trending", // Menggunakan $mainurl
+        "$mainurl/movie/popular?api_key=$apiKey&region=US" to "Popular Movies", // Menggunakan $mainurl
+        "$mainurl/tv/popular?api_key=$apiKey&region=US&with_original_language=en" to "Popular TV Shows", // Menggunakan $mainurl
+        "$mainurl/tv/airing_today?api_key=$apiKey&region=US&with_original_language=en" to "Airing Today TV Shows", // Menggunakan $mainurl
+        "$mainurl/discover/tv?api_key=$apiKey&with_networks=213" to "Netflix", // Menggunakan $mainurl
+        "$mainurl/discover/tv?api_key=$apiKey&with_networks=1024" to "Amazon", // Menggunakan $mainurl
+        "$mainurl/discover/tv?api_key=$apiKey&with_networks=2739" to "Disney+", // Menggunakan $mainurl
+        "$mainurl/discover/tv?api_key=$apiKey&with_networks=453" to "Hulu", // Menggunakan $mainurl
+        "$mainurl/discover/tv?api_key=$apiKey&with_networks=2552" to "Apple TV+", // Menggunakan $mainurl
+        "$mainurl/discover/tv?api_key=$apiKey&with_networks=49" to "HBO", // Menggunakan $mainurl
+        "$mainurl/discover/tv?api_key=$apiKey&with_networks=4330" to "Paramount+", // Menggunakan $mainurl
+        "$mainurl/discover/tv?api_key=$apiKey&with_networks=3353" to "Peacock", // Menggunakan $mainurl
+        "$mainurl/movie/top_rated?api_key=$apiKey&region=US" to "Top Rated Movies", // Menggunakan $mainurl
+        "$mainurl/tv/top_rated?api_key=$apiKey&region=US" to "Top Rated TV Shows", // Menggunakan $mainurl
+        "$mainurl/movie/upcoming?api_key=$apiKey&region=US" to "Upcoming Movies", // Menggunakan $mainurl
+        "$mainurl/discover/tv?api_key=$apiKey&with_original_language=ko" to "Korean Shows", // Menggunakan $mainurl
+        "$mainurl/discover/tv?api_key=$apiKey&with_keywords=210024|222243&sort_by=popularity.desc&air_date.lte=${getDate().today}&air_date.gte=${getDate().today}" to "Airing Today Anime", // Menggunakan $mainurl
+        "$mainurl/discover/tv?api_key=$apiKey&with_keywords=210024|222243&sort_by=popularity.desc&air_date.lte=${getDate().nextWeek}&air_date.gte=${getDate().today}" to "On The Air Anime", // Menggunakan $mainurl
+        "$mainurl/discover/tv?api_key=$apiKey&with_keywords=210024|222243" to "Anime", // Menggunakan $mainurl
+        "$mainurl/discover/movie?api_key=$apiKey&with_keywords=210024|222243" to "Anime Movies", // Menggunakan $mainurl
     )
 
     private fun getImageUrl(link: String?): String? {
@@ -141,7 +141,7 @@ open class SoraStream : TmdbProvider() {
     override suspend fun quickSearch(query: String): List<SearchResponse>? = search(query)
 
     override suspend fun search(query: String): List<SearchResponse>? {
-        return app.get("$tmdbAPI/search/multi?api_key=$apiKey&language=en-US&query=$query&page=1&include_adult=${settingsForProvider.enableAdult}")
+        return app.get("$mainurl/search/multi?api_key=$apiKey&language=en-US&query=$query&page=1&include_adult=${settingsForProvider.enableAdult}") // Menggunakan $mainurl
             .parsedSafe<Results>()?.results?.mapNotNull { media ->
                 media.toSearchResponse()
             }
@@ -152,9 +152,9 @@ open class SoraStream : TmdbProvider() {
         val type = getType(data.type)
         val append = "alternative_titles,credits,external_ids,keywords,videos,recommendations"
         val resUrl = if (type == TvType.Movie) {
-            "$tmdbAPI/movie/${data.id}?api_key=$apiKey&append_to_response=$append"
+            "$mainurl/movie/${data.id}?api_key=$apiKey&append_to_response=$append" // Menggunakan $mainurl
         } else {
-            "$tmdbAPI/tv/${data.id}?api_key=$apiKey&append_to_response=$append"
+            "$mainurl/tv/${data.id}?api_key=$apiKey&append_to_response=$append" // Menggunakan $mainurl
         }
         val res = app.get(resUrl).parsedSafe<MediaDetail>()
             ?: throw ErrorLoadingException("Invalid Json Response")
@@ -195,7 +195,7 @@ open class SoraStream : TmdbProvider() {
         return if (type == TvType.TvSeries) {
             val lastSeason = res.last_episode_to_air?.season_number
             val episodes = res.seasons?.mapNotNull { season ->
-                app.get("$tmdbAPI/${data.type}/${data.id}/season/${season.seasonNumber}?api_key=$apiKey")
+                app.get("$mainurl/${data.type}/${data.id}/season/${season.seasonNumber}?api_key=$apiKey") // Menggunakan $mainurl
                     .parsedSafe<MediaDetailEpisodes>()?.episodes?.map { eps ->
                         newEpisode(
                             data = LinkData(
