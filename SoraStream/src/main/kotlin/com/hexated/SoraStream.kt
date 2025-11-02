@@ -173,7 +173,8 @@ open class SoraStream : TmdbProvider() {
             mediaDetail = rawRes.parsedSafe<MediaDetail>()
         } catch (e: Exception) {
             // Jika parsing gagal, kita akan mencoba membuat LoadResponse minimal (fallback)
-            logError(e) { "TMDB Load Gagal. Mencoba Fallback..." }
+            // FIX: Menghapus lambda untuk menyesuaikan signature logError(throwable: Throwable)
+            logError(e) 
         }
 
         // --- FALLBACK LOGIC ---
