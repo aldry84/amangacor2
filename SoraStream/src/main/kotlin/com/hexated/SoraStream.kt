@@ -24,6 +24,7 @@ import com.lagradost.cloudstream3.network.CloudflareKiller
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.mvvm.logError
 import kotlin.math.roundToInt
 
 open class SoraStream : TmdbProvider() {
@@ -157,22 +158,47 @@ open class SoraStream : TmdbProvider() {
             "$tmdbAPI/tv/${data.id}?api_key=$apiKey&append_to_response=$append"
         }
         
-        // --- DIAGNOSTIK & PERBAIKAN TMDB API (Baris 594) ---
-        // Menggunakan allowRedirects = false untuk menangkap redirect (kode 3xx)
-        val rawRes = app.get(resUrl, allowRedirects = false) 
+        var mediaDetail: MediaDetail? = null
         
-        if (rawRes.code in 300..399) {
-            throw ErrorLoadingException(
-                "TMDB API Redirect Gagal! Status: ${rawRes.code}. Cek API Key dan Jaringan Anda. URL: ${rawRes.url}"
-            )
+        // --- BLOK TRY-CATCH UNTUK MENGATASI GAGAL PARSING TMDB API (BARIS 594) ---
+        try {
+            // Menggunakan allowRedirects = false untuk menangkap redirect (kode 3xx)
+            val rawRes = app.get(resUrl, allowRedirects = false) 
+            
+            if (rawRes.code in 300..399 || rawRes.code >= 400) {
+                 // Jika ada redirect atau HTTP error, throw exception untuk memicu fallback
+                 throw Exception("HTTP Error: ${rawRes.code}. Response: ${rawRes.text.take(100)}")
+            }
+            
+            mediaDetail = rawRes.parsedSafe<MediaDetail>()
+        } catch (e: Exception) {
+            // Jika parsing gagal, kita akan mencoba membuat LoadResponse minimal (fallback)
+            logError(e) { "TMDB Load Gagal. Mencoba Fallback..." }
         }
-        
-        // Jika status code OK, coba parse
-        val mediaDetail = rawRes.parsedSafe<MediaDetail>()
-            ?: throw ErrorLoadingException(
-                "Invalid Json: ${rawRes.code}. Response: ${rawRes.text.take(100)}"
-            )
 
+        // --- FALLBACK LOGIC ---
+        // Jika mediaDetail masih null (parsing gagal), buat LoadResponse minimal.
+        if (mediaDetail == null) {
+            val title = "Media ID: ${data.id} (TMDB Gagal)"
+            val fallbackLinkData = LinkData(id = data.id, type = data.type).toJson()
+            
+            val fallbackMessage = "Gagal memuat detail dari TMDB (ID: ${data.id}). Coba muat ulang atau periksa koneksi. Link mungkin masih berfungsi."
+            
+            if (type == TvType.TvSeries) {
+                // Untuk serial, kembalikan LoadResponse yang memungkinkan user mencoba loadLinks
+                return newTvSeriesLoadResponse(title, url, TvType.TvSeries, emptyList()) {
+                    this.plot = fallbackMessage
+                }
+            } else {
+                // Untuk film, kembalikan MovieLoadResponse minimal
+                return newMovieLoadResponse(title, url, TvType.Movie, fallbackLinkData) {
+                    this.plot = fallbackMessage
+                }
+            }
+        }
+        // --- END FALLBACK LOGIC ---
+        
+        // Lanjutkan dengan logika parsing normal jika mediaDetail berhasil dimuat
         val title = mediaDetail.title ?: mediaDetail.name ?: return null
         val poster = getOriImageUrl(mediaDetail.posterPath)
         val bgPoster = getOriImageUrl(mediaDetail.backdropPath)
