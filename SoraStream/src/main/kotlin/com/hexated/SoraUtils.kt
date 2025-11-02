@@ -1,7 +1,6 @@
 package com.hexated
 
 import android.util.Base64
-import com.hexated.SoraStream.Companion.anilistAPI
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.APIHolder.unixTimeMS
 import com.lagradost.cloudstream3.mvvm.logError
@@ -95,7 +94,7 @@ suspend fun tmdbToAnimeId(title: String?, year: Int?, season: String?, type: TvT
         "variables" to variables
     ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
 
-    val res = app.post(anilistAPI, requestBody = data)
+    val res = app.post(SoraStream.anilistAPI, requestBody = data) // FIX: Kualifikasi SoraStream
         .parsedSafe<AniSearch>()?.data?.Page?.media?.firstOrNull()
     return AniIds(res?.id, res?.idMal)
 
