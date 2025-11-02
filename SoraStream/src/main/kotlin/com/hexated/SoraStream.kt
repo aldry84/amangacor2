@@ -1,4 +1,4 @@
-package com.hexated // FIX: Mengganti Package menjadi package
+package com.hexated
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.hexated.SoraExtractor.invokeGomovies
@@ -100,8 +100,8 @@ open class SoraStream : TmdbProvider() {
         "$tmdbAPI/tv/top_rated?api_key=$apiKey&region=US" to "Top Rated TV Shows",
         "$tmdbAPI/movie/upcoming?api_key=$apiKey&region=US" to "Upcoming Movies",
         "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko" to "Korean Shows",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_keywords=210024|222243&sort_by=popularity.desc&air_date.lte=${getDate().today}&air_date.gte=${getDate().today}" to "Airing Today Anime", // FIX: Kualifikasi getDate()
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_keywords=210024|222243&sort_by=popularity.desc&air_date.lte=${getDate().nextWeek}&air_date.gte=${getDate().today}" to "On The Air Anime", // FIX: Kualifikasi getDate()
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_keywords=210024|222243&sort_by=popularity.desc&air_date.lte=${getDate().today}&air_date.gte=${getDate().today}" to "Airing Today Anime",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_keywords=210024|222243&sort_by=popularity.desc&air_date.lte=${getDate().nextWeek}&air_date.gte=${getDate().today}" to "On The Air Anime",
         "$tmdbAPI/discover/tv?api_key=$apiKey&with_keywords=210024|222243" to "Anime",
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=210024|222243" to "Anime Movies",
     )
@@ -166,7 +166,7 @@ open class SoraStream : TmdbProvider() {
         val releaseDate = res.releaseDate ?: res.firstAirDate
         val year = releaseDate?.split("-")?.first()?.toIntOrNull()
         
-        // FIX BARIS 167 (berkaitan dengan error di baris 168): Mengganti toRatingInt() dengan Score.from10()
+        // FIX: Menggunakan Score.from10
         val mediaScore = res.vote_average.toString().toDoubleOrNull()?.let { Score.from10(it) }
 
         val genres = res.genres?.mapNotNull { it.name }
@@ -222,11 +222,12 @@ open class SoraStream : TmdbProvider() {
                             ).toJson()
                         ) {
                             this.name =
-                                eps.name + if (isUpcoming(eps.airDate)) " • [UPCOMING]" else "" // FIX: Kualifikasi isUpcoming()
+                                eps.name + if (isUpcoming(eps.airDate)) " • [UPCOMING]" else ""
                             this.season = eps.seasonNumber
                             this.episode = eps.episodeNumber
                             this.posterUrl = getImageUrl(eps.stillPath)
-                            this.score = eps.voteAverage?.times(10)?.roundToInt() // FIX: Mengganti this.rating dengan this.score
+                            // FIX: Mengganti this.rating dengan this.score dan menggunakan Score.from10()
+                            this.score = eps.voteAverage?.let { Score.from10(it) } 
                             this.description = eps.overview
                         }.apply {
                             this.addDate(eps.airDate)
@@ -244,7 +245,8 @@ open class SoraStream : TmdbProvider() {
                 this.year = year
                 this.plot = res.overview
                 this.tags = keywords.takeIf { !it.isNullOrEmpty() } ?: genres
-                this.score = mediaScore // FIX: Mengganti this.rating dengan this.score
+                // FIX: Mengganti this.rating dengan this.score
+                this.score = mediaScore 
                 this.showStatus = getStatus(res.status)
                 this.recommendations = recommendations
                 this.actors = actors
@@ -276,12 +278,13 @@ open class SoraStream : TmdbProvider() {
             ) {
                 this.posterUrl = poster
                 this.backgroundPosterUrl = bgPoster
-                this.comingSoon = isUpcoming(releaseDate) // FIX: Kualifikasi isUpcoming()
+                this.comingSoon = isUpcoming(releaseDate)
                 this.year = year
                 this.plot = res.overview
                 this.duration = res.runtime
                 this.tags = keywords.takeIf { !it.isNullOrEmpty() } ?: genres
-                this.score = mediaScore // FIX: Mengganti this.rating dengan this.score
+                // FIX: Mengganti this.rating dengan this.score
+                this.score = mediaScore 
                 this.recommendations = recommendations
                 this.actors = actors
                 this.contentRating = fetchContentRating(data.id, "US")
