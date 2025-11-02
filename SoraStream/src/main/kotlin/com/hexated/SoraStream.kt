@@ -16,15 +16,14 @@ import com.hexated.SoraExtractor.invokeWatchsomuch
 import com.hexated.SoraExtractor.invokeWyzie
 import com.hexated.SoraExtractor.invokeXprime
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
-import com.lagradost.cloudstream3.metaproviders.TmdbProvider
 import com.lagradost.cloudstream3.LoadResponse.Companion.addImdbId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTMDbId
+import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
+import com.lagradost.cloudstream3.metaproviders.TmdbProvider
 import com.lagradost.cloudstream3.network.CloudflareKiller
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.mvvm.logError
 import kotlin.math.roundToInt
 
 open class SoraStream : TmdbProvider() {
@@ -44,29 +43,28 @@ open class SoraStream : TmdbProvider() {
     /** AUTHOR : Hexated & Sora */
     companion object {
         /** TOOLS */
-        private const val tmdbAPI = "https://api.themoviedb.org/3"
-        const val gdbot = "https://gdtot.pro"
-        const val anilistAPI = "https://graphql.anilist.co"
-        const val malsyncAPI = "https://api.malsync.moe"
-        const val jikanAPI = "https://api.jikan.moe/v4"
-
+        private const val tmdbAPI = "https://api.themoviedb.org/3" // Tambahkan base URL untuk TMDB API
+        const val gdbot = ""
+        const val anilistAPI = ""
+        const val malsyncAPI = ""
+        const val jikanAPI = ""
         private const val apiKey = "1cfadd9dbfc534abf6de40e1e7eaf4c7"
 
         /** ALL SOURCES */
-        const val gomoviesAPI = "https://gomovies-online.cam"
-        const val idlixAPI = "https://tv6.idlixku.com"
-        const val vidsrcccAPI = "https://vidsrc.cc"
-        const val vidSrcAPI = "https://vidsrc.net"
-        const val xprimeAPI = "https://backend.xprime.tv"
-        const val watchSomuchAPI = "https://watchsomuch.tv"
-        const val mappleAPI = "https://mapple.uk"
-        const val vidlinkAPI = "https://vidlink.pro"
-        const val vidfastAPI = "https://vidfast.pro"
-        const val wyzieAPI = "https://sub.wyzie.ru"
-        const val vixsrcAPI = "https://vixsrc.to"
-        const val vidsrccxAPI = "https://vidsrc.cx"
-        const val superembedAPI = "https://multiembed.mov"
-        const val vidrockAPI = "https://vidrock.net"
+        const val gomoviesAPI = ""
+        const val idlixAPI = ""
+        const val vidsrcccAPI = ""
+        const val vidSrcAPI = ""
+        const val xprimeAPI = ""
+        const val watchSomuchAPI = ""
+        const val mappleAPI = ""
+        const val vidlinkAPI = ""
+        const val vidfastAPI = ""
+        const val wyzieAPI = ""
+        const val vixsrcAPI = ""
+        const val vidsrccxAPI = ""
+        const val superembedAPI = ""
+        const val vidrockAPI = ""
 
         fun getType(t: String?): TvType {
             return when (t) {
@@ -81,7 +79,6 @@ open class SoraStream : TmdbProvider() {
                 else -> ShowStatus.Completed
             }
         }
-
     }
 
     override val mainPage = mainPageOf(
@@ -109,12 +106,12 @@ open class SoraStream : TmdbProvider() {
 
     private fun getImageUrl(link: String?): String? {
         if (link == null) return null
-        return if (link.startsWith("/")) "https://image.tmdb.org/t/p/w500/$link" else link
+        return if (link.startsWith("/")) tmdbAPI + link else link // Menambahkan base URL jika link internal
     }
 
     private fun getOriImageUrl(link: String?): String? {
         if (link == null) return null
-        return if (link.startsWith("/")) "https://image.tmdb.org/t/p/original/$link" else link
+        return if (link.startsWith("/")) tmdbAPI + link else link // Menambahkan base URL jika link internal
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -135,7 +132,7 @@ open class SoraStream : TmdbProvider() {
             TvType.Movie,
         ) {
             this.posterUrl = getImageUrl(posterPath)
-            this.score= Score.from10(voteAverage)
+            this.score = Score.from10(voteAverage)
         }
     }
 
@@ -157,69 +154,25 @@ open class SoraStream : TmdbProvider() {
         } else {
             "$tmdbAPI/tv/${data.id}?api_key=$apiKey&append_to_response=$append"
         }
-        
-        var mediaDetail: MediaDetail? = null
-        
-        // --- BLOK TRY-CATCH UNTUK MENGATASI GAGAL PARSING TMDB API (BARIS 594) ---
-        try {
-            // Menggunakan allowRedirects = false untuk menangkap redirect (kode 3xx)
-            val rawRes = app.get(resUrl, allowRedirects = false) 
-            
-            if (rawRes.code in 300..399 || rawRes.code >= 400) {
-                 // Jika ada redirect atau HTTP error, throw exception untuk memicu fallback
-                 throw Exception("HTTP Error: ${rawRes.code}. Response: ${rawRes.text.take(100)}")
-            }
-            
-            mediaDetail = rawRes.parsedSafe<MediaDetail>()
-        } catch (e: Exception) {
-            // Jika parsing gagal, kita akan mencoba membuat LoadResponse minimal (fallback)
-            // FIX: Menghapus lambda untuk menyesuaikan signature logError(throwable: Throwable)
-            logError(e) 
-        }
+        val res = app.get(resUrl).parsedSafe<MediaDetail>()
+            ?: throw ErrorLoadingException("Invalid Json Response")
 
-        // --- FALLBACK LOGIC ---
-        // Jika mediaDetail masih null (parsing gagal), buat LoadResponse minimal.
-        if (mediaDetail == null) {
-            val title = "Media ID: ${data.id} (TMDB Gagal)"
-            val fallbackLinkData = LinkData(id = data.id, type = data.type).toJson()
-            
-            val fallbackMessage = "Gagal memuat detail dari TMDB (ID: ${data.id}). Coba muat ulang atau periksa koneksi. Link mungkin masih berfungsi."
-            
-            if (type == TvType.TvSeries) {
-                // Untuk serial, kembalikan LoadResponse yang memungkinkan user mencoba loadLinks
-                return newTvSeriesLoadResponse(title, url, TvType.TvSeries, emptyList()) {
-                    this.plot = fallbackMessage
-                }
-            } else {
-                // Untuk film, kembalikan MovieLoadResponse minimal
-                return newMovieLoadResponse(title, url, TvType.Movie, fallbackLinkData) {
-                    this.plot = fallbackMessage
-                }
-            }
-        }
-        // --- END FALLBACK LOGIC ---
-        
-        // Lanjutkan dengan logika parsing normal jika mediaDetail berhasil dimuat
-        val title = mediaDetail.title ?: mediaDetail.name ?: return null
-        val poster = getOriImageUrl(mediaDetail.posterPath)
-        val bgPoster = getOriImageUrl(mediaDetail.backdropPath)
-        val orgTitle = mediaDetail.originalTitle ?: mediaDetail.originalName ?: return null
-        val releaseDate = mediaDetail.releaseDate ?: mediaDetail.firstAirDate
+        val title = res.title ?: res.name ?: return null
+        val poster = getOriImageUrl(res.posterPath)
+        val bgPoster = getOriImageUrl(res.backdropPath)
+        val orgTitle = res.originalTitle ?: res.originalName ?: return null
+        val releaseDate = res.releaseDate ?: res.firstAirDate
         val year = releaseDate?.split("-")?.first()?.toIntOrNull()
-        
-        val mediaScore = mediaDetail.vote_average.toString().toDoubleOrNull()?.let { Score.from10(it) }
 
-        val genres = mediaDetail.genres?.mapNotNull { it.name }
-
+        val mediaScore = res.vote_average.toString().toDoubleOrNull()?.let { Score.from10(it) }
+        val genres = res.genres?.mapNotNull { it.name }
         val isCartoon = genres?.contains("Animation") ?: false
-        val isAnime = isCartoon && (mediaDetail.original_language == "zh" || mediaDetail.original_language == "ja")
-        val isAsian = !isAnime && (mediaDetail.original_language == "zh" || mediaDetail.original_language == "ko")
-        val isBollywood = mediaDetail.production_countries?.any { it.name == "India" } ?: false
-
-        val keywords = mediaDetail.keywords?.results?.mapNotNull { it.name }.orEmpty()
-            .ifEmpty { mediaDetail.keywords?.keywords?.mapNotNull { it.name } }
-
-        val actors = mediaDetail.credits?.cast?.mapNotNull { cast ->
+        val isAnime = isCartoon && (res.original_language == "zh" || res.original_language == "ja")
+        val isAsian = !isAnime && (res.original_language == "zh" || res.original_language == "ko")
+        val isBollywood = res.production_countries?.any { it.name == "India" } ?: false
+        val keywords = res.keywords?.results?.mapNotNull { it.name }.orEmpty()
+            .ifEmpty { res.keywords?.keywords?.mapNotNull { it.name } }
+        val actors = res.credits?.cast?.mapNotNull { cast ->
             ActorData(
                 Actor(
                     cast.name ?: cast.originalName
@@ -227,21 +180,23 @@ open class SoraStream : TmdbProvider() {
                 ), roleString = cast.character
             )
         } ?: return null
-        val recommendations =
-            mediaDetail.recommendations?.results?.mapNotNull { media -> media.toSearchResponse() }
 
-        val trailer = mediaDetail.videos?.results?.map { "https://www.youtube.com/watch?v=${it.key}" }
+        val recommendations =
+            res.recommendations?.results?.mapNotNull { media -> media.toSearchResponse() }
+        val trailer = res.videos?.results?.mapNotNull { it.key }?.map {
+            "$tmdbAPI/watch?v=$it" // Perbaikan: Menggunakan URL yang benar untuk trailer
+        } ?: emptyList()
 
         return if (type == TvType.TvSeries) {
-            val lastSeason = mediaDetail.last_episode_to_air?.season_number
-            val episodes = mediaDetail.seasons?.mapNotNull { season ->
-                app.get("$tmdbAPI/${data.type}/${data.id}/season/${season.seasonNumber}?api_key=$apiKey")
+            val lastSeason = res.last_episode_to_air?.season_number
+            val episodes = res.seasons?.mapNotNull { season ->
+                app.get("$tmdbAPI/tv/${data.id}/season/${season.seasonNumber}?api_key=$apiKey")
                     .parsedSafe<MediaDetailEpisodes>()?.episodes?.map { eps ->
                         newEpisode(
                             data = LinkData(
                                 data.id,
-                                mediaDetail.external_ids?.imdb_id,
-                                mediaDetail.external_ids?.tvdb_id,
+                                res.external_ids?.imdb_id,
+                                res.external_ids?.tvdb_id,
                                 data.type,
                                 eps.seasonNumber,
                                 eps.episodeNumber,
@@ -252,10 +207,10 @@ open class SoraStream : TmdbProvider() {
                                 airedYear = year,
                                 lastSeason = lastSeason,
                                 epsTitle = eps.name,
-                                jpTitle = mediaDetail.alternative_titles?.results?.find { it.iso_3166_1 == "JP" }?.title,
+                                jpTitle = res.alternative_titles?.results?.find { it.iso_3166_1 == "JP" }?.title,
                                 date = season.airDate,
-                                airedDate = mediaDetail.releaseDate
-                                    ?: mediaDetail.firstAirDate,
+                                airedDate = res.releaseDate
+                                    ?: res.firstAirDate,
                                 isAsian = isAsian,
                                 isBollywood = isBollywood,
                                 isCartoon = isCartoon
@@ -266,13 +221,14 @@ open class SoraStream : TmdbProvider() {
                             this.season = eps.seasonNumber
                             this.episode = eps.episodeNumber
                             this.posterUrl = getImageUrl(eps.stillPath)
-                            this.score = eps.voteAverage?.let { Score.from10(it) } 
+                            this.score = eps.voteAverage?.let { Score.from10(it) }
                             this.description = eps.overview
                         }.apply {
                             this.addDate(eps.airDate)
                         }
                     }
             }?.flatten() ?: listOf()
+
             newTvSeriesLoadResponse(
                 title,
                 url,
@@ -282,16 +238,16 @@ open class SoraStream : TmdbProvider() {
                 this.posterUrl = poster
                 this.backgroundPosterUrl = bgPoster
                 this.year = year
-                this.plot = mediaDetail.overview
+                this.plot = res.overview
                 this.tags = keywords.takeIf { !it.isNullOrEmpty() } ?: genres
-                this.score = mediaScore 
-                this.showStatus = getStatus(mediaDetail.status)
+                this.score = mediaScore
+                this.showStatus = getStatus(res.status)
                 this.recommendations = recommendations
                 this.actors = actors
                 this.contentRating = fetchContentRating(data.id, "US")
-                addTrailer(trailer)
+                addTrailer(trailer.firstOrNull()) // Perbaikan: Menambahkan trailer yang sudah diperbaiki
                 addTMDbId(data.id.toString())
-                addImdbId(mediaDetail.external_ids?.imdb_id)
+                addImdbId(res.external_ids?.imdb_id)
             }
         } else {
             newMovieLoadResponse(
@@ -300,16 +256,16 @@ open class SoraStream : TmdbProvider() {
                 TvType.Movie,
                 LinkData(
                     data.id,
-                    mediaDetail.external_ids?.imdb_id,
-                    mediaDetail.external_ids?.tvdb_id,
+                    res.external_ids?.imdb_id,
+                    res.external_ids?.tvdb_id,
                     data.type,
                     title = title,
                     year = year,
                     orgTitle = orgTitle,
                     isAnime = isAnime,
-                    jpTitle = mediaDetail.alternative_titles?.results?.find { it.iso_3166_1 == "JP" }?.title,
-                    airedDate = mediaDetail.releaseDate
-                        ?: mediaDetail.firstAirDate,
+                    jpTitle = res.alternative_titles?.results?.find { it.iso_3166_1 == "JP" }?.title,
+                    airedDate = res.releaseDate
+                        ?: res.firstAirDate,
                     isAsian = isAsian,
                     isBollywood = isBollywood
                 ).toJson(),
@@ -318,16 +274,16 @@ open class SoraStream : TmdbProvider() {
                 this.backgroundPosterUrl = bgPoster
                 this.comingSoon = isUpcoming(releaseDate)
                 this.year = year
-                this.plot = mediaDetail.overview
-                this.duration = mediaDetail.runtime
+                this.plot = res.overview
+                this.duration = res.runtime
                 this.tags = keywords.takeIf { !it.isNullOrEmpty() } ?: genres
-                this.score = mediaScore 
+                this.score = mediaScore
                 this.recommendations = recommendations
                 this.actors = actors
                 this.contentRating = fetchContentRating(data.id, "US")
-                addTrailer(trailer)
+                addTrailer(trailer.firstOrNull()) // Perbaikan: Menambahkan trailer yang sudah diperbaiki
                 addTMDbId(data.id.toString())
-                addImdbId(mediaDetail.external_ids?.imdb_id)
+                addImdbId(res.external_ids?.imdb_id)
             }
         }
     }
@@ -338,9 +294,7 @@ open class SoraStream : TmdbProvider() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-
         val res = parseJson<LinkData>(data)
-
         runAllAsync(
             {
                 invokeIdlix(
@@ -416,9 +370,9 @@ open class SoraStream : TmdbProvider() {
                 )
             }
         )
-
         return true
     }
+
 
     data class LinkData(
         val id: Int? = null,
@@ -578,5 +532,4 @@ open class SoraStream : TmdbProvider() {
         @JsonProperty("alternative_titles") val alternative_titles: ResultsAltTitles? = null,
         @JsonProperty("production_countries") val production_countries: ArrayList<ProductionCountries>? = arrayListOf(),
     )
-
 }
