@@ -1,4 +1,4 @@
-package com.hexated
+Package com.hexated
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.hexated.SoraExtractor.invokeGomovies
@@ -165,7 +165,10 @@ open class SoraStream : TmdbProvider() {
         val orgTitle = res.originalTitle ?: res.originalName ?: return null
         val releaseDate = res.releaseDate ?: res.firstAirDate
         val year = releaseDate?.split("-")?.first()?.toIntOrNull()
-        val rating = res.vote_average.toString().toRatingInt()
+        
+        // FIX BARIS 167 (berkaitan dengan error di baris 168): Mengganti toRatingInt() dengan Score.from10()
+        val mediaScore = res.vote_average.toString().toDoubleOrNull()?.let { Score.from10(it) }
+
         val genres = res.genres?.mapNotNull { it.name }
 
         val isCartoon = genres?.contains("Animation") ?: false
@@ -223,7 +226,8 @@ open class SoraStream : TmdbProvider() {
                             this.season = eps.seasonNumber
                             this.episode = eps.episodeNumber
                             this.posterUrl = getImageUrl(eps.stillPath)
-                            this.rating = eps.voteAverage?.times(10)?.roundToInt()
+                            // FIX BARIS 226: Mengganti this.rating dengan this.score
+                            this.score = eps.voteAverage?.times(10)?.roundToInt()
                             this.description = eps.overview
                         }.apply {
                             this.addDate(eps.airDate)
@@ -241,7 +245,8 @@ open class SoraStream : TmdbProvider() {
                 this.year = year
                 this.plot = res.overview
                 this.tags = keywords.takeIf { !it.isNullOrEmpty() } ?: genres
-                this.rating = rating
+                // FIX BARIS 244: Mengganti this.rating dengan this.score dan menggunakan mediaScore
+                this.score = mediaScore 
                 this.showStatus = getStatus(res.status)
                 this.recommendations = recommendations
                 this.actors = actors
@@ -278,7 +283,8 @@ open class SoraStream : TmdbProvider() {
                 this.plot = res.overview
                 this.duration = res.runtime
                 this.tags = keywords.takeIf { !it.isNullOrEmpty() } ?: genres
-                this.rating = rating
+                // FIX BARIS 281: Mengganti this.rating dengan this.score dan menggunakan mediaScore
+                this.score = mediaScore 
                 this.recommendations = recommendations
                 this.actors = actors
                 this.contentRating = fetchContentRating(data.id, "US")
