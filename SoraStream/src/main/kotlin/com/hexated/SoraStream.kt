@@ -157,16 +157,17 @@ open class SoraStream : TmdbProvider() {
             "$tmdbAPI/tv/${data.id}?api_key=$apiKey&append_to_response=$append"
         }
         
-        // --- PERBAIKAN DIAGNOSTIK BARIS 584 ---
-        // Menggunakan allowRedirects = false untuk menangkap status 3xx jika terjadi redirect
+        // --- DIAGNOSTIK & PERBAIKAN TMDB API (Baris 594) ---
+        // Menggunakan allowRedirects = false untuk menangkap redirect (kode 3xx)
         val rawRes = app.get(resUrl, allowRedirects = false) 
         
         if (rawRes.code in 300..399) {
             throw ErrorLoadingException(
-                "TMDB API Redirect Gagal! Status: ${rawRes.code}, Cek API Key & batasan Rate Limit. URL: ${rawRes.url}"
+                "TMDB API Redirect Gagal! Status: ${rawRes.code}. Cek API Key dan Jaringan Anda. URL: ${rawRes.url}"
             )
         }
         
+        // Jika status code OK, coba parse
         val mediaDetail = rawRes.parsedSafe<MediaDetail>()
             ?: throw ErrorLoadingException(
                 "Invalid Json: ${rawRes.code}. Response: ${rawRes.text.take(100)}"
@@ -179,7 +180,6 @@ open class SoraStream : TmdbProvider() {
         val releaseDate = mediaDetail.releaseDate ?: mediaDetail.firstAirDate
         val year = releaseDate?.split("-")?.first()?.toIntOrNull()
         
-        // FIX: Menggunakan Score.from10
         val mediaScore = mediaDetail.vote_average.toString().toDoubleOrNull()?.let { Score.from10(it) }
 
         val genres = mediaDetail.genres?.mapNotNull { it.name }
