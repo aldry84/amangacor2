@@ -156,30 +156,32 @@ open class SoraStream : TmdbProvider() {
         } else {
             "$tmdbAPI/tv/${data.id}?api_key=$apiKey&append_to_response=$append"
         }
-        val res = app.get(resUrl).parsedSafe<MediaDetail>()
-            ?: throw ErrorLoadingException("Invalid Json Response")
+        
+        // Memperbaiki potensi masalah JSON parsing/redirect TMDB API
+        val mediaDetail = app.get(resUrl).parsedSafe<MediaDetail>() 
+            ?: throw ErrorLoadingException("Invalid Json Response. URL: $resUrl")
 
-        val title = res.title ?: res.name ?: return null
-        val poster = getOriImageUrl(res.posterPath)
-        val bgPoster = getOriImageUrl(res.backdropPath)
-        val orgTitle = res.originalTitle ?: res.originalName ?: return null
-        val releaseDate = res.releaseDate ?: res.firstAirDate
+        val title = mediaDetail.title ?: mediaDetail.name ?: return null
+        val poster = getOriImageUrl(mediaDetail.posterPath)
+        val bgPoster = getOriImageUrl(mediaDetail.backdropPath)
+        val orgTitle = mediaDetail.originalTitle ?: mediaDetail.originalName ?: return null
+        val releaseDate = mediaDetail.releaseDate ?: mediaDetail.firstAirDate
         val year = releaseDate?.split("-")?.first()?.toIntOrNull()
         
         // FIX: Menggunakan Score.from10
-        val mediaScore = res.vote_average.toString().toDoubleOrNull()?.let { Score.from10(it) }
+        val mediaScore = mediaDetail.vote_average.toString().toDoubleOrNull()?.let { Score.from10(it) }
 
-        val genres = res.genres?.mapNotNull { it.name }
+        val genres = mediaDetail.genres?.mapNotNull { it.name }
 
         val isCartoon = genres?.contains("Animation") ?: false
-        val isAnime = isCartoon && (res.original_language == "zh" || res.original_language == "ja")
-        val isAsian = !isAnime && (res.original_language == "zh" || res.original_language == "ko")
-        val isBollywood = res.production_countries?.any { it.name == "India" } ?: false
+        val isAnime = isCartoon && (mediaDetail.original_language == "zh" || mediaDetail.original_language == "ja")
+        val isAsian = !isAnime && (mediaDetail.original_language == "zh" || mediaDetail.original_language == "ko")
+        val isBollywood = mediaDetail.production_countries?.any { it.name == "India" } ?: false
 
-        val keywords = res.keywords?.results?.mapNotNull { it.name }.orEmpty()
-            .ifEmpty { res.keywords?.keywords?.mapNotNull { it.name } }
+        val keywords = mediaDetail.keywords?.results?.mapNotNull { it.name }.orEmpty()
+            .ifEmpty { mediaDetail.keywords?.keywords?.mapNotNull { it.name } }
 
-        val actors = res.credits?.cast?.mapNotNull { cast ->
+        val actors = mediaDetail.credits?.cast?.mapNotNull { cast ->
             ActorData(
                 Actor(
                     cast.name ?: cast.originalName
@@ -188,20 +190,20 @@ open class SoraStream : TmdbProvider() {
             )
         } ?: return null
         val recommendations =
-            res.recommendations?.results?.mapNotNull { media -> media.toSearchResponse() }
+            mediaDetail.recommendations?.results?.mapNotNull { media -> media.toSearchResponse() }
 
-        val trailer = res.videos?.results?.map { "https://www.youtube.com/watch?v=${it.key}" }
+        val trailer = mediaDetail.videos?.results?.map { "https://www.youtube.com/watch?v=${it.key}" }
 
         return if (type == TvType.TvSeries) {
-            val lastSeason = res.last_episode_to_air?.season_number
-            val episodes = res.seasons?.mapNotNull { season ->
+            val lastSeason = mediaDetail.last_episode_to_air?.season_number
+            val episodes = mediaDetail.seasons?.mapNotNull { season ->
                 app.get("$tmdbAPI/${data.type}/${data.id}/season/${season.seasonNumber}?api_key=$apiKey")
                     .parsedSafe<MediaDetailEpisodes>()?.episodes?.map { eps ->
                         newEpisode(
                             data = LinkData(
                                 data.id,
-                                res.external_ids?.imdb_id,
-                                res.external_ids?.tvdb_id,
+                                mediaDetail.external_ids?.imdb_id,
+                                mediaDetail.external_ids?.tvdb_id,
                                 data.type,
                                 eps.seasonNumber,
                                 eps.episodeNumber,
@@ -212,10 +214,10 @@ open class SoraStream : TmdbProvider() {
                                 airedYear = year,
                                 lastSeason = lastSeason,
                                 epsTitle = eps.name,
-                                jpTitle = res.alternative_titles?.results?.find { it.iso_3166_1 == "JP" }?.title,
+                                jpTitle = mediaDetail.alternative_titles?.results?.find { it.iso_3166_1 == "JP" }?.title,
                                 date = season.airDate,
-                                airedDate = res.releaseDate
-                                    ?: res.firstAirDate,
+                                airedDate = mediaDetail.releaseDate
+                                    ?: mediaDetail.firstAirDate,
                                 isAsian = isAsian,
                                 isBollywood = isBollywood,
                                 isCartoon = isCartoon
@@ -226,7 +228,7 @@ open class SoraStream : TmdbProvider() {
                             this.season = eps.seasonNumber
                             this.episode = eps.episodeNumber
                             this.posterUrl = getImageUrl(eps.stillPath)
-                            // FIX: Mengganti this.rating dengan this.score dan menggunakan Score.from10()
+                            // FIX: Menggunakan Score.from10() untuk mengatasi Assignment type mismatch
                             this.score = eps.voteAverage?.let { Score.from10(it) } 
                             this.description = eps.overview
                         }.apply {
@@ -243,17 +245,16 @@ open class SoraStream : TmdbProvider() {
                 this.posterUrl = poster
                 this.backgroundPosterUrl = bgPoster
                 this.year = year
-                this.plot = res.overview
+                this.plot = mediaDetail.overview
                 this.tags = keywords.takeIf { !it.isNullOrEmpty() } ?: genres
-                // FIX: Mengganti this.rating dengan this.score
                 this.score = mediaScore 
-                this.showStatus = getStatus(res.status)
+                this.showStatus = getStatus(mediaDetail.status)
                 this.recommendations = recommendations
                 this.actors = actors
                 this.contentRating = fetchContentRating(data.id, "US")
                 addTrailer(trailer)
                 addTMDbId(data.id.toString())
-                addImdbId(res.external_ids?.imdb_id)
+                addImdbId(mediaDetail.external_ids?.imdb_id)
             }
         } else {
             newMovieLoadResponse(
@@ -262,16 +263,16 @@ open class SoraStream : TmdbProvider() {
                 TvType.Movie,
                 LinkData(
                     data.id,
-                    res.external_ids?.imdb_id,
-                    res.external_ids?.tvdb_id,
+                    mediaDetail.external_ids?.imdb_id,
+                    mediaDetail.external_ids?.tvdb_id,
                     data.type,
                     title = title,
                     year = year,
                     orgTitle = orgTitle,
                     isAnime = isAnime,
-                    jpTitle = res.alternative_titles?.results?.find { it.iso_3166_1 == "JP" }?.title,
-                    airedDate = res.releaseDate
-                        ?: res.firstAirDate,
+                    jpTitle = mediaDetail.alternative_titles?.results?.find { it.iso_3166_1 == "JP" }?.title,
+                    airedDate = mediaDetail.releaseDate
+                        ?: mediaDetail.firstAirDate,
                     isAsian = isAsian,
                     isBollywood = isBollywood
                 ).toJson(),
@@ -280,17 +281,16 @@ open class SoraStream : TmdbProvider() {
                 this.backgroundPosterUrl = bgPoster
                 this.comingSoon = isUpcoming(releaseDate)
                 this.year = year
-                this.plot = res.overview
-                this.duration = res.runtime
+                this.plot = mediaDetail.overview
+                this.duration = mediaDetail.runtime
                 this.tags = keywords.takeIf { !it.isNullOrEmpty() } ?: genres
-                // FIX: Mengganti this.rating dengan this.score
                 this.score = mediaScore 
                 this.recommendations = recommendations
                 this.actors = actors
                 this.contentRating = fetchContentRating(data.id, "US")
                 addTrailer(trailer)
                 addTMDbId(data.id.toString())
-                addImdbId(res.external_ids?.imdb_id)
+                addImdbId(mediaDetail.external_ids?.imdb_id)
             }
         }
     }
