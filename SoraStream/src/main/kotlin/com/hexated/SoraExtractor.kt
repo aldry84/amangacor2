@@ -31,7 +31,7 @@ object SoraExtractor : SoraStream() {
             season,
             episode,
             callback,
-            gomoviesAPI,
+            SoraStream.gomoviesAPI, // FIX: Kualifikasi SoraStream
             "Gomovies",
             base64Decode("X3NtUWFtQlFzRVRi"),
             base64Decode("X3NCV2NxYlRCTWFU"),
@@ -155,9 +155,9 @@ object SoraExtractor : SoraStream() {
     ) {
         val fixTitle = title?.createSlug()
         val url = if (season == null) {
-            "$idlixAPI/movie/$fixTitle-$year"
+            "${SoraStream.idlixAPI}/movie/$fixTitle-$year" // FIX: Kualifikasi SoraStream
         } else {
-            "$idlixAPI/episode/$fixTitle-season-$season-episode-$episode"
+            "${SoraStream.idlixAPI}/episode/$fixTitle-season-$season-episode-$episode" // FIX: Kualifikasi SoraStream
         }
         invokeWpmovies("Idlix", url, subtitleCallback, callback, encrypt = true)
     }
@@ -236,9 +236,9 @@ object SoraExtractor : SoraStream() {
     ) {
 
         val url = if (season == null) {
-            "$vidsrcccAPI/v2/embed/movie/$tmdbId"
+            "${SoraStream.vidsrcccAPI}/v2/embed/movie/$tmdbId" // FIX: Kualifikasi SoraStream
         } else {
-            "$vidsrcccAPI/v2/embed/tv/$tmdbId/$season/$episode"
+            "${SoraStream.vidsrcccAPI}/v2/embed/tv/$tmdbId/$season/$episode" // FIX: Kualifikasi SoraStream
         }
 
         val script =
@@ -250,14 +250,14 @@ object SoraExtractor : SoraStream() {
         val vrf = VidsrcHelper.encryptAesCbc("$tmdbId", "secret_$userId")
 
         val serverUrl = if (season == null) {
-            "$vidsrcccAPI/api/$tmdbId/servers?id=$tmdbId&type=movie&v=$v&vrf=$vrf&imdbId=$imdbId"
+            "${SoraStream.vidsrcccAPI}/api/$tmdbId/servers?id=$tmdbId&type=movie&v=$v&vrf=$vrf&imdbId=$imdbId" // FIX: Kualifikasi SoraStream
         } else {
-            "$vidsrcccAPI/api/$tmdbId/servers?id=$tmdbId&type=tv&v=$v&vrf=$vrf&imdbId=$imdbId&season=$season&episode=$episode"
+            "${SoraStream.vidsrcccAPI}/api/$tmdbId/servers?id=$tmdbId&type=tv&v=$v&vrf=$vrf&imdbId=$imdbId&season=$season&episode=$episode" // FIX: Kualifikasi SoraStream
         }
 
         app.get(serverUrl).parsedSafe<VidsrcccResponse>()?.data?.amap {
             val sources =
-                app.get("$vidsrcccAPI/api/source/${it.hash}").parsedSafe<VidsrcccResult>()?.data
+                app.get("${SoraStream.vidsrcccAPI}/api/source/${it.hash}").parsedSafe<VidsrcccResult>()?.data // FIX: Kualifikasi SoraStream
                     ?: return@amap
 
             when {
@@ -270,7 +270,7 @@ object SoraExtractor : SoraStream() {
                             sources.source ?: return@amap,
                             ExtractorLinkType.M3U8
                         ) {
-                            this.referer = "$vidsrcccAPI/"
+                            this.referer = "${SoraStream.vidsrcccAPI}/" // FIX: Kualifikasi SoraStream
                         }
                     )
 
@@ -287,7 +287,7 @@ object SoraExtractor : SoraStream() {
                 it.name.equals("UpCloud") -> {
                     val scriptData = app.get(
                         sources.source ?: return@amap,
-                        referer = "$vidsrcccAPI/"
+                        referer = "${SoraStream.vidsrcccAPI}/" // FIX: Kualifikasi SoraStream
                     ).document.selectFirst("script:containsData(source =)")?.data()
                     val iframe = Regex("source\\s*=\\s*\"([^\"]+)").find(
                         scriptData ?: return@amap
@@ -313,7 +313,7 @@ object SoraExtractor : SoraStream() {
                                 source.file ?: return@file,
                                 ExtractorLinkType.M3U8
                             ) {
-                                this.referer = "$vidsrcccAPI/"
+                                this.referer = "${SoraStream.vidsrcccAPI}/" // FIX: Kualifikasi SoraStream
                             }
                         )
                     }
@@ -338,9 +338,9 @@ object SoraExtractor : SoraStream() {
     ) {
         val api = "https://cloudnestra.com"
         val url = if (season == null) {
-            "$vidSrcAPI/embed/movie?imdb=$imdbId"
+            "${SoraStream.vidSrcAPI}/embed/movie?imdb=$imdbId" // FIX: Kualifikasi SoraStream
         } else {
-            "$vidSrcAPI/embed/tv?imdb=$imdbId&season=$season&episode=$episode"
+            "${SoraStream.vidSrcAPI}/embed/tv?imdb=$imdbId&season=$season&episode=$episode" // FIX: Kualifikasi SoraStream
         }
 
         app.get(url).document.select(".serversList .server").amap { server ->
@@ -393,9 +393,9 @@ object SoraExtractor : SoraStream() {
         runAllAsync(
             {
                 val url = if (season == null) {
-                    "$xprimeAPI/${servers.first()}?id=$tmdbId"
+                    "${SoraStream.xprimeAPI}/${servers.first()}?id=$tmdbId" // FIX: Kualifikasi SoraStream
                 } else {
-                    "$xprimeAPI/${servers.first()}?id=$tmdbId&season=$season&episode=$episode"
+                    "${SoraStream.xprimeAPI}/${servers.first()}?id=$tmdbId&season=$season&episode=$episode" // FIX: Kualifikasi SoraStream
                 }
 
                 val source = app.get(url).parsedSafe<RageSources>()?.url
@@ -413,9 +413,9 @@ object SoraExtractor : SoraStream() {
             },
             {
                 val url = if (season == null) {
-                    "$xprimeAPI/${servers.last()}?name=$title&fallback_year=$year"
+                    "${SoraStream.xprimeAPI}/${servers.last()}?name=$title&fallback_year=$year" // FIX: Kualifikasi SoraStream
                 } else {
-                    "$xprimeAPI/${servers.last()}?name=$title&fallback_year=$year&season=$season&episode=$episode"
+                    "${SoraStream.xprimeAPI}/${servers.last()}?name=$title&fallback_year=$year&season=$season&episode=$episode" // FIX: Kualifikasi SoraStream
                 }
 
                 val sources = app.get(url).parsedSafe<PrimeboxSources>()
@@ -455,7 +455,7 @@ object SoraExtractor : SoraStream() {
     ) {
         val id = imdbId?.removePrefix("tt")
         val epsId = app.post(
-            "${watchSomuchAPI}/Watch/ajMovieTorrents.aspx", data = mapOf(
+            "${SoraStream.watchSomuchAPI}/Watch/ajMovieTorrents.aspx", data = mapOf( // FIX: Kualifikasi SoraStream
                 "index" to "0",
                 "mid" to "$id",
                 "wsk" to "30fb68aa-1c71-4b8c-b5d4-4ca9222cfb45",
@@ -473,16 +473,16 @@ object SoraExtractor : SoraStream() {
         val (seasonSlug, episodeSlug) = getEpisodeSlug(season, episode)
 
         val subUrl = if (season == null) {
-            "${watchSomuchAPI}/Watch/ajMovieSubtitles.aspx?mid=$id&tid=$epsId&part="
+            "${SoraStream.watchSomuchAPI}/Watch/ajMovieSubtitles.aspx?mid=$id&tid=$epsId&part=" // FIX: Kualifikasi SoraStream
         } else {
-            "${watchSomuchAPI}/Watch/ajMovieSubtitles.aspx?mid=$id&tid=$epsId&part=S${seasonSlug}E${episodeSlug}"
+            "${SoraStream.watchSomuchAPI}/Watch/ajMovieSubtitles.aspx?mid=$id&tid=$epsId&part=S${seasonSlug}E${episodeSlug}" // FIX: Kualifikasi SoraStream
         }
 
         app.get(subUrl).parsedSafe<WatchsomuchSubResponses>()?.subtitles?.map { sub ->
             subtitleCallback.invoke(
                 SubtitleFile(
                     sub.label?.substringBefore("&nbsp")?.trim() ?: "",
-                    fixUrl(sub.url ?: return@map null, watchSomuchAPI)
+                    fixUrl(sub.url ?: return@map null, SoraStream.watchSomuchAPI) // FIX: Kualifikasi SoraStream
                 )
             )
         }
@@ -499,9 +499,9 @@ object SoraExtractor : SoraStream() {
     ) {
         val mediaType = if (season == null) "movie" else "tv"
         val url = if (season == null) {
-            "$mappleAPI/watch/$mediaType/$tmdbId"
+            "${SoraStream.mappleAPI}/watch/$mediaType/$tmdbId" // FIX: Kualifikasi SoraStream
         } else {
-            "$mappleAPI/watch/$mediaType/$season-$episode/$tmdbId"
+            "${SoraStream.mappleAPI}/watch/$mediaType/$season-$episode/$tmdbId" // FIX: Kualifikasi SoraStream
         }
 
         val data = if (season == null) {
@@ -529,7 +529,7 @@ object SoraExtractor : SoraStream() {
                 videoLink ?: return,
                 ExtractorLinkType.M3U8
             ) {
-                this.referer = "$mappleAPI/"
+                this.referer = "${SoraStream.mappleAPI}/" // FIX: Kualifikasi SoraStream
                 this.headers = mapOf(
                     "Accept" to "*/*"
                 )
@@ -537,14 +537,14 @@ object SoraExtractor : SoraStream() {
         )
 
         val subRes = app.get(
-            "$mappleAPI/api/subtitles?id=$tmdbId&mediaType=$mediaType${if (season == null) "" else "&season=1&episode=1"}",
-            referer = "$mappleAPI/"
+            "${SoraStream.mappleAPI}/api/subtitles?id=$tmdbId&mediaType=$mediaType${if (season == null) "" else "&season=1&episode=1"}", // FIX: Kualifikasi SoraStream
+            referer = "${SoraStream.mappleAPI}/" // FIX: Kualifikasi SoraStream
         ).text
         tryParseJson<ArrayList<MappleSubtitle>>(subRes)?.map { subtitle ->
             subtitleCallback.invoke(
                 SubtitleFile(
                     subtitle.display ?: "",
-                    fixUrl(subtitle.url ?: return@map, mappleAPI)
+                    fixUrl(subtitle.url ?: return@map, SoraStream.mappleAPI) // FIX: Kualifikasi SoraStream
                 )
             )
         }
@@ -559,14 +559,14 @@ object SoraExtractor : SoraStream() {
     ) {
         val type = if (season == null) "movie" else "tv"
         val url = if (season == null) {
-            "$vidlinkAPI/$type/$tmdbId"
+            "${SoraStream.vidlinkAPI}/$type/$tmdbId" // FIX: Kualifikasi SoraStream
         } else {
-            "$vidlinkAPI/$type/$tmdbId/$season/$episode"
+            "${SoraStream.vidlinkAPI}/$type/$tmdbId/$season/$episode" // FIX: Kualifikasi SoraStream
         }
 
         val videoLink = app.get(
             url, interceptor = WebViewResolver(
-                Regex("""$vidlinkAPI/api/b/$type/A{32}"""), timeout = 15_000L
+                Regex("""${SoraStream.vidlinkAPI}/api/b/$type/A{32}"""), timeout = 15_000L // FIX: Kualifikasi SoraStream
             )
         ).parsedSafe<VidlinkSources>()?.stream?.playlist
 
@@ -577,7 +577,7 @@ object SoraExtractor : SoraStream() {
                 videoLink ?: return,
                 ExtractorLinkType.M3U8
             ) {
-                this.referer = "$vidlinkAPI/"
+                this.referer = "${SoraStream.vidlinkAPI}/" // FIX: Kualifikasi SoraStream
             }
         )
 
@@ -593,14 +593,14 @@ object SoraExtractor : SoraStream() {
         val module = "hezushon/1000076901076321/0b0ce221/cfe60245-021f-5d4d-bacb-0d469f83378f/uva/jeditawev/b0535941d898ebdb81f575b2cfd123f5d18c6464/y/APA91zAOxU2psY2_BvBqEmmjG6QvCoLjgoaI-xuoLxBYghvzgKAu-HtHNeQmwxNbHNpoVnCuX10eEes1lnTcI2l_lQApUiwfx2pza36CZB34X7VY0OCyNXtlq-bGVCkLslfNksi1k3B667BJycQ67wxc1OnfCc5PDPrF0BA8aZRyMXZ3-2yxVGp"
         val type = if (season == null) "movie" else "tv"
         val url = if (season == null) {
-            "$vidfastAPI/$type/$tmdbId"
+            "${SoraStream.vidfastAPI}/$type/$tmdbId" // FIX: Kualifikasi SoraStream
         } else {
-            "$vidfastAPI/$type/$tmdbId/$season/$episode"
+            "${SoraStream.vidfastAPI}/$type/$tmdbId/$season/$episode" // FIX: Kualifikasi SoraStream
         }
 
         val res = app.get(
             url, interceptor = WebViewResolver(
-                Regex("""$vidfastAPI/$module/JEwECseLZdY"""),
+                Regex("""${SoraStream.vidfastAPI}/$module/JEwECseLZdY"""), // FIX: Kualifikasi SoraStream
                 timeout = 15_000L
             )
         ).text
@@ -608,7 +608,7 @@ object SoraExtractor : SoraStream() {
         tryParseJson<ArrayList<VidFastServers>>(res)?.filter { it.description?.contains("Original audio") == true }
             ?.amapIndexed { index, server ->
                 val source =
-                    app.get("$vidfastAPI/$module/Sdoi/${server.data}", referer = "$vidfastAPI/")
+                    app.get("${SoraStream.vidfastAPI}/$module/Sdoi/${server.data}", referer = "${SoraStream.vidfastAPI}/") // FIX: Kualifikasi SoraStream
                         .parsedSafe<VidFastSources>()
 
                 callback.invoke(
@@ -643,9 +643,9 @@ object SoraExtractor : SoraStream() {
         subtitleCallback: (SubtitleFile) -> Unit,
     ) {
         val url = if (season == null) {
-            "$wyzieAPI/search?id=$tmdbId"
+            "${SoraStream.wyzieAPI}/search?id=$tmdbId" // FIX: Kualifikasi SoraStream
         } else {
-            "$wyzieAPI/search?id=$tmdbId&season=$season&episode=$episode"
+            "${SoraStream.wyzieAPI}/search?id=$tmdbId&season=$season&episode=$episode" // FIX: Kualifikasi SoraStream
         }
 
         val res = app.get(url).text
@@ -670,9 +670,9 @@ object SoraExtractor : SoraStream() {
         val proxy = "https://proxy.heistotron.uk"
         val type = if (season == null) "movie" else "tv"
         val url = if (season == null) {
-            "$vixsrcAPI/$type/$tmdbId"
+            "${SoraStream.vixsrcAPI}/$type/$tmdbId" // FIX: Kualifikasi SoraStream
         } else {
-            "$vixsrcAPI/$type/$tmdbId/$season/$episode"
+            "${SoraStream.vixsrcAPI}/$type/$tmdbId/$season/$episode" // FIX: Kualifikasi SoraStream
         }
 
         val res =
@@ -691,7 +691,7 @@ object SoraExtractor : SoraStream() {
 
         listOf(
             VixsrcSource("Vixsrc [Alpha]",video1,url),
-            VixsrcSource("Vixsrc [Beta]",video2, "$mappleAPI/"),
+            VixsrcSource("Vixsrc [Beta]",video2, "${SoraStream.mappleAPI}/"), // FIX: Kualifikasi SoraStream
         ).map {
             callback.invoke(
                 newExtractorLink(
@@ -731,7 +731,7 @@ object SoraExtractor : SoraStream() {
                 video ?: return,
                 ExtractorLinkType.M3U8
             ) {
-                this.referer = "$vidsrccxAPI/"
+                this.referer = "${SoraStream.vidsrccxAPI}/" // FIX: Kualifikasi SoraStream
                 this.headers = mapOf(
                     "Accept" to "*/*"
                 )
@@ -749,7 +749,7 @@ object SoraExtractor : SoraStream() {
         api: String = "https://streamingnow.mov"
     ) {
         val path = if (season == null) "" else "&s=$season&e=$episode"
-        val token = app.get("$superembedAPI/directstream.php?video_id=$tmdbId&tmdb=1$path").url.substringAfter(
+        val token = app.get("${SoraStream.superembedAPI}/directstream.php?video_id=$tmdbId&tmdb=1$path").url.substringAfter( // FIX: Kualifikasi SoraStream
                 "?play="
             )
 
@@ -764,7 +764,7 @@ object SoraExtractor : SoraStream() {
         val playRes = app.get(playUrl).document
         val iframe = playRes.selectFirst("iframe.source-frame")?.attr("src") ?: run {
             val captchaId = playRes.select("input[name=captcha_id]").attr("value")
-            app.post(playUrl, requestBody = "captcha_id=TEduRVR6NmZ3Sk5Jc3JpZEJCSlhTM25GREs2RCswK0VQN2ZsclI5KzNKL2cyV3dIaFEwZzNRRHVwMzdqVmoxV0t2QlBrNjNTY04wY2NSaHlWYS9Jc09nb25wZTV2YmxDSXNRZVNuQUpuRW5nbkF2dURsQUdJWVpwOWxUZzU5Tnh0NXllQjdYUG83Y0ZVaG1XRGtPOTBudnZvN0RFK0wxdGZvYXpFKzVNM2U1a2lBMG40REJmQ042SA%3D%3D&captcha_answer%5B%5D=8yhbjraxqf3o&captcha_answer%5B%5D=10zxn5vi746w&captcha_answer%5B%5D=gxfpe17tdwub".toRequestBody(RequestBodyTypes.TEXT.toMediaTypeOrNull())
+            app.post(playUrl, requestBody = "captcha_id=TEduRVR6NmZ3Sk5Jc3JpZEJCSlhTM25GREs2RCswK0VQN2ZsclI5KzNKL2cyV3dIaFEwZzNRRHVwMzdqVmoxV0t2QlBrNjNTY04wY2NSaHlWYS9Jc09nb25wZTV2YmxDSXNRZVNuQUpuRW5nbkF2dURsQUdJWlBwOWxUZzU5Tnh0NXllQjdYUG83Y0ZVaG1XRGtPOTBudnZvN0RFK0wxdGZvYXpFKzVNM2U1a2lBMG40REJmQ042SA%3D%3D&captcha_answer%5B%5D=8yhbjraxqf3o&captcha_answer%5B%5D=10zxn5vi746w&captcha_answer%5B%5D=gxfpe17tdwub".toRequestBody(RequestBodyTypes.TEXT.toMediaTypeOrNull())
             ).document.selectFirst("iframe.source-frame")?.attr("src")
         }
         val json = app.get(iframe ?: return).text.substringAfter("Playerjs(").substringBefore(");")
@@ -808,13 +808,13 @@ object SoraExtractor : SoraStream() {
     ) {
 
         val type = if (season == null) "movie" else "tv"
-        val url = "$vidrockAPI/$type/$tmdbId${if(type == "movie") "" else "/$season/$episode"}"
+        val url = "${SoraStream.vidrockAPI}/$type/$tmdbId${if(type == "movie") "" else "/$season/$episode"}" // FIX: Kualifikasi SoraStream
         val encryptData = VidrockHelper.encrypt(tmdbId, type, season, episode)
 
-        app.get("$vidrockAPI/api/$type/$encryptData", referer = url).parsedSafe<LinkedHashMap<String,HashMap<String,String>>>()
+        app.get("${SoraStream.vidrockAPI}/api/$type/$encryptData", referer = url).parsedSafe<LinkedHashMap<String,HashMap<String,String>>>() // FIX: Kualifikasi SoraStream
             ?.map { source ->
                 if(source.key == "source2") {
-                    val json = app.get(source.value["url"] ?: return@map, referer = "${vidrockAPI}/").text
+                    val json = app.get(source.value["url"] ?: return@map, referer = "${SoraStream.vidrockAPI}/").text // FIX: Kualifikasi SoraStream
                     tryParseJson<ArrayList<VidrockSource>>(json)?.reversed()?.map mirror@{
                         callback.invoke(
                             newExtractorLink(
@@ -826,7 +826,7 @@ object SoraExtractor : SoraStream() {
                                 this.quality = it.resolution ?: Qualities.Unknown.value
                                 this.headers = mapOf(
                                     "Range" to "bytes=0-",
-                                    "Referer" to "${vidrockAPI}/"
+                                    "Referer" to "${SoraStream.vidrockAPI}/" // FIX: Kualifikasi SoraStream
                                 )
                             }
                         )
@@ -839,9 +839,9 @@ object SoraExtractor : SoraStream() {
                             source.value["url"] ?: return@map,
                             ExtractorLinkType.M3U8
                         ) {
-                            this.referer = "${vidrockAPI}/"
+                            this.referer = "${SoraStream.vidrockAPI}/" // FIX: Kualifikasi SoraStream
                             this.headers = mapOf(
-                                "Origin" to vidrockAPI
+                                "Origin" to SoraStream.vidrockAPI // FIX: Kualifikasi SoraStream
                             )
                         }
                     )
