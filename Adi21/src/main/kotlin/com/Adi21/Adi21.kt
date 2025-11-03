@@ -1,299 +1,271 @@
-package com.Adi21 // PERUBAHAN: dari com.Adimoviebox
+// File: Adi21.kt
+
+package com.Adi21
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
-import com.lagradost.cloudstream3.utils.* // toScoreInt seharusnya tersedia dari import ini
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
-import com.lagradost.cloudstream3.utils.AppUtils.toJson
-import com.lagradost.nicehttp.RequestBodyTypes
-import okhttp3.MediaType.Companion.toMediaTypeOrNull
-import okhttp3.RequestBody.Companion.toRequestBody
+import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.getQualityFromName
+import com.lagradost.cloudstream3.utils.toScoreInt
 
-class Adi21 : MainAPI() { // PERUBAHAN: dari Adimoviebox
-    override var mainUrl = "https://moviebox.ph"
-    private val apiUrl = "https://fmoviesunblocked.net"
+// --- KONSTANTA YANG DIPERBARUI ---
+class Adi21 : MainAPI() {
+    // TMDB sebagai Main URL untuk Metadata
+    override var mainUrl = "https://api.themoviedb.org"
+    override var name = "Adi21 TMDB Source"
     override val instantLinkLoading = true
-    override var name = "Adi21" // PERUBAHAN: dari Adimoviebox
     override val hasMainPage = true
     override val hasQuickSearch = true
-    override var lang = "en"
+    override var lang = "en" // Tetap 'en' karena TMDB API
     override val supportedTypes = setOf(
         TvType.Movie,
-        TvType.TvSeries,
-        TvType.Anime,
-        TvType.AsianDrama
+        TvType.TvSeries
     )
+    
+    // API KEY TMDB Anda
+    private val TMDB_API_KEY = "1cfadd9dbfc534abf6de40e1e7eaf4c7"
+    // URL dasar vidsrc.cc (digunakan di loadLinks)
+    private val VIDSRC_URL = "https://vidsrc.cc"
 
+    // URL TMDB API Helper
+    private fun tmdbApi(path: String, page: Int = 1) = 
+        "$mainUrl/3/$path?api_key=$TMDB_API_KEY&page=$page"
+        
+    // URL Gambar Poster TMDB
+    private fun String?.toPosterUrl(): String? {
+        return if (this != null) "https://image.tmdb.org/t/p/w500$this" else null
+    }
+
+    // --- MAIN PAGE (Mengganti Struktur moviebox.ph) ---
     override val mainPage: List<MainPageData> = mainPageOf(
-        "1,ForYou" to "Movie ForYou",
-        "1,Hottest" to "Movie Hottest",
-        "1,Latest" to "Movie Latest",
-        "1,Rating" to "Movie Rating",
-        "2,ForYou" to "TVShow ForYou",
-        "2,Hottest" to "TVShow Hottest",
-        "2,Latest" to "TVShow Latest",
-        "2,Rating" to "TVShow Rating",
-        "1006,ForYou" to "Animation ForYou",
-        "1006,Hottest" to "Animation Hottest",
-        "1006,Latest" to "Animation Latest",
-        "1006,Rating" to "Animation Rating",
+        "trending/movie/day" to "Movies Trending Today",
+        "trending/tv/day" to "TV Series Trending Today",
+        "movie/popular" to "Popular Movies",
+        "tv/popular" to "Popular TV Series",
     )
 
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse {
-        val params = request.data.split(",")
-        val body = mapOf(
-            "channelId" to params.first(),
-            "page" to page,
-            "perPage" to "24",
-            "sort" to params.last()
-        ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
-
-        val home = app.post("$mainUrl/wefeed-h5-bff/web/filter", requestBody = body)
-            .parsedSafe<Media>()?.data?.items?.map {
-                it.toSearchResponse(this)
-            } ?: throw ErrorLoadingException("No Data Found")
-
-        return newHomePageResponse(request.name, home)
-    }
-
-    override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
-
-    override suspend fun search(query: String): List<SearchResponse> {
-        return app.post(
-            "$mainUrl/wefeed-h5-bff/web/subject/search", requestBody = mapOf(
-                "keyword" to query,
-                "page" to "1",
-                "perPage" to "0",
-                "subjectType" to "0",
-            ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
-        ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
-            ?: throw ErrorLoadingException()
-    }
-
-    override suspend fun load(url: String): LoadResponse {
-        val id = url.substringAfterLast("/")
-        val document = app.get("$mainUrl/wefeed-h5-bff/web/subject/detail?subjectId=$id")
-            .parsedSafe<MediaDetail>()?.data
-        val subject = document?.subject
-        val title = subject?.title ?: ""
-        val poster = subject?.cover?.url
-        val tags = subject?.genre?.split(",")?.map { it.trim() }
-
-        val year = subject?.releaseDate?.substringBefore("-")?.toIntOrNull()
-        val tvType = if (subject?.subjectType == 2) TvType.TvSeries else TvType.Movie
-        val description = subject?.description
-        val trailer = subject?.trailer?.videoAddress?.url
-        val score = Score.from10(subject?.imdbRatingValue)
-        val actors = document?.stars?.mapNotNull { cast ->
-            ActorData(
-                Actor(
-                    cast.name ?: return@mapNotNull null,
-                    cast.avatarUrl
-                ),
-                roleString = cast.character
-            )
-        }?.distinctBy { it.actor }
-
-        val recommendations =
-            app.get("$mainUrl/wefeed-h5-bff/web/subject/detail-rec?subjectId=$id&page=1&perPage=12")
-                .parsedSafe<Media>()?.data?.items?.map { // Perbaikan: Memastikan pemanggilan .items
-                    it.toSearchResponse(this)
-                }
-
-        return if (tvType == TvType.TvSeries) {
-            val episode = document?.resource?.seasons?.map { seasons ->
-                (if (seasons.allEp.isNullOrEmpty()) (1..seasons.maxEp!!) else seasons.allEp.split(",")
-                    .map { it.toInt() })
-                    .map { episode ->
-                        newEpisode(
-                            LoadData(
-                                id,
-                                seasons.se,
-                                episode,
-                                subject?.detailPath
-                            ).toJson()
-                        ) {
-                            this.season = seasons.se
-                            this.episode = episode
-                        }
-                    }
-            }?.flatten() ?: emptyList()
-            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episode) {
-                this.posterUrl = poster
-                this.year = year
-                this.plot = description
-                this.tags = tags
-                this.score = score
-                this.actors = actors
-                this.recommendations = recommendations
-                addTrailer(trailer, addRaw = true)
+        val url = tmdbApi(request.data, page)
+        
+        val response = app.get(url).parsed<TmdbApiResult>()
+        
+        val mediaList = response.results.mapNotNull { item ->
+            // Menghindari item tanpa ID
+            val type = if (item.mediaType == "movie" || request.data.contains("movie")) TvType.Movie else TvType.TvSeries
+            
+            // Mengubah objek TMDB menjadi format SearchResponse CloudStream
+            newTvSeriesSearchResponse(item.title ?: item.name ?: return@mapNotNull null, item.tmdbId.toString(), type) {
+                // Menyimpan ID TMDB di 'url' untuk digunakan di fungsi load()
+                posterUrl = item.posterPath.toPosterUrl()
+                rating = item.voteAverage?.times(10)?.toInt()
+                set  = "TMDB" // Sumber
             }
-        } else {
-            newMovieLoadResponse(
-                title,
-                url,
-                TvType.Movie,
-                LoadData(id, detailPath = subject?.detailPath).toJson()
-            ) {
-                this.posterUrl = poster
-                this.year = year
-                this.plot = description
-                this.tags = tags
-                this.score = score
-                this.actors = actors
-                this.recommendations = recommendations
-                addTrailer(trailer, addRaw = true)
+        }
+
+        return newHomePageResponse(request.name, mediaList)
+    }
+
+    // --- SEARCH (Menggunakan Endpoint Pencarian TMDB) ---
+    override suspend fun search(query: String): List<SearchResponse> {
+        val url = tmdbApi("search/multi") + "&query=$query"
+        
+        return app.get(url).parsed<TmdbApiResult>().results
+            .filter { it.mediaType == "movie" || it.mediaType == "tv" }
+            .mapNotNull { item ->
+            val type = if (item.mediaType == "movie") TvType.Movie else TvType.TvSeries
+            newTvSeriesSearchResponse(item.title ?: item.name ?: return@mapNotNull null, item.tmdbId.toString(), type) {
+                posterUrl = item.posterPath.toPosterUrl()
+                rating = item.voteAverage?.times(10)?.toInt()
             }
         }
     }
 
-    // Perbaikan: Fungsi loadLinks dipindahkan kembali ke dalam class Adi21
-    override suspend fun loadLinks( // PERUBAHAN: dari Adimoviebox
+    // --- LOAD DETAIL (Menggunakan ID TMDB) ---
+    override suspend fun load(url: String): LoadResponse {
+        val tmdbId = url // TMDB ID disimpan di URL
+        val typePath = if (tmdbId.contains("-S")) "tv" else "movie" // Asumsi: Kita hanya menyimpan ID numerik di search
+        
+        val detailUrl = tmdbApi("$typePath/$tmdbId")
+        val response = app.get(detailUrl).parsedSafe<TmdbDetail>()?.data ?: throw ErrorLoadingException("Failed to load TMDB detail")
+        
+        val title = response.title ?: response.name ?: ""
+        val poster = response.posterPath.toPosterUrl()
+        val tags = response.genres?.mapNotNull { it.name }
+        val year = response.releaseDate?.substringBefore("-")?.toIntOrNull() ?: response.firstAirDate?.substringBefore("-")?.toIntOrNull()
+        val tvType = if (typePath == "tv") TvType.TvSeries else TvType.Movie
+        val description = response.overview
+        val score = response.voteAverage?.toScoreInt()
+        
+        // TMDB tidak menyediakan tautan trailer langsung, jadi kita harus melakukan permintaan lain
+        val trailerResponse = app.get(tmdbApi("$typePath/$tmdbId/videos")).parsedSafe<TmdbVideos>()
+        val trailer = trailerResponse?.results?.firstOrNull { it.site == "YouTube" && it.type == "Trailer" }?.key
+        
+        // TMDB tidak memberikan daftar cast di endpoint /detail, butuh endpoint terpisah.
+        
+        val tmdbLink = LoadData(tmdbId, tvType == TvType.TvSeries).toJson()
+
+        if (tvType == TvType.TvSeries) {
+            val episodes = response.seasons?.flatMapIndexed { seasonIndex, season ->
+                // Jika musim 0 (Specials) atau tanpa episode, lewati
+                if (season.seasonNumber == 0 || season.episodeCount == 0) return@flatMapIndexed emptyList()
+                
+                // Membuat episode placeholder. Detail episode akan dimuat saat loadLinks.
+                (1..season.episodeCount).map { episodeNum ->
+                    newEpisode(tmdbLink) {
+                        this.name = "S${season.seasonNumber}E$episodeNum"
+                        this.season = season.seasonNumber
+                        this.episode = episodeNum
+                    }
+                }
+            } ?: emptyList()
+
+            return newTvSeriesLoadResponse(title, tmdbId, TvType.TvSeries, episodes) {
+                this.posterUrl = poster
+                this.year = year
+                this.plot = description
+                this.tags = tags
+                this.score = score
+                // this.actors = ... (perlu permintaan cast terpisah)
+                if (trailer != null) addTrailer("https://www.youtube.com/watch?v=$trailer", addRaw = true)
+            }
+        } else {
+            return newMovieLoadResponse(title, tmdbId, TvType.Movie, tmdbLink) {
+                this.posterUrl = poster
+                this.year = year
+                this.plot = description
+                this.tags = tags
+                this.score = score
+                if (trailer != null) addTrailer("https://www.youtube.com/watch?v=$trailer", addRaw = true)
+            }
+        }
+    }
+
+    // --- LOAD LINKS (Menggunakan vidsrc.cc) ---
+    override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-
         val media = parseJson<LoadData>(data)
-        val referer = "$apiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&lang=en"
+        val tmdbId = media.id ?: return false
+        val isTv = media.isTv ?: return false
+        
+        val typePath = if (isTv) "tv" else "movie"
+        val seasonNum = media.season ?: 0
+        val episodeNum = media.episode ?: 0
 
-        val streams = app.get(
-            "$apiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}",
-            referer = referer
-        ).parsedSafe<Media>()?.data?.streams
-
-        streams?.reversed()?.distinctBy { it.url }?.map { source ->
-            callback.invoke(
-                newExtractorLink(
-                    this.name,
-                    this.name,
-                    source.url ?: return@map,
-                    INFER_TYPE
-                ) {
-                    this.referer = "$apiUrl/"
-                    this.quality = getQualityFromName(source.resolutions)
-                }
-            )
+        // Format URL vidsrc.cc yang menggunakan ID TMDB
+        // vidsrc.cc sering menggunakan format 'TMDB ID' atau 'TMDB ID/Season/Episode'
+        val urlEmbed = if (isTv) {
+            "$VIDSRC_URL/v2/embed/$typePath/$tmdbId/$seasonNum/$episodeNum"
+        } else {
+            "$VIDSRC_URL/v2/embed/$typePath/$tmdbId"
         }
-
-        val id = streams?.first()?.id
-        val format = streams?.first()?.format
-
-        app.get(
-            "$apiUrl/wefeed-h5-bff/web/subject/caption?format=$format&id=$id&subjectId=${media.id}",
-            referer = referer
-        ).parsedSafe<Media>()?.data?.captions?.map { subtitle ->
-            subtitleCallback.invoke(
-                newSubtitleFile( // Mengganti SubtitleFile(...)
-                    subtitle.lanName ?: "",
-                    subtitle.url ?: return@map
-                )
-            )
-        }
-
+        
+        // Kita menggunakan Adi21Extractor untuk memproses URL embed vidsrc.cc
+        // Karena vidsrc.cc adalah sumber yang kompleks, kita menggunakan extractor eksternal.
+        Adi21Extractor(VIDSRC_URL).get(urlEmbed, callback, subtitleCallback)
+        
         return true
     }
 }
 
-// --- Data Class Dikeluarkan dari class Adi21 ---
+// --- EXTRACTOR (Harus menangani konten dari URL embed vidsrc.cc) ---
+// Catatan: Ini adalah kerangka. Logika parsing konten vidsrc.cc harus diimplementasikan
+class Adi21Extractor(override val mainUrl: String) : ExtractorLink() {
+    override val name = "Adi21-vidsrc"
+    override val requiresReferer = false
 
-data class LoadData(
-    val id: String? = null,
-    val season: Int? = null,
-    val episode: Int? = null,
-    val detailPath: String? = null,
+    override suspend fun get(
+        url: String, 
+        callback: (ExtractorLink) -> Unit, 
+        subtitleCallback: (SubtitleFile) -> Unit
+    ): Boolean {
+        // Contoh langkah untuk vidsrc.cc:
+        // 1. Ambil konten dari URL embed vidsrc.cc.
+        val response = app.get(url).text
+        
+        // 2. Cari iframe atau kode JS yang berisi URL video akhir (M3U8, MP4, dll.).
+        //    Ini sering membutuhkan Regex atau parsing JS yang kompleks.
+        
+        // Placeholder untuk hasil (Anda harus menggantinya dengan logika nyata)
+        callback.invoke(
+            newExtractorLink(
+                this.name,
+                "Video dari vidsrc.cc",
+                "https://example.com/placeholder_video.m3u8", // Ganti dengan URL video nyata
+                url, // referer
+                getQualityFromName("720p") // Ganti dengan kualitas yang terdeteksi
+            )
+        )
+        
+        // Placeholder untuk subtitel (berdasarkan Gambar 2 yang Anda berikan sebelumnya)
+        // Jika Anda dapat mengekstrak URL .vtt/.srt/.json subtitel, panggil:
+        // subtitleCallback.invoke(SubtitleFile("English", "https://example.com/subs.vtt"))
+        
+        return true
+    }
+}
+
+// --- DATA CLASS TMDB BARU ---
+
+// Hasil Pencarian/Homepage
+data class TmdbApiResult(
+    @JsonProperty("results") val results: List<TmdbItem>
 )
 
-data class Media(
-    @JsonProperty("data") val data: Data? = null,
-) {
-    data class Data(
-        @JsonProperty("subjectList") val subjectList: ArrayList<Items>? = arrayListOf(),
-        @JsonProperty("items") val items: ArrayList<Items>? = arrayListOf(),
-        @JsonProperty("streams") val streams: ArrayList<Streams>? = arrayListOf(),
-        @JsonProperty("captions") val captions: ArrayList<Captions>? = arrayListOf(),
-    ) {
-        data class Streams(
-            @JsonProperty("id") val id: String? = null,
-            @JsonProperty("format") val format: String? = null,
-            @JsonProperty("url") val url: String? = null,
-            @JsonProperty("resolutions") val resolutions: String? = null,
-        )
-
-        data class Captions(
-            @JsonProperty("lan") val lan: String? = null,
-            @JsonProperty("lanName") val lanName: String? = null,
-            @JsonProperty("url") val url: String? = null,
-        )
-    }
-}
-
-data class MediaDetail(
-    @JsonProperty("data") val data: Data? = null,
-) {
-    data class Data(
-        @JsonProperty("subject") val subject: Items? = null,
-        @JsonProperty("stars") val stars: ArrayList<Stars>? = arrayListOf(),
-        @JsonProperty("resource") val resource: Resource? = null,
-    ) {
-        data class Stars(
-            @JsonProperty("name") val name: String? = null,
-            @JsonProperty("character") val character: String? = null,
-            @JsonProperty("avatarUrl") val avatarUrl: String? = null,
-        )
-
-        data class Resource(
-            @JsonProperty("seasons") val seasons: ArrayList<Seasons>? = arrayListOf(),
-        ) {
-            data class Seasons(
-                @JsonProperty("se") val se: Int? = null,
-                @JsonProperty("maxEp") val maxEp: Int? = null,
-                @JsonProperty("allEp") val allEp: String? = null,
-            )
-        }
-    }
-}
-
-data class Items(
-    @JsonProperty("subjectId") val subjectId: String? = null,
-    @JsonProperty("subjectType") val subjectType: Int? = null,
+data class TmdbItem(
+    @JsonProperty("id") val tmdbId: Int,
+    @JsonProperty("media_type") val mediaType: String? = null,
     @JsonProperty("title") val title: String? = null,
-    @JsonProperty("description") val description: String? = null,
-    @JsonProperty("releaseDate") val releaseDate: String? = null,
-    @JsonProperty("duration") val duration: Long? = null,
-    @JsonProperty("genre") val genre: String? = null,
-    @JsonProperty("cover") val cover: Cover? = null,
-    @JsonProperty("imdbRatingValue") val imdbRatingValue: String? = null,
-    @JsonProperty("countryName") val countryName: String? = null,
-    @JsonProperty("trailer") val trailer: Trailer? = null,
-    @JsonProperty("detailPath") val detailPath: String? = null,
+    @JsonProperty("name") val name: String? = null,
+    @JsonProperty("poster_path") val posterPath: String? = null,
+    @JsonProperty("vote_average") val voteAverage: Double? = null,
+)
+
+// Detail Film/Serial
+data class TmdbDetail(
+    @JsonProperty("id") val id: Int? = null,
+    @JsonProperty("title") val title: String? = null,
+    @JsonProperty("name") val name: String? = null,
+    @JsonProperty("poster_path") val posterPath: String? = null,
+    @JsonProperty("overview") val overview: String? = null,
+    @JsonProperty("genres") val genres: List<Genre>? = null,
+    @JsonProperty("vote_average") val voteAverage: Double? = null,
+    @JsonProperty("release_date") val releaseDate: String? = null,
+    @JsonProperty("first_air_date") val firstAirDate: String? = null,
+    @JsonProperty("seasons") val seasons: List<Season>? = null,
 ) {
-    // Perbaikan: Memperbaiki sintaksis fungsi toSearchResponse
-    fun toSearchResponse(provider: Adi21): SearchResponse { // PERUBAHAN: dari Adimoviebox
-        return provider.newMovieSearchResponse(
-            title ?: "",
-            subjectId ?: "",
-            if (subjectType == 1) TvType.Movie else TvType.TvSeries,
-            false
-        ) {
-            this.posterUrl = cover?.url
-        }
-    }
-
-    data class Cover(
-        @JsonProperty("url") val url: String? = null,
+    data class Genre(@JsonProperty("name") val name: String? = null)
+    data class Season(
+        @JsonProperty("season_number") val seasonNumber: Int? = null,
+        @JsonProperty("episode_count") val episodeCount: Int = 0, // Default 0
     )
-
-    data class Trailer(
-        @JsonProperty("videoAddress") val videoAddress: VideoAddress? = null,
-    ) {
-        data class VideoAddress(
-            @JsonProperty("url") val url: String? = null,
-        )
-    }
+    val data: TmdbDetail
+        get() = this
 }
+
+// Data Video/Trailer TMDB
+data class TmdbVideos(
+    @JsonProperty("results") val results: List<VideoItem>? = null
+) {
+    data class VideoItem(
+        @JsonProperty("site") val site: String? = null, // e.g., "YouTube"
+        @JsonProperty("type") val type: String? = null, // e.g., "Trailer"
+        @JsonProperty("key") val key: String? = null // Video ID
+    )
+}
+
+// Data Class untuk menyimpan ID TMDB yang akan di-parse ke loadLinks
+data class LoadData(
+    val id: String? = null, // ID TMDB
+    val isTv: Boolean? = null,
+    val season: Int? = null,
+    val episode: Int? = null,
+)
