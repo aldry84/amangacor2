@@ -12,6 +12,7 @@ class VidplayExtractor : ExtractorApi() {
     override suspend fun getUrl(url: String, referer: String?): List<ExtractorLink> {
         val doc = app.get(url).document
         val videoUrl = doc.select("video source").attr("src")
+
         return if (videoUrl.isNotBlank()) {
             listOf(
                 newExtractorLink(
@@ -19,12 +20,22 @@ class VidplayExtractor : ExtractorApi() {
                     name = "Vidplay",
                     url = videoUrl,
                     referer = url,
-                    quality = 720,
+                    quality = getQualityFromName(videoUrl),
                     isM3u8 = videoUrl.endsWith(".m3u8")
                 )
             )
         } else {
             emptyList()
+        }
+    }
+
+    private fun getQualityFromName(url: String): Int {
+        return when {
+            "1080" in url -> Qualities.HD
+            "720" in url -> Qualities.HD
+            "480" in url -> Qualities.SD
+            "360" in url -> Qualities.SD
+            else -> Qualities.Unknown.value
         }
     }
 }
