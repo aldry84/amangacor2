@@ -58,6 +58,7 @@ class Adi21 : MainAPI() {
 
         val trailer = trailerKey?.let { "https://www.youtube.com/watch?v=$it" }
         val episodes = if (isTv) getEpisodes(id) else mutableListOf(newEpisode(url) { name = "Watch" })
+        val recommendations = getRecommendations(id, isTv)
 
         return newMovieLoadResponse(
             name = detail.title ?: detail.name ?: "Unknown",
@@ -72,6 +73,7 @@ class Adi21 : MainAPI() {
             tags = detail.genres.map { it.name }
             trailers = trailer?.let { mutableListOf(TrailerData("Trailer", it)) } ?: mutableListOf()
             this.episodes = episodes
+            this.recommendations = recommendations
         }
     }
 
@@ -98,6 +100,23 @@ class Adi21 : MainAPI() {
         return episodes
     }
 
+    private suspend fun getRecommendations(id: Int, isTv: Boolean): List<SearchResponse> {
+        val url = if (isTv) "$mainUrl/tv/$id/recommendations?api_key=$apiKey"
+                  else "$mainUrl/movie/$id/recommendations?api_key=$apiKey"
+        val json = app.get(url).parsed<TmdbSearchResult>()
+        return json.results.map {
+            newMovieSearchResponse(
+                name = it.title ?: it.name ?: "Unknown",
+                url = "https://vidsrc.cc/embed/${it.id}",
+                apiName = name,
+                type = if (isTv) TvType.TvSeries else TvType.Movie
+            ) {
+                posterUrl = "https://image.tmdb.org/t/p/w500${it.poster_path}"
+                year = it.release_date?.take(4)?.toIntOrNull() ?: it.first_air_date?.take(4)?.toIntOrNull()
+            }
+        }
+    }
+
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -117,6 +136,20 @@ class Adi21 : MainAPI() {
                     isM3u8 = videoUrl.endsWith(".m3u8")
                 )
             )
+        }
+
+        val subtitleElements = doc.select("track[kind=subtitles]")
+        subtitleElements.forEach {
+            val subUrl = it.attr("src")
+            val lang = it.attr("label") ?: "Unknown"
+            if (subUrl.isNotBlank()) {
+                subtitleCallback(
+                    SubtitleFile(
+                        lang = lang,
+                        url = subUrl
+                    )
+                )
+            }
         }
 
         val altUrl = data.replace("vidsrc.cc", "vidplay.to")
