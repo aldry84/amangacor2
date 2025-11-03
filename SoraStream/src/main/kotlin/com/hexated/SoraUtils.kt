@@ -146,9 +146,9 @@ fun getTitleSlug(title: String? = null): Pair<String?, String?> {
 
 fun getIndexQuery(
     title: String? = null,
-    year: Int? = null,
     season: Int? = null,
-    episode: Int? = null
+    episode: Int? = null,
+    year: Int? = null
 ): String {
     val (seasonSlug, episodeSlug) = getEpisodeSlug(season, episode)
     return (if (season == null) {
@@ -323,14 +323,14 @@ fun getVipLanguage(str: String): String {
         "in_ID" -> "Indonesian"
         "pt" -> "Portuguese"
         else -> str.split("_").first().let {
-            SubtitleHelper.fromTwoLettersToLanguage(it).toString()
+            SubtitleHelper.fromLanguageCode(it).toString() // PERBAIKAN: Mengganti with fromLanguageCode
         }
     }
 }
 
 fun fixCrunchyrollLang(language: String?): String? {
-    return SubtitleHelper.fromTwoLettersToLanguage(language ?: return null)
-        ?: SubtitleHelper.fromTwoLettersToLanguage(language.substringBefore("-"))
+    return SubtitleHelper.fromLanguageCode(language ?: return null) // PERBAIKAN: Mengganti with fromLanguageCode
+        ?: SubtitleHelper.fromLanguageCode(language.substringBefore("-")) // PERBAIKAN: Mengganti with fromLanguageCode
 }
 
 fun getDeviceId(length: Int = 16): String {
