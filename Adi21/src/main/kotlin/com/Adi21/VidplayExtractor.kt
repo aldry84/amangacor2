@@ -30,4 +30,11 @@ class VidplayExtractor : ExtractorApi() {
 
     private fun getQualityFromUrl(url: String): Int {
         return when {
-            "1080
+            "1080" in url -> 1080
+            "720" in url -> 720
+            "480" in url -> 480
+            "360" in url -> 360
+            else -> Qualities.Unknown.value
+        }
+    }
+}
