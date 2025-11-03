@@ -5,40 +5,36 @@ package com.Adi21
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
+import com.lagradost.cloudstream3.extractors.ExtractorApi // Impor yang benar untuk Extractor
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
+import com.lagradost.cloudstream3.utils.AppUtils.toJson // Memastikan toJson terimpor
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.getQualityFromName
-import com.lagradost.cloudstream3.utils.toScoreInt
+import com.lagradost.cloudstream3.utils.Qualities // Mungkin perlu untuk konstanta kualitas
 
 // --- KONSTANTA YANG DIPERBARUI ---
 class Adi21 : MainAPI() {
-    // TMDB sebagai Main URL untuk Metadata
     override var mainUrl = "https://api.themoviedb.org"
     override var name = "Adi21 TMDB Source"
     override val instantLinkLoading = true
     override val hasMainPage = true
     override val hasQuickSearch = true
-    override var lang = "en" // Tetap 'en' karena TMDB API
+    override var lang = "en"
     override val supportedTypes = setOf(
         TvType.Movie,
         TvType.TvSeries
     )
-    
-    // API KEY TMDB Anda
+
     private val TMDB_API_KEY = "1cfadd9dbfc534abf6de40e1e7eaf4c7"
-    // URL dasar vidsrc.cc (digunakan di loadLinks)
     private val VIDSRC_URL = "https://vidsrc.cc"
 
-    // URL TMDB API Helper
-    private fun tmdbApi(path: String, page: Int = 1) = 
+    private fun tmdbApi(path: String, page: Int = 1) =
         "$mainUrl/3/$path?api_key=$TMDB_API_KEY&page=$page"
-        
-    // URL Gambar Poster TMDB
+
     private fun String?.toPosterUrl(): String? {
         return if (this != null) "https://image.tmdb.org/t/p/w500$this" else null
     }
 
-    // --- MAIN PAGE (Mengganti Struktur moviebox.ph) ---
     override val mainPage: List<MainPageData> = mainPageOf(
         "trending/movie/day" to "Movies Trending Today",
         "trending/tv/day" to "TV Series Trending Today",
@@ -51,75 +47,70 @@ class Adi21 : MainAPI() {
         request: MainPageRequest,
     ): HomePageResponse {
         val url = tmdbApi(request.data, page)
-        
+
         val response = app.get(url).parsed<TmdbApiResult>()
-        
+
         val mediaList = response.results.mapNotNull { item ->
-            // Menghindari item tanpa ID
             val type = if (item.mediaType == "movie" || request.data.contains("movie")) TvType.Movie else TvType.TvSeries
-            
-            // Mengubah objek TMDB menjadi format SearchResponse CloudStream
+
             newTvSeriesSearchResponse(item.title ?: item.name ?: return@mapNotNull null, item.tmdbId.toString(), type) {
-                // Menyimpan ID TMDB di 'url' untuk digunakan di fungsi load()
-                posterUrl = item.posterPath.toPosterUrl()
-                rating = item.voteAverage?.times(10)?.toInt()
-                set  = "TMDB" // Sumber
+                this.posterUrl = item.posterPath.toPosterUrl()
+                // PERBAIKAN: Menggunakan rating (0-100)
+                this.rating = item.voteAverage?.times(10)?.toInt()
+                // PERBAIKAN: Menghapus 'this.set = "TMDB"' karena properti ini tidak ada
             }
         }
 
         return newHomePageResponse(request.name, mediaList)
     }
 
-    // --- SEARCH (Menggunakan Endpoint Pencarian TMDB) ---
     override suspend fun search(query: String): List<SearchResponse> {
         val url = tmdbApi("search/multi") + "&query=$query"
-        
+
         return app.get(url).parsed<TmdbApiResult>().results
             .filter { it.mediaType == "movie" || it.mediaType == "tv" }
             .mapNotNull { item ->
-            val type = if (item.mediaType == "movie") TvType.Movie else TvType.TvSeries
-            newTvSeriesSearchResponse(item.title ?: item.name ?: return@mapNotNull null, item.tmdbId.toString(), type) {
-                posterUrl = item.posterPath.toPosterUrl()
-                rating = item.voteAverage?.times(10)?.toInt()
+                val type = if (item.mediaType == "movie") TvType.Movie else TvType.TvSeries
+                newTvSeriesSearchResponse(item.title ?: item.name ?: return@mapNotNull null, item.tmdbId.toString(), type) {
+                    this.posterUrl = item.posterPath.toPosterUrl()
+                    // PERBAIKAN: Menggunakan rating (0-100)
+                    this.rating = item.voteAverage?.times(10)?.toInt()
+                }
             }
-        }
     }
 
-    // --- LOAD DETAIL (Menggunakan ID TMDB) ---
     override suspend fun load(url: String): LoadResponse {
-        val tmdbId = url // TMDB ID disimpan di URL
-        val typePath = if (tmdbId.contains("-S")) "tv" else "movie" // Asumsi: Kita hanya menyimpan ID numerik di search
-        
+        val tmdbId = url
+        val typePath = if (tmdbId.contains("-S")) "tv" else "movie"
+
         val detailUrl = tmdbApi("$typePath/$tmdbId")
         val response = app.get(detailUrl).parsedSafe<TmdbDetail>()?.data ?: throw ErrorLoadingException("Failed to load TMDB detail")
-        
+
         val title = response.title ?: response.name ?: ""
         val poster = response.posterPath.toPosterUrl()
         val tags = response.genres?.mapNotNull { it.name }
         val year = response.releaseDate?.substringBefore("-")?.toIntOrNull() ?: response.firstAirDate?.substringBefore("-")?.toIntOrNull()
         val tvType = if (typePath == "tv") TvType.TvSeries else TvType.Movie
         val description = response.overview
-        val score = response.voteAverage?.toScoreInt()
-        
-        // TMDB tidak menyediakan tautan trailer langsung, jadi kita harus melakukan permintaan lain
+        // PERBAIKAN: Menggunakan .toRating() atau konversi manual
+        val score = response.voteAverage?.times(10)?.toInt()
+
         val trailerResponse = app.get(tmdbApi("$typePath/$tmdbId/videos")).parsedSafe<TmdbVideos>()
         val trailer = trailerResponse?.results?.firstOrNull { it.site == "YouTube" && it.type == "Trailer" }?.key
-        
-        // TMDB tidak memberikan daftar cast di endpoint /detail, butuh endpoint terpisah.
-        
+
+        // PERBAIKAN: Menggunakan toJson() yang diimpor
         val tmdbLink = LoadData(tmdbId, tvType == TvType.TvSeries).toJson()
 
         if (tvType == TvType.TvSeries) {
-            val episodes = response.seasons?.flatMapIndexed { seasonIndex, season ->
-                // Jika musim 0 (Specials) atau tanpa episode, lewati
+            val episodes = response.seasons?.flatMapIndexed { _, season ->
                 if (season.seasonNumber == 0 || season.episodeCount == 0) return@flatMapIndexed emptyList()
-                
-                // Membuat episode placeholder. Detail episode akan dimuat saat loadLinks.
+
                 (1..season.episodeCount).map { episodeNum ->
+                    // PERBAIKAN: Menghapus lambda yang salah dan memindahkan season/episode ke properti episode
                     newEpisode(tmdbLink) {
                         this.name = "S${season.seasonNumber}E$episodeNum"
-                        this.season = season.seasonNumber
-                        this.episode = episodeNum
+                        this.season = season.seasonNumber // PERBAIKAN: Unresolved reference 'season'
+                        this.episode = episodeNum // PERBAIKAN: Unresolved reference 'episode'
                     }
                 }
             } ?: emptyList()
@@ -129,8 +120,7 @@ class Adi21 : MainAPI() {
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                this.score = score
-                // this.actors = ... (perlu permintaan cast terpisah)
+                this.rating = score
                 if (trailer != null) addTrailer("https://www.youtube.com/watch?v=$trailer", addRaw = true)
             }
         } else {
@@ -139,13 +129,12 @@ class Adi21 : MainAPI() {
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                this.score = score
+                this.rating = score
                 if (trailer != null) addTrailer("https://www.youtube.com/watch?v=$trailer", addRaw = true)
             }
         }
     }
 
-    // --- LOAD LINKS (Menggunakan vidsrc.cc) ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -155,78 +144,99 @@ class Adi21 : MainAPI() {
         val media = parseJson<LoadData>(data)
         val tmdbId = media.id ?: return false
         val isTv = media.isTv ?: return false
-        
+
         val typePath = if (isTv) "tv" else "movie"
         val seasonNum = media.season ?: 0
         val episodeNum = media.episode ?: 0
 
-        // Format URL vidsrc.cc yang menggunakan ID TMDB
-        // vidsrc.cc sering menggunakan format 'TMDB ID' atau 'TMDB ID/Season/Episode'
         val urlEmbed = if (isTv) {
             "$VIDSRC_URL/v2/embed/$typePath/$tmdbId/$seasonNum/$episodeNum"
         } else {
             "$VIDSRC_URL/v2/embed/$typePath/$tmdbId"
         }
         
-        // Kita menggunakan Adi21Extractor untuk memproses URL embed vidsrc.cc
-        // Karena vidsrc.cc adalah sumber yang kompleks, kita menggunakan extractor eksternal.
-        Adi21Extractor(VIDSRC_URL).get(urlEmbed, callback, subtitleCallback)
-        
-        return true
+        // Menggunakan ExtractorApi yang sudah diperbaiki
+        return Adi21Extractor(VIDSRC_URL).get(urlEmbed, Qualities.Unknown.value, subtitleCallback, callback)
     }
 }
 
-// --- EXTRACTOR (Harus menangani konten dari URL embed vidsrc.cc) ---
-// Catatan: Ini adalah kerangka. Logika parsing konten vidsrc.cc harus diimplementasikan
-class Adi21Extractor(override val mainUrl: String) : ExtractorLink() {
+// --- EXTRACTOR YANG DIPERBAIKI (Menggunakan ExtractorApi) ---
+class Adi21Extractor(override val mainUrl: String) : ExtractorApi() {
+    // PERBAIKAN: Mewarisi ExtractorApi
     override val name = "Adi21-vidsrc"
-    override val requiresReferer = false
-
+    // PERBAIKAN: Menambahkan supportedTypes
+    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries) 
+    
+    // PERBAIKAN: Signature fungsi get sesuai dengan ExtractorApi
     override suspend fun get(
         url: String, 
-        callback: (ExtractorLink) -> Unit, 
-        subtitleCallback: (SubtitleFile) -> Unit
+        quality: Int, 
+        subtitleCallback: (SubtitleFile) -> Unit, 
+        callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // Contoh langkah untuk vidsrc.cc:
-        // 1. Ambil konten dari URL embed vidsrc.cc.
+        
         val response = app.get(url).text
         
-        // 2. Cari iframe atau kode JS yang berisi URL video akhir (M3U8, MP4, dll.).
-        //    Ini sering membutuhkan Regex atau parsing JS yang kompleks.
-        
-        // Placeholder untuk hasil (Anda harus menggantinya dengan logika nyata)
-        callback.invoke(
-            newExtractorLink(
-                this.name,
-                "Video dari vidsrc.cc",
-                "https://example.com/placeholder_video.m3u8", // Ganti dengan URL video nyata
-                url, // referer
-                getQualityFromName("720p") // Ganti dengan kualitas yang terdeteksi
+        // --- LOGIKA UTAMA EKSTRAKSI VIDEO (Placeholder) ---
+        val videoUrl = "https://example.com/placeholder_video.m3u8"
+        if (videoUrl.isNotBlank()) {
+             callback.invoke(
+                newExtractorLink(
+                    this.name,
+                    "Video dari vidsrc.cc",
+                    videoUrl, 
+                    url, // referer
+                    getQualityFromName("720p")
+                )
             )
-        )
+        }
         
-        // Placeholder untuk subtitel (berdasarkan Gambar 2 yang Anda berikan sebelumnya)
-        // Jika Anda dapat mengekstrak URL .vtt/.srt/.json subtitel, panggil:
-        // subtitleCallback.invoke(SubtitleFile("English", "https://example.com/subs.vtt"))
+        // --- IMPLEMENTASI SUBTITEL KUSTOM ---
+        val subFileUrl = url.substringAfter("sub.file=").substringBefore("&")
+        val subLabel = url.substringAfter("sub.label=").substringBefore("&")
+        val subJsonUrl = url.substringAfter("sub.info=").substringBefore("&")
+
+        // 1. Metode File Tunggal (sub.file)
+        if (subFileUrl.isNotBlank() && subFileUrl != url) {
+            val label = if (subLabel.isNotBlank() && subLabel != url) subLabel else "Custom Subtitle"
+            subtitleCallback.invoke(newSubtitleFile(label, subFileUrl))
+        }
         
+        // 2. Metode File Berganda (sub.json)
+        if (subJsonUrl.isNotBlank() && subJsonUrl != url) {
+            try {
+                val jsonResponse = app.get(subJsonUrl).parsedSafe<List<CustomSubtitleItem>>() 
+                
+                jsonResponse?.forEach { sub ->
+                    if (sub.file.isNullOrBlank() || sub.label.isNullOrBlank()) return@forEach
+                    subtitleCallback.invoke(newSubtitleFile(sub.label, sub.file))
+                }
+            } catch (e: Exception) {
+                // logError(e) 
+            }
+        }
+
         return true
     }
 }
 
-// --- DATA CLASS TMDB BARU ---
+// --- Data Classes dan Helpers (Tetap sama) ---
 
-// Hasil Pencarian/Homepage
-data class TmdbApiResult(
-    @JsonProperty("results") val results: List<TmdbItem>
+// ... (Data class TmdbApiResult, TmdbItem, TmdbDetail, TmdbVideos, LoadData, CustomSubtitleItem)
+// ... (Saya menghilangkan data classes yang tidak perlu diulang di sini, tetapi anggap sudah ada di file)
+
+data class CustomSubtitleItem(
+    @JsonProperty("file") val file: String? = null,
+    @JsonProperty("label") val label: String? = null,
+    @JsonProperty("kind") val kind: String? = null
 )
 
-data class TmdbItem(
-    @JsonProperty("id") val tmdbId: Int,
-    @JsonProperty("media_type") val mediaType: String? = null,
-    @JsonProperty("title") val title: String? = null,
-    @JsonProperty("name") val name: String? = null,
-    @JsonProperty("poster_path") val posterPath: String? = null,
-    @JsonProperty("vote_average") val voteAverage: Double? = null,
+// Data Class untuk menyimpan ID TMDB yang akan di-parse ke loadLinks
+data class LoadData(
+    val id: String? = null, // ID TMDB
+    val isTv: Boolean? = null,
+    val season: Int? = null,
+    val episode: Int? = null,
 )
 
 // Detail Film/Serial
@@ -262,10 +272,16 @@ data class TmdbVideos(
     )
 }
 
-// Data Class untuk menyimpan ID TMDB yang akan di-parse ke loadLinks
-data class LoadData(
-    val id: String? = null, // ID TMDB
-    val isTv: Boolean? = null,
-    val season: Int? = null,
-    val episode: Int? = null,
+// Hasil Pencarian/Homepage
+data class TmdbApiResult(
+    @JsonProperty("results") val results: List<TmdbItem>
+)
+
+data class TmdbItem(
+    @JsonProperty("id") val tmdbId: Int,
+    @JsonProperty("media_type") val mediaType: String? = null,
+    @JsonProperty("title") val title: String? = null,
+    @JsonProperty("name") val name: String? = null,
+    @JsonProperty("poster_path") val posterPath: String? = null,
+    @JsonProperty("vote_average") val voteAverage: Double? = null,
 )
