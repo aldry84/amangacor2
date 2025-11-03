@@ -13,9 +13,10 @@ class Adi21 : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         val encodedQuery = URLEncoder.encode(query, "UTF-8")
+
+        // Default search
         val movieUrl = "$mainUrl/search/movie?query=$encodedQuery&api_key=$apiKey"
         val tvUrl = "$mainUrl/search/tv?query=$encodedQuery&api_key=$apiKey"
-
         val movieJson = app.get(movieUrl).parsed<TmdbSearchResult>()
         val tvJson = app.get(tvUrl).parsed<TmdbSearchResult>()
 
@@ -42,7 +43,7 @@ class Adi21 : MainAPI() {
             }
         }
 
-        return movieResults + tvResults
+        return (movieResults + tvResults).filter { it.year ?: 0 >= 2020 }
     }
 
     override suspend fun load(url: String): LoadResponse {
