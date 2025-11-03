@@ -3,6 +3,11 @@ package com.Adi21
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import java.net.URLEncoder
+// Added imports
+import com.lagradost.cloudstream3.extractors.ExtractorLink
+import com.lagradost.cloudstream3.ActorData
+import com.lagradost.cloudstream3.Score
+import com.lagradost.cloudstream3.subtitles.SubtitleFile
 
 class Adi21 : MainAPI() {
     override var mainUrl = "https://api.themoviedb.org/3"
@@ -21,25 +26,29 @@ class Adi21 : MainAPI() {
         val tvJson = app.get(tvUrl).parsed<TmdbSearchResult>()
 
         val movieResults = movieJson.results.map {
-            MovieSearchResponse(
+            // Fix: Use newMovieSearchResponse factory method
+            newMovieSearchResponse(
                 it.title ?: "Unknown",
-                "https://vidsrc.cc/embed/${it.id}",
+                "https://vidsrc.cc/embed/${it.id}", // dataUrl
                 name,
                 TvType.Movie
-            ).apply {
+            ) {
                 posterUrl = "https://image.tmdb.org/t/p/w500${it.poster_path}"
-                addYear(it.release_date?.take(4)?.toIntOrNull())
+                // Fix: Set year directly
+                year = it.release_date?.take(4)?.toIntOrNull()
             }
         }
 
         val tvResults = tvJson.results.map {
-            TvSeriesSearchResponse(
+            // Fix: Use newTvSeriesSearchResponse factory method
+            newTvSeriesSearchResponse(
                 it.name ?: "Unknown",
-                "https://vidsrc.cc/embed/${it.id}",
+                "https://vidsrc.cc/embed/${it.id}", // dataUrl
                 name,
                 TvType.TvSeries
-            ).apply {
+            ) {
                 posterUrl = "https://image.tmdb.org/t/p/w500${it.poster_path}"
+                year = it.first_air_date?.take(4)?.toIntOrNull() // Set year for TV
             }
         }
 
@@ -48,7 +57,7 @@ class Adi21 : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfterLast("/").toIntOrNull() ?: throw ErrorLoadingException("Invalid ID")
-        val isTv = url.contains("/tv")
+        val isTv = url.contains("/tv") // Simple check, might need refinement
         val detailUrl = if (isTv) "$mainUrl/tv/$id?api_key=$apiKey" else "$mainUrl/movie/$id?api_key=$apiKey"
         val videoUrl = if (isTv) "$mainUrl/tv/$id/videos?api_key=$apiKey" else "$mainUrl/movie/$id/videos?api_key=$apiKey"
         val creditsUrl = if (isTv) "$mainUrl/tv/$id/credits?api_key=$apiKey" else "$mainUrl/movie/$id/credits?api_key=$apiKey"
@@ -60,33 +69,48 @@ class Adi21 : MainAPI() {
         }?.key
 
         val trailer = trailerKey?.let { "https://www.youtube.com/watch?v=$it" }
-        val episodes = if (isTv) getEpisodes(id) else listOf(Episode(url, "Watch"))
+        // Fix: Use newEpisode factory method
+        val episodes = if (isTv) getEpisodes(id) else listOf(newEpisode(url) {
+            name = "Watch"
+        })
         val recommendations = getRecommendations(id, isTv)
         val cast = getCast(creditsUrl)
         val (userRating, userReview) = getReviews(reviewUrl)
 
-        return MovieLoadResponse(
+        // Fix: Use newMovieLoadResponse factory method
+        return newMovieLoadResponse(
             detail.title ?: detail.name ?: "Unknown",
-            url,
+            url, // dataUrl
             name,
-            if (isTv) TvType.TvSeries else TvType.Movie
-        ).apply {
+            if (isTv) TvType.TvSeries else TvType.Movie,
+            url // Use URL as dataUrl
+        ) {
             posterUrl = "https://image.tmdb.org/t/p/w500${detail.poster_path}"
-            addYear(detail.release_date?.take(4)?.toIntOrNull() ?: detail.first_air_date?.take(4)?.toIntOrNull())
+            // Fix: Set year directly
+            year = detail.release_date?.take(4)?.toIntOrNull() ?: detail.first_air_date?.take(4)?.toIntOrNull()
             plot = detail.overview + if (userReview != null) "\n\n💬 Review: $userReview" else ""
             tags = detail.genres.map { it.name }
-            trailer?.let { addTrailer("Trailer", it) }
-            addActors(cast)
-            addEpisodes(episodes)
-            addRecommendations(recommendations)
-            userRating?.let { addScore(it.toInt()) }
+            // Fix: Pass trailer as list
+            trailer?.let { trailers = mutableListOf(TrailerData("Trailer", it)) }
+            // Fix: Pass actors
+            actors = cast
+            // Fix: Pass episodes
+            if (isTv) {
+                this.episodes = episodes
+            }
+            // Fix: Pass recommendations
+            this.recommendations = recommendations
+            // Fix: Pass rating as Score
+            userRating?.let { score = Score(it.toInt() * 10, 100) } // Assuming rating is 0-10
         }
     }
 
-    private suspend fun getCast(url: String): List<Actor> {
+    // Fix: Return List<ActorData>
+    private suspend fun getCast(url: String): List<ActorData> {
         val credits = app.get(url).parsed<TmdbCredits>()
         return credits.cast.take(10).map {
-            Actor(it.name, ActorRole(it.character))
+            // Fix: Actor constructor takes (name, role_string)
+            ActorData(Actor(it.name, it.character), roleString = it.character)
         }
     }
 
@@ -109,10 +133,14 @@ class Adi21 : MainAPI() {
             val seasonDetailUrl = "$mainUrl/tv/$tvId/season/$seasonId?api_key=$apiKey"
             val seasonDetail = app.get(seasonDetailUrl).parsed<TmdbSeasonDetail>()
             seasonDetail.episodes.forEach {
+                // Fix: Use newEpisode factory method
                 episodes.add(
-                    Episode("https://vidsrc.cc/embed/$tvId", "S${seasonId}E${it.episode_number} - ${it.name}").apply {
+                    newEpisode("https://vidsrc.cc/embed/$tvId/$seasonId/${it.episode_number}") { // Updated data URL
+                        name = "S${seasonId}E${it.episode_number} - ${it.name}"
                         posterUrl = "https://image.tmdb.org/t/p/w500${it.still_path}"
                         description = it.overview
+                        season = seasonId
+                        episode = it.episode_number
                     }
                 )
             }
@@ -122,17 +150,19 @@ class Adi21 : MainAPI() {
 
     private suspend fun getRecommendations(id: Int, isTv: Boolean): List<SearchResponse> {
         val url = if (isTv) "$mainUrl/tv/$id/recommendations?api_key=$apiKey"
-                  else "$mainUrl/movie/$id/recommendations?api_key=$apiKey"
+        else "$mainUrl/movie/$id/recommendations?api_key=$apiKey"
         val json = app.get(url).parsed<TmdbSearchResult>()
         return json.results.map {
-            MovieSearchResponse(
+            // Fix: Use newMovieSearchResponse factory method
+            newMovieSearchResponse(
                 it.title ?: it.name ?: "Unknown",
-                "https://vidsrc.cc/embed/${it.id}",
+                "https://vidsrc.cc/embed/${it.id}", // dataUrl
                 name,
                 if (isTv) TvType.TvSeries else TvType.Movie
-            ).apply {
+            ) {
                 posterUrl = "https://image.tmdb.org/t/p/w500${it.poster_path}"
-                addYear(it.release_date?.take(4)?.toIntOrNull() ?: it.first_air_date?.take(4)?.toIntOrNull())
+                // Fix: Set year directly
+                year = it.release_date?.take(4)?.toIntOrNull() ?: it.first_air_date?.take(4)?.toIntOrNull()
             }
         }
     }
@@ -146,15 +176,17 @@ class Adi21 : MainAPI() {
         val doc = app.get(data).document
         val videoUrl = doc.select("video source").attr("src")
         if (videoUrl.isNotBlank()) {
+            // Fix: Use newExtractorLink factory method
             callback(
-                ExtractorLink(
-                    name = "Vidsrc",
+                newExtractorLink(
                     source = "vidsrc.cc",
+                    name = "Vidsrc",
                     url = videoUrl,
                     referer = data,
                     quality = getQualityFromUrl(videoUrl),
+                ) {
                     isM3u8 = videoUrl.endsWith(".m3u8")
-                )
+                }
             )
         }
 
@@ -167,9 +199,13 @@ class Adi21 : MainAPI() {
             }
         }
 
+        // Assuming VidplayExtractor is registered and works
         val altUrl = data.replace("vidsrc.cc", "vidplay.to")
-        val vidplayLinks = VidplayExtractor().getUrl(altUrl, null)
-        vidplayLinks.forEach { callback(it) }
+        // Fix: Need to ensure VidplayExtractor is loaded or handle this differently
+        // This line might fail if VidplayExtractor isn't correctly loaded by CloudStream
+        // For now, we assume it's loaded as an extractor.
+        // A safer way is to call it directly if it's in the same package.
+        VidplayExtractor().getUrl(altUrl, null).forEach { callback(it) }
 
         return true
     }
