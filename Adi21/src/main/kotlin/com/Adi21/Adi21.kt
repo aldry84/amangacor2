@@ -24,11 +24,11 @@ class Adi21 : MainAPI() {
             MovieSearchResponse(
                 it.title ?: "Unknown",
                 "https://vidsrc.cc/embed/${it.id}",
-                this.name,
-                TvType.Movie,
-                it.release_date?.take(4)?.toIntOrNull()
+                name,
+                TvType.Movie
             ).apply {
                 posterUrl = "https://image.tmdb.org/t/p/w500${it.poster_path}"
+                addYear(it.release_date?.take(4)?.toIntOrNull())
             }
         }
 
@@ -36,9 +36,8 @@ class Adi21 : MainAPI() {
             TvSeriesSearchResponse(
                 it.name ?: "Unknown",
                 "https://vidsrc.cc/embed/${it.id}",
-                this.name,
-                TvType.TvSeries,
-                null
+                name,
+                TvType.TvSeries
             ).apply {
                 posterUrl = "https://image.tmdb.org/t/p/w500${it.poster_path}"
             }
@@ -53,6 +52,7 @@ class Adi21 : MainAPI() {
         val detailUrl = if (isTv) "$mainUrl/tv/$id?api_key=$apiKey" else "$mainUrl/movie/$id?api_key=$apiKey"
         val videoUrl = if (isTv) "$mainUrl/tv/$id/videos?api_key=$apiKey" else "$mainUrl/movie/$id/videos?api_key=$apiKey"
         val creditsUrl = if (isTv) "$mainUrl/tv/$id/credits?api_key=$apiKey" else "$mainUrl/movie/$id/credits?api_key=$apiKey"
+        val reviewUrl = if (isTv) "$mainUrl/tv/$id/reviews?api_key=$apiKey" else "$mainUrl/movie/$id/reviews?api_key=$apiKey"
 
         val detail = app.get(detailUrl).parsed<TmdbDetail>()
         val trailerKey = app.get(videoUrl).parsed<TmdbVideoResult>().results.firstOrNull {
@@ -61,22 +61,41 @@ class Adi21 : MainAPI() {
 
         val trailer = trailerKey?.let { "https://www.youtube.com/watch?v=$it" }
         val episodes = if (isTv) getEpisodes(id) else listOf(Episode(url, "Watch"))
+        val recommendations = getRecommendations(id, isTv)
         val cast = getCast(creditsUrl)
+        val (userRating, userReview) = getReviews(reviewUrl)
 
         return MovieLoadResponse(
             detail.title ?: detail.name ?: "Unknown",
             url,
-            this.name,
+            name,
             if (isTv) TvType.TvSeries else TvType.Movie
         ).apply {
             posterUrl = "https://image.tmdb.org/t/p/w500${detail.poster_path}"
-            year = detail.release_date?.take(4)?.toIntOrNull() ?: detail.first_air_date?.take(4)?.toIntOrNull()
-            plot = detail.overview
+            addYear(detail.release_date?.take(4)?.toIntOrNull() ?: detail.first_air_date?.take(4)?.toIntOrNull())
+            plot = detail.overview + if (userReview != null) "\n\n💬 Review: $userReview" else ""
             tags = detail.genres.map { it.name }
             trailer?.let { addTrailer("Trailer", it) }
             addActors(cast)
             addEpisodes(episodes)
+            addRecommendations(recommendations)
+            userRating?.let { addScore(it.toInt()) }
         }
+    }
+
+    private suspend fun getCast(url: String): List<Actor> {
+        val credits = app.get(url).parsed<TmdbCredits>()
+        return credits.cast.take(10).map {
+            Actor(it.name, ActorRole(it.character))
+        }
+    }
+
+    private suspend fun getReviews(url: String): Pair<Float?, String?> {
+        val json = app.get(url).parsed<TmdbReviewResult>()
+        val firstReview = json.results.firstOrNull()
+        val rating = firstReview?.author_details?.rating?.toFloat()
+        val reviewText = firstReview?.content?.take(300)?.plus("…")
+        return Pair(rating, reviewText)
     }
 
     private suspend fun getEpisodes(tvId: Int): List<Episode> {
@@ -101,10 +120,20 @@ class Adi21 : MainAPI() {
         return episodes
     }
 
-    private suspend fun getCast(url: String): List<Actor> {
-        val credits = app.get(url).parsed<TmdbCredits>()
-        return credits.cast.take(10).map {
-            Actor(it.name, ActorRole(it.character))
+    private suspend fun getRecommendations(id: Int, isTv: Boolean): List<SearchResponse> {
+        val url = if (isTv) "$mainUrl/tv/$id/recommendations?api_key=$apiKey"
+                  else "$mainUrl/movie/$id/recommendations?api_key=$apiKey"
+        val json = app.get(url).parsed<TmdbSearchResult>()
+        return json.results.map {
+            MovieSearchResponse(
+                it.title ?: it.name ?: "Unknown",
+                "https://vidsrc.cc/embed/${it.id}",
+                name,
+                if (isTv) TvType.TvSeries else TvType.Movie
+            ).apply {
+                posterUrl = "https://image.tmdb.org/t/p/w500${it.poster_path}"
+                addYear(it.release_date?.take(4)?.toIntOrNull() ?: it.first_air_date?.take(4)?.toIntOrNull())
+            }
         }
     }
 
