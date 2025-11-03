@@ -189,7 +189,7 @@ class Adimoviebox : MainAPI() {
             referer = referer
         ).parsedSafe<Media>()?.data?.captions?.map { subtitle ->
             subtitleCallback.invoke(
-                SubtitleFile(
+                newSubtitleFile( // Mengganti SubtitleFile(...)
                     subtitle.lanName ?: "",
                     subtitle.url ?: return@map
                 )
