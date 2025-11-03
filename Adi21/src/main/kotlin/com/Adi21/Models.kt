@@ -1,11 +1,10 @@
 package com.Adi21
 
 data class TmdbSearchResult(val results: List<TmdbItem>)
-
 data class TmdbItem(
     val id: Int,
-    val name: String?, // Untuk TV series
-    val title: String?, // Untuk Movie
+    val name: String?,
+    val title: String?,
     val poster_path: String?,
     val release_date: String?,
     val first_air_date: String?
@@ -19,15 +18,19 @@ data class TmdbDetail(
     val first_air_date: String?,
     val overview: String,
     val vote_average: Double,
-    val genres: List<Genre>
+    val genres: List<Genre>,
+    val seasons: List<TmdbSeason>?
 )
 
 data class Genre(val name: String)
+data class TmdbSeason(val season_number: Int)
+data class TmdbSeasonDetail(val episodes: List<TmdbEpisode>)
+data class TmdbEpisode(
+    val episode_number: Int,
+    val name: String,
+    val overview: String,
+    val still_path: String?
+)
 
 data class TmdbVideoResult(val results: List<TmdbVideo>)
-
-data class TmdbVideo(
-    val key: String,
-    val site: String,
-    val type: String
-)
+data class TmdbVideo(val key: String, val site: String, val type: String)
