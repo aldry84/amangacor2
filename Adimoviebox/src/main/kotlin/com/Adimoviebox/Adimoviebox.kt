@@ -1,10 +1,9 @@
-package com.Adimoviebox
+package Adimoviebox
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
-import com.lagradost.cloudstream3.utils.*
-import com.lagradost.cloudstream3.utils.Extensions.toScoreInt // *** Import Spesifik Ditambahkan di Sini ***
+import com.lagradost.cloudstream3.utils.* // toScoreInt seharusnya tersedia dari import ini
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.nicehttp.RequestBodyTypes
@@ -88,7 +87,7 @@ class Adimoviebox : MainAPI() {
         val tvType = if (subject?.subjectType == 2) TvType.TvSeries else TvType.Movie
         val description = subject?.description
         val trailer = subject?.trailer?.videoAddress?.url
-        val score = subject?.imdbRatingValue.toScoreInt() // toScoreInt() sekarang ter-*resolve*
+        val score = subject?.imdbRatingValue.toScoreInt() // Sekarang seharusnya ter-*resolve*
         val actors = document?.stars?.mapNotNull { cast ->
             ActorData(
                 Actor(
@@ -200,7 +199,7 @@ class Adimoviebox : MainAPI() {
     }
 }
 
-// --- Data Class Dikeluarkan dari class Adimoviebox untuk mengatasi error Unresolved Reference ---
+// --- Data Class Dikeluarkan dari class Adimoviebox ---
 
 data class LoadData(
     val id: String? = null,
