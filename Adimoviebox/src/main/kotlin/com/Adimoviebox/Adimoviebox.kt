@@ -87,7 +87,6 @@ class Adimoviebox : MainAPI() {
         val tvType = if (subject?.subjectType == 2) TvType.TvSeries else TvType.Movie
         val description = subject?.description
         val trailer = subject?.trailer?.videoAddress?.url
-        // PERBAIKAN: Mengganti toScoreInt() dengan Score.from10() untuk mengikuti pola referensi
         val score = Score.from10(subject?.imdbRatingValue)
         val actors = document?.stars?.mapNotNull { cast ->
             ActorData(
@@ -97,11 +96,11 @@ class Adimoviebox : MainAPI() {
                 ),
                 roleString = cast.character
             )
-        )?.distinctBy { it.actor }
+        }?.distinctBy { it.actor }
 
         val recommendations =
             app.get("$mainUrl/wefeed-h5-bff/web/subject/detail-rec?subjectId=$id&page=1&perPage=12")
-                .parsedSafe<Media>()?.data?.items?.map {
+                .parsedSafe<Media>()?.data?.items?.map { // Perbaikan: Memastikan pemanggilan .items
                     it.toSearchResponse(this)
                 }
 
@@ -152,6 +151,7 @@ class Adimoviebox : MainAPI() {
         }
     }
 
+    // Perbaikan: Fungsi loadLinks dipindahkan kembali ke dalam class Adimoviebox
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -273,7 +273,7 @@ data class Items(
     @JsonProperty("trailer") val trailer: Trailer? = null,
     @JsonProperty("detailPath") val detailPath: String? = null,
 ) {
-
+    // Perbaikan: Memperbaiki sintaksis fungsi toSearchResponse
     fun toSearchResponse(provider: Adimoviebox): SearchResponse {
         return provider.newMovieSearchResponse(
             title ?: "",
