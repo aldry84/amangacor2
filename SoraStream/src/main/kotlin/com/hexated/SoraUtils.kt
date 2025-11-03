@@ -323,14 +323,14 @@ fun getVipLanguage(str: String): String {
         "in_ID" -> "Indonesian"
         "pt" -> "Portuguese"
         else -> str.split("_").first().let {
-            SubtitleHelper.fromLanguageCode(it).toString() // PERBAIKAN: Menggunakan SubtitleHelper.fromLanguageCode
+            SubtitleHelper.fromTwoLettersToLanguage(it).toString() // DIKEMBALIKAN KE FUNGSI LAMA
         }
     }
 }
 
 fun fixCrunchyrollLang(language: String?): String? {
-    return SubtitleHelper.fromLanguageCode(language ?: return null) // PERBAIKAN: Menggunakan SubtitleHelper.fromLanguageCode
-        ?: SubtitleHelper.fromLanguageCode(language.substringBefore("-")) // PERBAIKAN: Menggunakan SubtitleHelper.fromLanguageCode
+    return SubtitleHelper.fromTwoLettersToLanguage(language ?: return null) // DIKEMBALIKAN KE FUNGSI LAMA
+        ?: SubtitleHelper.fromTwoLettersToLanguage(language.substringBefore("-")) // DIKEMBALIKAN KE FUNGSI LAMA
 }
 
 fun getDeviceId(length: Int = 16): String {
