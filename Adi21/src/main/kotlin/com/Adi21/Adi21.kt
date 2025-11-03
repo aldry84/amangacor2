@@ -78,8 +78,8 @@ class Adi21 : MainAPI() {
                 false
             ) {
                 this.posterUrl = m.posterFullPath()
-                // FIX 1: Mengubah 'description' kembali ke 'plot' untuk SearchResponse builder (Baris 82)
-                this.plot = m.overview 
+                // FIX 1: Mengubah 'plot' kembali ke 'description' di SearchResponse builder (Baris 82)
+                this.description = m.overview 
             }
         }
 
@@ -111,8 +111,8 @@ class Adi21 : MainAPI() {
                 false
             ) {
                 this.posterUrl = m.posterFullPath()
-                // FIX 1: Mengubah 'description' kembali ke 'plot' untuk SearchResponse builder (Baris 115)
-                this.plot = m.overview 
+                // FIX 1: Mengubah 'plot' kembali ke 'description' di SearchResponse builder (Baris 115)
+                this.description = m.overview 
             }
         }
     }
@@ -130,7 +130,7 @@ class Adi21 : MainAPI() {
         }
 
         val id = idStr
-        // Memperbaiki URL detail
+        // URL detail perbaikan
         val detailsUrl = if (isTv) "$mainUrl/tv/$id?api_key=$apiKey&language=en-US" else "$mainUrl/movie/$id?api_key=$apiKey&language=en-US"
         val details = app.get(detailsUrl).parsedSafe<TMDBDetail>() ?: throw ErrorLoadingException("No detail")
 
