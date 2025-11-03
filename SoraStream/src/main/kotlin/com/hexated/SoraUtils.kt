@@ -94,7 +94,7 @@ suspend fun tmdbToAnimeId(title: String?, year: Int?, season: String?, type: TvT
         "variables" to variables
     ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
 
-    val res = app.post(SoraStream.anilistAPI, requestBody = data)
+    val res = app.post(SoraStream.anilistAPI, requestBody = data) // FIX: Kualifikasi SoraStream
         .parsedSafe<AniSearch>()?.data?.Page?.media?.firstOrNull()
     return AniIds(res?.id, res?.idMal)
 
