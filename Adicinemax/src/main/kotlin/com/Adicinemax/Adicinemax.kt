@@ -1,4 +1,4 @@
-package com.Adicinemax // Diubah
+package com.Adicinemax // Package diubah
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
@@ -33,8 +33,8 @@ class Adicinemax : MainAPI() { // Nama kelas diubah
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse {
-        // Logika TMDb Discover diperlukan di sini
-        return HomePageResponse(emptyList(), false)
+        // PERBAIKAN: Menggunakan newHomePageResponse
+        return newHomePageResponse(emptyList(), false)
     }
 
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
@@ -44,10 +44,10 @@ class Adicinemax : MainAPI() { // Nama kelas diubah
         val searchUrl = "$mainUrl/search/multi?api_key=$tmdbApiKey&query=$query&language=en-US&page=1"
         
         return app.get(searchUrl)
-            .parsedSafe<TmdbSearchResponse>() // Menggunakan data class baru
+            .parsedSafe<TmdbSearchResponse>() 
             ?.results
             ?.mapNotNull { item -> 
-                item.toSearchResponse(this) // Konversi item ke SearchResponse
+                item.toSearchResponse(this) 
             } ?: emptyList()
     }
 
@@ -90,7 +90,7 @@ class Adicinemax : MainAPI() { // Nama kelas diubah
                 title,
                 url,
                 TvType.Movie,
-                // Menggunakan ID TMDb dan jenis media untuk fungsi loadLinks
+                // ID TMDb dan jenis media untuk fungsi loadLinks
                 LoadData(id, detailPath = type).toJson() 
             ) {
                 this.posterUrl = poster
@@ -141,10 +141,9 @@ class Adicinemax : MainAPI() { // Nama kelas diubah
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // Data yang diparsing sekarang berisi ID TMDb (sebagai LoadData.id) dan jenis media (sebagai LoadData.detailPath)
         val media = parseJson<LoadData>(data)
         
-        // Logika berikut menggunakan $apiUrl dan struktur API lama
+        // Logika ini menggunakan $apiUrl dan struktur API lama
         val referer = "$apiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&lang=en"
 
         val streams = app.get(
@@ -190,10 +189,10 @@ class Adicinemax : MainAPI() { // Nama kelas diubah
 // ====================================================================
 
 data class LoadData(
-    val id: String? = null, // Sekarang menampung ID TMDb
+    val id: String? = null,
     val season: Int? = null,
     val episode: Int? = null,
-    val detailPath: String? = null, // Sekarang menampung jenis media TMDb ('movie'/'tv')
+    val detailPath: String? = null, 
 )
 
 data class Media(
@@ -257,126 +256,4 @@ data class Items(
     @JsonProperty("cover") val cover: Cover? = null,
     @JsonProperty("imdbRatingValue") val imdbRatingValue: String? = null,
     @JsonProperty("countryName") val countryName: String? = null,
-    @JsonProperty("trailer") val trailer: Trailer? = null,
-    @JsonProperty("detailPath") val detailPath: String? = null,
-) {
-    // Fungsi ini tidak relevan lagi (didasarkan pada API lama), tetapi dipertahankan agar tidak error.
-    fun toSearchResponse(provider: Adicinemax): SearchResponse { 
-        return provider.newMovieSearchResponse(
-            title ?: "",
-            subjectId ?: "",
-            if (subjectType == 1) TvType.Movie else TvType.TvSeries,
-            false
-        ) {
-            this.posterUrl = cover?.url
-        }
-    }
-
-    data class Cover(
-        @JsonProperty("url") val url: String? = null,
-    )
-
-    data class Trailer(
-        @JsonProperty("videoAddress") val videoAddress: VideoAddress? = null,
-    ) {
-        data class VideoAddress(
-            @JsonProperty("url") val url: String? = null,
-        )
-    }
-}
-
-
-// ====================================================================
-// --- DATA CLASS BARU UNTUK TMDb ---
-// ====================================================================
-
-data class TmdbSearchResponse(
-    @JsonProperty("page") val page: Int? = null,
-    @JsonProperty("results") val results: ArrayList<TmdbSearchItem>? = arrayListOf(),
-    @JsonProperty("total_pages") val totalPages: Int? = null,
-    @JsonProperty("total_results") val totalResults: Int? = null
-)
-
-data class TmdbSearchItem(
-    @JsonProperty("id") val id: Int? = null,
-    @JsonProperty("media_type") val mediaType: String? = null, // 'movie', 'tv', 'person'
-    @JsonProperty("title") val title: String? = null, // Untuk 'movie'
-    @JsonProperty("name") val name: String? = null, // Untuk 'tv'
-    @JsonProperty("poster_path") val posterPath: String? = null,
-    @JsonProperty("release_date") val releaseDate: String? = null, // Untuk 'movie'
-    @JsonProperty("first_air_date") val firstAirDate: String? = null, // Untuk 'tv'
-) {
-    fun toSearchResponse(provider: Adicinemax): SearchResponse? {
-        if (mediaType == "person" || id == null) return null
-
-        val type = when (mediaType) {
-            "movie" -> TvType.Movie
-            "tv" -> TvType.TvSeries
-            else -> return null
-        }
-        
-        val finalTitle = title ?: name ?: return null
-
-        // URL yang akan digunakan di fungsi load: Adicinemax/movie/{id} atau Adicinemax/tv/{id}
-        val url = provider.name + "/${mediaType}/${id}"
-
-        val posterBaseUrl = "https://image.tmdb.org/t/p/w500"
-        val posterUrl = if (posterPath != null) "$posterBaseUrl$posterPath" else null
-
-        return provider.newMovieSearchResponse(
-            finalTitle,
-            url,
-            type,
-            false
-        ) {
-            this.posterUrl = posterUrl
-            val year = (releaseDate ?: firstAirDate)?.substringBefore("-")?.toIntOrNull()
-            this.year = year
-        }
-    }
-}
-
-data class TmdbDetail(
-    @JsonProperty("id") val id: Int? = null,
-    @JsonProperty("title") val title: String? = null,
-    @JsonProperty("name") val name: String? = null,
-    @JsonProperty("overview") val overview: String? = null,
-    @JsonProperty("poster_path") val posterPath: String? = null,
-    @JsonProperty("backdrop_path") val backdropPath: String? = null,
-    @JsonProperty("release_date") val releaseDate: String? = null,
-    @JsonProperty("first_air_date") val firstAirDate: String? = null,
-    @JsonProperty("vote_average") val voteAverage: Double? = null,
-    @JsonProperty("genres") val genres: ArrayList<TmdbGenre>? = arrayListOf(),
-    @JsonProperty("credits") val credits: TmdbCredits? = null, 
-    @JsonProperty("videos") val videos: TmdbVideos? = null, 
-    @JsonProperty("seasons") val seasons: ArrayList<TmdbSeason>? = arrayListOf(), 
-) {
-    data class TmdbGenre(
-        @JsonProperty("name") val name: String? = null,
-    )
-    
-    data class TmdbCredits(
-        @JsonProperty("cast") val cast: ArrayList<TmdbCast>? = arrayListOf(),
-    )
-    
-    data class TmdbCast(
-        @JsonProperty("name") val name: String? = null,
-        @JsonProperty("character") val character: String? = null,
-        @JsonProperty("profile_path") val profilePath: String? = null,
-    )
-
-    data class TmdbVideos(
-        @JsonProperty("results") val results: ArrayList<TmdbVideoItem>? = arrayListOf(),
-    )
-
-    data class TmdbVideoItem(
-        @JsonProperty("site") val site: String? = null,
-        @JsonProperty("type") val type: String? = null,
-        @JsonProperty("key") val key: String? = null,
-    )
-
-    data class TmdbSeason(
-        @JsonProperty("season_number") val seasonNumber: Int? = null,
-        @JsonProperty("episode_count") val episodeCount: Int? = null,
-    )
-}
+    @JsonProperty("trailer") val trailer: Trailer?
