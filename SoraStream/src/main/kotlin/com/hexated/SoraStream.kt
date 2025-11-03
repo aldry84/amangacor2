@@ -47,7 +47,7 @@ open class SoraStream : TmdbProvider() {
         const val gdbot = "https://gdtot.pro"
         const val anilistAPI = "https://graphql.anilist.co"
         const val malsyncAPI = "https://api.malsync.moe"
-        const val jikanAPI = "https://api.jikan.moe/4"
+        const val jikanAPI = "https://api.jikan.moe/v4"
 
         private const val apiKey = "1cfadd9dbfc534abf6de40e1e7eaf4c7"
 
@@ -148,19 +148,24 @@ open class SoraStream : TmdbProvider() {
     }
 
     override suspend fun load(url: String): LoadResponse? {
+        // PERBAIKAN: Gunakan try-catch untuk menangani kasus di mana 'url' adalah URL mentah
         val data = try {
-            // Mencoba mem-parsing string sebagai JSON Data (alur normal)
+            // ALUR NORMAL: Mencoba mem-parsing string sebagai JSON Data internal
             parseJson<Data>(url)
         } catch (e: Exception) {
-            // FIX: Jika parsing gagal (karena 'url' adalah URL TMDB mentah),
-            // maka kita akan mencoba mengekstrak ID TMDB dan tipe media secara manual.
+            // ALUR PERBAIKAN: Jika parsing JSON gagal (karena 'url' adalah URL mentah)
+            
+            // 1. Ekstrak ID TMDB (angka setelah '/movie/' atau '/tv/')
             val tmdbId = Regex("""(?:movie|tv)/(\d+)""").find(url)?.groupValues?.get(1)?.toIntOrNull()
+            
+            // 2. Tentukan Tipe Media
             val type = when {
                 url.contains("/movie/") -> "movie"
                 url.contains("/tv/") -> "tv"
                 else -> null
             }
             
+            // 3. Jika ekstraksi berhasil, buat objek Data baru. Jika gagal, lempar error asli.
             if (tmdbId == null || type == null) throw e
             Data(id = tmdbId, type = type)
         }
@@ -483,7 +488,7 @@ open class SoraStream : TmdbProvider() {
         @JsonProperty("still_path") val stillPath: String? = null,
         @JsonProperty("vote_average") val voteAverage: Double? = null,
         @JsonProperty("episode_number") val episodeNumber: Int? = null,
-        @JsonProperty("season_number") val season_number: Int? = null,
+        @JsonProperty("season_number") val seasonNumber: Int? = null,
     )
 
     data class MediaDetailEpisodes(
