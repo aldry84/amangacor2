@@ -46,7 +46,7 @@ class Adi21 : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val id = url.substringAfterLast("/")
+        val id = url.substringAfterLast("/").toIntOrNull() ?: return throw ErrorLoadingException("Invalid ID")
         val isTv = url.contains("/tv")
         val detailUrl = if (isTv) "$mainUrl/tv/$id?api_key=$apiKey" else "$mainUrl/movie/$id?api_key=$apiKey"
         val videoUrl = if (isTv) "$mainUrl/tv/$id/videos?api_key=$apiKey" else "$mainUrl/movie/$id/videos?api_key=$apiKey"
@@ -57,6 +57,7 @@ class Adi21 : MainAPI() {
         }?.key
 
         val trailer = trailerKey?.let { "https://www.youtube.com/watch?v=$it" }
+        val episodes = if (isTv) getEpisodes(id) else mutableListOf(newEpisode(url) { name = "Watch" })
 
         return newMovieLoadResponse(
             name = detail.title ?: detail.name ?: "Unknown",
@@ -70,10 +71,31 @@ class Adi21 : MainAPI() {
             plot = detail.overview
             tags = detail.genres.map { it.name }
             trailers = trailer?.let { mutableListOf(TrailerData("Trailer", it)) } ?: mutableListOf()
-            episodes = mutableListOf(newEpisode(url) {
-                name = "Watch"
-            })
+            this.episodes = episodes
         }
+    }
+
+    private suspend fun getEpisodes(tvId: Int): MutableList<Episode> {
+        val seasonListUrl = "$mainUrl/tv/$tvId?api_key=$apiKey"
+        val tvDetail = app.get(seasonListUrl).parsed<TmdbDetail>()
+        val seasons = tvDetail.seasons ?: return mutableListOf()
+
+        val episodes = mutableListOf<Episode>()
+        for (season in seasons) {
+            val seasonId = season.season_number
+            val seasonDetailUrl = "$mainUrl/tv/$tvId/season/$seasonId?api_key=$apiKey"
+            val seasonDetail = app.get(seasonDetailUrl).parsed<TmdbSeasonDetail>()
+            seasonDetail.episodes.forEach {
+                episodes.add(
+                    newEpisode("https://vidsrc.cc/embed/$tvId") {
+                        name = "S${seasonId}E${it.episode_number} - ${it.name}"
+                        posterUrl = "https://image.tmdb.org/t/p/w500${it.still_path}"
+                        description = it.overview
+                    }
+                )
+            }
+        }
+        return episodes
     }
 
     override suspend fun loadLinks(
@@ -96,6 +118,23 @@ class Adi21 : MainAPI() {
                 )
             )
         }
+
+        val altUrl = data.replace("vidsrc.cc", "vidplay.to")
+        val altDoc = app.get(altUrl).document
+        val altVideo = altDoc.select("video source").attr("src")
+        if (altVideo.isNotBlank()) {
+            callback(
+                newExtractorLink(
+                    source = "vidplay.to",
+                    name = "Vidplay",
+                    url = altVideo,
+                    referer = altUrl,
+                    quality = 720,
+                    isM3u8 = altVideo.endsWith(".m3u8")
+                )
+            )
+        }
+
         return true
     }
 }
