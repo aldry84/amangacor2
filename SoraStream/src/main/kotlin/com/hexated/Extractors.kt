@@ -9,7 +9,7 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.getAndUnpack
 import com.lagradost.cloudstream3.utils.newExtractorLink
-import com.lagradost.cloudstream3.utils.newSubtitleFile // BARIS BARU: Menambahkan impor newSubtitleFile
+import com.lagradost.cloudstream3.utils.newSubtitleFile // PERBAIKAN: Menambahkan impor yang hilang
 
 open class Jeniusplay2 : ExtractorApi() {
     override val name = "Jeniusplay"
@@ -50,7 +50,7 @@ open class Jeniusplay2 : ExtractorApi() {
                     getAndUnpack(script.data()).substringAfter("\"tracks\":[").substringBefore("],")
                 tryParseJson<List<Tracks>>("[$subData]")?.map { subtitle ->
                     subtitleCallback.invoke(
-                        newSubtitleFile( // PERBAIKAN: Fungsi ini sekarang dikenali
+                        newSubtitleFile( // PERBAIKAN: Mengganti SubtitleFile(...)
                             getLanguage(subtitle.label ?: ""),
                             subtitle.file
                         )
@@ -59,4 +59,24 @@ open class Jeniusplay2 : ExtractorApi() {
             }
         }
     }
-// ... sisa kode ...
+
+    private fun getLanguage(str: String): String {
+        return when {
+            str.contains("indonesia", true) || str
+                .contains("bahasa", true) -> "Indonesian"
+            else -> str
+        }
+    }
+
+    data class ResponseSource(
+        @JsonProperty("hls") val hls: Boolean,
+        @JsonProperty("videoSource") val videoSource: String,
+        @JsonProperty("securedLink") val securedLink: String?,
+    )
+
+    data class Tracks(
+        @JsonProperty("kind") val kind: String?,
+        @JsonProperty("file") val file: String,
+        @JsonProperty("label") val label: String?,
+    )
+}
