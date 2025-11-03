@@ -7,11 +7,11 @@ data class TmdbSearchResult(
 
 data class TmdbItem(
     val id: Int,
-    val name: String?,              // For TV series
-    val title: String?,             // For movies
+    val name: String?,            // For TV series
+    val title: String?,           // For movies
     val poster_path: String?,
-    val release_date: String?,      // For movies
-    val first_air_date: String?,    // For TV series
+    val release_date: String?,    // For movies
+    val first_air_date: String?,   // For TV series
     val media_type: String? = null  // Used in combined credits
 )
 
