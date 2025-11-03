@@ -19,9 +19,9 @@ import okhttp3.RequestBody.Companion.toRequestBody
  * or replace "<YOUR_TMDB_API_KEY>" locally BEFORE building.
  */
 
-class Adi21 : MainAPI() { // FIX 5: Renamed from Adi21Hybrid to Adi21
+class Adi21 : MainAPI() {
     override var mainUrl = "https://api.themoviedb.org/3"
-    override var name = "Adi21" // FIX 5: Renamed for consistency
+    override var name = "Adi21"
     override val hasMainPage = true
     override val hasQuickSearch = true
     override var lang = "en"
@@ -71,14 +71,15 @@ class Adi21 : MainAPI() { // FIX 5: Renamed from Adi21Hybrid to Adi21
         val items = resp?.results ?: emptyList()
 
         val home = items.map { m ->
-            newMovieSearchResponse( // FIX 1: Removed 'provider.'
+            newMovieSearchResponse(
                 m.titleOrName(),
                 m.id.toString(),
                 if (m.isTv()) TvType.TvSeries else TvType.Movie,
                 false
             ) {
                 this.posterUrl = m.posterFullPath()
-                this.plot = m.overview // FIX 2: Changed 'description' to 'plot'
+                // FIX 1: Mengganti 'plot' ke 'description' di SearchResponse builder (Baris 81)
+                this.description = m.overview 
             }
         }
 
@@ -88,7 +89,6 @@ class Adi21 : MainAPI() { // FIX 5: Renamed from Adi21Hybrid to Adi21
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
     override suspend fun search(query: String): List<SearchResponse> {
-        // FIX 3: Refactored to use 'params' map to automatically handle URL encoding
         val url = "$mainUrl/search/multi"
         val resp = app.get(
             url,
@@ -104,14 +104,15 @@ class Adi21 : MainAPI() { // FIX 5: Renamed from Adi21Hybrid to Adi21
         return items.mapNotNull { m ->
             // Filter out non-movie/tv if needed
             if (m.media_type == "person") return@mapNotNull null
-            newMovieSearchResponse( // FIX 4: Removed 'provider.'
+            newMovieSearchResponse(
                 m.titleOrName(),
                 m.id.toString(),
                 if (m.isTv()) TvType.TvSeries else TvType.Movie,
                 false
             ) {
                 this.posterUrl = m.posterFullPath()
-                this.plot = m.overview // FIX 5: Changed 'description' to 'plot'
+                // FIX 1: Mengganti 'plot' ke 'description' di SearchResponse builder (Baris 114)
+                this.description = m.overview 
             }
         }
     }
@@ -129,7 +130,8 @@ class Adi21 : MainAPI() { // FIX 5: Renamed from Adi21Hybrid to Adi21
         }
 
         val id = idStr
-        val detailsUrl = if (isTv) "$mainUrl/tv/$id/videos?api_key=$apiKey&language=en-US" else "$mainUrl/movie/$id/videos?api_key=$apiKey&language=en-US"
+        // Memperbaiki URL detail agar tidak salah ke endpoint /videos
+        val detailsUrl = if (isTv) "$mainUrl/tv/$id?api_key=$apiKey&language=en-US" else "$mainUrl/movie/$id?api_key=$apiKey&language=en-US"
         val details = app.get(detailsUrl).parsedSafe<TMDBDetail>() ?: throw ErrorLoadingException("No detail")
 
         val title = details.titleOrName()
@@ -155,7 +157,7 @@ class Adi21 : MainAPI() { // FIX 5: Renamed from Adi21Hybrid to Adi21
             newMovieLoadResponse(title, "tmdb://tv/$id", TvType.TvSeries, data.toJson()) {
                 this.posterUrl = poster
                 this.year = year
-                this.plot = description
+                this.plot = description // 'plot' is correct here for LoadResponse
                 this.score = score
                 addTrailer(trailerUrl, addRaw = true)
             }
@@ -163,7 +165,7 @@ class Adi21 : MainAPI() { // FIX 5: Renamed from Adi21Hybrid to Adi21
             newMovieLoadResponse(title, "tmdb://movie/$id", TvType.Movie, data.toJson()) {
                 this.posterUrl = poster
                 this.year = year
-                this.plot = description
+                this.plot = description // 'plot' is correct here for LoadResponse
                 this.score = score
                 addTrailer(trailerUrl, addRaw = true)
             }
@@ -189,17 +191,18 @@ class Adi21 : MainAPI() { // FIX 5: Renamed from Adi21Hybrid to Adi21
             "$vidSrcBase/movie/$tmdbId"
         }
 
-        // FIX 6 & 7: Properties referer, quality, and isM3u8 passed directly to newExtractorLink
+        // FIX 2, 3, 4: Mengembalikan penggunaan lambda builder untuk mengatur properti
         callback.invoke(
             newExtractorLink(
-                name = this.name,
-                source = "Vidsrc",
-                url = embedUrl,
-                type = INFER_TYPE,
-                referer = "https://vidsrc.cc/",
-                quality = Qualities.Unknown.value, // FIX 6: Used .value
-                isM3u8 = false
-            )
+                this.name,
+                "Vidsrc",
+                embedUrl,
+                INFER_TYPE
+            ) {
+                this.referer = "https://vidsrc.cc/" // OK: referer di dalam builder
+                this.quality = Qualities.Unknown.value // OK: quality di dalam builder
+                this.isM3u8 = false // OK: isM3u8 di dalam builder
+            }
         )
 
         // Vidsrc sometimes hosts subtitles inside the embed — if you have a subtitle extraction step,
