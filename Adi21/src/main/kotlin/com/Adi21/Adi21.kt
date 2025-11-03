@@ -50,6 +50,8 @@ class Adi21 : MainAPI() {
         val isTv = url.contains("/tv")
         val detailUrl = if (isTv) "$mainUrl/tv/$id?api_key=$apiKey" else "$mainUrl/movie/$id?api_key=$apiKey"
         val videoUrl = if (isTv) "$mainUrl/tv/$id/videos?api_key=$apiKey" else "$mainUrl/movie/$id/videos?api_key=$apiKey"
+        val creditsUrl = if (isTv) "$mainUrl/tv/$id/credits?api_key=$apiKey" else "$mainUrl/movie/$id/credits?api_key=$apiKey"
+        val reviewUrl = if (isTv) "$mainUrl/tv/$id/reviews?api_key=$apiKey" else "$mainUrl/movie/$id/reviews?api_key=$apiKey"
 
         val detail = app.get(detailUrl).parsed<TmdbDetail>()
         val trailerKey = app.get(videoUrl).parsed<TmdbVideoResult>().results.firstOrNull {
@@ -59,6 +61,8 @@ class Adi21 : MainAPI() {
         val trailer = trailerKey?.let { "https://www.youtube.com/watch?v=$it" }
         val episodes = if (isTv) getEpisodes(id) else mutableListOf(newEpisode(url) { name = "Watch" })
         val recommendations = getRecommendations(id, isTv)
+        val cast = getCast(creditsUrl)
+        val (userRating, userReview) = getReviews(reviewUrl)
 
         return newMovieLoadResponse(
             name = detail.title ?: detail.name ?: "Unknown",
@@ -69,12 +73,33 @@ class Adi21 : MainAPI() {
         ) {
             posterUrl = "https://image.tmdb.org/t/p/w500${detail.poster_path}"
             year = detail.release_date?.take(4)?.toIntOrNull() ?: detail.first_air_date?.take(4)?.toIntOrNull()
-            plot = detail.overview
+            plot = detail.overview + if (userReview != null) "\n\n💬 Review: $userReview" else ""
             tags = detail.genres.map { it.name }
             trailers = trailer?.let { mutableListOf(TrailerData("Trailer", it)) } ?: mutableListOf()
             this.episodes = episodes
             this.recommendations = recommendations
+            this.actors = cast
+            score = userRating?.let { Score(it) }
         }
+    }
+
+    private suspend fun getCast(url: String): List<ActorData> {
+        val credits = app.get(url).parsed<TmdbCredits>()
+        return credits.cast.take(10).map {
+            ActorData(
+                actor = it.name,
+                role = it.character,
+                image = it.profile_path?.let { path -> "https://image.tmdb.org/t/p/w500$path" }
+            )
+        }
+    }
+
+    private suspend fun getReviews(url: String): Pair<Float?, String?> {
+        val json = app.get(url).parsed<TmdbReviewResult>()
+        val firstReview = json.results.firstOrNull()
+        val rating = firstReview?.author_details?.rating?.toFloatOrNull()
+        val reviewText = firstReview?.content?.take(300)?.plus("…")
+        return Pair(rating, reviewText)
     }
 
     private suspend fun getEpisodes(tvId: Int): MutableList<Episode> {
