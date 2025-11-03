@@ -36,7 +36,7 @@ class Adi21Hybrid : MainAPI() {
     // 1) Set environment variable TMDB_API_KEY
     // 2) Or replace "<YOUR_TMDB_API_KEY>" locally (not recommended for public repos)
     private val apiKey: String by lazy {
-        System.getenv("TMDB_API_KEY") ?: "<YOUR_TMDB_API_KEY>"
+        System.getenv("TMDB_API_KEY") ?: "<1cfadd9dbfc534abf6de40e1e7eaf4c7>"
     }
 
     // Vidsrc base for embed:
