@@ -256,4 +256,125 @@ data class Items(
     @JsonProperty("cover") val cover: Cover? = null,
     @JsonProperty("imdbRatingValue") val imdbRatingValue: String? = null,
     @JsonProperty("countryName") val countryName: String? = null,
-    @JsonProperty("trailer") val trailer: Trailer?
+    @JsonProperty("trailer") val trailer: Trailer? = null,
+    @JsonProperty("detailPath") val detailPath: String? = null,
+) {
+    fun toSearchResponse(provider: Adicinemax): SearchResponse { 
+        return provider.newMovieSearchResponse(
+            title ?: "",
+            subjectId ?: "",
+            if (subjectType == 1) TvType.Movie else TvType.TvSeries,
+            false
+        ) {
+            this.posterUrl = cover?.url
+        }
+    }
+
+    data class Cover(
+        @JsonProperty("url") val url: String? = null,
+    )
+
+    data class Trailer(
+        @JsonProperty("videoAddress") val videoAddress: VideoAddress? = null,
+    ) {
+        data class VideoAddress(
+            @JsonProperty("url") val url: String? = null,
+        )
+    }
+}
+
+
+// ====================================================================
+// --- DATA CLASS BARU UNTUK TMDb ---
+// ====================================================================
+
+data class TmdbSearchResponse(
+    @JsonProperty("page") val page: Int? = null,
+    @JsonProperty("results") val results: ArrayList<TmdbSearchItem>? = arrayListOf(),
+    @JsonProperty("total_pages") val totalPages: Int? = null,
+    @JsonProperty("total_results") val totalResults: Int? = null
+)
+
+data class TmdbSearchItem(
+    @JsonProperty("id") val id: Int? = null,
+    @JsonProperty("media_type") val mediaType: String? = null, 
+    @JsonProperty("title") val title: String? = null, 
+    @JsonProperty("name") val name: String? = null, 
+    @JsonProperty("poster_path") val posterPath: String? = null,
+    @JsonProperty("release_date") val releaseDate: String? = null, 
+    @JsonProperty("first_air_date") val firstAirDate: String? = null, 
+) {
+    fun toSearchResponse(provider: Adicinemax): SearchResponse? {
+        if (mediaType == "person" || id == null) return null
+
+        val type = when (mediaType) {
+            "movie" -> TvType.Movie
+            "tv" -> TvType.TvSeries
+            else -> return null
+        }
+        
+        val finalTitle = title ?: name ?: return null
+
+        // URL yang akan digunakan di fungsi load: Adicinemax/movie/{id} atau Adicinemax/tv/{id}
+        val url = provider.name + "/${mediaType}/${id}"
+
+        val posterBaseUrl = "https://image.tmdb.org/t/p/w500"
+        val posterUrl = if (posterPath != null) "$posterBaseUrl$posterPath" else null
+
+        return provider.newMovieSearchResponse(
+            finalTitle,
+            url,
+            type,
+            false
+        ) {
+            this.posterUrl = posterUrl
+            val year = (releaseDate ?: firstAirDate)?.substringBefore("-")?.toIntOrNull()
+            this.year = year
+        }
+    }
+}
+
+data class TmdbDetail(
+    @JsonProperty("id") val id: Int? = null,
+    @JsonProperty("title") val title: String? = null,
+    @JsonProperty("name") val name: String? = null,
+    @JsonProperty("overview") val overview: String? = null,
+    @JsonProperty("poster_path") val posterPath: String? = null,
+    @JsonProperty("backdrop_path") val backdropPath: String? = null,
+    @JsonProperty("release_date") val releaseDate: String? = null,
+    @JsonProperty("first_air_date") val firstAirDate: String? = null,
+    @JsonProperty("vote_average") val voteAverage: Double? = null,
+    @JsonProperty("genres") val genres: ArrayList<TmdbGenre>? = arrayListOf(),
+    @JsonProperty("credits") val credits: TmdbCredits? = null, 
+    @JsonProperty("videos") val videos: TmdbVideos? = null, 
+    @JsonProperty("seasons") val seasons: ArrayList<TmdbSeason>? = arrayListOf(), 
+) {
+    data class TmdbGenre(
+        @JsonProperty("name") val name: String? = null,
+    )
+    
+    data class TmdbCredits(
+        @JsonProperty("cast") val cast: ArrayList<TmdbCast>? = arrayListOf(),
+    )
+    
+    data class TmdbCast(
+        @JsonProperty("name") val name: String? = null,
+        @JsonProperty("character") val character: String? = null,
+        @JsonProperty("profile_path") val profilePath: String? = null,
+    )
+
+    data class TmdbVideos(
+        @JsonProperty("results") val results: ArrayList<TmdbVideoItem>? = arrayListOf(),
+    )
+
+    data class TmdbVideoItem(
+        @JsonProperty("site") val site: String? = null,
+        @JsonProperty("type") val type: String? = null,
+        @JsonProperty("key") val key: String? = null,
+    )
+
+    data class TmdbSeason(
+        @JsonProperty("season_number") val seasonNumber: Int? = null,
+        @JsonProperty("episode_count") val episodeCount: Int? = null,
+    )
+}
