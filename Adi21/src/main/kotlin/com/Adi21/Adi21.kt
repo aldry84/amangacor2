@@ -46,7 +46,7 @@ class Adi21 : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val id = url.substringAfterLast("/").toIntOrNull() ?: return throw ErrorLoadingException("Invalid ID")
+        val id = url.substringAfterLast("/").toIntOrNull() ?: throw ErrorLoadingException("Invalid ID")
         val isTv = url.contains("/tv")
         val detailUrl = if (isTv) "$mainUrl/tv/$id?api_key=$apiKey" else "$mainUrl/movie/$id?api_key=$apiKey"
         val videoUrl = if (isTv) "$mainUrl/tv/$id/videos?api_key=$apiKey" else "$mainUrl/movie/$id/videos?api_key=$apiKey"
@@ -120,20 +120,8 @@ class Adi21 : MainAPI() {
         }
 
         val altUrl = data.replace("vidsrc.cc", "vidplay.to")
-        val altDoc = app.get(altUrl).document
-        val altVideo = altDoc.select("video source").attr("src")
-        if (altVideo.isNotBlank()) {
-            callback(
-                newExtractorLink(
-                    source = "vidplay.to",
-                    name = "Vidplay",
-                    url = altVideo,
-                    referer = altUrl,
-                    quality = 720,
-                    isM3u8 = altVideo.endsWith(".m3u8")
-                )
-            )
-        }
+        val vidplayLinks = VidplayExtractor().getUrl(altUrl, null)
+        vidplayLinks.forEach { callback(it) }
 
         return true
     }
