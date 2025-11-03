@@ -78,8 +78,8 @@ class Adi21 : MainAPI() {
                 false
             ) {
                 this.posterUrl = m.posterFullPath()
-                // FIX 1: Mengganti 'plot' ke 'description' di SearchResponse builder (Baris 81)
-                this.description = m.overview 
+                // FIX 1: Mengubah 'description' kembali ke 'plot' untuk SearchResponse builder (Baris 82)
+                this.plot = m.overview 
             }
         }
 
@@ -111,8 +111,8 @@ class Adi21 : MainAPI() {
                 false
             ) {
                 this.posterUrl = m.posterFullPath()
-                // FIX 1: Mengganti 'plot' ke 'description' di SearchResponse builder (Baris 114)
-                this.description = m.overview 
+                // FIX 1: Mengubah 'description' kembali ke 'plot' untuk SearchResponse builder (Baris 115)
+                this.plot = m.overview 
             }
         }
     }
@@ -130,7 +130,7 @@ class Adi21 : MainAPI() {
         }
 
         val id = idStr
-        // Memperbaiki URL detail agar tidak salah ke endpoint /videos
+        // Memperbaiki URL detail
         val detailsUrl = if (isTv) "$mainUrl/tv/$id?api_key=$apiKey&language=en-US" else "$mainUrl/movie/$id?api_key=$apiKey&language=en-US"
         val details = app.get(detailsUrl).parsedSafe<TMDBDetail>() ?: throw ErrorLoadingException("No detail")
 
@@ -157,7 +157,7 @@ class Adi21 : MainAPI() {
             newMovieLoadResponse(title, "tmdb://tv/$id", TvType.TvSeries, data.toJson()) {
                 this.posterUrl = poster
                 this.year = year
-                this.plot = description // 'plot' is correct here for LoadResponse
+                this.plot = description 
                 this.score = score
                 addTrailer(trailerUrl, addRaw = true)
             }
@@ -165,7 +165,7 @@ class Adi21 : MainAPI() {
             newMovieLoadResponse(title, "tmdb://movie/$id", TvType.Movie, data.toJson()) {
                 this.posterUrl = poster
                 this.year = year
-                this.plot = description // 'plot' is correct here for LoadResponse
+                this.plot = description 
                 this.score = score
                 addTrailer(trailerUrl, addRaw = true)
             }
@@ -191,7 +191,6 @@ class Adi21 : MainAPI() {
             "$vidSrcBase/movie/$tmdbId"
         }
 
-        // FIX 2, 3, 4: Mengembalikan penggunaan lambda builder untuk mengatur properti
         callback.invoke(
             newExtractorLink(
                 this.name,
@@ -199,9 +198,10 @@ class Adi21 : MainAPI() {
                 embedUrl,
                 INFER_TYPE
             ) {
-                this.referer = "https://vidsrc.cc/" // OK: referer di dalam builder
-                this.quality = Qualities.Unknown.value // OK: quality di dalam builder
-                this.isM3u8 = false // OK: isM3u8 di dalam builder
+                // FIX 2: Menghapus 'val' yang menyebabkan 'val cannot be reassigned' (Baris 204)
+                this.referer = "https://vidsrc.cc/" 
+                this.quality = Qualities.Unknown.value
+                this.isM3u8 = false 
             }
         )
 
