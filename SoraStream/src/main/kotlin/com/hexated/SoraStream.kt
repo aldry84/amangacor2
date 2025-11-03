@@ -148,28 +148,7 @@ open class SoraStream : TmdbProvider() {
     }
 
     override suspend fun load(url: String): LoadResponse? {
-        // PERBAIKAN: Gunakan try-catch untuk menangani kasus di mana 'url' adalah URL mentah
-        val data = try {
-            // ALUR NORMAL: Mencoba mem-parsing string sebagai JSON Data internal
-            parseJson<Data>(url)
-        } catch (e: Exception) {
-            // ALUR PERBAIKAN: Jika parsing JSON gagal (karena 'url' adalah URL mentah)
-            
-            // 1. Ekstrak ID TMDB (angka setelah '/movie/' atau '/tv/')
-            val tmdbId = Regex("""(?:movie|tv)/(\d+)""").find(url)?.groupValues?.get(1)?.toIntOrNull()
-            
-            // 2. Tentukan Tipe Media
-            val type = when {
-                url.contains("/movie/") -> "movie"
-                url.contains("/tv/") -> "tv"
-                else -> null
-            }
-            
-            // 3. Jika ekstraksi berhasil, buat objek Data baru. Jika gagal, lempar error asli.
-            if (tmdbId == null || type == null) throw e
-            Data(id = tmdbId, type = type)
-        }
-        
+        val data = parseJson<Data>(url)
         val type = getType(data.type)
         val append = "alternative_titles,credits,external_ids,keywords,videos,recommendations"
         val resUrl = if (type == TvType.Movie) {
