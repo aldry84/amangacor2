@@ -1,8 +1,7 @@
 package com.Adi21
 
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.extractors.*
-import com.lagradost.cloudstream3.utils.*
+import com.lagradost.cloudstream3.extractors.ExtractorApi
 
 class VidplayExtractor : ExtractorApi() {
     override val name = "Vidplay"
@@ -15,12 +14,12 @@ class VidplayExtractor : ExtractorApi() {
 
         return if (videoUrl.isNotBlank()) {
             listOf(
-                newExtractorLink(
+                ExtractorLink(
+                    name = name,
                     source = name,
-                    name = "Vidplay",
                     url = videoUrl,
                     referer = url,
-                    quality = getQualityFromName(videoUrl),
+                    quality = getQualityFromUrl(videoUrl),
                     isM3u8 = videoUrl.endsWith(".m3u8")
                 )
             )
@@ -29,13 +28,6 @@ class VidplayExtractor : ExtractorApi() {
         }
     }
 
-    private fun getQualityFromName(url: String): Int {
+    private fun getQualityFromUrl(url: String): Int {
         return when {
-            "1080" in url -> Qualities.FHD.value
-            "720" in url -> Qualities.HD.value
-            "480" in url -> Qualities.SD.value
-            "360" in url -> Qualities.SD.value
-            else -> Qualities.Unknown.value
-        }
-    }
-}
+            "1080
