@@ -1,4 +1,4 @@
-package com.AdicinemaxNew // PACKAGE BARU
+package com.AdicinemaxNew // PACKAGE BARU UNIK
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
@@ -13,7 +13,7 @@ class Adicinemax : MainAPI() {
     // Kunci API TMDb dimasukkan
     override var mainUrl = "https://api.themoviedb.org/3" 
     private val tmdbApiKey = "1cfadd9dbfc534abf6de40e1e7eaf4c7" // Kunci API Anda
-    private val apiUrl = "https://fmoviesunblocked.net" 
+    private val apiUrl = "https://fmoviesunblocked.net" // API Streaming Lama
     
     override val instantLinkLoading = true
     override var name = "Adicinemax" 
@@ -46,17 +46,15 @@ class Adicinemax : MainAPI() {
             .parsedSafe<TmdbSearchResponse>() 
             ?.results
             ?.mapNotNull { item -> 
-                item.toSearchResponse(this) // Referensi 'this' (Adicinemax) tidak berubah
+                item.toSearchResponse(this) 
             } ?: emptyList()
     }
 
     // FUNGSI LOAD: Menggunakan TMDb
     override suspend fun load(url: String): LoadResponse {
-        // url: Adicinemax/{mediaType}/{id}
         val type = url.substringAfter('/').substringBefore('/') 
         val id = url.substringAfterLast('/')
 
-        // Endpoint TMDb memerlukan 'append_to_response'
         val detailUrl = "$mainUrl/$type/$id?api_key=$tmdbApiKey&append_to_response=credits,videos&language=en-US"
         
         val document = app.get(detailUrl).parsedSafe<TmdbDetail>()
@@ -132,27 +130,31 @@ class Adicinemax : MainAPI() {
         }
     }
 
-    // FUNGSI loadLinks
+    // FUNGSI loadLinks: FIX UNTUK ERROR 'List is empty.'
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
+
         val media = parseJson<LoadData>(data)
-        
         val referer = "$apiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&lang=en"
 
+        // Panggilan API Streaming Lama
         val streams = app.get(
             "$apiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}",
             referer = referer
         ).parsedSafe<Media>()?.data?.streams
 
-        streams?.reversed()?.distinctBy { it.url }?.map { source ->
+        
+        val validStreams = streams?.reversed()?.distinctBy { it.url }
+
+        validStreams?.map { source ->
             callback.invoke(
                 newExtractorLink(
-                    this.name, 
-                    this.name, 
+                    this.name,
+                    this.name,
                     source.url ?: return@map,
                     INFER_TYPE
                 ) {
@@ -161,28 +163,35 @@ class Adicinemax : MainAPI() {
                 }
             )
         }
+        
+        // --- LOGIKA SUBTITLE ---
+        if (!validStreams.isNullOrEmpty()) {
+            val id = validStreams.first()?.id
+            val format = validStreams.first()?.format
 
-        val id = streams?.first()?.id
-        val format = streams?.first()?.format
-
-        app.get(
-            "$apiUrl/wefeed-h5-bff/web/subject/caption?format=$format&id=$id&subjectId=${media.id}",
-            referer = referer
-        ).parsedSafe<Media>()?.data?.captions?.map { subtitle ->
-            subtitleCallback.invoke(
-                newSubtitleFile( 
-                    subtitle.lanName ?: "",
-                    subtitle.url ?: return@map
-                )
-            )
+            if (id != null && format != null) {
+                 app.get(
+                    "$apiUrl/wefeed-h5-bff/web/subject/caption?format=$format&id=$id&subjectId=${media.id}",
+                    referer = referer
+                ).parsedSafe<Media>()?.data?.captions?.map { subtitle ->
+                    subtitleCallback.invoke(
+                        newSubtitleFile(
+                            subtitle.lanName ?: "",
+                            subtitle.url ?: return@map
+                        )
+                    )
+                }
+            }
         }
 
-        return true
+        // Return true untuk memberitahu Cloudstream bahwa proses selesai,
+        // meskipun tidak ada link yang ditemukan.
+        return true 
     }
 }
 
 // ====================================================================
-// --- DATA CLASS STREAMING LAMA ---
+// --- DATA CLASS UNTUK API STREAMING LAMA ($apiUrl) ---
 // ====================================================================
 
 data class LoadData(
