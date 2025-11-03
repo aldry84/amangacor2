@@ -9,14 +9,15 @@ import com.lagradost.nicehttp.RequestBodyTypes
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 
-class Adicinemax : MainAPI() { 
+// NAMA KELAS API DIUBAH
+class AdicinemaxProvider : MainAPI() { 
     // Kunci API TMDb dimasukkan
     override var mainUrl = "https://api.themoviedb.org/3" 
     private val tmdbApiKey = "1cfadd9dbfc534abf6de40e1e7eaf4c7" // Kunci API Anda
     private val apiUrl = "https://fmoviesunblocked.net" // API Streaming Lama
     
     override val instantLinkLoading = true
-    override var name = "Adicinemax" 
+    override var name = "Adicinemax" // Nama yang muncul di UI tetap sama
     override val hasMainPage = false 
     override val hasQuickSearch = true
     override var lang = "en"
@@ -46,7 +47,7 @@ class Adicinemax : MainAPI() {
             .parsedSafe<TmdbSearchResponse>() 
             ?.results
             ?.mapNotNull { item -> 
-                item.toSearchResponse(this) 
+                item.toSearchResponse(this) // 'this' sekarang adalah AdicinemaxProvider
             } ?: emptyList()
     }
 
@@ -175,7 +176,7 @@ class Adicinemax : MainAPI() {
                     referer = referer
                 ).parsedSafe<Media>()?.data?.captions?.map { subtitle ->
                     subtitleCallback.invoke(
-                        newSubtitleFile(
+                        newSubtitleFile( 
                             subtitle.lanName ?: "",
                             subtitle.url ?: return@map
                         )
@@ -184,8 +185,6 @@ class Adicinemax : MainAPI() {
             }
         }
 
-        // Return true untuk memberitahu Cloudstream bahwa proses selesai,
-        // meskipun tidak ada link yang ditemukan.
         return true 
     }
 }
@@ -265,7 +264,7 @@ data class Items(
     @JsonProperty("trailer") val trailer: Trailer? = null,
     @JsonProperty("detailPath") val detailPath: String? = null,
 ) {
-    fun toSearchResponse(provider: Adicinemax): SearchResponse { 
+    fun toSearchResponse(provider: AdicinemaxProvider): SearchResponse { // REFERENSI PROVIDER DIUBAH
         return provider.newMovieSearchResponse(
             title ?: "",
             subjectId ?: "",
@@ -310,7 +309,7 @@ data class TmdbSearchItem(
     @JsonProperty("release_date") val releaseDate: String? = null, 
     @JsonProperty("first_air_date") val firstAirDate: String? = null, 
 ) {
-    fun toSearchResponse(provider: Adicinemax): SearchResponse? {
+    fun toSearchResponse(provider: AdicinemaxProvider): SearchResponse? { // REFERENSI PROVIDER DIUBAH
         if (mediaType == "person" || id == null) return null
 
         val type = when (mediaType) {
