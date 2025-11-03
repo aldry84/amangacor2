@@ -1,4 +1,4 @@
-package com.Adicinema
+package com.Adicinemax
 
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin // Harus ada
 import com.lagradost.cloudstream3.plugins.Plugin
