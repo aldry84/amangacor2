@@ -33,8 +33,8 @@ class Adicinemax : MainAPI() { // Nama kelas diubah
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse {
-        // PERBAIKAN: Menggunakan newHomePageResponse
-        return newHomePageResponse(emptyList(), false)
+        // PERBAIKAN DEPRECATION: Menggunakan newHomePageResponse
+        return newHomePageResponse(emptyList(), false) 
     }
 
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
@@ -173,7 +173,8 @@ class Adicinemax : MainAPI() { // Nama kelas diubah
             referer = referer
         ).parsedSafe<Media>()?.data?.captions?.map { subtitle ->
             subtitleCallback.invoke(
-                SubtitleFile(
+                // PERBAIKAN DEPRECATION: Menggunakan newSubtitleFile
+                newSubtitleFile( 
                     subtitle.lanName ?: "",
                     subtitle.url ?: return@map
                 )
@@ -285,7 +286,7 @@ data class Items(
 
 
 // ====================================================================
-// --- DATA CLASS BARU UNTUK TMDb ---
+// --- DATA CLASS UNTUK TMDb ---
 // ====================================================================
 
 data class TmdbSearchResponse(
@@ -315,7 +316,6 @@ data class TmdbSearchItem(
         
         val finalTitle = title ?: name ?: return null
 
-        // URL yang akan digunakan di fungsi load: Adicinemax/movie/{id} atau Adicinemax/tv/{id}
         val url = provider.name + "/${mediaType}/${id}"
 
         val posterBaseUrl = "https://image.tmdb.org/t/p/w500"
