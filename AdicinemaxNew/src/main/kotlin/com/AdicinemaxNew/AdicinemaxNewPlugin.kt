@@ -1,4 +1,4 @@
-package com.AdicinemaxNew 
+package com.AdicinemaxNew // PACKAGE BARU UNIK
 
 import com.lagradost.cloudstream3.plugins.BasePlugin
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
@@ -7,7 +7,7 @@ import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 class AdicinemaxNewPlugin: BasePlugin() { 
     
     override fun load() {
-        // PANGGIL KELAS DENGAN NAMA BARU
+        // MEMANGGIL KELAS API DENGAN NAMA BARU
         registerMainAPI(AdicinemaxProvider()) 
     }
 }
