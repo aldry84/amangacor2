@@ -94,7 +94,7 @@ suspend fun tmdbToAnimeId(title: String?, year: Int?, season: String?, type: TvT
         "variables" to variables
     ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
 
-    val res = app.post(SoraStream.anilistAPI, requestBody = data) // FIX: Kualifikasi SoraStream
+    val res = app.post(SoraStream.anilistAPI, requestBody = data)
         .parsedSafe<AniSearch>()?.data?.Page?.media?.firstOrNull()
     return AniIds(res?.id, res?.idMal)
 
@@ -323,14 +323,14 @@ fun getVipLanguage(str: String): String {
         "in_ID" -> "Indonesian"
         "pt" -> "Portuguese"
         else -> str.split("_").first().let {
-            SubtitleHelper.fromLanguageCode(it).toString() // PERBAIKAN: Mengganti with fromLanguageCode
+            SubtitleHelper.fromLanguageCode(it).toString() // PERBAIKAN: Menggunakan SubtitleHelper.fromLanguageCode
         }
     }
 }
 
 fun fixCrunchyrollLang(language: String?): String? {
-    return SubtitleHelper.fromLanguageCode(language ?: return null) // PERBAIKAN: Mengganti with fromLanguageCode
-        ?: SubtitleHelper.fromLanguageCode(language.substringBefore("-")) // PERBAIKAN: Mengganti with fromLanguageCode
+    return SubtitleHelper.fromLanguageCode(language ?: return null) // PERBAIKAN: Menggunakan SubtitleHelper.fromLanguageCode
+        ?: SubtitleHelper.fromLanguageCode(language.substringBefore("-")) // PERBAIKAN: Menggunakan SubtitleHelper.fromLanguageCode
 }
 
 fun getDeviceId(length: Int = 16): String {
