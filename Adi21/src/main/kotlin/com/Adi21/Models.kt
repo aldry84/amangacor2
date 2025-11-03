@@ -1,20 +1,21 @@
 package com.Adi21
 
-// Search results from TMDB
+// 🔍 Search results from TMDB
 data class TmdbSearchResult(
     val results: List<TmdbItem>
 )
 
 data class TmdbItem(
     val id: Int,
-    val name: String?,
-    val title: String?,
+    val name: String?,              // For TV series
+    val title: String?,             // For movies
     val poster_path: String?,
-    val release_date: String?,
-    val first_air_date: String?
+    val release_date: String?,      // For movies
+    val first_air_date: String?,    // For TV series
+    val media_type: String? = null  // Used in combined credits
 )
 
-// Detail metadata for movies and TV series
+// 📄 Detailed metadata for movies and TV series
 data class TmdbDetail(
     val title: String?,
     val name: String?,
@@ -35,7 +36,7 @@ data class TmdbSeason(
     val season_number: Int
 )
 
-// Episode list per season
+// 📺 Episode list per season
 data class TmdbSeasonDetail(
     val episodes: List<TmdbEpisode>
 )
@@ -47,7 +48,7 @@ data class TmdbEpisode(
     val still_path: String?
 )
 
-// Trailer and video info
+// 🎬 Trailer and video info
 data class TmdbVideoResult(
     val results: List<TmdbVideo>
 )
@@ -58,7 +59,7 @@ data class TmdbVideo(
     val type: String
 )
 
-// Cast and crew
+// 👥 Cast and crew
 data class TmdbCredits(
     val cast: List<TmdbCast>
 )
@@ -69,7 +70,7 @@ data class TmdbCast(
     val profile_path: String?
 )
 
-// Reviews and ratings
+// 🗣️ Reviews and ratings
 data class TmdbReviewResult(
     val results: List<TmdbReview>
 )
@@ -82,4 +83,9 @@ data class TmdbReview(
 
 data class AuthorDetails(
     val rating: Double?
+)
+
+// 🎭 Combined credits for actor-based search
+data class TmdbCreditsResult(
+    val cast: List<TmdbItem>
 )
