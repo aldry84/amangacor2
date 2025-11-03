@@ -35,7 +35,7 @@ object SoraExtractor : SoraStream() {
             SoraStream.gomoviesAPI, // FIX: Kualifikasi SoraStream
             "Gomovies",
             base64Decode("X3NtUWFtQlFzRVRi"),
-            base64Decode("X3NCV2NxYlRCTWFU"),
+            base64Decode("X3NCV2NxYlRCTWFU",),
         )
     }
 
@@ -517,7 +517,7 @@ object SoraExtractor : SoraStream() {
 
         val res = app.post(
             url,
-            requestBody = data.toRequestBody(RequestBodyTypes.TEXT.toMediaTypeOrNull()),
+            requestBody = data.toRequestBody(toMediaTypeOrNull("text/plain")),
             headers = headers
         ).text
         val videoLink =
@@ -722,7 +722,7 @@ object SoraExtractor : SoraStream() {
         val video = app.post(
             "https://8ball.piracy.cloud/api/generate-secure-url", requestBody = mapOf(
                 "filePath" to filePath
-            ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
+            ).toJson().toRequestBody(toMediaTypeOrNull("application/json"))
         ).parsedSafe<VidsrccxSource>()?.secureUrl
 
         callback.invoke(
@@ -765,7 +765,7 @@ object SoraExtractor : SoraStream() {
         val playRes = app.get(playUrl).document
         val iframe = playRes.selectFirst("iframe.source-frame")?.attr("src") ?: run {
             val captchaId = playRes.select("input[name=captcha_id]").attr("value")
-            app.post(playUrl, requestBody = "captcha_id=TEduRVR6NmZ3Sk5Jc3JpZEJCSlhTM25GREs2RCswK0VQN2ZsclI5KzNKL2cyV3dIaFEwZzNRRHVwMzdqVmoxV0t2QlBrNjNTY04wY2NSaHlWYS9Jc09nb25wZTV2YmxDSXNRZVNuQUpuRW5nbkF2dURsQUdJWlBwOWxUZzU5Tnh0NXllQjdYUG83Y0ZVaG1XRGtPOTBudnZvN0RFK0wxdGZvYXpFKzVNM2U1a2lBMG40REJmQ042SA%3D%3D&captcha_answer%5B%5D=8yhbjraxqf3o&captcha_answer%5B%5D=10zxn5vi746w&captcha_answer%5B%5D=gxfpe17tdwub".toRequestBody(RequestBodyTypes.TEXT.toMediaTypeOrNull())
+            app.post(playUrl, requestBody = "captcha_id=TEduRVR6NmZ3Sk5Jc3JpZEJCSlhTM25GREs2RCswK0VQN2ZsclI5KzNKL2cyV3dIaFEwZzNRRHVwMzdqVmoxV0t2QlBrNjNTY04wY2NSaHlWYS9Jc09nb25wZTV2YmxDSXNRZVNuQUpuRW5nbkF2dURsQUdJWlBwOWxUZzU5Tnh0NXllQjdYUG83Y0ZVaG1XRGtPOTBudnZvN0RFK0wxdGZvYXpFKzVNM2U1a2lBMG40REJmQ042SA%3D%3D&captcha_answer%5B%5D=8yhbjraxqf3o&captcha_answer%5B%5D=10zxn5vi746w&captcha_answer%5B%5D=gxfpe17tdwub".toRequestBody(toMediaTypeOrNull("text/plain"))
             ).document.selectFirst("iframe.source-frame")?.attr("src")
         }
         val json = app.get(iframe ?: return).text.substringAfter("Playerjs(").substringBefore(");")
