@@ -7,8 +7,7 @@ import android.content.Context
 @CloudstreamPlugin
 class AdicinemaxPlugin: Plugin() {
     override fun load(context: Context) {
-        // Semua provider harus ditambahkan dengan cara ini.
-        // Mendaftarkan kelas Adicinemax yang telah kita buat
+        // Mendaftarkan kelas Adicinemax
         registerMainAPI(Adicinemax()) 
     }
 }
