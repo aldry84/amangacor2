@@ -87,7 +87,8 @@ class Adimoviebox : MainAPI() {
         val tvType = if (subject?.subjectType == 2) TvType.TvSeries else TvType.Movie
         val description = subject?.description
         val trailer = subject?.trailer?.videoAddress?.url
-        val score = subject?.imdbRatingValue.toScoreInt() // Sekarang seharusnya ter-*resolve*
+        // PERBAIKAN: Mengganti toScoreInt() dengan Score.from10() untuk mengikuti pola referensi
+        val score = Score.from10(subject?.imdbRatingValue)
         val actors = document?.stars?.mapNotNull { cast ->
             ActorData(
                 Actor(
@@ -96,7 +97,7 @@ class Adimoviebox : MainAPI() {
                 ),
                 roleString = cast.character
             )
-        }?.distinctBy { it.actor }
+        )?.distinctBy { it.actor }
 
         val recommendations =
             app.get("$mainUrl/wefeed-h5-bff/web/subject/detail-rec?subjectId=$id&page=1&perPage=12")
