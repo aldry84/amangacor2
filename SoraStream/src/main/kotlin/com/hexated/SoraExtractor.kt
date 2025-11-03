@@ -15,6 +15,7 @@ import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.jsoup.Jsoup
+import com.lagradost.cloudstream3.utils.newSubtitleFile // PERBAIKAN: Impor ditambahkan
 
 object SoraExtractor : SoraStream() {
 
@@ -276,7 +277,7 @@ object SoraExtractor : SoraStream() {
 
                     sources.subtitles?.map {
                         subtitleCallback.invoke(
-                            newSubtitleFile( // PERBAIKAN: Mengganti SubtitleFile(...) dengan newSubtitleFile(...)
+                            newSubtitleFile( // PERBAIKAN: Mengganti SubtitleFile(...)
                                 it.label ?: return@map,
                                 it.file ?: return@map
                             )
@@ -436,7 +437,7 @@ object SoraExtractor : SoraStream() {
 
                 sources?.subtitles?.map { subtitle ->
                     subtitleCallback.invoke(
-                        newSubtitleFile( // PERBAIKAN: Mengganti SubtitleFile(...) dengan newSubtitleFile(...)
+                        newSubtitleFile( // PERBAIKAN: Mengganti SubtitleFile(...)
                             subtitle.label ?: "",
                             subtitle.file ?: return@map
                         )
@@ -480,7 +481,7 @@ object SoraExtractor : SoraStream() {
 
         app.get(subUrl).parsedSafe<WatchsomuchSubResponses>()?.subtitles?.map { sub ->
             subtitleCallback.invoke(
-                newSubtitleFile( // PERBAIKAN: Mengganti SubtitleFile(...) dengan newSubtitleFile(...)
+                newSubtitleFile( // PERBAIKAN: Mengganti SubtitleFile(...)
                     sub.label?.substringBefore("&nbsp")?.trim() ?: "",
                     fixUrl(sub.url ?: return@map null, SoraStream.watchSomuchAPI) // FIX: Kualifikasi SoraStream
                 )
@@ -542,7 +543,7 @@ object SoraExtractor : SoraStream() {
         ).text
         tryParseJson<ArrayList<MappleSubtitle>>(subRes)?.map { subtitle ->
             subtitleCallback.invoke(
-                newSubtitleFile( // PERBAIKAN: Mengganti SubtitleFile(...) dengan newSubtitleFile(...)
+                newSubtitleFile( // PERBAIKAN: Mengganti SubtitleFile(...)
                     subtitle.display ?: "",
                     fixUrl(subtitle.url ?: return@map, SoraStream.mappleAPI) // FIX: Kualifikasi SoraStream
                 )
@@ -623,7 +624,7 @@ object SoraExtractor : SoraStream() {
                 if (index == 1) {
                     source.tracks?.map { subtitle ->
                         subtitleCallback.invoke(
-                            newSubtitleFile( // PERBAIKAN: Mengganti SubtitleFile(...) dengan newSubtitleFile(...)
+                            newSubtitleFile( // PERBAIKAN: Mengganti SubtitleFile(...)
                                 subtitle.label ?: return@map,
                                 subtitle.file ?: return@map
                             )
@@ -652,7 +653,7 @@ object SoraExtractor : SoraStream() {
 
         tryParseJson<ArrayList<WyzieSubtitle>>(res)?.map { subtitle ->
             subtitleCallback.invoke(
-                newSubtitleFile( // PERBAIKAN: Mengganti SubtitleFile(...) dengan newSubtitleFile(...)
+                newSubtitleFile( // PERBAIKAN: Mengganti SubtitleFile(...)
                     subtitle.display ?: return@map,
                     subtitle.url ?: return@map,
                 )
@@ -788,7 +789,7 @@ object SoraExtractor : SoraStream() {
             val (subLang, subUrl) = Regex("""\[(\w+)](http\S+)""").find(it)?.destructured
                 ?: return@map
             subtitleCallback.invoke(
-                newSubtitleFile( // PERBAIKAN: Mengganti SubtitleFile(...) dengan newSubtitleFile(...)
+                newSubtitleFile( // PERBAIKAN: Mengganti SubtitleFile(...)
                     subLang.trim(),
                     subUrl.trim()
                 )
@@ -852,7 +853,7 @@ object SoraExtractor : SoraStream() {
         val res = app.get(subUrl).text
         tryParseJson<ArrayList<VidrockSubtitle>>(res)?.map { subtitle ->
             subtitleCallback.invoke(
-                newSubtitleFile( // PERBAIKAN: Mengganti SubtitleFile(...) dengan newSubtitleFile(...)
+                newSubtitleFile( // PERBAIKAN: Mengganti SubtitleFile(...)
                     subtitle.label?.replace(Regex("\\d"), "")?.replace(Regex("\\s+Hi"), "")?.trim() ?: return@map,
                     subtitle.file ?: return@map,
                 )
