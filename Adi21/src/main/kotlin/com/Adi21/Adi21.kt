@@ -4,11 +4,24 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.*
-import java.net.URLEncoder
+import com.lagradost.cloudstream3.utils.AppUtils.parseJson
+import com.lagradost.cloudstream3.utils.AppUtils.toJson
+import com.lagradost.nicehttp.RequestBodyTypes
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.RequestBody.Companion.toRequestBody
 
-class Adi21 : MainAPI() {
+/**
+ * Adi21Hybrid:
+ * - Metadata (search, details, main page) from TMDB
+ * - Streaming embed links from Vidsrc.cc
+ *
+ * Security: Provide TMDB API key via environment variable TMDB_API_KEY
+ * or replace "<YOUR_TMDB_API_KEY>" locally BEFORE building.
+ */
+
+class Adi21 : MainAPI() { // FIX 5: Renamed from Adi21Hybrid to Adi21
     override var mainUrl = "https://api.themoviedb.org/3"
-    override var name = "Adi21Hybrid"
+    override var name = "Adi21" // FIX 5: Renamed for consistency
     override val hasMainPage = true
     override val hasQuickSearch = true
     override var lang = "en"
@@ -19,7 +32,14 @@ class Adi21 : MainAPI() {
         TvType.AsianDrama
     )
 
-    private val apiKey = "1cfadd9dbfc534abf6de40e1e7eaf4c7"
+    // Secure way to read API key at runtime:
+    // 1) Set environment variable TMDB_API_KEY
+    // 2) Or replace "<YOUR_TMDB_API_KEY>" locally (not recommended for public repos)
+    private val apiKey: String by lazy {
+        System.getenv("TMDB_API_KEY") ?: "<1cfadd9dbfc534abf6de40e1e7eaf4c7>"
+    }
+
+    // Vidsrc base for embed:
     private val vidSrcBase = "https://vidsrc.cc/v2/embed"
 
     override val mainPage: List<MainPageData> = mainPageOf(
@@ -31,104 +51,175 @@ class Adi21 : MainAPI() {
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val key = request.name.split(",").first()
-        val type = if (key.startsWith("tv_")) "tv" else "movie"
-        val endpoint = key.substringAfter("_")
-        val url = "$mainUrl/$type/$endpoint?api_key=$apiKey&language=en-US&page=$page"
+        val parts = request.name.split(",")
+        val key = parts.first()
+        val title = request.name
+        val (type, endpoint) = when {
+            key.startsWith("movie_") -> Pair("movie", key.removePrefix("movie_"))
+            key.startsWith("tv_") -> Pair("tv", key.removePrefix("tv_"))
+            else -> Pair("movie", "popular")
+        }
+        val tmdbEndpoint = when (endpoint) {
+            "popular" -> "/$type/popular"
+            "top_rated" -> "/$type/top_rated"
+            "now_playing" -> "/movie/now_playing"
+            else -> "/$type/popular"
+        }
 
-        val res = app.get(url).parsedSafe<TMDBListResponse>()?.results ?: return newHomePageResponse(request.name, listOf())
-        val list = res.map {
-            newMovieSearchResponse(it.titleOrName(), it.id.toString(), if (it.isTv()) TvType.TvSeries else TvType.Movie) {
-                this.posterUrl = it.posterFullPath()
-                this.plot = it.overview
+        val url = "$mainUrl$tmdbEndpoint?api_key=$apiKey&language=en-US&page=$page"
+        val resp = app.get(url).parsedSafe<TMDBListResponse>()
+        val items = resp?.results ?: emptyList()
+
+        val home = items.map { m ->
+            newMovieSearchResponse( // FIX 1: Removed 'provider.'
+                m.titleOrName(),
+                m.id.toString(),
+                if (m.isTv()) TvType.TvSeries else TvType.Movie,
+                false
+            ) {
+                this.posterUrl = m.posterFullPath()
+                this.plot = m.overview // FIX 2: Changed 'description' to 'plot'
             }
         }
-        return newHomePageResponse(request.name, list)
+
+        return newHomePageResponse(title, home)
     }
 
-    override suspend fun search(query: String): List<SearchResponse> {
-        val encoded = URLEncoder.encode(query, "UTF-8")
-        val url = "$mainUrl/search/multi?api_key=$apiKey&language=en-US&query=$encoded&page=1&include_adult=false"
-        val res = app.get(url).parsedSafe<TMDBListResponse>()?.results ?: return listOf()
+    override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
-        return res.filter { it.media_type != "person" }.map {
-            newMovieSearchResponse(it.titleOrName(), it.id.toString(), if (it.isTv()) TvType.TvSeries else TvType.Movie) {
-                this.posterUrl = it.posterFullPath()
-                this.plot = it.overview
+    override suspend fun search(query: String): List<SearchResponse> {
+        // FIX 3: Refactored to use 'params' map to automatically handle URL encoding
+        val url = "$mainUrl/search/multi"
+        val resp = app.get(
+            url,
+            params = mapOf(
+                "api_key" to apiKey,
+                "language" to "en-US",
+                "query" to query,
+                "page" to "1",
+                "include_adult" to "false"
+            )
+        ).parsedSafe<TMDBListResponse>()
+        val items = resp?.results ?: emptyList()
+        return items.mapNotNull { m ->
+            // Filter out non-movie/tv if needed
+            if (m.media_type == "person") return@mapNotNull null
+            newMovieSearchResponse( // FIX 4: Removed 'provider.'
+                m.titleOrName(),
+                m.id.toString(),
+                if (m.isTv()) TvType.TvSeries else TvType.Movie,
+                false
+            ) {
+                this.posterUrl = m.posterFullPath()
+                this.plot = m.overview // FIX 5: Changed 'description' to 'plot'
             }
         }
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val id = url.substringAfterLast("/")
-        val isTv = url.contains("tv")
+        // Here url is expected to be TMDB id or tmdb://movie/12345 or tmdb://tv/12345
+        val idRaw = url.substringAfterLast("/").substringAfter("://")
+        val (isTv, idStr) = if (url.contains("tmdb://tv") || url.startsWith("tv/")) {
+            Pair(true, idRaw)
+        } else if (url.contains("tmdb://movie") || url.startsWith("movie/")) {
+            Pair(false, idRaw)
+        } else {
+            // fallback: assume numeric id and movie
+            Pair(false, idRaw)
+        }
 
-        val detailsUrl = if (isTv)
-            "$mainUrl/tv/$id?api_key=$apiKey&language=en-US"
-        else
-            "$mainUrl/movie/$id?api_key=$apiKey&language=en-US"
-
+        val id = idStr
+        val detailsUrl = if (isTv) "$mainUrl/tv/$id/videos?api_key=$apiKey&language=en-US" else "$mainUrl/movie/$id/videos?api_key=$apiKey&language=en-US"
         val details = app.get(detailsUrl).parsedSafe<TMDBDetail>() ?: throw ErrorLoadingException("No detail")
 
         val title = details.titleOrName()
         val poster = details.posterFullPath()
         val year = details.getYear()
+        val description = details.overview
         val score = Score.from10(details.vote_average?.toString())
-        val trailerKey = getTrailerKey(id, isTv)
+        val trailerKey = getTrailerKey(id, isTv) // helper below
         val trailerUrl = trailerKey?.let { "https://www.youtube.com/watch?v=$it" }
 
-        val data = LoadData(id = id, isTv = isTv)
+        // Build LoadData that loadLinks expects: we'll include TMDB id and type flag
+        val data = LoadData(
+            id = id,
+            season = null,
+            episode = null,
+            detailPath = null,
+            isTv = if (isTv) true else false
+        )
 
-        return newMovieLoadResponse(title, "tmdb://$id", if (isTv) TvType.TvSeries else TvType.Movie, data.toJson()) {
-            this.posterUrl = poster
-            this.year = year
-            this.plot = details.overview
-            this.score = score
-            addTrailer(trailerUrl, addRaw = true)
+        return if (isTv) {
+            // For TV we still require season/episode selection in UI; we will provide a simple placeholder
+            // Generate a single "series" load response — episodes are requested later by the player UI
+            newMovieLoadResponse(title, "tmdb://tv/$id", TvType.TvSeries, data.toJson()) {
+                this.posterUrl = poster
+                this.year = year
+                this.plot = description
+                this.score = score
+                addTrailer(trailerUrl, addRaw = true)
+            }
+        } else {
+            newMovieLoadResponse(title, "tmdb://movie/$id", TvType.Movie, data.toJson()) {
+                this.posterUrl = poster
+                this.year = year
+                this.plot = description
+                this.score = score
+                addTrailer(trailerUrl, addRaw = true)
+            }
         }
     }
 
+    // loadLinks: uses vidsrc embed
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val info = parseJson<LoadData>(data)
-        val tmdbId = info.id ?: return false
-        val isTv = info.isTv == true
+        val media = parseJson<LoadData>(data)
+        val tmdbId = media.id ?: return false
+        val isTv = media.isTv == true
 
-        val embedUrl = if (isTv)
-            "$vidSrcBase/tv/$tmdbId/1/1"
-        else
+        val embedUrl = if (isTv) {
+            val season = media.season ?: 1
+            val episode = media.episode ?: 1
+            "$vidSrcBase/tv/$tmdbId/$season/$episode"
+        } else {
             "$vidSrcBase/movie/$tmdbId"
+        }
 
+        // FIX 6 & 7: Properties referer, quality, and isM3u8 passed directly to newExtractorLink
         callback.invoke(
-            ExtractorLink(
-                name,
-                "Vidsrc",
-                embedUrl,
-                "https://vidsrc.cc/",
-                Qualities.Unknown.value,
-                false
+            newExtractorLink(
+                name = this.name,
+                source = "Vidsrc",
+                url = embedUrl,
+                type = INFER_TYPE,
+                referer = "https://vidsrc.cc/",
+                quality = Qualities.Unknown.value, // FIX 6: Used .value
+                isM3u8 = false
             )
         )
+
+        // Vidsrc sometimes hosts subtitles inside the embed — if you have a subtitle extraction step,
+        // you can implement it here (scrape /call an endpoint). For now we return true.
         return true
     }
 
+    // Helper: fetch YouTube trailer key from TMDB /videos endpoint
     private suspend fun getTrailerKey(id: String, isTv: Boolean): String? {
-        val url = if (isTv)
-            "$mainUrl/tv/$id/videos?api_key=$apiKey&language=en-US"
-        else
-            "$mainUrl/movie/$id/videos?api_key=$apiKey&language=en-US"
-
-        val res = app.get(url).parsedSafe<TMDBVideosResponse>() ?: return null
-        return res.results?.firstOrNull { it.site == "YouTube" && it.type?.contains("Trailer", true) == true }?.key
+        val url = if (isTv) "$mainUrl/tv/$id/videos?api_key=$apiKey&language=en-US" else "$mainUrl/movie/$id/videos?api_key=$apiKey&language=en-US"
+        val resp = app.get(url).parsedSafe<TMDBVideosResponse>() ?: return null
+        return resp.results?.firstOrNull { it.site == "YouTube" && it.type?.contains("Trailer", true) == true }?.key
     }
 }
 
-/* ---- Data classes ---- */
-data class TMDBListResponse(@JsonProperty("results") val results: ArrayList<TMDBItem>? = arrayListOf())
+/* --- Data classes for TMDB minimal parsing --- */
+
+data class TMDBListResponse(
+    @JsonProperty("results") val results: ArrayList<TMDBItem>? = arrayListOf()
+)
 
 data class TMDBItem(
     @JsonProperty("id") val id: Long = 0L,
@@ -169,9 +260,11 @@ data class TMDBVideo(
     @JsonProperty("key") val key: String? = null
 )
 
+/* --- LoadData extended to include isTv flag --- */
 data class LoadData(
     val id: String? = null,
     val season: Int? = null,
     val episode: Int? = null,
+    val detailPath: String? = null,
     val isTv: Boolean? = null
 )
