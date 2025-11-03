@@ -4,13 +4,14 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.*
+import com.lagradost.cloudstream3.utils.Extensions.toScoreInt // *** Import Spesifik Ditambahkan di Sini ***
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.nicehttp.RequestBodyTypes
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 
-class Adimoviebox : MainAPI() { // Nama class diganti menjadi Adimoviebox
+class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
     private val apiUrl = "https://fmoviesunblocked.net"
     override val instantLinkLoading = true
@@ -53,7 +54,7 @@ class Adimoviebox : MainAPI() { // Nama class diganti menjadi Adimoviebox
         ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
 
         val home = app.post("$mainUrl/wefeed-h5-bff/web/filter", requestBody = body)
-            .parsedSafe<Media>()?.data?.items?.map { // Media dan data sekarang diakses dari top-level class
+            .parsedSafe<Media>()?.data?.items?.map {
                 it.toSearchResponse(this)
             } ?: throw ErrorLoadingException("No Data Found")
 
@@ -70,14 +71,14 @@ class Adimoviebox : MainAPI() { // Nama class diganti menjadi Adimoviebox
                 "perPage" to "0",
                 "subjectType" to "0",
             ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
-        ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) } // Media dan data sekarang diakses dari top-level class
+        ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
             ?: throw ErrorLoadingException()
     }
 
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfterLast("/")
         val document = app.get("$mainUrl/wefeed-h5-bff/web/subject/detail?subjectId=$id")
-            .parsedSafe<MediaDetail>()?.data // MediaDetail dan data sekarang diakses dari top-level class
+            .parsedSafe<MediaDetail>()?.data
         val subject = document?.subject
         val title = subject?.title ?: ""
         val poster = subject?.cover?.url
@@ -87,12 +88,12 @@ class Adimoviebox : MainAPI() { // Nama class diganti menjadi Adimoviebox
         val tvType = if (subject?.subjectType == 2) TvType.TvSeries else TvType.Movie
         val description = subject?.description
         val trailer = subject?.trailer?.videoAddress?.url
-        val score = subject?.imdbRatingValue.toScoreInt() // **Ganti rating dengan score dan gunakan toScoreInt()**
+        val score = subject?.imdbRatingValue.toScoreInt() // toScoreInt() sekarang ter-*resolve*
         val actors = document?.stars?.mapNotNull { cast ->
             ActorData(
                 Actor(
                     cast.name ?: return@mapNotNull null,
-                    cast.avatarUrl // Unresolved reference 'avatarUrl' diperbaiki oleh pemindahan class
+                    cast.avatarUrl
                 ),
                 roleString = cast.character
             )
@@ -100,7 +101,7 @@ class Adimoviebox : MainAPI() { // Nama class diganti menjadi Adimoviebox
 
         val recommendations =
             app.get("$mainUrl/wefeed-h5-bff/web/subject/detail-rec?subjectId=$id&page=1&perPage=12")
-                .parsedSafe<Media>()?.data?.items?.map { // Media dan data sekarang diakses dari top-level class
+                .parsedSafe<Media>()?.data?.items?.map {
                     it.toSearchResponse(this)
                 }
 
@@ -110,7 +111,7 @@ class Adimoviebox : MainAPI() { // Nama class diganti menjadi Adimoviebox
                     .map { it.toInt() })
                     .map { episode ->
                         newEpisode(
-                            LoadData( // LoadData sekarang diakses dari top-level class
+                            LoadData(
                                 id,
                                 seasons.se,
                                 episode,
@@ -127,7 +128,7 @@ class Adimoviebox : MainAPI() { // Nama class diganti menjadi Adimoviebox
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                this.score = score // diganti dari rating
+                this.score = score
                 this.actors = actors
                 this.recommendations = recommendations
                 addTrailer(trailer, addRaw = true)
@@ -137,13 +138,13 @@ class Adimoviebox : MainAPI() { // Nama class diganti menjadi Adimoviebox
                 title,
                 url,
                 TvType.Movie,
-                LoadData(id, detailPath = subject?.detailPath).toJson() // LoadData sekarang diakses dari top-level class
+                LoadData(id, detailPath = subject?.detailPath).toJson()
             ) {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
                 this.tags = tags
-                this.score = score // diganti dari rating
+                this.score = score
                 this.actors = actors
                 this.recommendations = recommendations
                 addTrailer(trailer, addRaw = true)
@@ -158,13 +159,13 @@ class Adimoviebox : MainAPI() { // Nama class diganti menjadi Adimoviebox
         callback: (ExtractorLink) -> Unit
     ): Boolean {
 
-        val media = parseJson<LoadData>(data) // LoadData sekarang diakses dari top-level class
+        val media = parseJson<LoadData>(data)
         val referer = "$apiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&lang=en"
 
         val streams = app.get(
             "$apiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}",
             referer = referer
-        ).parsedSafe<Media>()?.data?.streams // Media dan data sekarang diakses dari top-level class
+        ).parsedSafe<Media>()?.data?.streams
 
         streams?.reversed()?.distinctBy { it.url }?.map { source ->
             callback.invoke(
@@ -186,7 +187,7 @@ class Adimoviebox : MainAPI() { // Nama class diganti menjadi Adimoviebox
         app.get(
             "$apiUrl/wefeed-h5-bff/web/subject/caption?format=$format&id=$id&subjectId=${media.id}",
             referer = referer
-        ).parsedSafe<Media>()?.data?.captions?.map { subtitle -> // Media dan data sekarang diakses dari top-level class
+        ).parsedSafe<Media>()?.data?.captions?.map { subtitle ->
             subtitleCallback.invoke(
                 SubtitleFile(
                     subtitle.lanName ?: "",
@@ -273,7 +274,7 @@ data class Items(
     @JsonProperty("detailPath") val detailPath: String? = null,
 ) {
 
-    fun toSearchResponse(provider: Adimoviebox): SearchResponse { // Merujuk ke Adimoviebox
+    fun toSearchResponse(provider: Adimoviebox): SearchResponse {
         return provider.newMovieSearchResponse(
             title ?: "",
             subjectId ?: "",
