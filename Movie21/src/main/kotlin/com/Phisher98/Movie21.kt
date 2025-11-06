@@ -1,5 +1,4 @@
-// File: com.Phisher98.Movie21.kt
-package com.Phisher98 // PERBAIKAN: Menggunakan package yang benar sesuai error log
+package com.Phisher98
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
@@ -19,12 +18,78 @@ class Movie21 : MainAPI() {
 
     private fun getDataUrl(id: Int, mediaType: String): String = "$id|$mediaType"
 
-    // [BAGIAN MAIN PAGE DAN SEARCH TIDAK PERLU PERUBAHAN KECUALI PENGGUNAAN newMovieSearchResponse]
-    
-    // ... (Hapus Main Page & Search untuk singkatnya, asumsikan menggunakan new[Type]SearchResponse) ...
-    
     // =============================
-    // LOAD DETAIL PAGE (PERBAIKAN KRITIS UNTUK EPISODE/SEASON)
+    // MAIN PAGE
+    // =============================
+    override val mainPage = mainPageOf(
+        "$mainUrl/trending/movie/day?api_key=$tmdbKey" to "Film Trending",
+        "$mainUrl/movie/popular?api_key=$tmdbKey" to "Film Populer",
+        "$mainUrl/tv/popular?api_key=$tmdbKey" to "Serial Populer",
+        "$mainUrl/tv/airing_today?api_key=$tmdbKey" to "Tayang Hari Ini"
+    )
+
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+        val response = app.get(request.data).text
+        val json = JSONObject(response).getJSONArray("results")
+        val items = mutableListOf<SearchResponse>()
+        
+        val mediaType = if (request.name.contains("Serial")) "tv" else "movie"
+        val tvType = if (mediaType == "tv") TvType.TvSeries else TvType.Movie
+
+        for (i in 0 until json.length()) {
+            val item = json.getJSONObject(i)
+            val id = item.optInt("id")
+            if (id == 0) continue
+
+            val title = item.optString("title", item.optString("name", ""))
+            val poster = tmdbImage + item.optString("poster_path", "")
+            val year = item.optString("release_date", item.optString("first_air_date", "")).take(4).toIntOrNull()
+
+            items.add(
+                newMovieSearchResponse(title, getDataUrl(id, mediaType), tvType) {
+                    this.posterUrl = poster
+                    this.year = year
+                }
+            )
+        }
+
+        return newHomePageResponse(request.name, items)
+    }
+
+    // =============================
+    // SEARCH
+    // =============================
+    override suspend fun search(query: String): List<SearchResponse> {
+        val encodedQuery = URLEncoder.encode(query, "UTF-8")
+        val url = "$mainUrl/search/multi?api_key=$tmdbKey&query=$encodedQuery"
+        val response = app.get(url).text
+        val json = JSONObject(response).getJSONArray("results")
+        val results = mutableListOf<SearchResponse>()
+
+        for (i in 0 until json.length()) {
+            val item = json.getJSONObject(i)
+            val id = item.optInt("id")
+            val mediaType = item.optString("media_type", "movie")
+            if (id == 0 || (mediaType != "movie" && mediaType != "tv")) continue
+
+            val tvType = if (mediaType == "movie") TvType.Movie else TvType.TvSeries
+            val title = item.optString("title", item.optString("name", ""))
+            val poster = tmdbImage + item.optString("poster_path", "")
+            val year = item.optString("release_date", item.optString("first_air_date", "")).take(4).toIntOrNull()
+
+            results.add(
+                newMovieSearchResponse(title, getDataUrl(id, mediaType), tvType) {
+                    this.posterUrl = poster
+                    this.year = year
+                }
+            )
+        }
+
+        return results
+    }
+
+    // =============================
+    // LOAD DETAIL PAGE
     // =============================
     override suspend fun load(url: String): LoadResponse? {
         val parts = url.split("|")
@@ -55,7 +120,7 @@ class Movie21 : MainAPI() {
                 this.year = year
             }
         } else {
-            // Perbaikan TvSeries: Menggunakan newEpisode dan TvSeason builder
+            // Logika TvSeries: menggunakan builder yang benar (newEpisode, newTvSeason)
             val seasonsArray = json.optJSONArray("seasons")
             val seasons = if (seasonsArray != null) {
                 (0 until seasonsArray.length()).mapNotNull { i ->
@@ -65,14 +130,14 @@ class Movie21 : MainAPI() {
                     
                     if (seasonNumber >= 1 && episodeCount > 0) {
                         val episodes = (1..episodeCount).map { episodeNumber ->
-                            // PERBAIKAN: Menggunakan newEpisode builder
+                            // Menggunakan newEpisode builder
                             newEpisode(data = "$tmdbId|$seasonNumber|$episodeNumber", name = "Eps $episodeNumber") {
                                 this.season = seasonNumber
                                 this.episode = episodeNumber
                             }
                         }
                         
-                        // PERBAIKAN: Menggunakan builder TvSeason
+                        // Menggunakan newTvSeason builder
                         newTvSeason(seasonObj.optString("name", "Musim $seasonNumber"), episodes) {
                             this.season = seasonNumber
                         }
@@ -87,6 +152,36 @@ class Movie21 : MainAPI() {
             }
         }
     }
-    
-    // ... (Fungsi loadLinks tetap sama) ...
+
+    // =============================
+    // LOAD LINKS (STREAM FETCHER)
+    // =============================
+    override suspend fun loadLinks(
+        data: String,
+        isTrailer: Boolean,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        if (isTrailer) return false
+
+        val parts = data.split("|")
+        val embedUrl: String
+        
+        if (parts.size == 2) { 
+            // Film: data format "TMDB_ID|movie"
+            val tmdbId = parts[0]
+            embedUrl = "$embedBase/embed/movie?tmdb=$tmdbId"
+        } else if (parts.size == 3) {
+            // Serial TV: data format "TMDB_ID|S|E"
+            val (tmdbId, sNum, eNum) = parts
+            embedUrl = "$embedBase/embed/tv?tmdb=$tmdbId&season=$sNum&episode=$eNum"
+        } else {
+            return false
+        }
+        
+        // Memanggil Extractor yang harus menyelesaikan URL embed
+        loadExtractor(embedUrl, embedBase, subtitleCallback, callback)
+        
+        return true
+    }
 }
