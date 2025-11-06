@@ -8,42 +8,35 @@ import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.getQualityFromName
-// Hapus import: com.lagradost.cloudstream3.extractors.TmdbAPI
+import com.lagradost.cloudstream3.LoadResponse.Companion.addTMDbId // << PERBAIKAN 3
 import com.lagradost.api.Log
 import kotlinx.coroutines.runBlocking
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.net.URLEncoder // << PERBAIKAN 2: Import untuk URLEncoder
 
 // --- API Data Classes (Streaming Kustom) ---
-
 data class StreamLinkResponse(
     @JsonProperty("status") val status: Boolean? = null,
     @JsonProperty("msg") val msg: String? = null,
     @JsonProperty("return") val streamData: List<StreamLinkData>? = null
 )
-
 data class StreamLinkData(
     @JsonProperty("link") val link: String? = null,
     @JsonProperty("link_raw") val linkRaw: String? = null,
     @JsonProperty("quality") val quality: String? = null,
     @JsonProperty("resolusi") val resolution: String? = null
 )
-// --- API Data Classes End ---
-
 // --- TMDb V3 Data Classes (Minimal untuk Search/Load) ---
-// (Disimpan untuk referensi di fungsi search dan load)
 data class TmdbSearchResponse(
     @JsonProperty("results") val results: List<TmdbSearchResult>? = null
 )
-
 data class TmdbSearchResult(
     @JsonProperty("id") val id: Int,
     @JsonProperty("media_type") val media_type: String,
     @JsonProperty("title") val title: String? = null,
     @JsonProperty("name") val name: String? = null,
-    @JsonProperty("poster_path") val poster_path: String? = null,
-    @JsonProperty("overview") val overview: String? = null
+    @JsonProperty("poster_path") val poster_path: String? = null
 )
-
 data class TmdbLoadResponse(
     @JsonProperty("id") val id: Int,
     @JsonProperty("title") val title: String? = null,
@@ -54,45 +47,37 @@ data class TmdbLoadResponse(
     @JsonProperty("genres") val genres: List<TmdbGenre>? = null,
     @JsonProperty("release_date") val release_date: String? = null,
     @JsonProperty("first_air_date") val first_air_date: String? = null,
-    @JsonProperty("number_of_seasons") val number_of_seasons: Int? = null,
     @JsonProperty("seasons") val seasons: List<TmdbSeason>? = null
 )
-
 data class TmdbSeason(
     @JsonProperty("season_number") val season_number: Int,
     @JsonProperty("episode_count") val episode_count: Int
 )
-
-data class TmdbGenre(
-    @JsonProperty("name") val name: String
-)
+data class TmdbGenre(@JsonProperty("name") val name: String)
 // --- TMDb V3 Data Classes End ---
 
 
-// PASTIKAN Movie21 mewarisi dari MainAPI
 class Movie21 : MainAPI() { 
-    // Properti ini sekarang DITIMPA (override) dari MainAPI
     override var mainUrl = "https://api.themoviedb.org" 
-    override val name = "Movie21 (TMDb V3)"
+    override **var** name = "Movie21 (TMDb V3)" // << PERBAIKAN 1: Menggunakan var
     override var lang = "id"
     override val hasMainPage = false
     override val hasQuickSearch = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime)
     
-    // Properti TMDbAPI yang lama ('TMDB_API') harus diganti dengan private val biasa
     private val TMDB_API_KEY = "1cfadd9dbfc534abf6de40e1e7eaf4c7"
     private val TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p/w500" 
 
     // --- Endpoint Streaming Kustom ---
     private val STREAM_BASE_URL = runBlocking {
-        // Ini memastikan Movie21Provider.kt tidak menghasilkan error tipe
         Movie21Provider.getDomains()?.movie21 ?: "https://dramadrip.com" 
     }
     private val API_KLASIK_LOAD = "/api/v1/klasik/load" 
     
     // --- Implementasi Search TMDb V3 ---
     override suspend fun search(query: String): List<SearchResponse> {
-        val url = "$mainUrl/3/search/multi?api_key=$TMDB_API_KEY&query=${query.encodeUri()}#&language=id"
+        // PERBAIKAN 2: Menggunakan URLEncoder.encode
+        val url = "$mainUrl/3/search/multi?api_key=$TMDB_API_KEY&query=${URLEncoder.encode(query, "UTF-8")}#&language=id" 
         
         val response = app.get(url).parsedSafe<TmdbSearchResponse>()
         
@@ -131,7 +116,6 @@ class Movie21 : MainAPI() {
         val tags = detail.genres?.map { it.name }
         
         val finalUrl = "$mediaType/$tmdbId" 
-        
         val apiStreamId = tmdbId.toString()
         
         if (mediaType == "tv") {
@@ -151,7 +135,7 @@ class Movie21 : MainAPI() {
                 this.plot = plot
                 this.year = year
                 this.tags = tags
-                addTMDbId(tmdbId.toString())
+                addTMDbId(tmdbId.toString()) // << PERBAIKAN 3
             }
         } else {
             val linkForLoadLinks = apiStreamId.toJson()
@@ -161,7 +145,7 @@ class Movie21 : MainAPI() {
                 this.plot = plot
                 this.year = year
                 this.tags = tags
-                addTMDbId(tmdbId.toString())
+                addTMDbId(tmdbId.toString()) // << PERBAIKAN 3
             }
         }
     }
@@ -174,7 +158,7 @@ class Movie21 : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // ... (Logika loadLinks tetap sama seperti yang sudah diperbaiki)
+        // ... (Logika loadLinks tetap sama)
         val contentId = tryParseJson<String>(data) ?: return false
 
         val jsonPayload = mapOf(
