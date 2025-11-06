@@ -42,12 +42,11 @@ data class EpisodeDetails(
     val moviedb_id: Int?
 )
 
+// Dihapus dari DramaDrip.kt, hanya disimpan di sini
 data class ResponseData(
     val meta: Meta?
 )
 
-// Data class ini tidak digunakan lagi dalam implementasi API baru, 
-// tetapi tetap disimpan jika ada bagian lain yang membutuhkannya (misalnya DramaDripProvider)
 data class DomainsParser(
     @JsonProperty("dramadrip")
     val dramadrip: String,
@@ -81,7 +80,6 @@ fun fixUrl(url: String, domain: String): String {
     }
 }
 
-// Fungsi Base64 Decode dipertahankan jika ada bagian lain yang menggunakannya.
 @RequiresApi(Build.VERSION_CODES.O)
 fun base64Decode(string: String): String {
     val clean = string.trim().replace("\n", "").replace("\r", "")
@@ -94,4 +92,3 @@ fun base64Decode(string: String): String {
         ""
     }
 }
-// Semua fungsi bypass yang lama (bypassHrefli, cinematickitBypass, cinematickitloadBypass) telah DIHAPUS.
