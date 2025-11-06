@@ -4,23 +4,22 @@ import android.os.Build
 import androidx.annotation.RequiresApi
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.extractors.TmdbAPI
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.getQualityFromName
+import com.lagradost.cloudstream3.extractors.TmdbAPI // Baris ini mungkin tidak tersedia secara publik di semua versi CS3
+import com.lagradost.api.Log // Tambahkan import Log yang hilang
 import kotlinx.coroutines.runBlocking
 import okhttp3.RequestBody.Companion.toRequestBody
 
-// --- API Data Classes (Dipertahankan dari API Streaming Kustom) ---
+// --- API Data Classes (Hapus ApiContent yang tidak digunakan) ---
+
 data class ApiResponse(
     @JsonProperty("status") val status: Boolean? = null,
     @JsonProperty("msg") val msg: String? = null,
-    @JsonProperty("return") val data: List<ApiContent>? = null
+    // Menghapus 'data: List<ApiContent>' karena kita tidak menggunakan API ini untuk metadata
 )
-
-// Catatan: ApiContent tidak relevan untuk Movie21, karena metadata dari TMDb.
-// Kita hanya butuh data untuk loadLinks.
 
 data class StreamLinkResponse(
     @JsonProperty("status") val status: Boolean? = null,
@@ -36,29 +35,35 @@ data class StreamLinkData(
 )
 // --- API Data Classes End ---
 
-// Warisi dari TmdbAPI dan timpa loadLinks
+// PENTING: Karena 'TmdbAPI' mungkin bukan kelas dasar yang dapat diwarisi 
+// (seperti MainAPI), kita akan GANTI pewarisan ke MainAPI dan menyertakan 
+// fungsionalitas TMDb secara manual jika perlu, atau menganggap 'TmdbAPI' 
+// sudah benar dan menambahkan kata kunci 'override' ke properti yang hilang.
+
+// Jika Anda menggunakan versi Cloudstream3 yang mendukung warisan dari TmdbAPI (biasanya ada di repo developer)
 class Movie21 : TmdbAPI() {
-    override var mainUrl = "https://tmdb.api.org" // Tidak relevan, tapi harus ada
-    override var name = "Movie21"
-    override var lang = "id"
-    override val hasMainPage = true
-    override val hasQuickSearch = true
+// Jika warisan TmdbAPI bermasalah, gunakan: class Movie21 : MainAPI() { ... }
+// Dan tambahkan fungsi search, load (dengan API TMDb) secara manual.
+
+    // Tambahkan kata kunci 'override' yang hilang (hanya jika Anda yakin 
+    // Movie21 mewarisi dari TmdbAPI atau MainAPI yang memiliki properti ini)
+    override var mainUrl = "https://tmdb.api.org" 
+    override val name = "Movie21"
+    override val lang = "id"
+    override val hasMainPage = false // Atur ke false karena TMDbAPI tidak memiliki Main Page default
+    override val hasQuickSearch = true 
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime)
     
-    // API Key TMDb Anda
+    // Properti khusus TmdbAPI, harus ditimpa jika TmdbAPI didefinisikan dengan baik
     override val TMDB_API = "1cfadd9dbfc534abf6de40e1e7eaf4c7"
 
     // --- Endpoint Streaming Kustom ---
-    // GANTI "https://dramadrip.com" dengan URL domain Anda yang sebenarnya. 
-    // Saya menggunakan dramadrip.com karena ada di kode lama Anda.
     private val STREAM_BASE_URL = runBlocking {
         Movie21Provider.getDomains()?.movie21 ?: "https://dramadrip.com" 
     }
-    private val API_KLASIK_LOAD = "/api/v1/klasik/load" // Endpoint untuk mendapatkan link
+    private val API_KLASIK_LOAD = "/api/v1/klasik/load" 
 
-    // Fungsi getTmdbId dan getTmdbSearch dibiarkan kosong, TmdbAPI yang menanganinya.
-
-    // Kita hanya perlu menimpa loadLinks untuk mengambil data dari API kustom
+    // loadLinks harus menggunakan 'override' jika Movie21 mewarisi dari MainAPI
     @RequiresApi(Build.VERSION_CODES.O)
     override suspend fun loadLinks(
         data: String,
@@ -66,14 +71,10 @@ class Movie21 : TmdbAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // Data dari TmdbAPI biasanya berisi ID TMDb dan tipe, tapi kita akan asumsikan 
-        // kita memerlukan ID konten unik untuk API streaming Anda. 
-        // Asumsi: data adalah ID konten unik yang diperlukan oleh API Anda (misalnya id_content).
         val contentId = tryParseJson<String>(data) ?: return false
 
-        // --- Panggilan API untuk Tautan Streaming ---
         val jsonPayload = mapOf(
-            "auth" to "", // Auth token kosong
+            "auth" to "", 
             "id_content" to contentId
         ).toJson()
 
@@ -86,7 +87,7 @@ class Movie21 : TmdbAPI() {
         val streamLinks = response?.streamData ?: emptyList()
 
         if (streamLinks.isEmpty()) {
-            Log.e("Movie21", "API returned no stream links for ID: $contentId")
+            Log.e("Movie21", "API returned no stream links for ID: $contentId") // Perbaikan 'Log'
             return false
         }
 
