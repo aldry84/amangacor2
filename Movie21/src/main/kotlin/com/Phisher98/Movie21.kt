@@ -1,202 +1,182 @@
-package com.Phisher98
+package com.movie21
 
-import android.os.Build
-import androidx.annotation.RequiresApi
-import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
-import com.lagradost.cloudstream3.utils.AppUtils.toJson
-import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
-import com.lagradost.cloudstream3.utils.getQualityFromName
-import com.lagradost.cloudstream3.LoadResponse.Companion.addTMDbId // << PERBAIKAN 3
-import com.lagradost.api.Log
-import kotlinx.coroutines.runBlocking
-import okhttp3.RequestBody.Companion.toRequestBody
-import java.net.URLEncoder // << PERBAIKAN 2: Import untuk URLEncoder
+import org.json.JSONObject
+import java.net.URLEncoder
 
-// --- API Data Classes (Streaming Kustom) ---
-data class StreamLinkResponse(
-    @JsonProperty("status") val status: Boolean? = null,
-    @JsonProperty("msg") val msg: String? = null,
-    @JsonProperty("return") val streamData: List<StreamLinkData>? = null
-)
-data class StreamLinkData(
-    @JsonProperty("link") val link: String? = null,
-    @JsonProperty("link_raw") val linkRaw: String? = null,
-    @JsonProperty("quality") val quality: String? = null,
-    @JsonProperty("resolusi") val resolution: String? = null
-)
-// --- TMDb V3 Data Classes (Minimal untuk Search/Load) ---
-data class TmdbSearchResponse(
-    @JsonProperty("results") val results: List<TmdbSearchResult>? = null
-)
-data class TmdbSearchResult(
-    @JsonProperty("id") val id: Int,
-    @JsonProperty("media_type") val media_type: String,
-    @JsonProperty("title") val title: String? = null,
-    @JsonProperty("name") val name: String? = null,
-    @JsonProperty("poster_path") val poster_path: String? = null
-)
-data class TmdbLoadResponse(
-    @JsonProperty("id") val id: Int,
-    @JsonProperty("title") val title: String? = null,
-    @JsonProperty("name") val name: String? = null,
-    @JsonProperty("overview") val overview: String? = null,
-    @JsonProperty("poster_path") val poster_path: String? = null,
-    @JsonProperty("backdrop_path") val backdrop_path: String? = null,
-    @JsonProperty("genres") val genres: List<TmdbGenre>? = null,
-    @JsonProperty("release_date") val release_date: String? = null,
-    @JsonProperty("first_air_date") val first_air_date: String? = null,
-    @JsonProperty("seasons") val seasons: List<TmdbSeason>? = null
-)
-data class TmdbSeason(
-    @JsonProperty("season_number") val season_number: Int,
-    @JsonProperty("episode_count") val episode_count: Int
-)
-data class TmdbGenre(@JsonProperty("name") val name: String)
-// --- TMDb V3 Data Classes End ---
-
-
-class Movie21 : MainAPI() { 
-    override var mainUrl = "https://api.themoviedb.org" 
-    override **var** name = "Movie21 (TMDb V3)" // << PERBAIKAN 1: Menggunakan var
+class Movie21 : MainAPI() {
+    // ====== Konfigurasi dasar ======
+    override var name = "Movie21"
+    override var mainUrl = "https://api.themoviedb.org/3"
+    private val streamApi = "https://vidsrc.cc"
+    override val hasMainPage = true
     override var lang = "id"
-    override val hasMainPage = false
-    override val hasQuickSearch = true
-    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime)
-    
-    private val TMDB_API_KEY = "1cfadd9dbfc534abf6de40e1e7eaf4c7"
-    private val TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p/w500" 
+    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
-    // --- Endpoint Streaming Kustom ---
-    private val STREAM_BASE_URL = runBlocking {
-        Movie21Provider.getDomains()?.movie21 ?: "https://dramadrip.com" 
-    }
-    private val API_KLASIK_LOAD = "/api/v1/klasik/load" 
-    
-    // --- Implementasi Search TMDb V3 ---
-    override suspend fun search(query: String): List<SearchResponse> {
-        // PERBAIKAN 2: Menggunakan URLEncoder.encode
-        val url = "$mainUrl/3/search/multi?api_key=$TMDB_API_KEY&query=${URLEncoder.encode(query, "UTF-8")}#&language=id" 
-        
-        val response = app.get(url).parsedSafe<TmdbSearchResponse>()
-        
-        return response?.results?.mapNotNull { result ->
-            val type = when (result.media_type) {
-                "movie" -> TvType.Movie
-                "tv" -> TvType.TvSeries
-                else -> return@mapNotNull null
-            }
-            val title = result.title ?: result.name ?: return@mapNotNull null
-            val posterUrl = result.poster_path?.let { TMDB_IMAGE_BASE_URL + it }
+    private val apiKey = "1cfadd9dbfc534abf6de40e1e7eaf4c7"
+    private val bearerToken =
+        "Bearer eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiIxY2ZhZGQ5ZGJmYzUzNGFiZjZkZTQwZTFlN2VhZjRjNyIsIm5iZiI6MTc1OTA1OTI1Mi4xMjUsInN1YiI6IjY4ZDkxZDM0Y2MyMjM5MDUxZjM4YmQwYiIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.NcFqD1OvlG9r9WEmWh2UnDs3FqP_TtYQLS_MBnzy_VQ"
+
+    // ====== Halaman utama ======
+    override suspend fun getMainPage(): HomePageResponse {
+        val sections = listOf(
+            "Film Populer" to "$mainUrl/movie/popular?api_key=$apiKey&language=id-ID&page=1",
+            "Serial Populer" to "$mainUrl/tv/popular?api_key=$apiKey&language=id-ID&page=1",
+            "Film Terbaik" to "$mainUrl/movie/top_rated?api_key=$apiKey&language=id-ID&page=1"
+        )
+
+        val homeList = sections.mapNotNull { (title, url) ->
+            // Perbaikan: Tentukan tipe konten
+            val isTv = title.contains("Serial")
             
-            val link = "${result.id}-${result.media_type}"
-
-            newMovieSearchResponse(title, link, type) {
-                this.posterUrl = posterUrl
-            }
-        } ?: emptyList()
-    }
-    
-    // --- Implementasi Load TMDb V3 ---
-    @RequiresApi(Build.VERSION_CODES.O)
-    override suspend fun load(url: String): LoadResponse {
-        val parts = url.split("-")
-        val tmdbId = parts.firstOrNull()?.toIntOrNull() ?: throw ErrorLoadingException("Invalid TMDb ID")
-        val mediaType = parts.getOrNull(1) ?: throw ErrorLoadingException("Invalid media type")
-        
-        val tmdbUrl = "$mainUrl/3/$mediaType/$tmdbId?api_key=$TMDB_API_KEY&append_to_response=videos,credits,external_ids#&language=id"
-        val detail = app.get(tmdbUrl).parsedSafe<TmdbLoadResponse>() ?: throw ErrorLoadingException("Failed to load TMDb detail")
-        
-        val title = detail.title ?: detail.name ?: "Judul Tidak Diketahui"
-        val poster = detail.poster_path?.let { TMDB_IMAGE_BASE_URL + it }
-        val background = detail.backdrop_path?.let { TMDB_IMAGE_BASE_URL + it }
-        val plot = detail.overview
-        val year = detail.release_date?.take(4)?.toIntOrNull() ?: detail.first_air_date?.take(4)?.toIntOrNull()
-        val tags = detail.genres?.map { it.name }
-        
-        val finalUrl = "$mediaType/$tmdbId" 
-        val apiStreamId = tmdbId.toString()
-        
-        if (mediaType == "tv") {
-            val seasons = detail.seasons?.mapNotNull { tmdbSeason ->
-                val episodeLinkData = "$apiStreamId-${tmdbSeason.season_number}".toJson()
+            val json = app.get(url).text
+            val results = JSONObject(json).getJSONArray("results")
+            
+            val items = (0 until results.length()).mapNotNull { i ->
+                val obj = results.getJSONObject(i)
+                val id = obj.getInt("id")
+                // Gunakan 'title' untuk movie dan 'name' untuk tv
+                val name = obj.optString("title", obj.optString("name", "")) 
+                val poster = "https://image.tmdb.org/t/p/w500" + obj.optString("poster_path", "")
                 
-                newEpisode(episodeLinkData) {
-                    this.name = "Season ${tmdbSeason.season_number}"
-                    this.season = tmdbSeason.season_number
-                    this.episode = tmdbSeason.episode_count 
+                // Gunakan tipe yang benar
+                val tvType = if (isTv) TvType.TvSeries else TvType.Movie
+                
+                newMovieSearchResponse(name, "$id|$tvType", tvType) {
+                    this.posterUrl = poster
+                    // Penanganan tanggal rilis untuk movie dan tv series
+                    this.year = obj.optString("release_date", obj.optString("first_air_date", "")).take(4).toIntOrNull()
                 }
-            } ?: emptyList()
-
-            return newTvSeriesLoadResponse(title, finalUrl, TvType.TvSeries, seasons) {
-                this.backgroundPosterUrl = background
-                this.posterUrl = poster
-                this.plot = plot
-                this.year = year
-                this.tags = tags
-                addTMDbId(tmdbId.toString()) // << PERBAIKAN 3
             }
-        } else {
-            val linkForLoadLinks = apiStreamId.toJson()
-            return newMovieLoadResponse(title, finalUrl, TvType.Movie, linkForLoadLinks) {
-                this.backgroundPosterUrl = background
+            HomePageList(title, items)
+        }
+
+        return HomePageResponse(homeList)
+    }
+
+    // ====== Pencarian ======
+    override suspend fun search(query: String): List<SearchResponse> {
+        val encoded = URLEncoder.encode(query, "UTF-8")
+        val url = "$mainUrl/search/multi?query=$encoded&api_key=$apiKey&language=id-ID&page=1"
+        val json = app.get(url).text
+        val results = JSONObject(json).getJSONArray("results")
+
+        return (0 until results.length()).mapNotNull { i ->
+            val obj = results.getJSONObject(i)
+            val id = obj.optInt("id")
+            val typeStr = obj.optString("media_type", "movie")
+            if (id == 0) return@mapNotNull null // Skip item tanpa ID atau type yang tidak relevan
+
+            val tvType = if (typeStr == "tv") TvType.TvSeries else TvType.Movie
+            val poster = "https://image.tmdb.org/t/p/w500" + obj.optString("poster_path", "")
+            val title = obj.optString("title", obj.optString("name", ""))
+            
+            newMovieSearchResponse(title, "$id|$typeStr", tvType) {
                 this.posterUrl = poster
-                this.plot = plot
-                this.year = year
-                this.tags = tags
-                addTMDbId(tmdbId.toString()) // << PERBAIKAN 3
+                // Perbaikan: Tambahkan tahun untuk pencarian
+                this.year = obj.optString("release_date", obj.optString("first_air_date", "")).take(4).toIntOrNull()
             }
         }
     }
 
-    // --- Implementasi LoadLinks API Streaming Kustom ---
-    @RequiresApi(Build.VERSION_CODES.O)
+    // ====== Detail & Link Streaming ======
+    override suspend fun load(url: String): LoadResponse {
+        val (idStr, typeStr) = if (url.contains("|")) url.split("|") else listOf(url, "movie")
+        val type = if (typeStr == "tv") "tv" else "movie"
+        val apiUrl = "$mainUrl/$type/$idStr?api_key=$apiKey&language=id-ID"
+
+        val json = app.get(apiUrl).text
+        val obj = JSONObject(json)
+
+        val title = obj.optString("title", obj.optString("name", ""))
+        val poster = "https://image.tmdb.org/t/p/w500" + obj.optString("poster_path", "")
+        val overview = obj.optString("overview", "")
+        val year = obj.optString("release_date", obj.optString("first_air_date", "")).take(4).toIntOrNull()
+        
+        // Vidsrc menggunakan IMDb ID untuk movie, dan ID TMDB + Season/Episode untuk TV
+        val imdbId = obj.optString("imdb_id", "")
+
+        // Perbaikan Kritis: Pisahkan logika untuk Movie dan TvSeries
+        return if (type == "tv") {
+            // Logika untuk Serial TV (TvSeries)
+            val seasonsArray = obj.optJSONArray("seasons")
+            val seasons = if (seasonsArray != null) {
+                (0 until seasonsArray.length()).mapNotNull { i ->
+                    val seasonObj = seasonsArray.getJSONObject(i)
+                    val seasonNumber = seasonObj.optInt("season_number")
+                    val episodeCount = seasonObj.optInt("episode_count")
+                    
+                    // Kita hanya tertarik pada Season 1 ke atas (bukan Specials/Season 0)
+                    if (seasonNumber >= 1 && episodeCount > 0) { 
+                        val episodes = (1..episodeCount).map { episodeNumber ->
+                            Episode(
+                                // Format data untuk loadLinks: "TMDB_ID|SeasonNum|EpisodeNum"
+                                data = "$idStr|$seasonNumber|$episodeNumber", 
+                                name = "Eps $episodeNumber"
+                            )
+                        }
+                        
+                        TvSeason(
+                            name = seasonObj.optString("name", "Musim $seasonNumber"),
+                            season = seasonNumber,
+                            episodes = episodes
+                        )
+                    } else null
+                }
+            } else listOf()
+
+            newTvSeriesLoadResponse(title, url, TvType.TvSeries, seasons) {
+                this.posterUrl = poster
+                this.plot = overview
+                this.year = year
+            }
+        } else {
+            // Logika untuk Film (Movie)
+            val finalStreamUrl = when {
+                imdbId.isNotEmpty() -> "$streamApi/embed/movie/$imdbId"
+                else -> {
+                    // Fallback jika tidak ada IMDb ID, menggunakan judul (kurang disarankan, tapi dipertahankan)
+                    val encodedTitle = URLEncoder.encode(title, "UTF-8")
+                    "$streamApi/embed/movie?title=$encodedTitle"
+                }
+            }
+            
+            // Mengembalikan MovieLoadResponse
+            newMovieLoadResponse(title, finalStreamUrl, TvType.Movie, finalStreamUrl) {
+                this.posterUrl = poster
+                this.plot = overview
+                this.year = year
+            }
+        }
+    }
+
+    // Perbaikan Kritis: Fungsi untuk mendapatkan link streaming (Vidsrc)
     override suspend fun loadLinks(
         data: String,
-        isCasting: Boolean,
+        isTrailer: Boolean,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // ... (Logika loadLinks tetap sama)
-        val contentId = tryParseJson<String>(data) ?: return false
+        if (isTrailer) return false
 
-        val jsonPayload = mapOf(
-            "auth" to "",
-            "id_content" to contentId
-        ).toJson()
-
-        val response = app.post(
-            "$STREAM_BASE_URL$API_KLASIK_LOAD",
-            requestBody = jsonPayload.toRequestBody(),
-            headers = mapOf("Content-Type" to "application/json")
-        ).parsedSafe<StreamLinkResponse>()
-
-        val streamLinks = response?.streamData ?: emptyList()
-
-        if (streamLinks.isEmpty()) {
-            Log.e("Movie21", "API returned no stream links for ID: $contentId")
-            return false
+        val streamUrl: String
+        
+        if (data.contains("|")) {
+            // Serial TV: data format "TMDB_ID|SeasonNum|EpisodeNum"
+            val parts = data.split("|")
+            if (parts.size != 3) return false
+            val (idStr, seasonStr, episodeStr) = parts
+            streamUrl = "$streamApi/embed/tv/$idStr-$seasonStr-$episodeStr"
+        } else {
+            // Film: data adalah URL streaming yang sudah dibuat di load()
+            streamUrl = data
         }
 
-        for (stream in streamLinks) {
-            val link = stream.link ?: stream.linkRaw ?: continue
-            val qualityText = stream.quality ?: stream.resolution ?: "Unknown"
-            
-            val qualityInt = getQualityFromName(qualityText)
-
-            callback(
-                newExtractorLink(
-                    source = "Movie21 API",
-                    name = "Movie21 API $qualityText",
-                    url = link,
-                ) {
-                    this.quality = qualityInt
-                    this.referer = "$STREAM_BASE_URL/" 
-                }
-            )
-        }
-
+        // Panggil loadExtractor untuk memproses link Vidsrc
+        // Asumsi Vidsrc Extractor sudah terdaftar atau menggunakan internal logic
+        // Di sini Anda perlu memastikan bahwa loadExtractor dapat menangani Vidsrc
+        loadExtractor(streamUrl, streamUrl, subtitleCallback, callback)
         return true
     }
 }
