@@ -3,16 +3,16 @@ package com.Phisher98
 import android.os.Build
 import androidx.annotation.RequiresApi
 import com.fasterxml.jackson.annotation.JsonProperty
-import com.google.gson.Gson
 import com.lagradost.api.Log
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
+import com.lagradost.cloudstream3.utils.getQualityFromName // Import untuk mengatasi Unresolved reference
 import kotlinx.coroutines.runBlocking
 import okhttp3.RequestBody.Companion.toRequestBody
 
-// --- API Data Classes (Baru) ---
+// --- API Data Classes ---
 data class ApiResponse(
     @JsonProperty("status") val status: Boolean? = null,
     @JsonProperty("msg") val msg: String? = null,
@@ -25,7 +25,6 @@ data class ApiContent(
     @JsonProperty("link") val link: String? = null, // Digunakan sebagai ID unik
     @JsonProperty("id_content") val contentId: String? = null,
     @JsonProperty("type_content") val contentType: String? = null // movie, tv
-    // API seharusnya mengembalikan data detail lainnya di sini (plot, tahun, dll.)
 )
 
 data class StreamLinkResponse(
@@ -35,24 +34,20 @@ data class StreamLinkResponse(
 )
 
 data class StreamLinkData(
-    @JsonProperty("link") val link: String? = null, // Tautan streaming utama
+    @JsonProperty("link") val link: String? = null,
     @JsonProperty("link_raw") val linkRaw: String? = null,
-    @JsonProperty("quality") val quality: String? = null, // Contoh: 720p
+    @JsonProperty("quality") val quality: String? = null,
     @JsonProperty("resolusi") val resolution: String? = null
 )
-// --- API Data Classes (Lama) ---
-data class ResponseData(
-    val meta: Meta?
-)
-// ---
+// --- API Data Classes End ---
 
 class DramaDrip : MainAPI() {
     override var mainUrl: String = runBlocking {
         DramaDripProvider.getDomains()?.dramadrip ?: "https://dramadrip.com"
     }
-    override var name = "DramaDrip API" // Nama diubah agar jelas
+    override var name = "DramaDrip API"
     override val hasMainPage = true
-    override var lang = "id" // Diasumsikan Indonesia karena API
+    override var lang = "id"
     override val hasDownloadSupport = true
     override val hasQuickSearch = true
     override val supportedTypes = setOf(TvType.Movie, TvType.AsianDrama, TvType.TvSeries)
@@ -61,7 +56,7 @@ class DramaDrip : MainAPI() {
     // Definisikan Endpoint
     private val API_KLASIK_LIST = "/api/v1/klasik/list"
     private val API_KLASIK_QUERY = "/api/v1/klasik/query"
-    private val API_KLASIK_LOAD = "/api/v1/klasik/load" // Digunakan untuk Load dan LoadLinks
+    private val API_KLASIK_LOAD = "/api/v1/klasik/load"
 
     override val mainPage = mainPageOf(
         API_KLASIK_LIST to "Semua Konten (Via API)"
@@ -69,7 +64,7 @@ class DramaDrip : MainAPI() {
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val jsonPayload = mapOf(
-            "auth" to "", // Auth token kosong
+            "auth" to "", 
             "query" to "semua", 
             "limit" to 50,
             "offset" to (page - 1) * 50
@@ -103,16 +98,14 @@ class DramaDrip : MainAPI() {
             else -> TvType.Movie
         }
 
-        return newMovieSearchResponse(title, link, type) { // Menggunakan link sebagai ID unik
+        return newMovieSearchResponse(title, link, type) {
             this.posterUrl = posterUrl
         }
     }
 
-    // Fungsi toSearchResult lama (Element) Dihapus
-
     override suspend fun search(query: String): List<SearchResponse> {
         val jsonPayload = mapOf(
-            "auth" to "", // Auth token kosong
+            "auth" to "",
             "query" to query,
             "limit" to 50,
             "offset" to 0
@@ -131,9 +124,8 @@ class DramaDrip : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val contentId = url 
         
-        // Panggilan API untuk Detail Konten
         val jsonPayload = mapOf(
-            "auth" to "", // Auth token kosong
+            "auth" to "",
             "id_content" to contentId
         ).toJson()
 
@@ -145,7 +137,6 @@ class DramaDrip : MainAPI() {
         
         val contentDetail = response?.data?.firstOrNull() ?: throw Exception("API did not return content detail.")
 
-        // Asumsi minimal data yang berhasil diparse
         val title = contentDetail.title ?: "Judul Tidak Diketahui"
         val poster = contentDetail.image
         val type = when (contentDetail.contentType?.lowercase()) {
@@ -155,9 +146,8 @@ class DramaDrip : MainAPI() {
         }
 
         if (type == TvType.TvSeries) {
-            // Karena API hanya mengembalikan detail utama, kita harus membuat Episode/Season dummy
             val episodes = listOf(
-                newEpisode(contentId.toJson()) { // Data link adalah ID konten untuk loadLinks
+                newEpisode(contentId.toJson()) {
                     this.name = "Konten Series"
                     this.season = 1 
                     this.episode = 1
@@ -166,19 +156,14 @@ class DramaDrip : MainAPI() {
 
             return newTvSeriesLoadResponse(title, url, type, episodes) {
                 this.posterUrl = poster
-                // Semua metadata lain seperti plot/year dihilangkan karena bergantung pada API detail
             }
         } else {
-            // Konten adalah Movie
             val linkForLoadLinks = contentId.toJson()
             return newMovieLoadResponse(title, url, type, linkForLoadLinks) {
                 this.posterUrl = poster
-                // Semua metadata lain seperti plot/year dihilangkan
             }
         }
     }
-
-    // Fungsi search dan load links yang terpusat pada API
 
     @RequiresApi(Build.VERSION_CODES.O)
     override suspend fun loadLinks(
@@ -189,9 +174,8 @@ class DramaDrip : MainAPI() {
     ): Boolean {
         val contentId = tryParseJson<String>(data) ?: return false
 
-        // Panggilan API untuk Tautan Streaming
         val jsonPayload = mapOf(
-            "auth" to "", // Auth token kosong
+            "auth" to "",
             "id_content" to contentId
         ).toJson()
 
@@ -211,22 +195,23 @@ class DramaDrip : MainAPI() {
         for (stream in streamLinks) {
             val link = stream.link ?: stream.linkRaw ?: continue
             val qualityText = stream.quality ?: stream.resolution ?: "Unknown"
-            val qualityInt = Qualities.getStringQuality(qualityText)
+            
+            // Perbaikan Unresolved reference 'getStringQuality'
+            val qualityInt = getQualityFromName(qualityText)
 
             callback(
+                // Perbaikan Invalid parameter 'referer' dan 'quality'
                 newExtractorLink(
                     source = "DramaDrip API",
                     name = "DramaDrip API $qualityText",
                     url = link,
-                    referer = "$mainUrl/",
-                    quality = qualityInt
-                )
+                ) {
+                    this.quality = qualityInt
+                    this.referer = "$mainUrl/" 
+                }
             )
         }
 
         return true
     }
-    
-    // Hapus semua fungsi bypass/extractor yang tidak lagi digunakan (cinematickitBypass, dll.)
-    // Untuk menjaga kode tetap rapi, Anda harus menghapus fungsi-fungsi ini di file Utils.kt juga.
 }
