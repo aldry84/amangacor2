@@ -1,187 +1,118 @@
-package com.Phisher98
+package com.Movie21
 
-import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.utils.*
-import org.json.JSONObject
-import java.net.URLEncoder
+import com.lagacy.Movie21.base.TmdbProvider
+import com.lagacy.Movie21.base.TmdbAPI
+import com.lagacy.Movie21.base.niceUrl
+import com.Movie21.extractors.VidSrcApiExtractor // Gunakan Extractor API yang baru
+import com.lagacy.Movie21.TvType
+import com.lagacy.Movie21.MediaItem
+import com.lagacy.Movie21.ExtractorLink
+import com.lagacy.Movie21.SubtitleData
+import com.lagacy.Movie21.logError
+import com.lagacy.Movie21.MainPageData
+import com.lagacy.Movie21.HomePageList
+import com.lagacy.Movie21.TvSeries
+import com.lagacy.Movie21.Movie
 
-class Movie21 : MainAPI() {
-    override var mainUrl = "https://api.themoviedb.org/3"
-    override var name = "Movie21"
-    override val hasMainPage = true
-    override var lang = "id"
-    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
-
-    private val tmdbKey = "1cfadd9dbfc534abf6de40e1e7eaf4c7"
-    private val tmdbImage = "https://image.tmdb.org/t/p/w500"
-    private val embedBase = "https://vidsrc-embed.ru" 
-
-    private fun getDataUrl(id: Int, mediaType: String): String = "$id|$mediaType"
-
-    // =============================
-    // MAIN PAGE
-    // =============================
-    override val mainPage = mainPageOf(
-        "$mainUrl/trending/movie/day?api_key=$tmdbKey" to "Film Trending",
-        "$mainUrl/movie/popular?api_key=$tmdbKey" to "Film Populer",
-        "$mainUrl/tv/popular?api_key=$tmdbKey" to "Serial Populer",
-        "$mainUrl/tv/airing_today?api_key=$tmdbKey" to "Tayang Hari Ini"
+class Movie21Provider: TmdbProvider() {
+    
+    // Konfigurasi Dasar
+    override val tmdbApi: TmdbAPI = TmdbAPI("1cfadd9dbfc534abf6de40e1e7eaf4c7")
+    override val mainName: String = "Movie21"
+    override val packageName: String = "com.Movie21"
+    
+    // URL dasar sumber streaming (vidsrc-embed.ru untuk latest content)
+    override val mainUrl: String = "https://vidsrc-embed.ru" 
+    
+    // GANTI DENGAN URL VERCEL API ANDA YANG BENAR
+    private val VERCEL_API_URL = "https://<deployment-anda>" 
+    
+    override val supportedTypes: Set<TvType> = setOf(
+        TvType.Movie,
+        TvType.TvSeries,
     )
+    
+    // Inisialisasi Extractor
+    private val vidSrcApi = VidSrcApiExtractor(VERCEL_API_URL)
 
-    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val response = app.get(request.data).text
-        val json = JSONObject(response).getJSONArray("results")
-        val items = mutableListOf<SearchResponse>()
-        
-        val mediaType = if (request.name.contains("Serial")) "tv" else "movie"
-        val tvType = if (mediaType == "tv") TvType.TvSeries else TvType.Movie
+    // Endpoint untuk mendapatkan daftar film/acara TV terbaru dari VidSrcEmbed (sesuai gambar lama)
+    private fun getLatestMoviesUrl(page: Int) = "${mainUrl}/movies/latest/page-$page.json"
+    private fun getLatestTvUrl(page: Int) = "${mainUrl}/tvshows/latest/page-$page.json"
 
-        for (i in 0 until json.length()) {
-            val item = json.getJSONObject(i)
-            val id = item.optInt("id")
-            if (id == 0) continue
+    // =========================================================================
+    // 🎥 PENGAMBILAN LINK STREAMING (LOAD URLS) - Menggunakan Vercel API
+    // =========================================================================
 
-            val title = item.optString("title", item.optString("name", ""))
-            val poster = tmdbImage + item.optString("poster_path", "")
-            val year = item.optString("release_date", item.optString("first_air_date", "")).take(4).toIntOrNull()
-
-            items.add(
-                newMovieSearchResponse(title, getDataUrl(id, mediaType), tvType) {
-                    this.posterUrl = poster
-                    this.year = year
-                }
-            )
-        }
-
-        return newHomePageResponse(request.name, items)
-    }
-
-    // =============================
-    // SEARCH
-    // =============================
-    override suspend fun search(query: String): List<SearchResponse> {
-        val encodedQuery = URLEncoder.encode(query, "UTF-8")
-        val url = "$mainUrl/search/multi?api_key=$tmdbKey&query=$encodedQuery"
-        val response = app.get(url).text
-        val json = JSONObject(response).getJSONArray("results")
-        val results = mutableListOf<SearchResponse>()
-
-        for (i in 0 until json.length()) {
-            val item = json.getJSONObject(i)
-            val id = item.optInt("id")
-            val mediaType = item.optString("media_type", "movie")
-            if (id == 0 || (mediaType != "movie" && mediaType != "tv")) continue
-
-            val tvType = if (mediaType == "movie") TvType.Movie else TvType.TvSeries
-            val title = item.optString("title", item.optString("name", ""))
-            val poster = tmdbImage + item.optString("poster_path", "")
-            val year = item.optString("release_date", item.optString("first_air_date", "")).take(4).toIntOrNull()
-
-            results.add(
-                newMovieSearchResponse(title, getDataUrl(id, mediaType), tvType) {
-                    this.posterUrl = poster
-                    this.year = year
-                }
-            )
-        }
-
-        return results
-    }
-
-    // =============================
-    // LOAD DETAIL PAGE
-    // =============================
-    override suspend fun load(url: String): LoadResponse? {
-        val parts = url.split("|")
-        if (parts.size != 2) return null
-        
-        val tmdbId = parts[0]
-        val mediaType = parts[1]
-        val isMovie = mediaType == "movie"
-        
-        val endpoint = if (isMovie)
-            "$mainUrl/movie/$tmdbId?api_key=$tmdbKey"
-        else
-            "$mainUrl/tv/$tmdbId?api_key=$tmdbKey"
-
-        val json = JSONObject(app.get(endpoint).text)
-        
-        val title = json.optString("title", json.optString("name", ""))
-        val poster = tmdbImage + json.optString("poster_path", "")
-        val overview = json.optString("overview", "")
-        val year = json.optString("release_date", json.optString("first_air_date", "")).take(4).toIntOrNull()
-
-        if (isMovie) {
-            val embedUrl = "$embedBase/embed/movie?tmdb=$tmdbId"
-            
-            return newMovieLoadResponse(title, url, TvType.Movie, embedUrl) {
-                this.posterUrl = poster
-                this.plot = overview
-                this.year = year
-            }
-        } else {
-            // Logika TvSeries: menggunakan builder yang benar (newEpisode, newTvSeason)
-            val seasonsArray = json.optJSONArray("seasons")
-            val seasons = if (seasonsArray != null) {
-                (0 until seasonsArray.length()).mapNotNull { i ->
-                    val seasonObj = seasonsArray.getJSONObject(i)
-                    val seasonNumber = seasonObj.optInt("season_number")
-                    val episodeCount = seasonObj.optInt("episode_count")
-                    
-                    if (seasonNumber >= 1 && episodeCount > 0) {
-                        val episodes = (1..episodeCount).map { episodeNumber ->
-                            // Menggunakan newEpisode builder
-                            newEpisode(data = "$tmdbId|$seasonNumber|$episodeNumber", name = "Eps $episodeNumber") {
-                                this.season = seasonNumber
-                                this.episode = episodeNumber
-                            }
-                        }
-                        
-                        // Menggunakan newTvSeason builder
-                        newTvSeason(seasonObj.optString("name", "Musim $seasonNumber"), episodes) {
-                            this.season = seasonNumber
-                        }
-                    } else null
-                }
-            } else listOf()
-
-            return newTvSeriesLoadResponse(title, url, TvType.TvSeries, seasons) {
-                this.posterUrl = poster
-                this.plot = overview
-                this.year = year
-            }
-        }
-    }
-
-    // =============================
-    // LOAD LINKS (STREAM FETCHER)
-    // =============================
-    override suspend fun loadLinks(
-        data: String,
-        isTrailer: Boolean,
-        subtitleCallback: (SubtitleFile) -> Unit,
+    override fun loadUrls(
+        mediaItem: MediaItem, 
+        season: Int?, 
+        episode: Int?, 
+        subtitleCallback: (SubtitleData) -> Unit, 
         callback: (ExtractorLink) -> Unit
-    ): Boolean {
-        if (isTrailer) return false
-
-        val parts = data.split("|")
-        val embedUrl: String
+    ) {
+        // TMDB ID Diteruskan sebagai String
+        val tmdbId = mediaItem.id 
         
-        if (parts.size == 2) { 
-            // Film: data format "TMDB_ID|movie"
-            val tmdbId = parts[0]
-            embedUrl = "$embedBase/embed/movie?tmdb=$tmdbId"
-        } else if (parts.size == 3) {
-            // Serial TV: data format "TMDB_ID|S|E"
-            val (tmdbId, sNum, eNum) = parts
-            embedUrl = "$embedBase/embed/tv?tmdb=$tmdbId&season=$sNum&episode=$eNum"
-        } else {
-            return false
+        val url: String = when (mediaItem.type) {
+            TvType.Movie -> {
+                // Endpoint Film: https://(deployment)/:TMDBid
+                "${VERCEL_API_URL}/${tmdbId}" 
+            }
+            TvType.TvSeries -> {
+                // Endpoint Seri: https://(deployment)/:TMDBid/:season/:episode
+                if (season != null && episode != null) {
+                    "${VERCEL_API_URL}/${tmdbId}/${season}/${episode}"
+                } else {
+                    return // Harus ada season dan episode
+                }
+            }
+            else -> return
         }
         
-        // Memanggil Extractor yang harus menyelesaikan URL embed
-        loadExtractor(embedUrl, embedBase, subtitleCallback, callback)
+        // Panggil Extractor untuk mendapatkan link streaming
+        vidSrcApi.extract(url, mediaItem.niceUrl(), subtitleCallback, callback)
+    }
+
+    // =========================================================================
+    // 🏠 HALAMAN UTAMA (HOME PAGE) - Menggunakan data vidsrc-embed.ru & TMDB
+    // =========================================================================
+
+    override suspend fun getMainPage(): MainPageData {
+        val lists = mutableListOf<HomePageList>()
         
-        return true
+        // 1. Film Terbaru dari VidsrcEmbed 
+        try {
+            val latestMovieUrl = getLatestMoviesUrl(1)
+            val jsonMovies = app.get(latestMovieUrl).parsed<LatestContentList>()
+            val mediaItems = jsonMovies.results.mapNotNull { 
+                // Gunakan TMDB ID untuk membuat Movie Item
+                it.tmdb?.let { tmdbId -> Movie(it.title, tmdbId.toString(), null, it.poster) } 
+            }
+            lists.add(HomePageList("Film Terbaru (dari vidsrc-embed)", mediaItems))
+        } catch (e: Exception) {
+            logError(e) 
+        }
+
+        // 2. Acara TV Terbaru dari VidsrcEmbed
+        try {
+            val latestTvUrl = getLatestTvUrl(1)
+            val jsonTv = app.get(latestTvUrl).parsed<LatestContentList>()
+            val mediaItems = jsonTv.results.mapNotNull { 
+                it.tmdb?.let { tmdbId -> TvSeries(it.title, tmdbId.toString(), null, it.poster) } 
+            }
+            lists.add(HomePageList("Acara TV Terbaru (dari vidsrc-embed)", mediaItems))
+        } catch (e: Exception) {
+            logError(e) 
+        }
+        
+        // 3. Film Populer dari TMDB
+        val tmdbPopularMovies = tmdbApi.getPopular(TvType.Movie, 1)
+        lists.add(HomePageList("Film Populer (TMDB)", tmdbPopularMovies.results.toMediaItems()))
+
+        // 4. Acara TV Populer dari TMDB
+        val tmdbPopularTv = tmdbApi.getPopular(TvType.TvSeries, 1)
+        lists.add(HomePageList("Acara TV Populer (TMDB)", tmdbPopularTv.results.toMediaItems()))
+
+        return MainPageData(lists)
     }
 }
