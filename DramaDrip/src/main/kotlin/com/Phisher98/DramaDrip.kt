@@ -2,7 +2,8 @@
 
 package com.Phisher98
 
-import android.os.Build
+// PERBAIKAN IMPORT: Mengimpor semua definisi top-level dari paket com.Phisher98
+import com.Phisher98.* import android.os.Build
 import androidx.annotation.RequiresApi
 import com.google.gson.Gson
 import com.lagradost.api.Log
@@ -17,9 +18,7 @@ import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import kotlinx.coroutines.runBlocking
 import org.jsoup.nodes.Element
 
-// PERBAIKAN IMPORT: Mengimpor semua definisi top-level dari paket com.Phisher98
-// Ini mengatasi error "Unresolved reference" untuk semua fungsi di Utils.kt.
-import com.Phisher98.* class DramaDrip : MainAPI() {
+class DramaDrip : MainAPI() {
     override var mainUrl: String = runBlocking {
         DramaDripProvider.getDomains()?.dramadrip ?: "https://dramadrip.com"
     }
@@ -145,7 +144,6 @@ import com.Phisher98.* class DramaDrip : MainAPI() {
         val hrefs: List<String> = document.select("div.wp-block-button > a")
             .mapNotNull { linkElement ->
                 val link = linkElement.attr("href")
-                // Menggunakan cinematickitloadBypass yang sudah diimpor
                 val actual = cinematickitloadBypass(link) ?: return@mapNotNull null
                 val page = app.get(actual).document
                 page.select("div.wp-block-button.movie_btn a")
@@ -195,7 +193,6 @@ import com.Phisher98.* class DramaDrip : MainAPI() {
 
                         for (qualityPageLink in qualityLinks) {
                             try {
-                                // Menggunakan cinematickitloadBypass yang sudah diimpor
                                 val rawqualityPageLink = if (qualityPageLink.contains("modpro")) qualityPageLink else cinematickitloadBypass(qualityPageLink) ?: "" 
                                 val response = app.get(rawqualityPageLink)
                                 val episodeDoc = response.document
@@ -316,7 +313,6 @@ import com.Phisher98.* class DramaDrip : MainAPI() {
                 
                 // Logika tautan DramaDrip yang sudah ada (tautan unduhan/safelink)
                 val finalLink = when {
-                    // Menggunakan fungsi bypass yang sudah diimpor
                     "safelink=" in link -> cinematickitBypass(link)
                     "unblockedgames" in link -> bypassHrefli(link)
                     "examzculture" in link -> bypassHrefli(link)
