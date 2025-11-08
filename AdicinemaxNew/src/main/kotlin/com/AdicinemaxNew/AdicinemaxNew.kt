@@ -15,6 +15,7 @@ class AdicinemaxNew : MainAPI() {
     override val hasChromecastSupport = false
     override val hasDownloadSupport = false
     override val hasQuickSearch = true
+    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
     private val tmdbApiKey = "1cfadd9dbfc534abf6de40e1e7eaf4c7"
     
@@ -29,25 +30,25 @@ class AdicinemaxNew : MainAPI() {
         // Trending Movies
         val trendingMovies = getTMDBTrending("movie", page)
         if (trendingMovies.isNotEmpty()) {
-            responses.add(HomePageList("Trending Movies", trendingMovies, true))
+            responses.add(HomePageList("Trending Movies", trendingMovies))
         }
         
         // Trending TV Shows
         val trendingTV = getTMDBTrending("tv", page)
         if (trendingTV.isNotEmpty()) {
-            responses.add(HomePageList("Trending TV Shows", trendingTV, true))
+            responses.add(HomePageList("Trending TV Shows", trendingTV))
         }
         
         // Now Playing Movies
         val nowPlayingMovies = getTMDBNowPlaying(page)
         if (nowPlayingMovies.isNotEmpty()) {
-            responses.add(HomePageList("Now Playing Movies", nowPlayingMovies, true))
+            responses.add(HomePageList("Now Playing Movies", nowPlayingMovies))
         }
         
         // Popular TV Shows
         val popularTV = getTMDBPopular("tv", page)
         if (popularTV.isNotEmpty()) {
-            responses.add(HomePageList("Popular TV Shows", popularTV, true))
+            responses.add(HomePageList("Popular TV Shows", popularTV))
         }
         
         return newHomePageResponse(responses)
@@ -79,6 +80,21 @@ class AdicinemaxNew : MainAPI() {
             return true
         }
         return false
+    }
+
+    override suspend fun load(url: String): LoadResponse? {
+        val parts = url.split("|")
+        if (parts.size < 3) return null
+        
+        val type = parts[0]
+        val tmdbId = parts[1]
+        val imdbId = parts[2]
+        
+        return if (type == "movie") {
+            loadMovieContent(tmdbId, imdbId)
+        } else {
+            loadTVContent(tmdbId, imdbId)
+        }
     }
 
     private suspend fun getTMDBTrending(mediaType: String, page: Int): List<SearchResponse> {
@@ -163,6 +179,7 @@ class AdicinemaxNew : MainAPI() {
             
             val overview = item.optString("overview", "No description available")
             val releaseDate = item.optString(if (mediaType == "movie") "release_date" else "first_air_date")
+            val rating = (item.optDouble("vote_average", 0.0) * 10).toInt()
             
             // Get IMDB ID
             val imdbId = getIMDBId(mediaType, id.toString())
@@ -193,6 +210,80 @@ class AdicinemaxNew : MainAPI() {
             json.optString("imdb_id", "").takeIf { it.isNotEmpty() } ?: ""
         } catch (e: Exception) {
             ""
+        }
+    }
+
+    private suspend fun loadMovieContent(tmdbId: String, imdbId: String): LoadResponse? {
+        return try {
+            val url = "$TMDB_BASE_URL/movie/$tmdbId?api_key=$tmdbApiKey"
+            val response = app.get(url).text
+            val json = JSONObject(response)
+            
+            val title = json.getString("title")
+            val posterPath = json.optString("poster_path")
+            val posterUrl = if (posterPath.isNotEmpty()) "$TMDB_IMAGE_BASE$posterPath" else ""
+            val overview = json.optString("overview", "No description available")
+            val releaseDate = json.optString("release_date")
+            val runtime = json.optInt("runtime", 0)
+            val rating = (json.optDouble("vote_average", 0.0) * 10).toInt()
+            val genres = json.optJSONArray("genres")?.let { genresArray ->
+                (0 until genresArray.length()).map { 
+                    genresArray.getJSONObject(it).getString("name") 
+                }
+            } ?: emptyList()
+
+            newMovieLoadResponse(title, "movie|$tmdbId|$imdbId", TvType.Movie, "movie|$tmdbId|$imdbId") {
+                this.posterUrl = posterUrl
+                this.year = releaseDate.take(4).toIntOrNull()
+                this.plot = overview
+                this.duration = runtime
+                this.tags = genres
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private suspend fun loadTVContent(tmdbId: String, imdbId: String): LoadResponse? {
+        return try {
+            val url = "$TMDB_BASE_URL/tv/$tmdbId?api_key=$tmdbApiKey"
+            val response = app.get(url).text
+            val json = JSONObject(response)
+            
+            val title = json.getString("name")
+            val posterPath = json.optString("poster_path")
+            val posterUrl = if (posterPath.isNotEmpty()) "$TMDB_IMAGE_BASE$posterPath" else ""
+            val overview = json.optString("overview", "No description available")
+            val firstAirDate = json.optString("first_air_date")
+            val numberOfSeasons = json.optInt("number_of_seasons", 0)
+            val rating = (json.optDouble("vote_average", 0.0) * 10).toInt()
+            val genres = json.optJSONArray("genres")?.let { genresArray ->
+                (0 until genresArray.length()).map { 
+                    genresArray.getJSONObject(it).getString("name") 
+                }
+            } ?: emptyList()
+
+            // Get episodes for all seasons
+            val allEpisodes = mutableListOf<Episode>()
+            
+            for (seasonNumber in 1..numberOfSeasons) {
+                try {
+                    val seasonEpisodes = getSeasonEpisodes(tmdbId, seasonNumber, imdbId)
+                    allEpisodes.addAll(seasonEpisodes)
+                } catch (e: Exception) {
+                    // Skip season if there's an error
+                    continue
+                }
+            }
+            
+            newTvSeriesLoadResponse(title, "tv|$tmdbId|$imdbId", TvType.TvSeries, allEpisodes) {
+                this.posterUrl = posterUrl
+                this.year = firstAirDate.take(4).toIntOrNull()
+                this.plot = overview
+                this.tags = genres
+            }
+        } catch (e: Exception) {
+            null
         }
     }
 
