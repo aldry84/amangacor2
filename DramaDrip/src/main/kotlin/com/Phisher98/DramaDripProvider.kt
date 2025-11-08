@@ -10,27 +10,28 @@ import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 @CloudstreamPlugin
 class DramaDripProvider: BasePlugin() {
     override fun load() {
-        // Mendaftarkan MainAPI
         registerMainAPI(DramaDrip())
-        
-        // Mendaftarkan Extractor yang sudah ada
         registerExtractorAPI(Driveseed())
-        
-        // Mendaftarkan Extractor baru untuk VidSrc Embed
         registerExtractorAPI(VidSrcEmbedExtractor())
     }
+    
     companion object {
-        private const val DOMAINS_URL =
-            "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/domains.json"
-        var cachedDomains: Domains? = null
+        private const val DOMAINS_URL = "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/domains.json"
+        private var cachedDomains: Domains? = null
+        private var cacheTimestamp: Long = 0
+        private const val CACHE_DURATION = 30 * 60 * 1000 // 30 minutes
 
         suspend fun getDomains(forceRefresh: Boolean = false): Domains? {
-            if (cachedDomains == null || forceRefresh) {
+            val now = System.currentTimeMillis()
+            if (forceRefresh || cachedDomains == null || now - cacheTimestamp > CACHE_DURATION) {
                 try {
                     cachedDomains = app.get(DOMAINS_URL).parsedSafe<Domains>()
+                    cacheTimestamp = now
+                    Log.d("DramaDrip", "Domains cache updated: ${cachedDomains?.dramadrip}")
                 } catch (e: Exception) {
-                    e.printStackTrace()
-                    return null
+                    Log.e("DramaDrip", "Failed to fetch domains: ${e.message}")
+                    // Return cached version even if expired if fetch fails
+                    if (cachedDomains == null) return null
                 }
             }
             return cachedDomains
