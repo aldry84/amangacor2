@@ -170,25 +170,15 @@ class AdicinemaxNew : MainAPI() {
             val dataId = "$mediaType|$id|$imdbId"
             
             if (mediaType == "movie") {
-                MovieResponse(
-                    name = title,
-                    url = dataId,
-                    apiName = name,
-                    type = TvType.Movie,
-                    posterUrl = posterUrl,
-                    year = releaseDate.take(4).toIntOrNull(),
-                    plot = overview
-                )
+                newMovieSearchResponse(title, dataId, TvType.Movie) {
+                    this.posterUrl = posterUrl
+                    this.year = releaseDate.take(4).toIntOrNull()
+                }
             } else {
-                TvSeriesResponse(
-                    name = title,
-                    url = dataId,
-                    apiName = name,
-                    type = TvType.TvSeries,
-                    posterUrl = posterUrl,
-                    year = releaseDate.take(4).toIntOrNull(),
-                    plot = overview
-                )
+                newTvSeriesSearchResponse(title, dataId, TvType.TvSeries) {
+                    this.posterUrl = posterUrl
+                    this.year = releaseDate.take(4).toIntOrNull()
+                }
             }
         } catch (e: Exception) {
             null
