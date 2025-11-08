@@ -7,8 +7,6 @@ import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
-import okhttp3.MediaType.Companion.toMediaTypeOrNull
-import okhttp3.RequestBody.Companion.toRequestBody
 import org.jsoup.nodes.Element
 import java.net.URLEncoder
 import java.text.SimpleDateFormat
@@ -30,7 +28,7 @@ class AdicinemaxNew : MainAPI() {
         const val TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w500"
     }
 
-    // Main page structure seperti di Adimoviebox
+    // Main page structure
     override val mainPage = mainPageOf(
         "movie,latest" to "Latest Movies",
         "tv,latest" to "Latest TV Shows", 
@@ -75,7 +73,6 @@ class AdicinemaxNew : MainAPI() {
     ): Boolean {
         val media = parseJson<LoadData>(data)
         
-        // PERBAIKAN: Handle null values dengan safe calls
         val embedUrl = buildEmbedUrl(media.type ?: "", media.tmdbId ?: "", media.imdbId ?: "", media.season, media.episode)
         
         return if (embedUrl.isNotBlank()) {
@@ -88,7 +85,6 @@ class AdicinemaxNew : MainAPI() {
     override suspend fun load(url: String): LoadResponse? {
         val media = parseJson<LoadData>(url)
         
-        // PERBAIKAN: Handle null values dengan safe calls
         return if ((media.type ?: "") == "movie") {
             loadMovieContent(media.tmdbId ?: "", media.imdbId ?: "")
         } else {
@@ -96,7 +92,7 @@ class AdicinemaxNew : MainAPI() {
         }
     }
 
-    // Vidsrc API Functions - Diperbaiki dengan error handling yang lebih baik
+    // Vidsrc API Functions
     private suspend fun parseLatestMovies(page: Int): List<SearchResponse> {
         return try {
             val url = "$mainUrl/movies/latest/page-$page.json"
@@ -236,7 +232,7 @@ class AdicinemaxNew : MainAPI() {
         }
     }
 
-    // TMDB Functions - Diperbaiki dengan struktur data class
+    // TMDB Functions
     private suspend fun getTMDBTrending(mediaType: String, page: Int): List<SearchResponse> {
         return try {
             val url = "$TMDB_BASE_URL/trending/$mediaType/week?api_key=$tmdbApiKey&page=$page"
@@ -287,12 +283,10 @@ class AdicinemaxNew : MainAPI() {
                 else -> null
             }
             
-            // PERBAIKAN: Menambahkan score dari vote_average seperti di Adimoviebox
             val score = item.vote_average?.let { 
                 Score.from10(it.toString()) 
             }
             
-            // Get IMDB ID
             val imdbId = getIMDBId(mediaType, id)
             
             val data = LoadData(
@@ -305,13 +299,13 @@ class AdicinemaxNew : MainAPI() {
                 newMovieSearchResponse(title, data.toJson(), TvType.Movie) {
                     this.posterUrl = posterUrl
                     this.year = releaseDate?.take(4)?.toIntOrNull()
-                    this.score = score // PERBAIKAN: Menambahkan score
+                    this.score = score
                 }
             } else {
                 newTvSeriesSearchResponse(title, data.toJson(), TvType.TvSeries) {
                     this.posterUrl = posterUrl
                     this.year = releaseDate?.take(4)?.toIntOrNull()
-                    this.score = score // PERBAIKAN: Menambahkan score
+                    this.score = score
                 }
             }
         } catch (e: Exception) {
@@ -344,12 +338,10 @@ class AdicinemaxNew : MainAPI() {
             val runtime = json.runtime ?: 0
             val genres = json.genres?.map { it.name } ?: emptyList()
 
-            // PERBAIKAN: Menambahkan score dari vote_average seperti di Adimoviebox
             val score = json.vote_average?.let { 
                 Score.from10(it.toString()) 
             }
 
-            // Get cast - PERBAIKAN: Mengembalikan List<Actor> bukan List<ActorData>
             val cast = getMovieCast(tmdbId)
             
             val data = LoadData(
@@ -364,8 +356,7 @@ class AdicinemaxNew : MainAPI() {
                 this.plot = overview
                 this.duration = runtime
                 this.tags = genres
-                this.score = score // PERBAIKAN: Menambahkan score
-                // PERBAIKAN: addActors sekarang menerima List<Actor>
+                this.score = score
                 addActors(cast)
             }
         } catch (e: Exception) {
@@ -387,15 +378,12 @@ class AdicinemaxNew : MainAPI() {
             val numberOfSeasons = json.number_of_seasons ?: 0
             val genres = json.genres?.map { it.name } ?: emptyList()
 
-            // PERBAIKAN: Menambahkan score dari vote_average seperti di Adimoviebox
             val score = json.vote_average?.let { 
                 Score.from10(it.toString()) 
             }
 
-            // Get cast - PERBAIKAN: Mengembalikan List<Actor> bukan List<ActorData>
             val cast = getTVCast(tmdbId)
             
-            // Get episodes for all seasons
             val allEpisodes = mutableListOf<Episode>()
             
             for (seasonNumber in 1..numberOfSeasons) {
@@ -418,8 +406,7 @@ class AdicinemaxNew : MainAPI() {
                 this.year = firstAirDate?.take(4)?.toIntOrNull()
                 this.plot = overview
                 this.tags = genres
-                this.score = score // PERBAIKAN: Menambahkan score
-                // PERBAIKAN: addActors sekarang menerima List<Actor>
+                this.score = score
                 addActors(cast)
             }
         } catch (e: Exception) {
@@ -482,7 +469,6 @@ class AdicinemaxNew : MainAPI() {
         }
     }
 
-    // PERBAIKAN: Mengembalikan List<Actor> dengan constructor yang benar
     private suspend fun getMovieCast(tmdbId: String): List<Actor> {
         return try {
             val url = "$TMDB_BASE_URL/movie/$tmdbId/credits?api_key=$tmdbApiKey"
@@ -500,7 +486,6 @@ class AdicinemaxNew : MainAPI() {
         }
     }
 
-    // PERBAIKAN: Mengembalikan List<Actor> dengan constructor yang benar
     private suspend fun getTVCast(tmdbId: String): List<Actor> {
         return try {
             val url = "$TMDB_BASE_URL/tv/$tmdbId/credits?api_key=$tmdbApiKey"
@@ -554,19 +539,15 @@ class AdicinemaxNew : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         return try {
-            // Dapatkan HTML dari embed URL
             val document = app.get(embedUrl, referer = referer).document
             
-            // Cari iframe utama
             val iframe = document.selectFirst("iframe")
             val iframeSrc = iframe?.attr("src")
             
             if (iframeSrc != null) {
-                // Jika iframeSrc adalah URL lengkap
                 if (iframeSrc.startsWith("http")) {
                     loadExtractor(iframeSrc, embedUrl, subtitleCallback, callback)
                 } else {
-                    // Jika iframeSrc relative, buat URL lengkap
                     val fullIframeUrl = if (iframeSrc.startsWith("//")) {
                         "https:${iframeSrc}"
                     } else if (iframeSrc.startsWith("/")) {
@@ -578,34 +559,32 @@ class AdicinemaxNew : MainAPI() {
                 }
                 true
             } else {
-                // Coba cari video player langsung
                 val videoElement = document.selectFirst("video")
                 val videoSource = videoElement?.selectFirst("source[src]")
                 val videoUrl = videoSource?.attr("src")
                 
                 if (!videoUrl.isNullOrBlank()) {
-                    // PERBAIKAN: Gunakan newExtractorLink yang tidak deprecated
+                    // PERBAIKAN: Menggunakan approach yang sama seperti di repository referensi
+                    val quality = getQualityFromUrl(videoUrl)
+                    val isM3u8 = videoUrl.contains(".m3u8")
+                    
                     callback.invoke(
-                        newExtractorLink(
+                        ExtractorLink(
                             source = name,
                             name = "Vidsrc Direct", 
                             url = videoUrl,
                             referer = referer,
-                            quality = getQualityFromUrl(videoUrl),
-                            isM3u8 = videoUrl.contains(".m3u8")
-                        ) {
-                            // Additional properties bisa ditambahkan di sini jika diperlukan
-                        }
+                            quality = quality,
+                            isM3u8 = isM3u8
+                        )
                     )
                     true
                 } else {
-                    // Fallback ke extractor biasa
                     loadExtractor(embedUrl, referer, subtitleCallback, callback)
                     true
                 }
             }
         } catch (e: Exception) {
-            // Fallback ke extractor biasa jika ada error
             try {
                 loadExtractor(embedUrl, referer, subtitleCallback, callback)
                 true
@@ -627,7 +606,7 @@ class AdicinemaxNew : MainAPI() {
     }
 }
 
-// Data Classes untuk struktur JSON yang lebih baik
+// Data Classes
 data class LoadData(
     val type: String? = null,
     val tmdbId: String? = null,
@@ -662,7 +641,7 @@ data class TMDBItem(
     @JsonProperty("release_date") val release_date: String? = null,
     @JsonProperty("first_air_date") val first_air_date: String? = null,
     @JsonProperty("media_type") val media_type: String = "",
-    @JsonProperty("vote_average") val vote_average: Double? = null // PERBAIKAN: Ditambahkan untuk score
+    @JsonProperty("vote_average") val vote_average: Double? = null
 )
 
 data class ExternalIdsResponse(
@@ -675,7 +654,7 @@ data class TMDBMovieDetail(
     @JsonProperty("overview") val overview: String? = null,
     @JsonProperty("release_date") val release_date: String? = null,
     @JsonProperty("runtime") val runtime: Int? = null,
-    @JsonProperty("vote_average") val vote_average: Double? = null, // PERBAIKAN: Ditambahkan untuk score
+    @JsonProperty("vote_average") val vote_average: Double? = null,
     @JsonProperty("genres") val genres: List<Genre>? = null
 )
 
@@ -685,7 +664,7 @@ data class TMDBTVDetail(
     @JsonProperty("overview") val overview: String? = null,
     @JsonProperty("first_air_date") val first_air_date: String? = null,
     @JsonProperty("number_of_seasons") val number_of_seasons: Int? = null,
-    @JsonProperty("vote_average") val vote_average: Double? = null, // PERBAIKAN: Ditambahkan untuk score
+    @JsonProperty("vote_average") val vote_average: Double? = null,
     @JsonProperty("genres") val genres: List<Genre>? = null
 )
 
