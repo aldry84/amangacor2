@@ -17,13 +17,9 @@ import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import kotlinx.coroutines.runBlocking
 import org.jsoup.nodes.Element
 
-// IMPORT FUNGSI UTILITAS YANG HILANG DITAMBAHKAN
-import com.Phisher98.cinematickitloadBypass
-import com.Phisher98.cinematickitBypass
-import com.Phisher98.bypassHrefli
-// ----------------------------------------------
-
-class DramaDrip : MainAPI() {
+// PERBAIKAN IMPORT: Mengimpor semua definisi top-level dari paket com.Phisher98
+// Ini mengatasi error "Unresolved reference" untuk semua fungsi di Utils.kt.
+import com.Phisher98.* class DramaDrip : MainAPI() {
     override var mainUrl: String = runBlocking {
         DramaDripProvider.getDomains()?.dramadrip ?: "https://dramadrip.com"
     }
@@ -149,7 +145,8 @@ class DramaDrip : MainAPI() {
         val hrefs: List<String> = document.select("div.wp-block-button > a")
             .mapNotNull { linkElement ->
                 val link = linkElement.attr("href")
-                val actual = cinematickitloadBypass(link) ?: return@mapNotNull null // CINEMATICKITLOADBYPASS
+                // Menggunakan cinematickitloadBypass yang sudah diimpor
+                val actual = cinematickitloadBypass(link) ?: return@mapNotNull null
                 val page = app.get(actual).document
                 page.select("div.wp-block-button.movie_btn a")
                     .eachAttr("href")
@@ -198,7 +195,8 @@ class DramaDrip : MainAPI() {
 
                         for (qualityPageLink in qualityLinks) {
                             try {
-                                val rawqualityPageLink = if (qualityPageLink.contains("modpro")) qualityPageLink else cinematickitloadBypass(qualityPageLink) ?: "" // CINEMATICKITLOADBYPASS
+                                // Menggunakan cinematickitloadBypass yang sudah diimpor
+                                val rawqualityPageLink = if (qualityPageLink.contains("modpro")) qualityPageLink else cinematickitloadBypass(qualityPageLink) ?: "" 
                                 val response = app.get(rawqualityPageLink)
                                 val episodeDoc = response.document
 
@@ -249,8 +247,7 @@ class DramaDrip : MainAPI() {
                 val info =
                     responseData?.meta?.videos?.find { it.season == season && it.episode == epNo }
 
-                // MODIFIKASI: Tambahkan data VidSrc sebagai tautan pertama
-                // Format: "TvType|imdbId|tmdbId|season|episode"
+                // Tambahkan data VidSrc sebagai tautan pertama
                 val vidSrcData = "${TvType.TvSeries.name}|${imdbId.orEmpty()}|${tmdbId.orEmpty()}|$season|$epNo"
                 val allLinks = mutableListOf(vidSrcData).apply { addAll(links) } 
                 
@@ -275,8 +272,7 @@ class DramaDrip : MainAPI() {
                 addTMDbId(tmdbId)
             }
         } else {
-            // MODIFIKASI: Tambahkan data VidSrc untuk film
-            // Format: "TvType|imdbId|tmdbId|0|0" (season/episode diatur ke 0)
+            // Tambahkan data VidSrc untuk film
             val vidSrcData = "${TvType.Movie.name}|${imdbId.orEmpty()}|${tmdbId.orEmpty()}|0|0"
             val allHrefs = mutableListOf(vidSrcData).apply { addAll(hrefs) } 
             
@@ -307,7 +303,7 @@ class DramaDrip : MainAPI() {
             return false
         }
         
-        // MODIFIKASI: Panggil Extractor VidSrc jika datanya cocok
+        // Panggil Extractor VidSrc jika datanya cocok
         val vidSrcExtractor = VidSrcEmbedExtractor()
 
         for (link in links) {
@@ -320,9 +316,10 @@ class DramaDrip : MainAPI() {
                 
                 // Logika tautan DramaDrip yang sudah ada (tautan unduhan/safelink)
                 val finalLink = when {
-                    "safelink=" in link -> cinematickitBypass(link) // CINEMATICKITBYPASS
-                    "unblockedgames" in link -> bypassHrefli(link) // BYPASSHREFLI
-                    "examzculture" in link -> bypassHrefli(link) // BYPASSHREFLI
+                    // Menggunakan fungsi bypass yang sudah diimpor
+                    "safelink=" in link -> cinematickitBypass(link)
+                    "unblockedgames" in link -> bypassHrefli(link)
+                    "examzculture" in link -> bypassHrefli(link)
                     else -> link
                 }
 
