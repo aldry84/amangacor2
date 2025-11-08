@@ -75,7 +75,8 @@ class AdicinemaxNew : MainAPI() {
     ): Boolean {
         val media = parseJson<LoadData>(data)
         
-        val embedUrl = buildEmbedUrl(media.type, media.tmdbId, media.imdbId, media.season, media.episode)
+        // PERBAIKAN: Handle null values dengan safe calls
+        val embedUrl = buildEmbedUrl(media.type ?: "", media.tmdbId ?: "", media.imdbId ?: "", media.season, media.episode)
         
         return if (embedUrl.isNotBlank()) {
             getStreamLinks(embedUrl, mainUrl, subtitleCallback, callback)
@@ -87,10 +88,11 @@ class AdicinemaxNew : MainAPI() {
     override suspend fun load(url: String): LoadResponse? {
         val media = parseJson<LoadData>(url)
         
-        return if (media.type == "movie") {
-            loadMovieContent(media.tmdbId, media.imdbId)
+        // PERBAIKAN: Handle null values dengan safe calls
+        return if ((media.type ?: "") == "movie") {
+            loadMovieContent(media.tmdbId ?: "", media.imdbId ?: "")
         } else {
-            loadTVContent(media.tmdbId, media.imdbId)
+            loadTVContent(media.tmdbId ?: "", media.imdbId ?: "")
         }
     }
 
@@ -139,8 +141,8 @@ class AdicinemaxNew : MainAPI() {
 
     private fun parseVidsrcMovieResult(item: VidsrcItem): SearchResponse? {
         return try {
-            val tmdbId = item.tmdb_id.takeIf { it.isNotBlank() }
-            val imdbId = item.imdb_id.takeIf { it.isNotBlank() }
+            val tmdbId = item.tmdb_id.takeIf { it.isNotBlank() } ?: ""
+            val imdbId = item.imdb_id.takeIf { it.isNotBlank() } ?: ""
             val title = item.title?.trim()
             val posterPath = item.poster
             
@@ -170,8 +172,8 @@ class AdicinemaxNew : MainAPI() {
 
     private fun parseVidsrcTvResult(item: VidsrcItem): SearchResponse? {
         return try {
-            val tmdbId = item.tmdb_id.takeIf { it.isNotBlank() }
-            val imdbId = item.imdb_id.takeIf { it.isNotBlank() }
+            val tmdbId = item.tmdb_id.takeIf { it.isNotBlank() } ?: ""
+            val imdbId = item.imdb_id.takeIf { it.isNotBlank() } ?: ""
             val title = item.title?.trim()
             val posterPath = item.poster
             
@@ -201,8 +203,8 @@ class AdicinemaxNew : MainAPI() {
 
     private fun parseVidsrcEpisodeResult(item: VidsrcItem): SearchResponse? {
         return try {
-            val tmdbId = item.tmdb_id.takeIf { it.isNotBlank() }
-            val imdbId = item.imdb_id.takeIf { it.isNotBlank() }
+            val tmdbId = item.tmdb_id.takeIf { it.isNotBlank() } ?: ""
+            val imdbId = item.imdb_id.takeIf { it.isNotBlank() } ?: ""
             val title = item.title?.trim()
             val season = item.season ?: "1"
             val episode = item.episode ?: "1"
@@ -347,7 +349,7 @@ class AdicinemaxNew : MainAPI() {
                 Score.from10(it.toString()) 
             }
 
-            // Get cast
+            // Get cast - PERBAIKAN: Mengembalikan List<Actor> bukan List<ActorData>
             val cast = getMovieCast(tmdbId)
             
             val data = LoadData(
@@ -363,6 +365,7 @@ class AdicinemaxNew : MainAPI() {
                 this.duration = runtime
                 this.tags = genres
                 this.score = score // PERBAIKAN: Menambahkan score
+                // PERBAIKAN: addActors sekarang menerima List<Actor>
                 addActors(cast)
             }
         } catch (e: Exception) {
@@ -389,7 +392,7 @@ class AdicinemaxNew : MainAPI() {
                 Score.from10(it.toString()) 
             }
 
-            // Get cast
+            // Get cast - PERBAIKAN: Mengembalikan List<Actor> bukan List<ActorData>
             val cast = getTVCast(tmdbId)
             
             // Get episodes for all seasons
@@ -416,6 +419,7 @@ class AdicinemaxNew : MainAPI() {
                 this.plot = overview
                 this.tags = genres
                 this.score = score // PERBAIKAN: Menambahkan score
+                // PERBAIKAN: addActors sekarang menerima List<Actor>
                 addActors(cast)
             }
         } catch (e: Exception) {
@@ -478,18 +482,18 @@ class AdicinemaxNew : MainAPI() {
         }
     }
 
-    private suspend fun getMovieCast(tmdbId: String): List<ActorData> {
+    // PERBAIKAN: Mengembalikan List<Actor> bukan List<ActorData>
+    private suspend fun getMovieCast(tmdbId: String): List<Actor> {
         return try {
             val url = "$TMDB_BASE_URL/movie/$tmdbId/credits?api_key=$tmdbApiKey"
             val response = app.get(url).text
             val json = parseJson<TMDBCreditsResponse>(response)
             
             json.cast?.take(10)?.mapNotNull { cast ->
-                ActorData(
-                    Actor(
-                        cast.name ?: return@mapNotNull null,
-                        if (cast.profile_path.isNotBlank()) "$TMDB_IMAGE_BASE${cast.profile_path}" else null
-                    )
+                Actor(
+                    name = cast.name ?: return@mapNotNull null,
+                    role = null,
+                    image = if (cast.profile_path.isNotBlank()) "$TMDB_IMAGE_BASE${cast.profile_path}" else null
                 )
             } ?: emptyList()
         } catch (e: Exception) {
@@ -497,18 +501,18 @@ class AdicinemaxNew : MainAPI() {
         }
     }
 
-    private suspend fun getTVCast(tmdbId: String): List<ActorData> {
+    // PERBAIKAN: Mengembalikan List<Actor> bukan List<ActorData>
+    private suspend fun getTVCast(tmdbId: String): List<Actor> {
         return try {
             val url = "$TMDB_BASE_URL/tv/$tmdbId/credits?api_key=$tmdbApiKey"
             val response = app.get(url).text
             val json = parseJson<TMDBCreditsResponse>(response)
             
             json.cast?.take(10)?.mapNotNull { cast ->
-                ActorData(
-                    Actor(
-                        cast.name ?: return@mapNotNull null,
-                        if (cast.profile_path.isNotBlank()) "$TMDB_IMAGE_BASE${cast.profile_path}" else null
-                    )
+                Actor(
+                    name = cast.name ?: return@mapNotNull null,
+                    role = null,
+                    image = if (cast.profile_path.isNotBlank()) "$TMDB_IMAGE_BASE${cast.profile_path}" else null
                 )
             } ?: emptyList()
         } catch (e: Exception) {
@@ -517,26 +521,26 @@ class AdicinemaxNew : MainAPI() {
     }
 
     // Utility Functions
-    private fun buildEmbedUrl(type: String, tmdbId: String?, imdbId: String?, season: Int?, episode: Int?): String {
+    private fun buildEmbedUrl(type: String, tmdbId: String, imdbId: String, season: Int?, episode: Int?): String {
         return when (type) {
             "movie" -> {
                 when {
-                    !imdbId.isNullOrBlank() -> "$mainUrl/embed/movie?imdb=$imdbId"
-                    !tmdbId.isNullOrBlank() -> "$mainUrl/embed/movie?tmdb=$tmdbId"
+                    imdbId.isNotBlank() -> "$mainUrl/embed/movie?imdb=$imdbId"
+                    tmdbId.isNotBlank() -> "$mainUrl/embed/movie?tmdb=$tmdbId"
                     else -> ""
                 }
             }
             "tv" -> {
                 if (season != null && episode != null) {
                     when {
-                        !imdbId.isNullOrBlank() -> "$mainUrl/embed/tv?imdb=$imdbId&season=$season&episode=$episode"
-                        !tmdbId.isNullOrBlank() -> "$mainUrl/embed/tv?tmdb=$tmdbId&season=$season&episode=$episode"
+                        imdbId.isNotBlank() -> "$mainUrl/embed/tv?imdb=$imdbId&season=$season&episode=$episode"
+                        tmdbId.isNotBlank() -> "$mainUrl/embed/tv?tmdb=$tmdbId&season=$season&episode=$episode"
                         else -> ""
                     }
                 } else {
                     when {
-                        !imdbId.isNullOrBlank() -> "$mainUrl/embed/tv?imdb=$imdbId"
-                        !tmdbId.isNullOrBlank() -> "$mainUrl/embed/tv?tmdb=$tmdbId"
+                        imdbId.isNotBlank() -> "$mainUrl/embed/tv?imdb=$imdbId"
+                        tmdbId.isNotBlank() -> "$mainUrl/embed/tv?tmdb=$tmdbId"
                         else -> ""
                     }
                 }
@@ -582,18 +586,22 @@ class AdicinemaxNew : MainAPI() {
                 val videoUrl = videoSource?.attr("src")
                 
                 if (!videoUrl.isNullOrBlank()) {
-                    // PERBAIKAN: Gunakan newExtractorLink dengan parameter yang benar
+                    // PERBAIKAN: Gunakan ExtractorLink constructor langsung
+                    val linkType = if (videoUrl.contains(".m3u8")) {
+                        ExtractorLinkType.HLS
+                    } else {
+                        ExtractorLinkType.VIDEO
+                    }
+                    
                     callback.invoke(
-                        newExtractorLink(
+                        ExtractorLink(
                             source = name,
                             name = "Vidsrc Direct", 
                             url = videoUrl,
                             referer = referer,
                             quality = getQualityFromUrl(videoUrl),
-                            type = if (videoUrl.contains(".m3u8")) ExtractorLinkType.HLS else ExtractorLinkType.VIDEO
-                        ) {
-                            // Additional properties
-                        }
+                            type = linkType
+                        )
                     )
                     true
                 } else {
