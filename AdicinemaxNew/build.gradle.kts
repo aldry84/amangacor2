@@ -1,7 +1,5 @@
 plugins {
-    id("java-library")
-    id("kotlin")
-    id("kotlin-kapt")
+    kotlin("jvm")
 }
 
 version = 1
@@ -25,6 +23,5 @@ cloudstream {
 }
 
 dependencies {
-    val cloudstream by configurations
-    cloudstream("com.lagradost:cloudstream3:pre-release")
+    implementation("com.lagradost:cloudstream3:pre-release")
 }
