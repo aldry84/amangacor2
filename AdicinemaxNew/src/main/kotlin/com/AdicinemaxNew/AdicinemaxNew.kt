@@ -174,13 +174,13 @@ class AdicinemaxNew : MainAPI() {
                 newMovieSearchResponse(title, dataId, TvType.Movie) {
                     this.posterUrl = posterUrl
                     this.year = releaseDate.take(4).toIntOrNull()
-                    this.description = overview
+                    this.plot = overview
                 }
             } else {
                 newTvSeriesSearchResponse(title, dataId, TvType.TvSeries) {
                     this.posterUrl = posterUrl
                     this.year = releaseDate.take(4).toIntOrNull()
-                    this.description = overview
+                    this.plot = overview
                 }
             }
         } catch (e: Exception) {
