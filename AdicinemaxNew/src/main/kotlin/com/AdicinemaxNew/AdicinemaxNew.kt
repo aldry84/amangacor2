@@ -174,13 +174,17 @@ class AdicinemaxNew : MainAPI() {
                 newMovieSearchResponse(title, dataId, TvType.Movie) {
                     this.posterUrl = posterUrl
                     this.year = releaseDate.take(4).toIntOrNull()
-                    this.plot = overview
+                }.apply {
+                    // Add plot using the setPlot method
+                    setPlot(overview)
                 }
             } else {
                 newTvSeriesSearchResponse(title, dataId, TvType.TvSeries) {
                     this.posterUrl = posterUrl
                     this.year = releaseDate.take(4).toIntOrNull()
-                    this.plot = overview
+                }.apply {
+                    // Add plot using the setPlot method
+                    setPlot(overview)
                 }
             }
         } catch (e: Exception) {
