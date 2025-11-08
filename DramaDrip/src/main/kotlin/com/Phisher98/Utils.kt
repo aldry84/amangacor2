@@ -1,3 +1,5 @@
+// DramaDrip/src/main/kotlin/com/Phisher98/Utils.kt
+
 package com.Phisher98
 
 import android.os.Build
@@ -6,7 +8,7 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import java.net.URI
 import java.util.Base64
 
-// Data class untuk memproses respons metadata dari Stremio/Cinemeta (TMDb/IMDb)
+// Existing data classes...
 data class Meta(
     val id: String?,
     val imdb_id: String?,
@@ -42,7 +44,6 @@ data class EpisodeDetails(
     val moviedb_id: Int?
 )
 
-// Dihapus dari DramaDrip.kt, hanya disimpan di sini
 data class ResponseData(
     val meta: Meta?
 )
@@ -52,31 +53,17 @@ data class DomainsParser(
     val dramadrip: String,
 )
 
-// --- Fungsi Pembantu Dasar ---
-
+// Helper functions
 fun getBaseUrl(url: String): String {
-    return URI(url).let {
-        "${it.scheme}://${it.host}"
-    }
+    return URI(url).let { "${it.scheme}://${it.host}" }
 }
 
-
 fun fixUrl(url: String, domain: String): String {
-    if (url.startsWith("http")) {
-        return url
-    }
-    if (url.isEmpty()) {
-        return ""
-    }
-
-    val startsWithNoHttp = url.startsWith("//")
-    if (startsWithNoHttp) {
-        return "https:$url"
-    } else {
-        if (url.startsWith('/')) {
-            return domain + url
-        }
-        return "$domain/$url"
+    return when {
+        url.startsWith("http") -> url
+        url.startsWith("//") -> "https:$url"
+        url.startsWith('/') -> domain + url
+        else -> "$domain/$url"
     }
 }
 
@@ -85,10 +72,12 @@ fun base64Decode(string: String): String {
     val clean = string.trim().replace("\n", "").replace("\r", "")
     val padded = clean.padEnd((clean.length + 3) / 4 * 4, '=')
     return try {
-        val decodedBytes = Base64.getDecoder().decode(padded)
-        String(decodedBytes, Charsets.UTF_8)
+        String(Base64.getDecoder().decode(padded), Charsets.UTF_8)
     } catch (e: Exception) {
-        e.printStackTrace()
+        Log.e("Utils", "Base64 decode failed: ${e.message}")
         ""
     }
 }
+
+// Custom exception for better error handling
+class ErrorException(message: String) : Exception(message)
