@@ -429,9 +429,11 @@ class DramaDrip : MainAPI() {
             
             href.isNotBlank() && !href.startsWith("#") && !href.contains("javascript:") &&
             (text.contains("episode", ignoreCase = true) ||
-             text.contains("ep\\.?", RegexOption.IGNORE_CASE) ||
-             text.contains("eps\\.?", RegexOption.IGNORE_CASE) ||
-             text.matches(Regex("""(?i).*\b\d+\b.*""")) ||
+             // PERBAIKAN: Ganti Regex dengan contains biasa
+             text.contains("ep", ignoreCase = true) ||
+             text.contains("eps", ignoreCase = true) ||
+             // PERBAIKAN: Gunakan Regex dengan benar untuk pattern angka
+             Regex(""".*\b\d+\b.*""").containsMatchIn(text) ||
              href.contains("episode", ignoreCase = true) ||
              href.contains("/ep-", ignoreCase = true) ||
              href.contains("-episode-", ignoreCase = true))
@@ -602,7 +604,8 @@ class DramaDrip : MainAPI() {
                     // Jika tidak bisa extract episode number, tapi ini adalah link download, tambahkan sebagai episode baru
                     if ((text.contains("download", ignoreCase = true) || 
                          text.contains("episode", ignoreCase = true) ||
-                         text.matches(Regex("""(?i).*\d+.*"""))) &&
+                         // PERBAIKAN: Gunakan Regex dengan benar
+                         Regex(""".*\d+.*""").containsMatchIn(text)) &&
                          !text.contains("season", ignoreCase = true)) {
                         
                         val newEpisodeNum = episodes.filter { it.season == season }.size + 1
