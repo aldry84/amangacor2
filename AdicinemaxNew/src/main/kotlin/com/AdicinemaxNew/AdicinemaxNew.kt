@@ -19,7 +19,7 @@ class AdicinemaxNew : MainAPI() {
     override var name = "AdicinemaxNew"
     override val hasMainPage = true
     override val hasChromecastSupport = false
-    override val hasDownloadSupport = true // Diubah menjadi true seperti referensi
+    override val hasDownloadSupport = true
     override val hasQuickSearch = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
@@ -285,6 +285,11 @@ class AdicinemaxNew : MainAPI() {
                 else -> null
             }
             
+            // PERBAIKAN: Menambahkan score dari vote_average seperti di Adimoviebox
+            val score = item.vote_average?.let { 
+                Score.from10(it.toString()) 
+            }
+            
             // Get IMDB ID
             val imdbId = getIMDBId(mediaType, id)
             
@@ -298,11 +303,13 @@ class AdicinemaxNew : MainAPI() {
                 newMovieSearchResponse(title, data.toJson(), TvType.Movie) {
                     this.posterUrl = posterUrl
                     this.year = releaseDate?.take(4)?.toIntOrNull()
+                    this.score = score // PERBAIKAN: Menambahkan score
                 }
             } else {
                 newTvSeriesSearchResponse(title, data.toJson(), TvType.TvSeries) {
                     this.posterUrl = posterUrl
                     this.year = releaseDate?.take(4)?.toIntOrNull()
+                    this.score = score // PERBAIKAN: Menambahkan score
                 }
             }
         } catch (e: Exception) {
@@ -333,8 +340,12 @@ class AdicinemaxNew : MainAPI() {
             val overview = json.overview ?: "No description available"
             val releaseDate = json.release_date
             val runtime = json.runtime ?: 0
-            val rating = (json.vote_average ?: 0.0) * 10
             val genres = json.genres?.map { it.name } ?: emptyList()
+
+            // PERBAIKAN: Menambahkan score dari vote_average seperti di Adimoviebox
+            val score = json.vote_average?.let { 
+                Score.from10(it.toString()) 
+            }
 
             // Get cast
             val cast = getMovieCast(tmdbId)
@@ -351,7 +362,7 @@ class AdicinemaxNew : MainAPI() {
                 this.plot = overview
                 this.duration = runtime
                 this.tags = genres
-                this.rating = rating.toInt()
+                this.score = score // PERBAIKAN: Menambahkan score
                 addActors(cast)
             }
         } catch (e: Exception) {
@@ -371,8 +382,12 @@ class AdicinemaxNew : MainAPI() {
             val overview = json.overview ?: "No description available"
             val firstAirDate = json.first_air_date
             val numberOfSeasons = json.number_of_seasons ?: 0
-            val rating = (json.vote_average ?: 0.0) * 10
             val genres = json.genres?.map { it.name } ?: emptyList()
+
+            // PERBAIKAN: Menambahkan score dari vote_average seperti di Adimoviebox
+            val score = json.vote_average?.let { 
+                Score.from10(it.toString()) 
+            }
 
             // Get cast
             val cast = getTVCast(tmdbId)
@@ -400,7 +415,7 @@ class AdicinemaxNew : MainAPI() {
                 this.year = firstAirDate?.take(4)?.toIntOrNull()
                 this.plot = overview
                 this.tags = genres
-                this.rating = rating.toInt()
+                this.score = score // PERBAIKAN: Menambahkan score
                 addActors(cast)
             }
         } catch (e: Exception) {
@@ -644,7 +659,8 @@ data class TMDBItem(
     @JsonProperty("poster_path") val poster_path: String = "",
     @JsonProperty("release_date") val release_date: String? = null,
     @JsonProperty("first_air_date") val first_air_date: String? = null,
-    @JsonProperty("media_type") val media_type: String = ""
+    @JsonProperty("media_type") val media_type: String = "",
+    @JsonProperty("vote_average") val vote_average: Double? = null // PERBAIKAN: Ditambahkan untuk score
 )
 
 data class ExternalIdsResponse(
@@ -657,7 +673,7 @@ data class TMDBMovieDetail(
     @JsonProperty("overview") val overview: String? = null,
     @JsonProperty("release_date") val release_date: String? = null,
     @JsonProperty("runtime") val runtime: Int? = null,
-    @JsonProperty("vote_average") val vote_average: Double? = null,
+    @JsonProperty("vote_average") val vote_average: Double? = null, // PERBAIKAN: Ditambahkan untuk score
     @JsonProperty("genres") val genres: List<Genre>? = null
 )
 
@@ -667,7 +683,7 @@ data class TMDBTVDetail(
     @JsonProperty("overview") val overview: String? = null,
     @JsonProperty("first_air_date") val first_air_date: String? = null,
     @JsonProperty("number_of_seasons") val number_of_seasons: Int? = null,
-    @JsonProperty("vote_average") val vote_average: Double? = null,
+    @JsonProperty("vote_average") val vote_average: Double? = null, // PERBAIKAN: Ditambahkan untuk score
     @JsonProperty("genres") val genres: List<Genre>? = null
 )
 
