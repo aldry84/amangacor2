@@ -1,3 +1,5 @@
+// DramaDrip/src/main/kotlin/com/Phisher98/VidSrcEmbedExtractor.kt
+
 package com.Phisher98
 
 import com.lagradost.cloudstream3.SubtitleFile
@@ -63,10 +65,12 @@ class VidSrcEmbedExtractor : ExtractorApi() {
                 source = name,
                 name = name,
                 url = embedUrl,
-                referer = mainUrl,
-                quality = Qualities.Unknown.value,
                 type = INFER_TYPE
-            )
+            ) {
+                // Menggunakan blok lambda untuk properti tambahan
+                this.referer = mainUrl
+                this.quality = Qualities.Unknown.value
+            }
         )
     }
 }
