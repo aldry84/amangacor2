@@ -235,7 +235,6 @@ class DramaDrip : MainAPI() {
         return document.select("div.wp-block-button > a")
             .mapNotNull { linkElement ->
                 val link = linkElement.attr("href")
-                // PERBAIKAN: Ganti cinematickitloadBypass dengan implementasi langsung
                 val actualLink = safeBypass(link) ?: return@mapNotNull null
                 try {
                     val page = app.get(actualLink).document
@@ -418,12 +417,11 @@ class DramaDrip : MainAPI() {
         return "${type.name}|${imdbId.orEmpty()}|${tmdbId.orEmpty()}|$season|$episode"
     }
 
-    // PERBAIKAN: Fungsi bypass yang sederhana sebagai pengganti
+    // Fungsi bypass yang sederhana sebagai pengganti
     private suspend fun safeBypass(url: String): String? {
         return try {
             if (url.contains("safelink") || url.contains("modpro")) {
                 // Coba bypass sederhana - langsung return URL untuk sekarang
-                // Dalam implementasi nyata, Anda perlu mengekstrak URL dari halaman safelink
                 app.get(url).url
             } else {
                 url
@@ -481,6 +479,4 @@ class DramaDrip : MainAPI() {
     // Extension function untuk URL encoding
     private fun String.encodeUrl(): String = java.net.URLEncoder.encode(this, "UTF-8")
 }
-
-// Custom exception for better error handling
-class ErrorException(message: String) : Exception(message)
+// HAPUS: Jangan ada class ErrorException di sini - sudah ada di Utils.kt
