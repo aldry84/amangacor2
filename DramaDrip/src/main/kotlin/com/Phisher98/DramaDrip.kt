@@ -17,6 +17,12 @@ import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import kotlinx.coroutines.runBlocking
 import org.jsoup.nodes.Element
 
+// IMPORT FUNGSI UTILITAS YANG HILANG DITAMBAHKAN
+import com.Phisher98.cinematickitloadBypass
+import com.Phisher98.cinematickitBypass
+import com.Phisher98.bypassHrefli
+// ----------------------------------------------
+
 class DramaDrip : MainAPI() {
     override var mainUrl: String = runBlocking {
         DramaDripProvider.getDomains()?.dramadrip ?: "https://dramadrip.com"
@@ -119,9 +125,9 @@ class DramaDrip : MainAPI() {
             ?.substringAfter("(")?.substringBefore(")")?.toIntOrNull()
         val descriptions = document.selectFirst("div.content-section p.mt-4")?.text()?.trim()
         val typeset = if (tvType == TvType.TvSeries) "series" else "movie"
-        val responseData = if (imdbId?.isNotEmpty() == true) { // Gunakan imdbId sebagai fallback, tetapi tmdbId lebih baik jika tersedia
+        val responseData = if (imdbId?.isNotEmpty() == true) { 
             val idToUse = if (tmdbId?.isNotEmpty() == true) tmdbId else imdbId
-            val endpoint = if (tmdbId?.isNotEmpty() == true) typeset else "imdb" // Cinemeta menggunakan ID TMDB
+            val endpoint = if (tmdbId?.isNotEmpty() == true) typeset else "imdb"
             
             val jsonResponse = app.get("$cinemeta_url/$endpoint/$idToUse.json").text
             if (jsonResponse.isNotEmpty() && jsonResponse.startsWith("{")) {
@@ -143,7 +149,7 @@ class DramaDrip : MainAPI() {
         val hrefs: List<String> = document.select("div.wp-block-button > a")
             .mapNotNull { linkElement ->
                 val link = linkElement.attr("href")
-                val actual = cinematickitloadBypass(link) ?: return@mapNotNull null
+                val actual = cinematickitloadBypass(link) ?: return@mapNotNull null // CINEMATICKITLOADBYPASS
                 val page = app.get(actual).document
                 page.select("div.wp-block-button.movie_btn a")
                     .eachAttr("href")
@@ -192,7 +198,7 @@ class DramaDrip : MainAPI() {
 
                         for (qualityPageLink in qualityLinks) {
                             try {
-                                val rawqualityPageLink = if (qualityPageLink.contains("modpro")) qualityPageLink else cinematickitloadBypass(qualityPageLink) ?: ""
+                                val rawqualityPageLink = if (qualityPageLink.contains("modpro")) qualityPageLink else cinematickitloadBypass(qualityPageLink) ?: "" // CINEMATICKITLOADBYPASS
                                 val response = app.get(rawqualityPageLink)
                                 val episodeDoc = response.document
 
@@ -314,9 +320,9 @@ class DramaDrip : MainAPI() {
                 
                 // Logika tautan DramaDrip yang sudah ada (tautan unduhan/safelink)
                 val finalLink = when {
-                    "safelink=" in link -> cinematickitBypass(link)
-                    "unblockedgames" in link -> bypassHrefli(link)
-                    "examzculture" in link -> bypassHrefli(link)
+                    "safelink=" in link -> cinematickitBypass(link) // CINEMATICKITBYPASS
+                    "unblockedgames" in link -> bypassHrefli(link) // BYPASSHREFLI
+                    "examzculture" in link -> bypassHrefli(link) // BYPASSHREFLI
                     else -> link
                 }
 
