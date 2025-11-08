@@ -7,9 +7,6 @@ import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
-import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.ExtractorLinkType
-import com.lagradost.cloudstream3.utils.INFER_TYPE
 import org.jsoup.nodes.Element
 import java.net.URLEncoder
 import java.text.SimpleDateFormat
@@ -29,6 +26,7 @@ class AdicinemaxNew : MainAPI() {
     companion object {
         const val TMDB_BASE_URL = "https://api.themoviedb.org/3"
         const val TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w500"
+        const val CINEMETA_BASE = "https://v3-cinemeta.strem.io"
     }
 
     // Main page structure
@@ -287,7 +285,7 @@ class AdicinemaxNew : MainAPI() {
             }
             
             val score = item.vote_average?.let { 
-                Score.from10(it.toString()) 
+                Rating(it)
             }
             
             val imdbId = getIMDBId(mediaType, id)
@@ -302,13 +300,13 @@ class AdicinemaxNew : MainAPI() {
                 newMovieSearchResponse(title, data.toJson(), TvType.Movie) {
                     this.posterUrl = posterUrl
                     this.year = releaseDate?.take(4)?.toIntOrNull()
-                    this.score = score
+                    this.rating = score
                 }
             } else {
                 newTvSeriesSearchResponse(title, data.toJson(), TvType.TvSeries) {
                     this.posterUrl = posterUrl
                     this.year = releaseDate?.take(4)?.toIntOrNull()
-                    this.score = score
+                    this.rating = score
                 }
             }
         } catch (e: Exception) {
@@ -342,10 +340,13 @@ class AdicinemaxNew : MainAPI() {
             val genres = json.genres?.map { it.name } ?: emptyList()
 
             val score = json.vote_average?.let { 
-                Score.from10(it.toString()) 
+                Rating(it)
             }
 
             val cast = getMovieCast(tmdbId)
+            
+            // Get additional metadata from Cinemeta
+            val cinemetaData = getCinemetaMetadata("movie", imdbId)
             
             val data = LoadData(
                 type = "movie",
@@ -355,12 +356,20 @@ class AdicinemaxNew : MainAPI() {
 
             newMovieLoadResponse(title, data.toJson(), TvType.Movie, data.toJson()) {
                 this.posterUrl = posterUrl
+                this.backgroundPosterUrl = cinemetaData?.backgroundPoster ?: ""
                 this.year = releaseDate?.take(4)?.toIntOrNull()
                 this.plot = overview
                 this.duration = runtime
                 this.tags = genres
-                this.score = score
+                this.rating = score
                 addActors(cast)
+                
+                // Add Cinemeta metadata if available
+                cinemetaData?.let { meta ->
+                    meta.trailer?.let { trailer ->
+                        addTrailer(trailer)
+                    }
+                }
             }
         } catch (e: Exception) {
             null
@@ -382,10 +391,13 @@ class AdicinemaxNew : MainAPI() {
             val genres = json.genres?.map { it.name } ?: emptyList()
 
             val score = json.vote_average?.let { 
-                Score.from10(it.toString()) 
+                Rating(it)
             }
 
             val cast = getTVCast(tmdbId)
+            
+            // Get additional metadata from Cinemeta
+            val cinemetaData = getCinemetaMetadata("series", imdbId)
             
             val allEpisodes = mutableListOf<Episode>()
             
@@ -406,12 +418,37 @@ class AdicinemaxNew : MainAPI() {
 
             newTvSeriesLoadResponse(title, data.toJson(), TvType.TvSeries, allEpisodes) {
                 this.posterUrl = posterUrl
+                this.backgroundPosterUrl = cinemetaData?.backgroundPoster ?: ""
                 this.year = firstAirDate?.take(4)?.toIntOrNull()
                 this.plot = overview
                 this.tags = genres
-                this.score = score
+                this.rating = score
                 addActors(cast)
+                
+                // Add Cinemeta metadata if available
+                cinemetaData?.let { meta ->
+                    meta.trailer?.let { trailer ->
+                        addTrailer(trailer)
+                    }
+                }
             }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private suspend fun getCinemetaMetadata(type: String, imdbId: String): CinemetaMetadata? {
+        return try {
+            if (imdbId.isBlank()) return null
+            
+            val url = "$CINEMETA_BASE/meta/$type/$imdbId.json"
+            val response = app.get(url).text
+            val json = parseJson<CinemetaResponse>(response)
+            
+            return CinemetaMetadata(
+                backgroundPoster = json.meta?.background,
+                trailer = json.meta?.trailer
+            )
         } catch (e: Exception) {
             null
         }
@@ -567,7 +604,7 @@ class AdicinemaxNew : MainAPI() {
                 val videoUrl = videoSource?.attr("src")
                 
                 if (!videoUrl.isNullOrBlank()) {
-                    // PERBAIKAN: Menggunakan approach yang sama seperti di repository referensi
+                    // PERBAIKAN: Menggunakan newExtractorLink yang tidak deprecated
                     val quality = getQualityFromUrl(videoUrl)
                     val isM3u8 = videoUrl.contains(".m3u8")
                     
@@ -576,11 +613,10 @@ class AdicinemaxNew : MainAPI() {
                             source = name,
                             name = "Vidsrc Direct", 
                             url = videoUrl,
-                            type = if (isM3u8) ExtractorLinkType.M3U8 else INFER_TYPE
-                        ) {
-                            this.referer = referer
-                            this.quality = quality
-                        }
+                            referer = referer,
+                            quality = quality,
+                            isM3u8 = isM3u8
+                        )
                     )
                     true
                 } else {
@@ -617,6 +653,20 @@ data class LoadData(
     val imdbId: String? = null,
     val season: Int? = null,
     val episode: Int? = null
+)
+
+data class CinemetaMetadata(
+    val backgroundPoster: String? = null,
+    val trailer: String? = null
+)
+
+data class CinemetaResponse(
+    @JsonProperty("meta") val meta: CinemetaMeta? = null
+)
+
+data class CinemetaMeta(
+    @JsonProperty("background") val background: String? = null,
+    @JsonProperty("trailer") val trailer: String? = null
 )
 
 data class VidsrcResponse(
