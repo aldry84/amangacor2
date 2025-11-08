@@ -9,7 +9,7 @@ import com.lagradost.api.Log
 import java.net.URI
 import java.util.Base64
 
-// Existing data classes...
+// Data classes untuk metadata Cinemeta
 data class Meta(
     val id: String?,
     val imdb_id: String?,
@@ -56,7 +56,12 @@ data class DomainsParser(
 
 // Helper functions
 fun getBaseUrl(url: String): String {
-    return URI(url).let { "${it.scheme}://${it.host}" }
+    return try {
+        URI(url).let { "${it.scheme}://${it.host}" }
+    } catch (e: Exception) {
+        Log.e("Utils", "Failed to get base URL from: $url")
+        ""
+    }
 }
 
 fun fixUrl(url: String, domain: String): String {
@@ -80,5 +85,5 @@ fun base64Decode(string: String): String {
     }
 }
 
-// HANYA SATU deklarasi ErrorException di sini
+// Custom exception for better error handling
 class ErrorException(message: String) : Exception(message)
