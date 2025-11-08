@@ -5,7 +5,7 @@ package com.Phisher98
 import android.os.Build
 import androidx.annotation.RequiresApi
 import com.fasterxml.jackson.annotation.JsonProperty
-import com.lagradost.api.Log // IMPORT YANG DITAMBAHKAN
+import com.lagradost.api.Log
 import java.net.URI
 import java.util.Base64
 
@@ -80,5 +80,5 @@ fun base64Decode(string: String): String {
     }
 }
 
-// Custom exception for better error handling
+// HANYA SATU deklarasi ErrorException di sini
 class ErrorException(message: String) : Exception(message)
