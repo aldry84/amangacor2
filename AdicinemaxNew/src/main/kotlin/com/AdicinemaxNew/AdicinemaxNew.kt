@@ -482,7 +482,7 @@ class AdicinemaxNew : MainAPI() {
         }
     }
 
-    // PERBAIKAN: Mengembalikan List<Actor> bukan List<ActorData>
+    // PERBAIKAN: Mengembalikan List<Actor> dengan constructor yang benar
     private suspend fun getMovieCast(tmdbId: String): List<Actor> {
         return try {
             val url = "$TMDB_BASE_URL/movie/$tmdbId/credits?api_key=$tmdbApiKey"
@@ -491,9 +491,8 @@ class AdicinemaxNew : MainAPI() {
             
             json.cast?.take(10)?.mapNotNull { cast ->
                 Actor(
-                    name = cast.name ?: return@mapNotNull null,
-                    role = null,
-                    image = if (cast.profile_path.isNotBlank()) "$TMDB_IMAGE_BASE${cast.profile_path}" else null
+                    cast.name ?: return@mapNotNull null,
+                    if (cast.profile_path.isNotBlank()) "$TMDB_IMAGE_BASE${cast.profile_path}" else null
                 )
             } ?: emptyList()
         } catch (e: Exception) {
@@ -501,7 +500,7 @@ class AdicinemaxNew : MainAPI() {
         }
     }
 
-    // PERBAIKAN: Mengembalikan List<Actor> bukan List<ActorData>
+    // PERBAIKAN: Mengembalikan List<Actor> dengan constructor yang benar
     private suspend fun getTVCast(tmdbId: String): List<Actor> {
         return try {
             val url = "$TMDB_BASE_URL/tv/$tmdbId/credits?api_key=$tmdbApiKey"
@@ -510,9 +509,8 @@ class AdicinemaxNew : MainAPI() {
             
             json.cast?.take(10)?.mapNotNull { cast ->
                 Actor(
-                    name = cast.name ?: return@mapNotNull null,
-                    role = null,
-                    image = if (cast.profile_path.isNotBlank()) "$TMDB_IMAGE_BASE${cast.profile_path}" else null
+                    cast.name ?: return@mapNotNull null,
+                    if (cast.profile_path.isNotBlank()) "$TMDB_IMAGE_BASE${cast.profile_path}" else null
                 )
             } ?: emptyList()
         } catch (e: Exception) {
@@ -586,12 +584,8 @@ class AdicinemaxNew : MainAPI() {
                 val videoUrl = videoSource?.attr("src")
                 
                 if (!videoUrl.isNullOrBlank()) {
-                    // PERBAIKAN: Gunakan ExtractorLink constructor langsung
-                    val linkType = if (videoUrl.contains(".m3u8")) {
-                        ExtractorLinkType.HLS
-                    } else {
-                        ExtractorLinkType.VIDEO
-                    }
+                    // PERBAIKAN: Gunakan ExtractorLink constructor langsung dengan type yang benar
+                    val isM3u8 = videoUrl.contains(".m3u8")
                     
                     callback.invoke(
                         ExtractorLink(
@@ -600,7 +594,7 @@ class AdicinemaxNew : MainAPI() {
                             url = videoUrl,
                             referer = referer,
                             quality = getQualityFromUrl(videoUrl),
-                            type = linkType
+                            isM3u8 = isM3u8
                         )
                     )
                     true
