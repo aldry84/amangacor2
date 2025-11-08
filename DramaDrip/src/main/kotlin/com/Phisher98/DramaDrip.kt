@@ -1,7 +1,7 @@
 // DramaDrip/src/main/kotlin/com/Phisher98/DramaDrip.kt
 package com.Phisher98
 
-import com.Phisher98.* // PERBAIKAN IMPORT: Mengimpor semua definisi top-level dari paket com.Phisher98
+import com.Phisher98.*
 import android.os.Build
 import androidx.annotation.RequiresApi
 import com.google.gson.Gson
@@ -141,8 +141,7 @@ class DramaDrip : MainAPI() {
         val hrefs: List<String> = document.select("div.wp-block-button > a")
             .mapNotNull { linkElement ->
                 val link = linkElement.attr("href")
-                // Ganti dengan pemanggilan yang benar atau hapus jika tidak diperlukan
-                val actual = bypassLink(link) ?: return@mapNotNull null // Menggunakan fungsi bypassLink yang diasumsikan
+                val actual = bypassLink(link) ?: return@mapNotNull null
                 val page = app.get(actual).document
                 page.select("div.wp-block-button.movie_btn a")
                     .eachAttr("href")
@@ -190,10 +189,9 @@ class DramaDrip : MainAPI() {
 
                         for (qualityPageLink in qualityLinks) {
                             try {
-                                // Ganti dengan pemanggilan yang benar atau hapus jika tidak diperlukan
                                 val rawqualityPageLink =
                                     if (qualityPageLink.contains("modpro")) qualityPageLink else bypassLink(qualityPageLink)
-                                        ?: "" // Menggunakan fungsi bypassLink yang diasumsikan
+                                        ?: ""
 
                                 val response = app.get(rawqualityPageLink)
                                 val episodeDoc = response.document
@@ -244,7 +242,6 @@ class DramaDrip : MainAPI() {
                 val info =
                     responseData?.meta?.videos?.find { it.season == season && it.episode == epNo }
 
-                // Tambahkan data VidSrc sebagai tautan pertama
                 val vidSrcData = "${TvType.TvSeries.name}|${imdbId.orEmpty()}|${tmdbId.orEmpty()}|$season|$epNo"
                 val allLinks = mutableListOf(vidSrcData).apply { addAll(links) }
 
@@ -269,7 +266,6 @@ class DramaDrip : MainAPI() {
                 addTMDbId(tmdbId)
             }
         } else {
-            // Tambahkan data VidSrc untuk film
             val vidSrcData = "${TvType.Movie.name}|${imdbId.orEmpty()}|${tmdbId.orEmpty()}|0|0"
             val allHrefs = mutableListOf(vidSrcData).apply { addAll(hrefs) }
 
@@ -300,21 +296,19 @@ class DramaDrip : MainAPI() {
             return false
         }
 
-        // Panggil Extractor VidSrc jika datanya cocok
         val vidSrcExtractor = VidSrcEmbedExtractor()
         for (link in links) {
             try {
-                // Cek apakah link adalah data VidSrc kita: "TYPE|..."
                 if (link.startsWith(TvType.TvSeries.name) || link.startsWith(TvType.Movie.name)) {
                     vidSrcExtractor.getUrl(link, null, subtitleCallback, callback)
-                    continue // Lewati tautan unduhan normal untuk item VidSrc ini
+                    continue
                 }
 
-                // Logika tautan DramaDrip yang sudah ada (tautan unduhan/safelink)
+                // Hapus pemanggilan bypassHrefli
                 val finalLink = when {
-                    "safelink=" in link -> bypassLink(link) // Menggunakan fungsi bypassLink yang diasumsikan
-                    "unblockedgames" in link -> bypassHrefli(link)
-                    "examzculture" in link -> bypassHrefli(link)
+                    "safelink=" in link -> bypassLink(link)
+                    "unblockedgames" in link -> link
+                    "examzculture" in link -> link
                     else -> link
                 }
 
@@ -330,7 +324,6 @@ class DramaDrip : MainAPI() {
         return true
     }
 
-    // Fungsi pengganti sementara, pastikan untuk mengimplementasikan dengan benar
     fun bypassLink(link: String): String? {
         // Implementasi placeholder, ganti dengan logika bypass yang sebenarnya
         return link
