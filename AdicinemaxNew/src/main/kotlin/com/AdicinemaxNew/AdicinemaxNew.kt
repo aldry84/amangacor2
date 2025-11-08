@@ -285,7 +285,7 @@ class AdicinemaxNew : MainAPI() {
             }
             
             val score = item.vote_average?.let { 
-                Rating(it)
+                Score.from10(it)
             }
             
             val imdbId = getIMDBId(mediaType, id)
@@ -300,13 +300,13 @@ class AdicinemaxNew : MainAPI() {
                 newMovieSearchResponse(title, data.toJson(), TvType.Movie) {
                     this.posterUrl = posterUrl
                     this.year = releaseDate?.take(4)?.toIntOrNull()
-                    this.rating = score
+                    this.score = score
                 }
             } else {
                 newTvSeriesSearchResponse(title, data.toJson(), TvType.TvSeries) {
                     this.posterUrl = posterUrl
                     this.year = releaseDate?.take(4)?.toIntOrNull()
-                    this.rating = score
+                    this.score = score
                 }
             }
         } catch (e: Exception) {
@@ -340,7 +340,7 @@ class AdicinemaxNew : MainAPI() {
             val genres = json.genres?.map { it.name } ?: emptyList()
 
             val score = json.vote_average?.let { 
-                Rating(it)
+                Score.from10(it)
             }
 
             val cast = getMovieCast(tmdbId)
@@ -361,7 +361,7 @@ class AdicinemaxNew : MainAPI() {
                 this.plot = overview
                 this.duration = runtime
                 this.tags = genres
-                this.rating = score
+                this.score = score
                 addActors(cast)
                 
                 // Add Cinemeta metadata if available
@@ -391,7 +391,7 @@ class AdicinemaxNew : MainAPI() {
             val genres = json.genres?.map { it.name } ?: emptyList()
 
             val score = json.vote_average?.let { 
-                Rating(it)
+                Score.from10(it)
             }
 
             val cast = getTVCast(tmdbId)
@@ -422,7 +422,7 @@ class AdicinemaxNew : MainAPI() {
                 this.year = firstAirDate?.take(4)?.toIntOrNull()
                 this.plot = overview
                 this.tags = genres
-                this.rating = score
+                this.score = score
                 addActors(cast)
                 
                 // Add Cinemeta metadata if available
@@ -604,7 +604,7 @@ class AdicinemaxNew : MainAPI() {
                 val videoUrl = videoSource?.attr("src")
                 
                 if (!videoUrl.isNullOrBlank()) {
-                    // PERBAIKAN: Menggunakan newExtractorLink yang tidak deprecated
+                    // PERBAIKAN: Menggunakan newExtractorLink dengan parameter yang benar
                     val quality = getQualityFromUrl(videoUrl)
                     val isM3u8 = videoUrl.contains(".m3u8")
                     
@@ -613,10 +613,11 @@ class AdicinemaxNew : MainAPI() {
                             source = name,
                             name = "Vidsrc Direct", 
                             url = videoUrl,
-                            referer = referer,
-                            quality = quality,
-                            isM3u8 = isM3u8
-                        )
+                            type = if (isM3u8) ExtractorLinkType.M3U8 else INFER_TYPE
+                        ) {
+                            this.referer = referer
+                            this.quality = quality
+                        }
                     )
                     true
                 } else {
