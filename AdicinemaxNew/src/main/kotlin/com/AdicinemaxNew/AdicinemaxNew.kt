@@ -1,8 +1,9 @@
 package com.AdicinemaxNew
 
-import cloudstream.*
-import cloudstream.utils.*
-import cloudstream.utils.ExtractorLink
+import com.lagradost.cloudstream3.*
+import com.lagradost.cloudstream3.utils.*
+import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
+import com.lagradost.cloudstream3.mvvm.safeApiCall
 import org.json.JSONObject
 import java.net.URLEncoder
 
@@ -13,7 +14,6 @@ class AdicinemaxNew : MainAPI() {
     override val hasChromecastSupport = false
     override val hasDownloadSupport = false
     override val hasQuickSearch = true
-    override val useM3U8Parse = true
 
     private val tmdbApiKey = "1cfadd9dbfc534abf6de40e1e7eaf4c7"
     
@@ -28,25 +28,25 @@ class AdicinemaxNew : MainAPI() {
         // Trending Movies
         val trendingMovies = getTMDBTrending("movie", page)
         if (trendingMovies.isNotEmpty()) {
-            responses.add(MainPageResponse("Trending Movies", trendingMovies))
+            responses.add(MainPageResponse("Trending Movies", trendingMovies, true))
         }
         
         // Trending TV Shows
         val trendingTV = getTMDBTrending("tv", page)
         if (trendingTV.isNotEmpty()) {
-            responses.add(MainPageResponse("Trending TV Shows", trendingTV))
+            responses.add(MainPageResponse("Trending TV Shows", trendingTV, true))
         }
         
         // Now Playing Movies
         val nowPlayingMovies = getTMDBNowPlaying(page)
         if (nowPlayingMovies.isNotEmpty()) {
-            responses.add(MainPageResponse("Now Playing Movies", nowPlayingMovies))
+            responses.add(MainPageResponse("Now Playing Movies", nowPlayingMovies, true))
         }
         
         // Popular TV Shows
         val popularTV = getTMDBPopular("tv", page)
         if (popularTV.isNotEmpty()) {
-            responses.add(MainPageResponse("Popular TV Shows", popularTV))
+            responses.add(MainPageResponse("Popular TV Shows", popularTV, true))
         }
         
         return responses
@@ -56,7 +56,12 @@ class AdicinemaxNew : MainAPI() {
         return searchTMDB(query)
     }
 
-    override fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
+    override fun loadLinks(
+        data: String, 
+        isCasting: Boolean, 
+        subtitleCallback: (SubtitleFile) -> Unit, 
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
         val parts = data.split("|")
         if (parts.size < 3) return false
         
@@ -69,34 +74,8 @@ class AdicinemaxNew : MainAPI() {
         val vidSrcUrl = buildVidSrcUrl(type, tmdbId, imdbId, season, episode)
         
         if (vidSrcUrl.isNotEmpty()) {
-            // Directly use the VidSrc URL for extraction
-            app.get(vidSrcUrl).document.let { doc ->
-                // Look for video sources in the iframe
-                val iframe = doc.selectFirst("iframe")?.attr("src")
-                if (iframe != null) {
-                    loadExtractor(iframe, mainUrl, subtitleCallback, callback)
-                    return true
-                }
-                
-                // Alternative: try to find direct video sources
-                val videoSources = doc.select("source[type^=video]")
-                for (source in videoSources) {
-                    val videoUrl = source.attr("src")
-                    if (videoUrl.isNotEmpty()) {
-                        callback(
-                            ExtractorLink(
-                                name,
-                                name,
-                                videoUrl,
-                                mainUrl,
-                                getQualityFromName(videoUrl),
-                                false
-                            )
-                        )
-                        return true
-                    }
-                }
-            }
+            loadExtractor(vidSrcUrl, "$mainUrl/", subtitleCallback, callback)
+            return true
         }
         return false
     }
@@ -123,10 +102,9 @@ class AdicinemaxNew : MainAPI() {
             val json = JSONObject(response)
             val results = json.getJSONArray("results")
             
-            results.mapNotNull { item ->
-                if (item is JSONObject) {
-                    parseTMDBResult(item, mediaType)
-                } else null
+            (0 until results.length()).mapNotNull { i ->
+                val item = results.getJSONObject(i)
+                parseTMDBResult(item, mediaType)
             }
         } catch (e: Exception) {
             emptyList()
@@ -140,10 +118,9 @@ class AdicinemaxNew : MainAPI() {
             val json = JSONObject(response)
             val results = json.getJSONArray("results")
             
-            results.mapNotNull { item ->
-                if (item is JSONObject) {
-                    parseTMDBResult(item, mediaType)
-                } else null
+            (0 until results.length()).mapNotNull { i ->
+                val item = results.getJSONObject(i)
+                parseTMDBResult(item, mediaType)
             }
         } catch (e: Exception) {
             emptyList()
@@ -157,10 +134,9 @@ class AdicinemaxNew : MainAPI() {
             val json = JSONObject(response)
             val results = json.getJSONArray("results")
             
-            results.mapNotNull { item ->
-                if (item is JSONObject) {
-                    parseTMDBResult(item, "movie")
-                } else null
+            (0 until results.length()).mapNotNull { i ->
+                val item = results.getJSONObject(i)
+                parseTMDBResult(item, "movie")
             }
         } catch (e: Exception) {
             emptyList()
@@ -175,12 +151,11 @@ class AdicinemaxNew : MainAPI() {
             val json = JSONObject(response)
             val results = json.getJSONArray("results")
             
-            results.mapNotNull { item ->
-                if (item is JSONObject) {
-                    val mediaType = item.optString("media_type")
-                    if (mediaType == "movie" || mediaType == "tv") {
-                        parseTMDBResult(item, mediaType)
-                    } else null
+            (0 until results.length()).mapNotNull { i ->
+                val item = results.getJSONObject(i)
+                val mediaType = item.optString("media_type")
+                if (mediaType == "movie" || mediaType == "tv") {
+                    parseTMDBResult(item, mediaType)
                 } else null
             }
         } catch (e: Exception) {
@@ -202,7 +177,7 @@ class AdicinemaxNew : MainAPI() {
             
             val overview = item.optString("overview", "No description available")
             val releaseDate = item.optString(if (mediaType == "movie") "release_date" else "first_air_date")
-            val rating = item.optDouble("vote_average", 0.0)
+            val rating = (item.optDouble("vote_average", 0.0) * 10).toInt()
             
             // Get IMDB ID
             val imdbId = getIMDBId(mediaType, id.toString())
@@ -213,19 +188,23 @@ class AdicinemaxNew : MainAPI() {
                 MovieResponse(
                     name = title,
                     url = dataId,
+                    apiName = name,
+                    type = TvType.Movie,
                     posterUrl = posterUrl,
-                    plot = overview,
                     year = releaseDate.take(4).toIntOrNull(),
-                    rating = rating.toInt()
+                    plot = overview,
+                    rating = rating
                 )
             } else {
                 TvSeriesResponse(
                     name = title,
                     url = dataId,
+                    apiName = name,
+                    type = TvType.TvSeries,
                     posterUrl = posterUrl,
-                    plot = overview,
                     year = releaseDate.take(4).toIntOrNull(),
-                    rating = rating.toInt()
+                    plot = overview,
+                    rating = rating
                 )
             }
         } catch (e: Exception) {
@@ -256,7 +235,7 @@ class AdicinemaxNew : MainAPI() {
             val overview = json.optString("overview", "No description available")
             val releaseDate = json.optString("release_date")
             val runtime = json.optInt("runtime", 0)
-            val rating = json.optDouble("vote_average", 0.0)
+            val rating = (json.optDouble("vote_average", 0.0) * 10).toInt()
             val genres = json.optJSONArray("genres")?.let { genresArray ->
                 (0 until genresArray.length()).joinToString(", ") { 
                     genresArray.getJSONObject(it).getString("name") 
@@ -264,14 +243,16 @@ class AdicinemaxNew : MainAPI() {
             } ?: ""
 
             MovieLoadResponse(
-                name = title,
-                url = "movie|$tmdbId|$imdbId",
-                posterUrl = posterUrl,
-                plot = overview,
-                year = releaseDate.take(4).toIntOrNull(),
-                duration = runtime.toString(),
-                rating = rating.toInt(),
-                tags = listOf(genres)
+                title,
+                "movie|$tmdbId|$imdbId",
+                TvType.Movie,
+                posterUrl,
+                releaseDate.take(4).toIntOrNull(),
+                overview,
+                rating,
+                null,
+                genres.split(", "),
+                duration = runtime
             )
         } catch (e: Exception) {
             null
@@ -290,7 +271,7 @@ class AdicinemaxNew : MainAPI() {
             val overview = json.optString("overview", "No description available")
             val firstAirDate = json.optString("first_air_date")
             val numberOfSeasons = json.optInt("number_of_seasons", 0)
-            val rating = json.optDouble("vote_average", 0.0)
+            val rating = (json.optDouble("vote_average", 0.0) * 10).toInt()
             val genres = json.optJSONArray("genres")?.let { genresArray ->
                 (0 until genresArray.length()).joinToString(", ") { 
                     genresArray.getJSONObject(it).getString("name") 
@@ -298,7 +279,7 @@ class AdicinemaxNew : MainAPI() {
             } ?: ""
 
             // Get episodes for all seasons
-            val allEpisodes = mutableListOf<EpisodeInfo>()
+            val allEpisodes = mutableListOf<Episode>()
             
             for (seasonNumber in 1..numberOfSeasons) {
                 try {
@@ -311,29 +292,31 @@ class AdicinemaxNew : MainAPI() {
             }
             
             TvSeriesLoadResponse(
-                name = title,
-                url = "tv|$tmdbId|$imdbId",
-                posterUrl = posterUrl,
-                plot = overview,
-                year = firstAirDate.take(4).toIntOrNull(),
-                rating = rating.toInt(),
-                episodes = allEpisodes,
-                seasons = numberOfSeasons,
-                tags = listOf(genres)
+                title,
+                "tv|$tmdbId|$imdbId",
+                TvType.TvSeries,
+                allEpisodes,
+                posterUrl,
+                firstAirDate.take(4).toIntOrNull(),
+                overview,
+                rating,
+                null,
+                genres.split(", "),
+                seasons = numberOfSeasons
             )
         } catch (e: Exception) {
             null
         }
     }
 
-    private fun getSeasonEpisodes(tmdbId: String, seasonNumber: Int, imdbId: String): List<EpisodeInfo> {
+    private fun getSeasonEpisodes(tmdbId: String, seasonNumber: Int, imdbId: String): List<Episode> {
         return try {
             val url = "$TMDB_BASE_URL/tv/$tmdbId/season/$seasonNumber?api_key=$tmdbApiKey"
             val response = app.get(url).text
             val json = JSONObject(response)
             val episodesArray = json.optJSONArray("episodes") ?: return emptyList()
             
-            val episodes = mutableListOf<EpisodeInfo>()
+            val episodes = mutableListOf<Episode>()
             
             for (i in 0 until episodesArray.length()) {
                 val episode = episodesArray.getJSONObject(i)
@@ -345,18 +328,18 @@ class AdicinemaxNew : MainAPI() {
                 val stillPath = episode.optString("still_path")
                 val stillUrl = if (stillPath.isNotEmpty()) "$TMDB_IMAGE_BASE$stillPath" else ""
                 val airDate = episode.optString("air_date", "")
-                val rating = episode.optDouble("vote_average", 0.0)
+                val rating = (episode.optDouble("vote_average", 0.0) * 10).toInt()
                 
                 episodes.add(
-                    EpisodeInfo(
-                        season = seasonNumber,
-                        episode = episodeNumber,
-                        title = episodeTitle,
-                        description = overview,
-                        posterUrl = stillUrl,
+                    Episode(
                         data = "tv|$tmdbId|$imdbId|$seasonNumber|$episodeNumber",
+                        episode = episodeNumber,
+                        season = seasonNumber,
+                        name = episodeTitle,
+                        posterUrl = stillUrl,
                         date = airDate,
-                        rating = rating.toInt()
+                        description = overview,
+                        rating = rating
                     )
                 )
             }
@@ -391,16 +374,6 @@ class AdicinemaxNew : MainAPI() {
                 }
             }
             else -> ""
-        }
-    }
-
-    private fun getQualityFromName(url: String): Qualities {
-        return when {
-            url.contains("1080") -> Qualities.P1080
-            url.contains("720") -> Qualities.P720
-            url.contains("480") -> Qualities.P480
-            url.contains("360") -> Qualities.P360
-            else -> Qualities.Unknown
         }
     }
 }
