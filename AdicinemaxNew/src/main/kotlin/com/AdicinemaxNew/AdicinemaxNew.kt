@@ -27,39 +27,34 @@ class AdicinemaxNew : MainAPI() {
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val responses = mutableListOf<HomePageList>()
         
-        // Latest Movies from vidsrc
+        // Latest Movies from vidsrc - lebih reliable
         val latestMovies = getLatestMovies(page)
         if (latestMovies.isNotEmpty()) {
             responses.add(HomePageList("Latest Movies", latestMovies))
         }
         
-        // Latest TV Shows from vidsrc
+        // Latest TV Shows from vidsrc - lebih reliable
         val latestTVShows = getLatestTVShows(page)
         if (latestTVShows.isNotEmpty()) {
             responses.add(HomePageList("Latest TV Shows", latestTVShows))
         }
         
-        // Latest Episodes from vidsrc
+        // Latest Episodes from vidsrc - lebih reliable
         val latestEpisodes = getLatestEpisodes(page)
         if (latestEpisodes.isNotEmpty()) {
             responses.add(HomePageList("Latest Episodes", latestEpisodes))
-        }
-        
-        // Trending from TMDB (as fallback/extra content)
-        val trendingMovies = getTMDBTrending("movie", page)
-        if (trendingMovies.isNotEmpty()) {
-            responses.add(HomePageList("Trending Movies", trendingMovies))
-        }
-        
-        val trendingTV = getTMDBTrending("tv", page)
-        if (trendingTV.isNotEmpty()) {
-            responses.add(HomePageList("Trending TV Shows", trendingTV))
         }
         
         return newHomePageResponse(responses)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
+        // Prioritize search from vidsrc langsung
+        val vidsrcResults = searchVidsrc(query)
+        if (vidsrcResults.isNotEmpty()) {
+            return vidsrcResults
+        }
+        // Fallback ke TMDB
         return searchTMDB(query)
     }
 
@@ -81,7 +76,8 @@ class AdicinemaxNew : MainAPI() {
         val vidSrcUrl = buildVidSrcUrl(type, tmdbId, imdbId, season, episode)
         
         if (vidSrcUrl.isNotEmpty()) {
-            loadExtractor(vidSrcUrl, "$mainUrl/", subtitleCallback, callback)
+            // Gunakan mainUrl sebagai referer
+            loadExtractor(vidSrcUrl, mainUrl, subtitleCallback, callback)
             return true
         }
         return false
@@ -102,7 +98,7 @@ class AdicinemaxNew : MainAPI() {
         }
     }
 
-    // New functions for vidsrc direct content
+    // Fungsi untuk mendapatkan konten langsung dari vidsrc
     private suspend fun getLatestMovies(page: Int): List<SearchResponse> {
         return try {
             val url = "$mainUrl/movies/latest/page-$page.json"
@@ -112,10 +108,11 @@ class AdicinemaxNew : MainAPI() {
             
             (0 until results.length()).mapNotNull { i ->
                 val item = results.getJSONObject(i)
-                parseVidsrcResult(item, "movie")
+                parseVidsrcMovieResult(item)
             }
         } catch (e: Exception) {
-            emptyList()
+            // Fallback ke TMDB trending
+            getTMDBTrending("movie", page)
         }
     }
 
@@ -128,10 +125,11 @@ class AdicinemaxNew : MainAPI() {
             
             (0 until results.length()).mapNotNull { i ->
                 val item = results.getJSONObject(i)
-                parseVidsrcResult(item, "tv")
+                parseVidsrcTvResult(item)
             }
         } catch (e: Exception) {
-            emptyList()
+            // Fallback ke TMDB trending
+            getTMDBTrending("tv", page)
         }
     }
 
@@ -151,27 +149,69 @@ class AdicinemaxNew : MainAPI() {
         }
     }
 
-    private fun parseVidsrcResult(item: JSONObject, mediaType: String): SearchResponse? {
+    private suspend fun searchVidsrc(query: String): List<SearchResponse> {
+        return try {
+            // Vidsrc tidak memiliki endpoint search, jadi kita gunakan TMDB
+            emptyList()
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun parseVidsrcMovieResult(item: JSONObject): SearchResponse? {
         return try {
             val tmdbId = item.optString("tmdb_id", "")
             val imdbId = item.optString("imdb_id", "")
-            val title = item.optString("title", "") ?: return null
+            var title = item.optString("title", "")?.trim()
             val posterPath = item.optString("poster", "")
-            val posterUrl = if (posterPath.isNotEmpty()) "$TMDB_IMAGE_BASE$posterPath" else ""
-            val year = item.optString("year", "")?.take(4)?.toIntOrNull()
             
-            val dataId = "$mediaType|$tmdbId|$imdbId"
+            // Validasi title
+            if (title.isNullOrEmpty() || title == "n/A" || title == "N/A") {
+                title = "Unknown Movie"
+            }
             
-            if (mediaType == "movie") {
-                newMovieSearchResponse(title, dataId, TvType.Movie) {
-                    this.posterUrl = posterUrl
-                    this.year = year
-                }
+            val posterUrl = if (posterPath.isNotEmpty() && posterPath != "n/A") {
+                "$TMDB_IMAGE_BASE$posterPath"
             } else {
-                newTvSeriesSearchResponse(title, dataId, TvType.TvSeries) {
-                    this.posterUrl = posterUrl
-                    this.year = year
-                }
+                ""
+            }
+            
+            val year = item.optString("year", "")?.take(4)?.toIntOrNull()
+            val dataId = "movie|$tmdbId|$imdbId"
+            
+            newMovieSearchResponse(title, dataId, TvType.Movie) {
+                this.posterUrl = posterUrl
+                this.year = year
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun parseVidsrcTvResult(item: JSONObject): SearchResponse? {
+        return try {
+            val tmdbId = item.optString("tmdb_id", "")
+            val imdbId = item.optString("imdb_id", "")
+            var title = item.optString("title", "")?.trim()
+            val posterPath = item.optString("poster", "")
+            
+            // Validasi title
+            if (title.isNullOrEmpty() || title == "n/A" || title == "N/A") {
+                title = "Unknown TV Show"
+            }
+            
+            val posterUrl = if (posterPath.isNotEmpty() && posterPath != "n/A") {
+                "$TMDB_IMAGE_BASE$posterPath"
+            } else {
+                ""
+            }
+            
+            val year = item.optString("year", "")?.take(4)?.toIntOrNull()
+            val dataId = "tv|$tmdbId|$imdbId"
+            
+            newTvSeriesSearchResponse(title, dataId, TvType.TvSeries) {
+                this.posterUrl = posterUrl
+                this.year = year
             }
         } catch (e: Exception) {
             null
@@ -182,13 +222,23 @@ class AdicinemaxNew : MainAPI() {
         return try {
             val tmdbId = item.optString("tmdb_id", "")
             val imdbId = item.optString("imdb_id", "")
-            val title = item.optString("title", "") ?: return null
+            var title = item.optString("title", "")?.trim()
             val season = item.optString("season", "1")
             val episode = item.optString("episode", "1")
             val posterPath = item.optString("poster", "")
-            val posterUrl = if (posterPath.isNotEmpty()) "$TMDB_IMAGE_BASE$posterPath" else ""
-            val year = item.optString("year", "")?.take(4)?.toIntOrNull()
             
+            // Validasi title
+            if (title.isNullOrEmpty() || title == "n/A" || title == "N/A") {
+                title = "Unknown Episode"
+            }
+            
+            val posterUrl = if (posterPath.isNotEmpty() && posterPath != "n/A") {
+                "$TMDB_IMAGE_BASE$posterPath"
+            } else {
+                ""
+            }
+            
+            val year = item.optString("year", "")?.take(4)?.toIntOrNull()
             val dataId = "tv|$tmdbId|$imdbId|$season|$episode"
             
             newTvSeriesSearchResponse("$title S${season}E${episode}", dataId, TvType.TvSeries) {
@@ -200,26 +250,10 @@ class AdicinemaxNew : MainAPI() {
         }
     }
 
-    // TMDB functions (kept as fallback and for search)
+    // TMDB functions sebagai fallback
     private suspend fun getTMDBTrending(mediaType: String, page: Int): List<SearchResponse> {
         return try {
             val url = "$TMDB_BASE_URL/trending/$mediaType/week?api_key=$tmdbApiKey&page=$page"
-            val response = app.get(url).text
-            val json = JSONObject(response)
-            val results = json.getJSONArray("results")
-            
-            (0 until results.length()).mapNotNull { i ->
-                val item = results.getJSONObject(i)
-                parseTMDBResult(item, mediaType)
-            }
-        } catch (e: Exception) {
-            emptyList()
-        }
-    }
-
-    private suspend fun getTMDBPopular(mediaType: String, page: Int): List<SearchResponse> {
-        return try {
-            val url = "$TMDB_BASE_URL/$mediaType/popular?api_key=$tmdbApiKey&page=$page"
             val response = app.get(url).text
             val json = JSONObject(response)
             val results = json.getJSONArray("results")
@@ -424,23 +458,27 @@ class AdicinemaxNew : MainAPI() {
     private fun buildVidSrcUrl(type: String, tmdbId: String, imdbId: String, season: String?, episode: String?): String {
         return when (type) {
             "movie" -> {
-                // Prioritize IMDB ID if available, otherwise use TMDB
-                if (imdbId.isNotEmpty()) {
+                // Gunakan format yang benar: /embed/movie/{id}
+                if (imdbId.isNotEmpty() && imdbId != "null") {
                     "$mainUrl/embed/movie/$imdbId"
-                } else {
+                } else if (tmdbId.isNotEmpty() && tmdbId != "null") {
                     "$mainUrl/embed/movie/$tmdbId"
+                } else {
+                    ""
                 }
             }
             "tv" -> {
                 if (season != null && episode != null) {
-                    // Use the format: /embed/tv/{id}/{season}-{episode}
-                    if (imdbId.isNotEmpty()) {
+                    // Gunakan format: /embed/tv/{id}/{season}-{episode}
+                    if (imdbId.isNotEmpty() && imdbId != "null") {
                         "$mainUrl/embed/tv/$imdbId/$season-$episode"
-                    } else {
+                    } else if (tmdbId.isNotEmpty() && tmdbId != "null") {
                         "$mainUrl/embed/tv/$tmdbId/$season-$episode"
+                    } else {
+                        ""
                     }
                 } else {
-                    // This shouldn't normally happen for episode loading
+                    // Untuk TV show main page (shouldn't happen)
                     ""
                 }
             }
