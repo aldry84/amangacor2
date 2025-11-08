@@ -522,13 +522,14 @@ class AdicinemaxNew : MainAPI() {
                 val videoUrl = videoSource?.attr("src")
                 
                 if (videoUrl != null) {
+                    // PERBAIKAN: Gunakan newExtractorLink dan konversi Qualities ke Int
                     callback.invoke(
-                        ExtractorLink(
+                        newExtractorLink(
                             name,
                             "Vidsrc Direct",
                             videoUrl,
                             referer,
-                            getQualityFromUrl(videoUrl),
+                            getQualityFromUrl(videoUrl), // Sekarang mengembalikan Int
                             isM3u8 = videoUrl.contains(".m3u8")
                         )
                     )
@@ -550,14 +551,15 @@ class AdicinemaxNew : MainAPI() {
         }
     }
 
-    private fun getQualityFromUrl(url: String): Qualities {
+    // PERBAIKAN: Fungsi getQualityFromUrl sekarang mengembalikan Int
+    private fun getQualityFromUrl(url: String): Int {
         return when {
-            url.contains("1080") -> Qualities.P1080
-            url.contains("720") -> Qualities.P720
-            url.contains("480") -> Qualities.P480
-            url.contains("360") -> Qualities.P360
-            url.contains("240") -> Qualities.P240
-            else -> Qualities.Unknown
+            url.contains("1080") -> Qualities.P1080.value
+            url.contains("720") -> Qualities.P720.value
+            url.contains("480") -> Qualities.P480.value
+            url.contains("360") -> Qualities.P360.value
+            url.contains("240") -> Qualities.P240.value
+            else -> Qualities.Unknown.value
         }
     }
 }
