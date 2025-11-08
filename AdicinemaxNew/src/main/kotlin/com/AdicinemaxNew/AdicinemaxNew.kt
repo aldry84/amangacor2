@@ -584,18 +584,18 @@ class AdicinemaxNew : MainAPI() {
                 val videoUrl = videoSource?.attr("src")
                 
                 if (!videoUrl.isNullOrBlank()) {
-                    // PERBAIKAN: Gunakan ExtractorLink constructor langsung dengan type yang benar
-                    val isM3u8 = videoUrl.contains(".m3u8")
-                    
+                    // PERBAIKAN: Gunakan newExtractorLink yang tidak deprecated
                     callback.invoke(
-                        ExtractorLink(
+                        newExtractorLink(
                             source = name,
                             name = "Vidsrc Direct", 
                             url = videoUrl,
                             referer = referer,
                             quality = getQualityFromUrl(videoUrl),
-                            isM3u8 = isM3u8
-                        )
+                            isM3u8 = videoUrl.contains(".m3u8")
+                        ) {
+                            // Additional properties bisa ditambahkan di sini jika diperlukan
+                        }
                     )
                     true
                 } else {
