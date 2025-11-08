@@ -522,15 +522,21 @@ class AdicinemaxNew : MainAPI() {
                 val videoUrl = videoSource?.attr("src")
                 
                 if (videoUrl != null) {
-                    // PERBAIKAN: Gunakan newExtractorLink dan konversi Qualities ke Int
+                    // PERBAIKAN: Gunakan ExtractorLink constructor langsung
+                    val linkType = if (videoUrl.contains(".m3u8")) {
+                        ExtractorLinkType.HLS
+                    } else {
+                        ExtractorLinkType.VIDEO
+                    }
+                    
                     callback.invoke(
-                        newExtractorLink(
-                            name,
-                            "Vidsrc Direct",
-                            videoUrl,
-                            referer,
-                            getQualityFromUrl(videoUrl), // Sekarang mengembalikan Int
-                            isM3u8 = videoUrl.contains(".m3u8")
+                        ExtractorLink(
+                            source = name,
+                            name = "Vidsrc Direct",
+                            url = videoUrl,
+                            referer = referer,
+                            quality = getQualityFromUrl(videoUrl),
+                            type = linkType
                         )
                     )
                     true
