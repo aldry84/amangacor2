@@ -163,7 +163,6 @@ class AdicinemaxNew : MainAPI() {
             
             val overview = item.optString("overview", "No description available")
             val releaseDate = item.optString(if (mediaType == "movie") "release_date" else "first_air_date")
-            val rating = item.optInt("vote_average", 0)
             
             // Get IMDB ID
             val imdbId = getIMDBId(mediaType, id.toString())
@@ -171,21 +170,25 @@ class AdicinemaxNew : MainAPI() {
             val dataId = "$mediaType|$id|$imdbId"
             
             if (mediaType == "movie") {
-                newMovieSearchResponse(title, dataId, TvType.Movie) {
-                    this.posterUrl = posterUrl
-                    this.year = releaseDate.take(4).toIntOrNull()
-                }.apply {
-                    // Add plot using the setPlot method
-                    setPlot(overview)
-                }
+                MovieResponse(
+                    name = title,
+                    url = dataId,
+                    apiName = name,
+                    type = TvType.Movie,
+                    posterUrl = posterUrl,
+                    year = releaseDate.take(4).toIntOrNull(),
+                    plot = overview
+                )
             } else {
-                newTvSeriesSearchResponse(title, dataId, TvType.TvSeries) {
-                    this.posterUrl = posterUrl
-                    this.year = releaseDate.take(4).toIntOrNull()
-                }.apply {
-                    // Add plot using the setPlot method
-                    setPlot(overview)
-                }
+                TvSeriesResponse(
+                    name = title,
+                    url = dataId,
+                    apiName = name,
+                    type = TvType.TvSeries,
+                    posterUrl = posterUrl,
+                    year = releaseDate.take(4).toIntOrNull(),
+                    plot = overview
+                )
             }
         } catch (e: Exception) {
             null
