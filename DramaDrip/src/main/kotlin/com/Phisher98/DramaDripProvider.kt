@@ -1,3 +1,5 @@
+// DramaDrip/src/main/kotlin/com/Phisher98/DramaDripProvider.kt
+
 package com.Phisher98
 
 import com.fasterxml.jackson.annotation.JsonProperty
@@ -8,8 +10,14 @@ import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 @CloudstreamPlugin
 class DramaDripProvider: BasePlugin() {
     override fun load() {
+        // Mendaftarkan MainAPI
         registerMainAPI(DramaDrip())
-        // Extractor Driveseed telah dihapus
+        
+        // Mendaftarkan Extractor yang sudah ada
+        registerExtractorAPI(Driveseed())
+        
+        // Mendaftarkan Extractor baru untuk VidSrc Embed
+        registerExtractorAPI(VidSrcEmbedExtractor())
     }
     companion object {
         private const val DOMAINS_URL =
