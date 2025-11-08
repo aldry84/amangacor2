@@ -1,82 +1,47 @@
+// DramaDrip/src/main/kotlin/com/Phisher98/DramaDrip.kt
+
 package com.Phisher98
 
 import android.os.Build
 import androidx.annotation.RequiresApi
-import com.fasterxml.jackson.annotation.JsonProperty
+import com.google.gson.Gson
 import com.lagradost.api.Log
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
+import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
+import com.lagradost.cloudstream3.LoadResponse.Companion.addImdbId
+import com.lagradost.cloudstream3.LoadResponse.Companion.addTMDbId
+import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
-import com.lagradost.cloudstream3.utils.getQualityFromName // Import untuk mengatasi Unresolved reference
 import kotlinx.coroutines.runBlocking
-import okhttp3.RequestBody.Companion.toRequestBody
-
-// --- API Data Classes ---
-data class ApiResponse(
-    @JsonProperty("status") val status: Boolean? = null,
-    @JsonProperty("msg") val msg: String? = null,
-    @JsonProperty("return") val data: List<ApiContent>? = null
-)
-
-data class ApiContent(
-    @JsonProperty("judul") val title: String? = null,
-    @JsonProperty("image") val image: String? = null,
-    @JsonProperty("link") val link: String? = null, // Digunakan sebagai ID unik
-    @JsonProperty("id_content") val contentId: String? = null,
-    @JsonProperty("type_content") val contentType: String? = null // movie, tv
-)
-
-data class StreamLinkResponse(
-    @JsonProperty("status") val status: Boolean? = null,
-    @JsonProperty("msg") val msg: String? = null,
-    @JsonProperty("return") val streamData: List<StreamLinkData>? = null
-)
-
-data class StreamLinkData(
-    @JsonProperty("link") val link: String? = null,
-    @JsonProperty("link_raw") val linkRaw: String? = null,
-    @JsonProperty("quality") val quality: String? = null,
-    @JsonProperty("resolusi") val resolution: String? = null
-)
-// --- API Data Classes End ---
+import org.jsoup.nodes.Element
 
 class DramaDrip : MainAPI() {
     override var mainUrl: String = runBlocking {
         DramaDripProvider.getDomains()?.dramadrip ?: "https://dramadrip.com"
     }
-    override var name = "DramaDrip API"
+    override var name = "DramaDrip"
     override val hasMainPage = true
-    override var lang = "id"
+    override var lang = "en"
     override val hasDownloadSupport = true
     override val hasQuickSearch = true
     override val supportedTypes = setOf(TvType.Movie, TvType.AsianDrama, TvType.TvSeries)
     private val cinemeta_url = "https://v3-cinemeta.strem.io/meta"
 
-    // Definisikan Endpoint
-    private val API_KLASIK_LIST = "/api/v1/klasik/list"
-    private val API_KLASIK_QUERY = "/api/v1/klasik/query"
-    private val API_KLASIK_LOAD = "/api/v1/klasik/load"
-
     override val mainPage = mainPageOf(
-        API_KLASIK_LIST to "Semua Konten (Via API)"
+        "drama/ongoing" to "Ongoing Dramas",
+        "latest" to "Latest Releases",
+        "drama/chinese-drama" to "Chinese Dramas",
+        "drama/japanese-drama" to "Japanese Dramas",
+        "drama/korean-drama" to "Korean Dramas",
+        "movies" to "Movies",
+        "web-series" to "Web Series",
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val jsonPayload = mapOf(
-            "auth" to "", 
-            "query" to "semua", 
-            "limit" to 50,
-            "offset" to (page - 1) * 50
-        ).toJson()
-
-        val response = app.post(
-            "$mainUrl${request.data}",
-            requestBody = jsonPayload.toRequestBody(),
-            headers = mapOf("Content-Type" to "application/json")
-        ).parsedSafe<ApiResponse>()
-
-        val home = response?.data?.mapNotNull { it.toSearchResult() } ?: emptyList()
+        val document = app.get("$mainUrl/${request.data}/page/$page").document
+        val home = document.select("article").mapNotNull { it.toSearchResult() }
 
         return newHomePageResponse(
             list = HomePageList(
@@ -84,83 +49,241 @@ class DramaDrip : MainAPI() {
                 list = home,
                 isHorizontalImages = false
             ),
-            hasNext = home.isNotEmpty()
+            hasNext = true
         )
     }
 
-    private fun ApiContent.toSearchResult(): SearchResponse? {
-        val link = this.link ?: return null 
-        val title = this.title ?: return null
-        val posterUrl = this.image
-        val type = when (this.contentType?.lowercase()) {
-            "movie" -> TvType.Movie
-            "tv", "series" -> TvType.TvSeries
-            else -> TvType.Movie
-        }
+    private fun Element.toSearchResult(): SearchResponse? {
+        val title =
+            this.selectFirst("h2.entry-title")?.text()?.substringAfter("Download") ?: return null
+        val href = this.select("h2.entry-title > a").attr("href")
+        val imgElement = this.selectFirst("img")
+        val srcset = imgElement?.attr("srcset")
 
-        return newMovieSearchResponse(title, link, type) {
+        val highestResUrl = srcset
+            ?.split(",")
+            ?.map { it.trim() }
+            ?.mapNotNull {
+                val parts = it.split(" ")
+                if (parts.size == 2) parts[0] to parts[1].removeSuffix("w").toIntOrNull() else null
+            }
+            ?.maxByOrNull { it.second ?: 0 }
+            ?.first
+
+        val posterUrl = highestResUrl ?: imgElement?.attr("src")
+        return newMovieSearchResponse(title, href, TvType.Movie) {
             this.posterUrl = posterUrl
         }
+
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val jsonPayload = mapOf(
-            "auth" to "",
-            "query" to query,
-            "limit" to 50,
-            "offset" to 0
-        ).toJson()
-
-        val response = app.post(
-            "$mainUrl$API_KLASIK_QUERY",
-            requestBody = jsonPayload.toRequestBody(),
-            headers = mapOf("Content-Type" to "application/json")
-        ).parsedSafe<ApiResponse>()
-
-        return response?.data?.mapNotNull { it.toSearchResult() } ?: emptyList()
+        val document = app.get("$mainUrl/?s=$query").document
+        val results = document.select("article").mapNotNull {
+            it.toSearchResult()
+        }
+        return results
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
     override suspend fun load(url: String): LoadResponse {
-        val contentId = url 
-        
-        val jsonPayload = mapOf(
-            "auth" to "",
-            "id_content" to contentId
-        ).toJson()
+        val document = app.get(url).document
 
-        val response = app.post(
-            "$mainUrl$API_KLASIK_LOAD",
-            requestBody = jsonPayload.toRequestBody(),
-            headers = mapOf("Content-Type" to "application/json")
-        ).parsedSafe<ApiResponse>()
-        
-        val contentDetail = response?.data?.firstOrNull() ?: throw Exception("API did not return content detail.")
+        var imdbId: String? = null
+        var tmdbId: String? = null
+        var tmdbType: String? = null
 
-        val title = contentDetail.title ?: "Judul Tidak Diketahui"
-        val poster = contentDetail.image
-        val type = when (contentDetail.contentType?.lowercase()) {
-            "movie" -> TvType.Movie
-            "tv", "series" -> TvType.TvSeries
-            else -> TvType.Movie
+        document.select("div.su-spoiler-content ul.wp-block-list > li").forEach { li ->
+            val text = li.text()
+            if (imdbId == null && "imdb.com/title/tt" in text) {
+                imdbId = Regex("tt\\d+").find(text)?.value
+            }
+
+            if (tmdbId == null && tmdbType == null && "themoviedb.org" in text) {
+                Regex("/(movie|tv)/(\\d+)").find(text)?.let { match ->
+                    tmdbType = match.groupValues[1] // movie or tv
+                    tmdbId = match.groupValues[2]   // numeric ID
+                }
+            }
+        }
+        val tvType = when (true) {
+            (tmdbType?.contains("Movie", ignoreCase = true) == true) -> TvType.Movie
+            else -> TvType.TvSeries
         }
 
-        if (type == TvType.TvSeries) {
-            val episodes = listOf(
-                newEpisode(contentId.toJson()) {
-                    this.name = "Konten Series"
-                    this.season = 1 
-                    this.episode = 1
-                }
-            )
+        val image = document.select("meta[property=og:image]").attr("content")
+        val title = document.selectFirst("div.wp-block-column > h2.wp-block-heading")?.text()
+            ?.substringBefore("(")?.trim().toString()
+        val tags = document.select("div.mt-2 span.badge").map { it.text() }
+        val year = document.selectFirst("div.wp-block-column > h2.wp-block-heading")?.text()
+            ?.substringAfter("(")?.substringBefore(")")?.toIntOrNull()
+        val descriptions = document.selectFirst("div.content-section p.mt-4")?.text()?.trim()
+        val typeset = if (tvType == TvType.TvSeries) "series" else "movie"
+        val responseData = if (imdbId?.isNotEmpty() == true) { // Gunakan imdbId sebagai fallback, tetapi tmdbId lebih baik jika tersedia
+            val idToUse = if (tmdbId?.isNotEmpty() == true) tmdbId else imdbId
+            val endpoint = if (tmdbId?.isNotEmpty() == true) typeset else "imdb" // Cinemeta menggunakan ID TMDB
+            
+            val jsonResponse = app.get("$cinemeta_url/$endpoint/$idToUse.json").text
+            if (jsonResponse.isNotEmpty() && jsonResponse.startsWith("{")) {
+                val gson = Gson()
+                gson.fromJson(jsonResponse, ResponseData::class.java)
+            } else null
+        } else null
+        var cast: List<String> = emptyList()
 
-            return newTvSeriesLoadResponse(title, url, type, episodes) {
-                this.posterUrl = poster
+        var background: String = image
+        var description: String? = null
+        if (responseData != null) {
+            description = responseData.meta?.description ?: descriptions
+            cast = responseData.meta?.cast ?: emptyList()
+            background = responseData.meta?.background ?: image
+        }
+
+
+        val hrefs: List<String> = document.select("div.wp-block-button > a")
+            .mapNotNull { linkElement ->
+                val link = linkElement.attr("href")
+                val actual = cinematickitloadBypass(link) ?: return@mapNotNull null
+                val page = app.get(actual).document
+                page.select("div.wp-block-button.movie_btn a")
+                    .eachAttr("href")
+            }.flatten()
+
+        val trailer = document.selectFirst("div.wp-block-embed__wrapper > iframe")?.attr("src")
+
+        val recommendations =
+            document.select("div.entry-related-inner-content article").mapNotNull {
+                val recName = it.select("h3").text().substringAfter("Download")
+                val recHref = it.select("h3 a").attr("href")
+                val recPosterUrl = it.select("img").attr("src")
+                newTvSeriesSearchResponse(recName, recHref, TvType.TvSeries) {
+                    this.posterUrl = recPosterUrl
+                }
+            }
+
+        if (tvType == TvType.TvSeries) {
+            val tvSeriesEpisodes = mutableMapOf<Pair<Int, Int>, MutableList<String>>()
+
+            val seasonBlocks = document.select("div.su-accordion h2")
+
+            for (seasonHeader in seasonBlocks) {
+                val seasonText = seasonHeader.text()
+                if (seasonText.contains("ZIP", ignoreCase = true)) {
+                    Log.d("Skip", "Skipping ZIP season: $seasonText")
+                } else {
+                    val seasonMatch = Regex("""S?e?a?s?o?n?\s*([0-9]+)""", RegexOption.IGNORE_CASE)
+                        .find(seasonText)
+                    val season = seasonMatch?.groupValues?.getOrNull(1)?.toIntOrNull()
+
+                    if (season != null) {
+                        // Try to get the links block; if next sibling doesn't have buttons, try alternative selection
+                        var linksBlock = seasonHeader.nextElementSibling()
+                        if (linksBlock == null || linksBlock.select("div.wp-block-button")
+                                .isEmpty()
+                        ) {
+                            // Sometimes buttons could be inside a child or sibling div
+                            linksBlock = seasonHeader.parent()?.selectFirst("div.wp-block-button")
+                                ?: linksBlock
+                        }
+
+                        val qualityLinks = linksBlock?.select("div.wp-block-button a")
+                            ?.mapNotNull { it.attr("href").takeIf { href -> href.isNotBlank() } }
+                            ?.distinct() ?: emptyList()
+
+                        for (qualityPageLink in qualityLinks) {
+                            try {
+                                val rawqualityPageLink = if (qualityPageLink.contains("modpro")) qualityPageLink else cinematickitloadBypass(qualityPageLink) ?: ""
+                                val response = app.get(rawqualityPageLink)
+                                val episodeDoc = response.document
+
+                                val episodeButtons =
+                                    episodeDoc.select("a").filter { element: Element ->
+                                        element.text()
+                                            .matches(Regex("""(?i)(Episode|Ep|E)?\s*0*\d+"""))
+                                    }
+
+                                for (btn in episodeButtons) {
+                                    val ephref = btn.attr("href")
+                                    val epText = btn.text()
+
+                                    if (ephref.isNotBlank()) {
+                                        val epNo = Regex(
+                                            """(?:Episode|Ep|E)?\s*0*([0-9]+)""",
+                                            RegexOption.IGNORE_CASE
+                                        )
+                                            .find(epText)?.groupValues?.getOrNull(1)?.toIntOrNull()
+
+                                        if (epNo != null) {
+                                            val key = season to epNo
+                                            tvSeriesEpisodes.getOrPut(key) { mutableListOf() }
+                                                .add(ephref)
+                                        } else {
+                                            Log.w(
+                                                "EpisodeFetch",
+                                                "Could not extract episode number from text: '$epText'"
+                                            )
+                                        }
+                                    } else {
+                                        Log.w(
+                                            "EpisodeFetch",
+                                            "Empty href for episode button with text: '$epText'"
+                                        )
+                                    }
+                                }
+                            } catch (_: Exception) {
+                                Log.e("EpisodeFetch", "Failed to load or parse $qualityPageLink")
+                            }
+                        }
+                    }
+                }
+            }
+
+            val finalEpisodes = tvSeriesEpisodes.map { (seasonEpisode, links) ->
+                val (season, epNo) = seasonEpisode
+                val info =
+                    responseData?.meta?.videos?.find { it.season == season && it.episode == epNo }
+
+                // MODIFIKASI: Tambahkan data VidSrc sebagai tautan pertama
+                // Format: "TvType|imdbId|tmdbId|season|episode"
+                val vidSrcData = "${TvType.TvSeries.name}|${imdbId.orEmpty()}|${tmdbId.orEmpty()}|$season|$epNo"
+                val allLinks = mutableListOf(vidSrcData).apply { addAll(links) } 
+                
+                newEpisode(allLinks.distinct().toJson()) {
+                    this.name = info?.name ?: "Episode $epNo"
+                    this.posterUrl = info?.thumbnail
+                    this.season = season
+                    this.episode = epNo
+                    this.description = info?.overview
+                }
+            }
+
+            return newTvSeriesLoadResponse(title, url, TvType.TvSeries, finalEpisodes) {
+                this.backgroundPosterUrl = background
+                this.year = year
+                this.plot = description
+                this.tags = tags
+                this.recommendations = recommendations
+                addTrailer(trailer)
+                addActors(cast)
+                addImdbId(imdbId)
+                addTMDbId(tmdbId)
             }
         } else {
-            val linkForLoadLinks = contentId.toJson()
-            return newMovieLoadResponse(title, url, type, linkForLoadLinks) {
-                this.posterUrl = poster
+            // MODIFIKASI: Tambahkan data VidSrc untuk film
+            // Format: "TvType|imdbId|tmdbId|0|0" (season/episode diatur ke 0)
+            val vidSrcData = "${TvType.Movie.name}|${imdbId.orEmpty()}|${tmdbId.orEmpty()}|0|0"
+            val allHrefs = mutableListOf(vidSrcData).apply { addAll(hrefs) } 
+            
+            return newMovieLoadResponse(title, url, TvType.Movie, allHrefs) {
+                this.backgroundPosterUrl = background
+                this.year = year
+                this.plot = description
+                this.tags = tags
+                this.recommendations = recommendations
+                addTrailer(trailer)
+                addActors(cast)
+                addImdbId(imdbId)
+                addTMDbId(tmdbId)
             }
         }
     }
@@ -172,44 +295,39 @@ class DramaDrip : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val contentId = tryParseJson<String>(data) ?: return false
-
-        val jsonPayload = mapOf(
-            "auth" to "",
-            "id_content" to contentId
-        ).toJson()
-
-        val response = app.post(
-            "$mainUrl$API_KLASIK_LOAD",
-            requestBody = jsonPayload.toRequestBody(),
-            headers = mapOf("Content-Type" to "application/json")
-        ).parsedSafe<StreamLinkResponse>()
-
-        val streamLinks = response?.streamData ?: emptyList()
-
-        if (streamLinks.isEmpty()) {
-            Log.e("LoadLinks", "API returned no stream links for ID: $contentId")
+        val links = tryParseJson<List<String>>(data).orEmpty()
+        if (links.isEmpty()) {
+            Log.e("LoadLinks", "No links found in data: $data")
             return false
         }
+        
+        // MODIFIKASI: Panggil Extractor VidSrc jika datanya cocok
+        val vidSrcExtractor = VidSrcEmbedExtractor()
 
-        for (stream in streamLinks) {
-            val link = stream.link ?: stream.linkRaw ?: continue
-            val qualityText = stream.quality ?: stream.resolution ?: "Unknown"
-            
-            // Perbaikan Unresolved reference 'getStringQuality'
-            val qualityInt = getQualityFromName(qualityText)
-
-            callback(
-                // Perbaikan Invalid parameter 'referer' dan 'quality'
-                newExtractorLink(
-                    source = "DramaDrip API",
-                    name = "DramaDrip API $qualityText",
-                    url = link,
-                ) {
-                    this.quality = qualityInt
-                    this.referer = "$mainUrl/" 
+        for (link in links) {
+            try {
+                // Cek apakah link adalah data VidSrc kita: "TYPE|..."
+                if (link.startsWith(TvType.TvSeries.name) || link.startsWith(TvType.Movie.name)) {
+                    vidSrcExtractor.getUrl(link, null, subtitleCallback, callback)
+                    continue // Lewati tautan unduhan normal untuk item VidSrc ini
                 }
-            )
+                
+                // Logika tautan DramaDrip yang sudah ada (tautan unduhan/safelink)
+                val finalLink = when {
+                    "safelink=" in link -> cinematickitBypass(link)
+                    "unblockedgames" in link -> bypassHrefli(link)
+                    "examzculture" in link -> bypassHrefli(link)
+                    else -> link
+                }
+
+                if (finalLink != null) {
+                    loadExtractor(finalLink, subtitleCallback, callback)
+                } else {
+                    Log.w("LoadLinks", "Bypass returned null for link: $link")
+                }
+            } catch (_: Exception) {
+                Log.e("LoadLinks", "Failed to load link: $link")
+            }
         }
 
         return true
