@@ -1,11 +1,12 @@
 package com.AdicinemaxNew
 
-import com.lagradost.cloudstream3.plugins.BasePlugin
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
+import com.lagradost.cloudstream3.plugins.Plugin
+import android.content.Context
 
 @CloudstreamPlugin
-class AdicinemaxNewPlugin: BasePlugin() {
-    override fun load() {
+class AdicinemaxNewPlugin: Plugin() {
+    override fun load(context: Context) {
         // All providers should be added in this manner. Please don't edit the providers list directly.
         registerMainAPI(AdicinemaxNew())
     }
