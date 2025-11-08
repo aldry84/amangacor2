@@ -6,7 +6,7 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.plugins.BasePlugin
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
-import com.lagradost.api.Log // IMPORT YANG DITAMBAHKAN
+import com.lagradost.api.Log
 
 @CloudstreamPlugin
 class DramaDripProvider: BasePlugin() {
@@ -31,7 +31,6 @@ class DramaDripProvider: BasePlugin() {
                     Log.d("DramaDrip", "Domains cache updated: ${cachedDomains?.dramadrip}")
                 } catch (e: Exception) {
                     Log.e("DramaDrip", "Failed to fetch domains: ${e.message}")
-                    // Return cached version even if expired if fetch fails
                     if (cachedDomains == null) return null
                 }
             }
