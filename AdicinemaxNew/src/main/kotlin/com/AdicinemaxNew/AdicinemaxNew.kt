@@ -27,28 +27,33 @@ class AdicinemaxNew : MainAPI() {
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val responses = mutableListOf<HomePageList>()
         
-        // Trending Movies
+        // Latest Movies from vidsrc
+        val latestMovies = getLatestMovies(page)
+        if (latestMovies.isNotEmpty()) {
+            responses.add(HomePageList("Latest Movies", latestMovies))
+        }
+        
+        // Latest TV Shows from vidsrc
+        val latestTVShows = getLatestTVShows(page)
+        if (latestTVShows.isNotEmpty()) {
+            responses.add(HomePageList("Latest TV Shows", latestTVShows))
+        }
+        
+        // Latest Episodes from vidsrc
+        val latestEpisodes = getLatestEpisodes(page)
+        if (latestEpisodes.isNotEmpty()) {
+            responses.add(HomePageList("Latest Episodes", latestEpisodes))
+        }
+        
+        // Trending from TMDB (as fallback/extra content)
         val trendingMovies = getTMDBTrending("movie", page)
         if (trendingMovies.isNotEmpty()) {
             responses.add(HomePageList("Trending Movies", trendingMovies))
         }
         
-        // Trending TV Shows
         val trendingTV = getTMDBTrending("tv", page)
         if (trendingTV.isNotEmpty()) {
             responses.add(HomePageList("Trending TV Shows", trendingTV))
-        }
-        
-        // Now Playing Movies
-        val nowPlayingMovies = getTMDBNowPlaying(page)
-        if (nowPlayingMovies.isNotEmpty()) {
-            responses.add(HomePageList("Now Playing Movies", nowPlayingMovies))
-        }
-        
-        // Popular TV Shows
-        val popularTV = getTMDBPopular("tv", page)
-        if (popularTV.isNotEmpty()) {
-            responses.add(HomePageList("Popular TV Shows", popularTV))
         }
         
         return newHomePageResponse(responses)
@@ -97,6 +102,105 @@ class AdicinemaxNew : MainAPI() {
         }
     }
 
+    // New functions for vidsrc direct content
+    private suspend fun getLatestMovies(page: Int): List<SearchResponse> {
+        return try {
+            val url = "$mainUrl/movies/latest/page-$page.json"
+            val response = app.get(url).text
+            val json = JSONObject(response)
+            val results = json.getJSONArray("result")
+            
+            (0 until results.length()).mapNotNull { i ->
+                val item = results.getJSONObject(i)
+                parseVidsrcResult(item, "movie")
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    private suspend fun getLatestTVShows(page: Int): List<SearchResponse> {
+        return try {
+            val url = "$mainUrl/tvshows/latest/page-$page.json"
+            val response = app.get(url).text
+            val json = JSONObject(response)
+            val results = json.getJSONArray("result")
+            
+            (0 until results.length()).mapNotNull { i ->
+                val item = results.getJSONObject(i)
+                parseVidsrcResult(item, "tv")
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    private suspend fun getLatestEpisodes(page: Int): List<SearchResponse> {
+        return try {
+            val url = "$mainUrl/episodes/latest/page-$page.json"
+            val response = app.get(url).text
+            val json = JSONObject(response)
+            val results = json.getJSONArray("result")
+            
+            (0 until results.length()).mapNotNull { i ->
+                val item = results.getJSONObject(i)
+                parseVidsrcEpisodeResult(item)
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun parseVidsrcResult(item: JSONObject, mediaType: String): SearchResponse? {
+        return try {
+            val tmdbId = item.optString("tmdb_id", "")
+            val imdbId = item.optString("imdb_id", "")
+            val title = item.optString("title", "") ?: return null
+            val posterPath = item.optString("poster", "")
+            val posterUrl = if (posterPath.isNotEmpty()) "$TMDB_IMAGE_BASE$posterPath" else ""
+            val year = item.optString("year", "")?.take(4)?.toIntOrNull()
+            
+            val dataId = "$mediaType|$tmdbId|$imdbId"
+            
+            if (mediaType == "movie") {
+                newMovieSearchResponse(title, dataId, TvType.Movie) {
+                    this.posterUrl = posterUrl
+                    this.year = year
+                }
+            } else {
+                newTvSeriesSearchResponse(title, dataId, TvType.TvSeries) {
+                    this.posterUrl = posterUrl
+                    this.year = year
+                }
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun parseVidsrcEpisodeResult(item: JSONObject): SearchResponse? {
+        return try {
+            val tmdbId = item.optString("tmdb_id", "")
+            val imdbId = item.optString("imdb_id", "")
+            val title = item.optString("title", "") ?: return null
+            val season = item.optString("season", "1")
+            val episode = item.optString("episode", "1")
+            val posterPath = item.optString("poster", "")
+            val posterUrl = if (posterPath.isNotEmpty()) "$TMDB_IMAGE_BASE$posterPath" else ""
+            val year = item.optString("year", "")?.take(4)?.toIntOrNull()
+            
+            val dataId = "tv|$tmdbId|$imdbId|$season|$episode"
+            
+            newTvSeriesSearchResponse("$title S${season}E${episode}", dataId, TvType.TvSeries) {
+                this.posterUrl = posterUrl
+                this.year = year
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    // TMDB functions (kept as fallback and for search)
     private suspend fun getTMDBTrending(mediaType: String, page: Int): List<SearchResponse> {
         return try {
             val url = "$TMDB_BASE_URL/trending/$mediaType/week?api_key=$tmdbApiKey&page=$page"
@@ -123,22 +227,6 @@ class AdicinemaxNew : MainAPI() {
             (0 until results.length()).mapNotNull { i ->
                 val item = results.getJSONObject(i)
                 parseTMDBResult(item, mediaType)
-            }
-        } catch (e: Exception) {
-            emptyList()
-        }
-    }
-
-    private suspend fun getTMDBNowPlaying(page: Int): List<SearchResponse> {
-        return try {
-            val url = "$TMDB_BASE_URL/movie/now_playing?api_key=$tmdbApiKey&page=$page"
-            val response = app.get(url).text
-            val json = JSONObject(response)
-            val results = json.getJSONArray("results")
-            
-            (0 until results.length()).mapNotNull { i ->
-                val item = results.getJSONObject(i)
-                parseTMDBResult(item, "movie")
             }
         } catch (e: Exception) {
             emptyList()
@@ -177,9 +265,7 @@ class AdicinemaxNew : MainAPI() {
             val posterPath = item.optString("poster_path")
             val posterUrl = if (posterPath.isNotEmpty()) "$TMDB_IMAGE_BASE$posterPath" else ""
             
-            val overview = item.optString("overview", "No description available")
             val releaseDate = item.optString(if (mediaType == "movie") "release_date" else "first_air_date")
-            val rating = (item.optDouble("vote_average", 0.0) * 10).toInt()
             
             // Get IMDB ID
             val imdbId = getIMDBId(mediaType, id.toString())
