@@ -5,6 +5,8 @@ import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.mvvm.safeApiCall
 import org.json.JSONObject
 import java.net.URLEncoder
+import java.text.SimpleDateFormat
+import java.util.Locale
 
 class AdicinemaxNew : MainAPI() {
     override var mainUrl = "https://vidsrc-embed.ru"
@@ -48,7 +50,7 @@ class AdicinemaxNew : MainAPI() {
             responses.add(HomePageList("Popular TV Shows", popularTV, true))
         }
         
-        return HomePageResponse(responses)
+        return newHomePageResponse(responses)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
@@ -77,21 +79,6 @@ class AdicinemaxNew : MainAPI() {
             return true
         }
         return false
-    }
-
-    override suspend fun loadContent(id: String): LoadResponse? {
-        val parts = id.split("|")
-        if (parts.size < 3) return null
-        
-        val type = parts[0]
-        val tmdbId = parts[1]
-        val imdbId = parts[2]
-        
-        return if (type == "movie") {
-            loadMovieContent(tmdbId, imdbId)
-        } else {
-            loadTVContent(tmdbId, imdbId)
-        }
     }
 
     private suspend fun getTMDBTrending(mediaType: String, page: Int): List<SearchResponse> {
@@ -162,7 +149,7 @@ class AdicinemaxNew : MainAPI() {
         }
     }
 
-    private fun parseTMDBResult(item: JSONObject, mediaType: String): SearchResponse? {
+    private suspend fun parseTMDBResult(item: JSONObject, mediaType: String): SearchResponse? {
         return try {
             val id = item.getInt("id")
             val title = when (mediaType) {
@@ -187,13 +174,13 @@ class AdicinemaxNew : MainAPI() {
                 newMovieSearchResponse(title, dataId, TvType.Movie) {
                     this.posterUrl = posterUrl
                     this.year = releaseDate.take(4).toIntOrNull()
-                    this.plot = overview
+                    this.description = overview
                 }
             } else {
                 newTvSeriesSearchResponse(title, dataId, TvType.TvSeries) {
                     this.posterUrl = posterUrl
                     this.year = releaseDate.take(4).toIntOrNull()
-                    this.plot = overview
+                    this.description = overview
                 }
             }
         } catch (e: Exception) {
@@ -212,75 +199,11 @@ class AdicinemaxNew : MainAPI() {
         }
     }
 
-    private suspend fun loadMovieContent(tmdbId: String, imdbId: String): LoadResponse? {
+    private fun parseDate(dateString: String?): Long? {
         return try {
-            val url = "$TMDB_BASE_URL/movie/$tmdbId?api_key=$tmdbApiKey"
-            val response = app.get(url).text
-            val json = JSONObject(response)
-            
-            val title = json.getString("title")
-            val posterPath = json.optString("poster_path")
-            val posterUrl = if (posterPath.isNotEmpty()) "$TMDB_IMAGE_BASE$posterPath" else ""
-            val overview = json.optString("overview", "No description available")
-            val releaseDate = json.optString("release_date")
-            val runtime = json.optInt("runtime", 0)
-            val rating = json.optInt("vote_average", 0)
-            val genres = json.optJSONArray("genres")?.let { genresArray ->
-                (0 until genresArray.length()).map { 
-                    genresArray.getJSONObject(it).getString("name") 
-                }
-            } ?: emptyList()
-
-            newMovieLoadResponse(title, "movie|$tmdbId|$imdbId", TvType.Movie, "movie|$tmdbId|$imdbId") {
-                this.posterUrl = posterUrl
-                this.year = releaseDate.take(4).toIntOrNull()
-                this.plot = overview
-                this.duration = runtime
-                this.tags = genres
-            }
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    private suspend fun loadTVContent(tmdbId: String, imdbId: String): LoadResponse? {
-        return try {
-            val url = "$TMDB_BASE_URL/tv/$tmdbId?api_key=$tmdbApiKey"
-            val response = app.get(url).text
-            val json = JSONObject(response)
-            
-            val title = json.getString("name")
-            val posterPath = json.optString("poster_path")
-            val posterUrl = if (posterPath.isNotEmpty()) "$TMDB_IMAGE_BASE$posterPath" else ""
-            val overview = json.optString("overview", "No description available")
-            val firstAirDate = json.optString("first_air_date")
-            val numberOfSeasons = json.optInt("number_of_seasons", 0)
-            val rating = json.optInt("vote_average", 0)
-            val genres = json.optJSONArray("genres")?.let { genresArray ->
-                (0 until genresArray.length()).map { 
-                    genresArray.getJSONObject(it).getString("name") 
-                }
-            } ?: emptyList()
-
-            // Get episodes for all seasons
-            val allEpisodes = mutableListOf<Episode>()
-            
-            for (seasonNumber in 1..numberOfSeasons) {
-                try {
-                    val seasonEpisodes = getSeasonEpisodes(tmdbId, seasonNumber, imdbId)
-                    allEpisodes.addAll(seasonEpisodes)
-                } catch (e: Exception) {
-                    // Skip season if there's an error
-                    continue
-                }
-            }
-            
-            newTvSeriesLoadResponse(title, "tv|$tmdbId|$imdbId", TvType.TvSeries, allEpisodes) {
-                this.posterUrl = posterUrl
-                this.year = firstAirDate.take(4).toIntOrNull()
-                this.plot = overview
-                this.tags = genres
-            }
+            if (dateString.isNullOrEmpty()) return null
+            val format = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+            format.parse(dateString)?.time
         } catch (e: Exception) {
             null
         }
@@ -313,7 +236,7 @@ class AdicinemaxNew : MainAPI() {
                         this.episode = episodeNumber
                         this.posterUrl = stillUrl
                         this.description = overview
-                        this.date = airDate
+                        this.date = parseDate(airDate)
                     }
                 )
             }
