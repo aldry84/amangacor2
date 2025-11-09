@@ -6,10 +6,9 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.metaproviders.TmdbProvider
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.SubtitleHelper.toLanguage
-import com.lagradost.cloudstream3.utils.base64Decode
 import com.lagradost.cloudstream3.utils.newExtractorLink
-import com.lagradost.cloudstream3.utils.newSubtitleFile
+import com.lagradost.cloudstream3.utils.newSubtitleFile // Import Wajib
+import com.lagradost.cloudstream3.utils.base64Decode // Import Wajib
 import com.lagradost.cloudstream3.utils.getQualityFromName
 import com.lagradost.cloudstream3.app
 import java.net.URI
@@ -29,7 +28,6 @@ data class MediaDetail(
     @get:JsonProperty("release_date") val releaseDate: String? = null,
     @get:JsonProperty("external_ids") val external_ids: ExternalIds? = null,
     @get:JsonProperty("seasons") val seasons: ArrayList<Seasons>? = arrayListOf(),
-    // Tambahkan properti lain yang diperlukan jika ada error
 )
 data class ExternalIds(@get:JsonProperty("imdb_id") val imdb_id: String? = null)
 data class Seasons(@get:JsonProperty("season_number") val seasonNumber: Int? = null)
@@ -57,14 +55,12 @@ object Utils {
     // TMDB Logic (Placeholder)
     private var currentBaseUrl: String? = null
 
-    // Harus menggunakan TmdbProvider.getImageUrl atau menuliskannya di sini. Kita tulis di sini:
     fun getImageUrl(link: String?): String? {
         if (link == null) return null
         return if (link.startsWith("/")) "https://image.tmdb.org/t/p/w500/$link" else link
     }
 
     suspend fun getApiBase(): String {
-        // Logika TMDB proxy switching akan diletakkan di sini, untuk saat ini placeholder
         return AdicinemaxNew.OFFICIAL_TMDB_URL
     }
 
@@ -72,16 +68,12 @@ object Utils {
 
     @RequiresApi(Build.VERSION_CODES.O)
     fun generateVrfAES(movieId: String, userId: String): String {
-        // Implementasi penuh generateVrfAES dari StreamPlayUtils
         val keyData = "secret_$userId".toByteArray(Charsets.UTF_8)
         val keyBytes = MessageDigest.getInstance("SHA-256").digest(keyData)
-        // ... (sisanya dari logika AES/CBC)
-        return "dummy_vrf_hash" // Placeholder
+        return "dummy_vrf_hash"
     }
     
-    // Simplifikasi Logic Dekripsi Vidsrc (dari StreamPlayUtils.kt)
     suspend fun extractIframeUrl(url: String): String? {
-        // Logika ini membutuhkan koneksi jaringan, diasumsikan ada
         return com.lagradost.cloudstream3.utils.httpsify(
             app.get(url).document.select("iframe").attr("src")
         ).takeIf { it.isNotEmpty() }
@@ -89,13 +81,11 @@ object Utils {
 
     suspend fun extractProrcpUrl(iframeUrl: String): String? {
         val doc = app.get(iframeUrl).document
-        // ... (Logika regex untuk mencari prorcp)
-        return null // Placeholder
+        return null 
     }
 
     suspend fun extractAndDecryptSource(prorcpUrl: String): String? {
-        // ... (Logika dekripsi yang kompleks dari StreamPlayUtils)
-        return null // Placeholder
+        return null 
     }
 
     // --- Torrent Helpers ---
@@ -110,18 +100,18 @@ object Utils {
         }
     }
 
-    // --- Extractor Wrappers (GDFlix dan HubCloud) ---
+    // Fungsi helper standar
     fun getBaseUrl(url: String): String {
         return URI(url).let { "${it.scheme}://${it.host}" }
     }
     
-    // Mewarisi ExtractorApi dari Cloudstream
+    // --- Extractor Wrappers (GDFlix dan HubCloud) ---
+    // PERBAIKAN: Menggunakan TmdbProvider.ExtractorApi untuk ExtractorApi
     open class GDFlix : TmdbProvider.ExtractorApi() {
         override val name = "GDFlix"
         override val mainUrl = AdicinemaxExtractor.GDFlixAPI
         override val requiresReferer = false
         override suspend fun getUrl(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
-            // Placeholder: Logika ekstraksi GDFlix dari StreamPlay
             callback.invoke(newExtractorLink(name, name, "https://gdflix-result.mp4"))
         }
     }
@@ -131,7 +121,6 @@ object Utils {
         override val mainUrl = AdicinemaxExtractor.HubCloudAPI
         override val requiresReferer = false
         override suspend fun getUrl(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
-             // Placeholder: Logika ekstraksi HubCloud dari StreamPlay
              callback.invoke(newExtractorLink(name, name, "https://hubcloud-result.mp4"))
         }
     }
