@@ -1,12 +1,12 @@
 @file:Suppress("UnstableApiUsage")
 
 import org.jetbrains.kotlin.konan.properties.Properties
-import org.gradle.api.tasks.bundling.AbstractArchiveTask
 
 plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
-    id("maven-publish")
+    // Memastikan plugin maven-publish dimuat
+    id("maven-publish") 
 }
 
 // Versi Plugin
@@ -22,20 +22,19 @@ android {
     }
     
     defaultConfig {
-        // Nama paket untuk plugin Anda
         namespace = "com.AdicinemaxNew"
         minSdk = 26 
-        // Perhatian: 'targetSdk' sudah usang, namun tetap dipertahankan untuk kompatibilitas lingkungan Cloudstream3 lama
+        
+        // Mempertahankan targetSdk, namun mengabaikan warning karena environment
         targetSdk = 34 
         
-        // Memuat properties dari local.properties
         val properties = Properties()
         properties.load(project.rootProject.file("local.properties").inputStream())
         
         android.buildFeatures.buildConfig = true
 
         // ====================================================================
-        // Konfigurasi BuildConfig untuk API Kunci & URL
+        // Konfigurasi BuildConfig
         // ====================================================================
 
         buildConfigField("String", "TMDB_API", "\"${properties.getProperty("TMDB_API")}\"")
@@ -96,7 +95,7 @@ dependencies {
     implementation("androidx.browser:browser:1.9.0")
 }
 
-// Blok Publikasi yang diperbaiki
+// Blok Publikasi yang menggunakan 'components.android' untuk mendeklarasikan artifacts
 publishing {
     publications {
         create<MavenPublication>("release") {
@@ -104,11 +103,8 @@ publishing {
             artifactId = project.name
             version = project.version.toString()
             
-            // Perbaikan: Menggunakan 'assembleRelease' dan memastikan task tersebut berjalan
-            artifact(project.tasks.getByName("assembleRelease")) {
-                // Konfigurasi tambahan: memastikan task build AAR dijalankan sebelum publishing
-                (this as org.gradle.api.artifacts.PublishArtifact).builtBy(project.tasks.getByName("assembleRelease"))
-            }
+            // Menggunakan komponen Android untuk mendeklarasikan semua artifacts (AAR, POM, dll.)
+            from(components["release"])
         }
     }
 }
