@@ -271,12 +271,12 @@ open class AdicinemaxNew(val sharedPref: SharedPreferences? = null) : TmdbProvid
                             year = video.released?.split("-")?.firstOrNull()?.toIntOrNull(),
                             orgTitle = orgTitle,
                             isAnime = true,
-                            epsTitle = video.name,
+                            epsTitle = video.title, // <-- PERBAIKAN #2
                             jpTitle = jptitle,
                             date = video.released
                         ).toJson()
                     ) {
-                        this.name = video.name
+                        this.name = video.title // <-- PERBAIKAN #2
                         this.season = video.season
                         this.episode = video.number
                         this.posterUrl = video.thumbnail
@@ -294,7 +294,7 @@ open class AdicinemaxNew(val sharedPref: SharedPreferences? = null) : TmdbProvid
                 this.year = year
                 this.plot = res.overview
                 this.tags = genres
-                this.score = Score.from10(res.vote_average?.toString())
+                this.score = Score.from10((res.vote_average as? Number)?.toDouble()) // <-- PERBAIKAN #1
                 this.showStatus = getStatus(res.status)
                 this.recommendations = recommendations
                 this.actors = actors
@@ -339,7 +339,7 @@ open class AdicinemaxNew(val sharedPref: SharedPreferences? = null) : TmdbProvid
                 this.year = year
                 this.plot = res.overview
                 this.tags = genres
-                this.score = Score.from10(res.vote_average?.toString())
+                this.score = Score.from10((res.vote_average as? Number)?.toDouble()) // <-- PERBAIKAN #1
                 this.showStatus = getStatus(res.status)
                 this.recommendations = recommendations
                 this.actors = actors
@@ -368,7 +368,7 @@ open class AdicinemaxNew(val sharedPref: SharedPreferences? = null) : TmdbProvid
                 this.plot = res.overview
                 this.duration = res.runtime
                 this.tags = genres
-                this.score = Score.from10(res.vote_average?.toString())
+                this.score = Score.from10((res.vote_average as? Number)?.toDouble()) // <-- PERBAIKAN #1
                 this.recommendations = recommendations
                 this.actors = actors
                 addTrailer(trailer)
@@ -388,6 +388,7 @@ open class AdicinemaxNew(val sharedPref: SharedPreferences? = null) : TmdbProvid
         val res = parseJson<LinkData>(data)
         
         // Prioritaskan Vidsrc.cc sebagai primary extractor
+        // !! KESALAHAN #3 DI SINI. Pastikan 'AdicinemaxNewExtractor' ada.
         AdicinemaxNewExtractor.invokeVidsrcCc(
             id = res.id,
             imdbId = res.imdbId,
@@ -397,6 +398,7 @@ open class AdicinemaxNew(val sharedPref: SharedPreferences? = null) : TmdbProvid
         )
 
         // Vidsrc.xyz sebagai backup extractor
+        // !! KESALAHAN #3 DI SINI. Pastikan 'AdicinemaxNewExtractor' ada.
         AdicinemaxNewExtractor.invokeVidsrcXyz(
             id = res.imdbId,
             season = res.season,
