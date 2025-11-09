@@ -3,16 +3,15 @@ package com.AdicinemaxNew
 import android.content.SharedPreferences
 import android.os.Build
 import androidx.annotation.RequiresApi
-import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addImdbId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTMDbId
-import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.metaproviders.TmdbProvider
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
-import com.lagradost.cloudstream3.utils.M3u8Helper
+import com.AdicinemaxNew.Utils.getApiBase
+import com.AdicinemaxNew.Utils.getImageUrl
 import com.AdicinemaxNew.AdicinemaxExtractor.invokeSubtitleAPI
 import com.AdicinemaxNew.AdicinemaxExtractor.invokeVidSrcXyz
 import com.AdicinemaxNew.AdicinemaxExtractor.invokeXPrimeAPI
@@ -21,7 +20,6 @@ import com.AdicinemaxNew.AdicinemaxExtractor.invokeHubCloudGDFlix
 import com.AdicinemaxNew.AdicinemaxExtractor.invokeTorrentio
 
 // ASUMSI: Konstanta TMDB_API dan TMDB Proxy berada di BuildConfig
-// ASUMSI: getApiBase dan getImageUrl ada di file utils
 
 open class AdicinemaxNew(val sharedPref: SharedPreferences? = null) : TmdbProvider() {
     override var name = "Adicinemax"
@@ -34,19 +32,14 @@ open class AdicinemaxNew(val sharedPref: SharedPreferences? = null) : TmdbProvid
         TvType.TvSeries,
     )
     
-    // Asumsi token FebBox disimpan di sini jika diperlukan oleh ekstraktor
     val token: String? = sharedPref?.getString("token", null) 
     val langCode = sharedPref?.getString("tmdb_language_code", "en-US") ?: "en-US"
     
-    // Konstanta yang diperlukan (diambil dari StreamPlay)
     companion object {
         const val apiKey = BuildConfig.TMDB_API
         const val OFFICIAL_TMDB_URL = "https://api.themoviedb.org/3"
-        // ASUMSI: Fungsi getApiBase() ada di Utils.kt
     }
     
-    // --- TMDB Logikanya sama dengan StreamPlay, hanya dicantumkan bagian inti: ---
-
     override val mainPage = mainPageOf(
         "/trending/all/day?api_key=$apiKey&region=US" to "Trending Now",
         "/movie/popular?api_key=$apiKey&region=US" to "Popular Movies",
@@ -57,14 +50,14 @@ open class AdicinemaxNew(val sharedPref: SharedPreferences? = null) : TmdbProvid
         val tmdbAPI = getApiBase()
         val type = if (request.data.contains("/movie")) "movie" else "tv"
         val home = app.get("$tmdbAPI${request.data}&language=$langCode&page=$page", timeout = 10000)
-            .parsedSafe<StreamPlay.Results>()?.results?.mapNotNull { media ->
-                (media as? StreamPlay.Media)?.toSearchResponse(type) 
+            .parsedSafe<com.lagradost.cloudstream3.StreamPlay.Results>()?.results?.mapNotNull { media ->
+                (media as? com.lagradost.cloudstream3.StreamPlay.Media)?.toSearchResponse(type) 
             } ?: throw ErrorLoadingException("Invalid Json response")
         return newHomePageResponse(request.name, home)
     }
     
-    private fun StreamPlay.Media.toSearchResponse(type: String? = null): SearchResponse? {
-        // ... (Logika mapping ke SearchResponse)
+    private fun com.lagradost.cloudstream3.StreamPlay.Media.toSearchResponse(type: String? = null): SearchResponse? {
+        // Harus menggunakan TmdbProvider.getImageUrl atau menuliskannya di sini. Kita tulis di sini:
         return newMovieSearchResponse(
             title ?: name ?: originalTitle ?: return null,
             LinkData(id = id, type = mediaType ?: type).toJson(),
@@ -78,7 +71,7 @@ open class AdicinemaxNew(val sharedPref: SharedPreferences? = null) : TmdbProvid
     override suspend fun load(url: String): LoadResponse? {
         val tmdbAPI = getApiBase()
         val data = parseJson<LinkData>(url)
-        val type = StreamPlay.getType(data.type)
+        val type = com.lagradost.cloudstream3.StreamPlay.getType(data.type)
         val append = "alternative_titles,credits,external_ids,videos,recommendations"
 
         val resUrl = if (type == TvType.Movie) {
@@ -87,20 +80,19 @@ open class AdicinemaxNew(val sharedPref: SharedPreferences? = null) : TmdbProvid
             "$tmdbAPI/tv/${data.id}?api_key=$apiKey&language=$langCode&append_to_response=$append"
         }
 
-        val res = app.get(resUrl).parsedSafe<StreamPlay.MediaDetail>()
+        val res = app.get(resUrl).parsedSafe<MediaDetail>()
             ?: throw ErrorLoadingException("Invalid Json Response")
         val title = res.title ?: res.name ?: return null
-        // ... (Logika mapping ke Movie/TV LoadResponse)
+        
         val imdbId = res.external_ids?.imdb_id
         val year = res.releaseDate?.split("-")?.first()?.toIntOrNull()
         
-        // Hanya kode inti untuk LinkData
         val linkData = LinkData(
             id = data.id,
             imdbId = imdbId,
             type = data.type,
-            season = null, // Akan diisi di episode
-            episode = null, // Akan diisi di episode
+            season = null,
+            episode = null,
             title = title,
             year = year
         )
@@ -108,7 +100,7 @@ open class AdicinemaxNew(val sharedPref: SharedPreferences? = null) : TmdbProvid
         if (type == TvType.TvSeries) {
             val episodes = res.seasons?.mapNotNull { season ->
                 app.get("$tmdbAPI/${data.type}/${data.id}/season/${season.seasonNumber}?api_key=$apiKey&language=$langCode")
-                    .parsedSafe<StreamPlay.MediaDetailEpisodes>()?.episodes?.map { eps ->
+                    .parsedSafe<MediaDetailEpisodes>()?.episodes?.map { eps ->
                         newEpisode(
                             linkData.copy(
                                 season = eps.seasonNumber,
@@ -145,7 +137,6 @@ open class AdicinemaxNew(val sharedPref: SharedPreferences? = null) : TmdbProvid
     ): Boolean {
         val res = parseJson<LinkData>(data)
         
-        // Panggil semua sumber terbaik yang direkomendasikan secara paralel
         runAllAsync(
             { invokeVidsrccc(res.id, res.season, res.episode, callback) },
             { invokeVidSrcXyz(res.imdbId, res.season, res.episode, callback) },
@@ -153,7 +144,6 @@ open class AdicinemaxNew(val sharedPref: SharedPreferences? = null) : TmdbProvid
             { invokeHubCloudGDFlix(res.imdbId, res.season, res.episode, subtitleCallback, callback) },
             { invokeTorrentio(res.imdbId, res.season, res.episode, callback) },
             
-            // Subtitles
             { invokeSubtitleAPI(res.imdbId, res.season, res.episode, subtitleCallback) }
         )
 
