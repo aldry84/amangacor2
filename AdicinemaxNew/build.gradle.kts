@@ -9,8 +9,8 @@ plugins {
     id("maven-publish") 
 }
 
-// Versi Plugin
-version = 465
+// Nomor versi plugin
+version = 465 
 
 // Versi Cloudstream3 (Contoh)
 val cloudstream_version = "3.11.0" 
@@ -24,29 +24,37 @@ android {
     defaultConfig {
         namespace = "com.AdicinemaxNew"
         minSdk = 26 
-        
-        // Mempertahankan targetSdk, tetapi disarankan untuk menggunakan lint.targetSdk
         targetSdk = 34 
         
+        // Memuat kunci API dari file lokal (local.properties)
         val properties = Properties()
+        // Asumsi local.properties ada di root proyek
         properties.load(project.rootProject.file("local.properties").inputStream())
         
         android.buildFeatures.buildConfig = true
 
-        // ====================================================================
-        // Konfigurasi BuildConfig
-        // ====================================================================
+        // =================================================================
+        // FIELD KONFIGURASI BUILD (Kunci yang Sesuai dengan Proyek Kita)
+        // =================================================================
 
         buildConfigField("String", "TMDB_API", "\"${properties.getProperty("TMDB_API")}\"")
         buildConfigField("String", "REMOTE_PROXY_LIST", "\"${properties.getProperty("REMOTE_PROXY_LIST")}\"") 
+        
+        // Vidsrc & Xprime APIs
         buildConfigField("String", "VIDSRC_CC_API", "\"${properties.getProperty("VIDSRC_CC_API")}\"") 
         buildConfigField("String", "VIDSRC_XYZ", "\"${properties.getProperty("VIDSRC_XYZ")}\"") 
         buildConfigField("String", "XPRIME_API", "\"${properties.getProperty("XPRIME_API")}\"") 
+        
+        // Kunci MovieBox/Enkripsi (untuk XPrime/API canggih)
         buildConfigField("String", "MOVIEBOX_SECRET_KEY_ALT", "\"${properties.getProperty("MOVIEBOX_SECRET_KEY_ALT")}\"")
         buildConfigField("String", "MOVIEBOX_SECRET_KEY_DEFAULT", "\"${properties.getProperty("MOVIEBOX_SECRET_KEY_DEFAULT")}\"")
-        buildConfigField("String", "OPENSUBTITLES_API", "\"https://opensubtitles-v3.strem.io\"")
+        
+        // HubCloud & GDFlix (Jika diperlukan oleh scraper)
         buildConfigField("String", "HUBCLOUD_API", "\"${properties.getProperty("HUBCLOUD_API")}\"")
         buildConfigField("String", "GDFLIX_API", "\"${properties.getProperty("GDFLIX_API")}\"")
+
+        // Subtitle API
+        buildConfigField("String", "OPENSUBTITLES_API", "\"https://opensubtitles-v3.strem.io\"")
     }
 
     buildTypes {
@@ -68,7 +76,6 @@ android {
     }
 
     // WAJIB: Mendaftarkan komponen Android untuk publikasi Maven
-    // Ini memperbaiki "SoftwareComponent with name 'release' not found"
     publishing {
         singleVariant("release") {
             withSourcesJar()
@@ -80,11 +87,11 @@ android {
 // Konfigurasi Cloudstream
 cloudstream {
     language = "en"
-     description = "Adicinemax: High-quality, non-anime sources using advanced API extraction."
+     description = "Adicinemax: High-quality, non-anime sources (Movies & TV) based on robust API extraction."
      authors = listOf("Phisher98", "AdicinemaxDev") 
      status = 1 
      tvTypes = listOf("TvSeries", "Movie") 
-     iconUrl = "https://i.imgur.com/example-icon.png"
+     iconUrl = "https://i.imgur.com/example-icon.png" // Ganti dengan URL ikon yang relevan
      requiresResources = true
      isCrossPlatform = false
 }
@@ -112,7 +119,6 @@ publishing {
             artifactId = project.name
             version = project.version.toString()
             
-            // Sekarang 'components["release"]' akan ditemukan
             from(components["release"])
         }
     }
