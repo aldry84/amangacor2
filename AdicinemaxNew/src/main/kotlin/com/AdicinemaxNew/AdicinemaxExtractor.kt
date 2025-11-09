@@ -16,7 +16,7 @@ import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 
 object AdicinemaxExtractor {
 
-    // Kunci API/URL dari BuildConfig (Sekarang dideklarasikan di Utils atau Companion)
+    // Kunci API/URL dari BuildConfig (Semua sudah benar)
     const val vidsrctoAPI = BuildConfig.VIDSRC_CC_API
     const val Vidsrcxyz = BuildConfig.VIDSRC_XYZ
     const val Xprime = BuildConfig.XPRIME_API
@@ -40,9 +40,7 @@ object AdicinemaxExtractor {
             "$vidsrctoAPI/v2/embed/tv/$id/$season/$episode?autoPlay=false"
         }
         val doc = app.get(url).document.toString()
-        // ... (Logika parsing Vidsrccc)
         
-        // Simulasikan hasil ekstraksi
         val iframe = "https://contoh.com/vidsrc.m3u8"
         val servername = "Vidsrc.cc"
         
@@ -102,9 +100,6 @@ object AdicinemaxExtractor {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
     ) {
-        // ... (Logika XPrimeAPI)
-        
-        // Simulasikan hasil
         val url = "https://contoh.com/xprime.m3u8"
         val serverLabel = "Xprime PrimeBox"
         
@@ -135,10 +130,8 @@ object AdicinemaxExtractor {
         }
         
         if (dummyLink.contains("hubcloud")) {
-            // Memanggil Extractor Wrapper dari Utils
             Utils.HubCloud().getUrl(dummyLink, "Adicinemax", subtitleCallback, callback)
         } else if (dummyLink.contains("gdflix")) {
-             // Memanggil Extractor Wrapper dari Utils
              Utils.GDFlix().getUrl(dummyLink, "Adicinemax", subtitleCallback, callback) 
         }
     }
@@ -164,7 +157,6 @@ object AdicinemaxExtractor {
             val tags = "(1080p|720p)".toRegex().findAll(title).joinToString(" | ")
             val quality = getQualityFromName(tags)
             
-            // Perbaikan: generateMagnetLink dipanggil di dalam coroutine body
             val magnet = Utils.generateMagnetLink(TRACKER_LIST_URL, stream.infoHash) 
 
             callback.invoke(
@@ -192,7 +184,6 @@ object AdicinemaxExtractor {
         } else {
             "$SubtitlesAPI/subtitles/series/$id:$season:$episode.json"
         }
-        // Simulasikan hasil
         subtitleCallback.invoke(newSubtitleFile("English", "https://contoh.com/sub.vtt"))
     }
 }
