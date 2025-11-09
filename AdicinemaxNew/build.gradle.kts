@@ -10,13 +10,13 @@ plugins {
 }
 
 // Versi Plugin
-version = 465
+version = "465"
 
 // Versi Cloudstream3
 val cloudstream_version = "3.11.0" 
 
 android {
-    compileSdk = 34 // Ganti targetSdk dengan compileSdk di sini
+    compileSdk = 34
     
     buildFeatures {
         buildConfig = true
@@ -26,7 +26,6 @@ android {
     defaultConfig {
         namespace = "com.AdicinemaxNew"
         minSdk = 26 
-        // targetSdk dihapus dari sini karena deprecated
         
         val properties = Properties()
         val localProperties = project.rootProject.file("local.properties")
@@ -49,7 +48,6 @@ android {
         buildConfigField("String", "GDFLIX_API", "\"${properties.getProperty("GDFLIX_API", "")}\"")
     }
 
-    // Konfigurasi targetSdk yang baru
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8
@@ -69,13 +67,12 @@ android {
         }
     }
     
-    // Konfigurasi lint (opsional)
     lint {
         targetSdk = 34
     }
 }
 
-// Konfigurasi Cloudstream
+// Konfigurasi Cloudstream - Pastikan hanya ada satu blok ini
 cloudstream {
     language = "en"
     description = "Adicinemax: High-quality, non-anime sources using advanced API extraction."
@@ -88,9 +85,15 @@ cloudstream {
 }
 
 dependencies {
-    // Dependensi Cloudstream3 Wajib
-    val cloudstream by configurations
-    cloudstream("com.lagradost:cloudstream3:$cloudstream_version")
+    // HANYA SATU deklarasi Cloudstream dependency
+    // Pilih salah satu cara berikut:
+
+    // Opsi 1: Menggunakan implementation (direkomendasikan)
+    implementation("com.lagradost:cloudstream3:$cloudstream_version")
+
+    // Opsi 2: Jika harus menggunakan configuration khusus, hapus opsi di atas dan gunakan ini:
+    // val cloudstream by configurations
+    // cloudstream("com.lagradost:cloudstream3:$cloudstream_version")
 
     // Dependensi yang dibutuhkan untuk parsing JSON
     implementation("com.google.code.gson:gson:2.10.1")
@@ -107,11 +110,10 @@ afterEvaluate {
     publishing {
         publications {
             create<MavenPublication>("release") {
-                groupId = "com.AdicinemaxNew" // Ganti dengan group ID yang sesuai
+                groupId = "com.AdicinemaxNew"
                 artifactId = "AdicinemaxNew"
                 version = project.version.toString()
                 
-                // Gunakan komponen release dari Android
                 from(components["release"])
             }
         }
