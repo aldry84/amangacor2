@@ -72,7 +72,7 @@ android {
     }
 }
 
-// Konfigurasi Cloudstream - Pastikan hanya ada satu blok ini
+// Konfigurasi Cloudstream
 cloudstream {
     language = "en"
     description = "Adicinemax: High-quality, non-anime sources using advanced API extraction."
@@ -85,15 +85,8 @@ cloudstream {
 }
 
 dependencies {
-    // HANYA SATU deklarasi Cloudstream dependency
-    // Pilih salah satu cara berikut:
-
-    // Opsi 1: Menggunakan implementation (direkomendasikan)
+    // Cloudstream dependency
     implementation("com.lagradost:cloudstream3:$cloudstream_version")
-
-    // Opsi 2: Jika harus menggunakan configuration khusus, hapus opsi di atas dan gunakan ini:
-    // val cloudstream by configurations
-    // cloudstream("com.lagradost:cloudstream3:$cloudstream_version")
 
     // Dependensi yang dibutuhkan untuk parsing JSON
     implementation("com.google.code.gson:gson:2.10.1")
@@ -103,6 +96,16 @@ dependencies {
     // Dependensi UI/Platform
     implementation("com.google.android.material:material:1.13.0")
     implementation("androidx.browser:browser:1.9.0")
+}
+
+// ADD REPOSITORIES BLOCK - This is crucial for finding dependencies
+repositories {
+    google()
+    mavenCentral()
+    // Add JitPack repository where Cloudstream is likely hosted
+    maven { url = uri("https://jitpack.io") }
+    // You might also need these additional repositories:
+    maven { url = uri("https://repo1.maven.org/maven2") }
 }
 
 // Perbaikan konfigurasi publishing
@@ -115,6 +118,14 @@ afterEvaluate {
                 version = project.version.toString()
                 
                 from(components["release"])
+            }
+        }
+        
+        // Optional: Add repositories for publishing
+        repositories {
+            maven {
+                name = "localDir"
+                url = uri("${project.buildDir}/repo")
             }
         }
     }
