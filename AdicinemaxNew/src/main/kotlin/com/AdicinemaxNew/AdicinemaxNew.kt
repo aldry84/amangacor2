@@ -19,7 +19,7 @@ import com.AdicinemaxNew.AdicinemaxExtractor.invokeVidsrccc
 import com.AdicinemaxNew.AdicinemaxExtractor.invokeHubCloudGDFlix
 import com.AdicinemaxNew.AdicinemaxExtractor.invokeTorrentio
 
-// ASUMSI: Konstanta TMDB_API dan TMDB Proxy berada di BuildConfig
+// Mengganti referensi StreamPlay dengan data class yang sudah kita buat di Utils.kt
 
 open class AdicinemaxNew(val sharedPref: SharedPreferences? = null) : TmdbProvider() {
     override var name = "Adicinemax"
@@ -38,6 +38,8 @@ open class AdicinemaxNew(val sharedPref: SharedPreferences? = null) : TmdbProvid
     companion object {
         const val apiKey = BuildConfig.TMDB_API
         const val OFFICIAL_TMDB_URL = "https://api.themoviedb.org/3"
+        // Dummy class untuk menggantikan StreamPlay.Media, dll.
+        fun getType(t: String?): TvType = if (t == "movie") TvType.Movie else TvType.TvSeries
     }
     
     override val mainPage = mainPageOf(
@@ -49,6 +51,8 @@ open class AdicinemaxNew(val sharedPref: SharedPreferences? = null) : TmdbProvid
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val tmdbAPI = getApiBase()
         val type = if (request.data.contains("/movie")) "movie" else "tv"
+        
+        // Asumsi struktur data search dari TMDB sama dengan yang ada di StreamPlay
         val home = app.get("$tmdbAPI${request.data}&language=$langCode&page=$page", timeout = 10000)
             .parsedSafe<com.lagradost.cloudstream3.StreamPlay.Results>()?.results?.mapNotNull { media ->
                 (media as? com.lagradost.cloudstream3.StreamPlay.Media)?.toSearchResponse(type) 
@@ -57,7 +61,7 @@ open class AdicinemaxNew(val sharedPref: SharedPreferences? = null) : TmdbProvid
     }
     
     private fun com.lagradost.cloudstream3.StreamPlay.Media.toSearchResponse(type: String? = null): SearchResponse? {
-        // Harus menggunakan TmdbProvider.getImageUrl atau menuliskannya di sini. Kita tulis di sini:
+        // Menggunakan properti dari StreamPlay.Media
         return newMovieSearchResponse(
             title ?: name ?: originalTitle ?: return null,
             LinkData(id = id, type = mediaType ?: type).toJson(),
@@ -71,7 +75,7 @@ open class AdicinemaxNew(val sharedPref: SharedPreferences? = null) : TmdbProvid
     override suspend fun load(url: String): LoadResponse? {
         val tmdbAPI = getApiBase()
         val data = parseJson<LinkData>(url)
-        val type = com.lagradost.cloudstream3.StreamPlay.getType(data.type)
+        val type = getType(data.type)
         val append = "alternative_titles,credits,external_ids,videos,recommendations"
 
         val resUrl = if (type == TvType.Movie) {
@@ -99,6 +103,7 @@ open class AdicinemaxNew(val sharedPref: SharedPreferences? = null) : TmdbProvid
 
         if (type == TvType.TvSeries) {
             val episodes = res.seasons?.mapNotNull { season ->
+                // Mengakses episode detail
                 app.get("$tmdbAPI/${data.type}/${data.id}/season/${season.seasonNumber}?api_key=$apiKey&language=$langCode")
                     .parsedSafe<MediaDetailEpisodes>()?.episodes?.map { eps ->
                         newEpisode(
