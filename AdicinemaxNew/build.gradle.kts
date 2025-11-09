@@ -1,6 +1,7 @@
 @file:Suppress("UnstableApiUsage")
 
 import org.jetbrains.kotlin.konan.properties.Properties
+import org.gradle.api.tasks.bundling.AbstractArchiveTask
 
 plugins {
     id("com.android.library")
@@ -38,22 +39,21 @@ android {
 
         // 1. Metadata (Wajib: TMDB)
         buildConfigField("String", "TMDB_API", "\"${properties.getProperty("TMDB_API")}\"")
-        // Digunakan untuk mekanisme Proxy Switching jika TMDB utama down
         buildConfigField("String", "REMOTE_PROXY_LIST", "\"${properties.getProperty("REMOTE_PROXY_LIST")}\"") 
 
         // 2. API Streaming Canggih
-        buildConfigField("String", "VIDSRC_CC_API", "\"${properties.getProperty("VIDSRC_CC_API")}\"") // Untuk invokeVidsrccc
-        buildConfigField("String", "VIDSRC_XYZ", "\"${properties.getProperty("VIDSRC_XYZ")}\"") // Untuk invokeVidSrcXyz
-        buildConfigField("String", "XPRIME_API", "\"${properties.getProperty("XPRIME_API")}\"") // Untuk invokeXPrimeAPI
+        buildConfigField("String", "VIDSRC_CC_API", "\"${properties.getProperty("VIDSRC_CC_API")}\"") 
+        buildConfigField("String", "VIDSRC_XYZ", "\"${properties.getProperty("VIDSRC_XYZ")}\"") 
+        buildConfigField("String", "XPRIME_API", "\"${properties.getProperty("XPRIME_API")}\"") 
         
-        // 3. Kunci XPrime/MovieBox Signature (Contoh yang sensitif dari StreamPlay)
+        // 3. Kunci XPrime/MovieBox Signature 
         buildConfigField("String", "MOVIEBOX_SECRET_KEY_ALT", "\"${properties.getProperty("MOVIEBOX_SECRET_KEY_ALT")}\"")
         buildConfigField("String", "MOVIEBOX_SECRET_KEY_DEFAULT", "\"${properties.getProperty("MOVIEBOX_SECRET_KEY_DEFAULT")}\"")
         
         // 4. API Subtitle (Wajib)
         buildConfigField("String", "OPENSUBTITLES_API", "\"https://opensubtitles-v3.strem.io\"")
         
-        // 5. Host Terkait (GDFlix/HubCloud jika digunakan oleh scraper)
+        // 5. Host Terkait 
         buildConfigField("String", "HUBCLOUD_API", "\"${properties.getProperty("HUBCLOUD_API")}\"")
         buildConfigField("String", "GDFLIX_API", "\"${properties.getProperty("GDFLIX_API")}\"")
 
@@ -81,10 +81,10 @@ android {
 cloudstream {
     language = "en"
      description = "Adicinemax: High-quality, non-anime sources using advanced API extraction."
-     authors = listOf("Phisher98", "YourName") // Ganti "YourName"
+     authors = listOf("Phisher98", "AdicinemaxDev") 
      status = 1 
      tvTypes = listOf("TvSeries", "Movie") 
-     iconUrl = "https://i.imgur.com/example-icon.png" // Ganti dengan URL ikon
+     iconUrl = "https://i.imgur.com/example-icon.png"
      requiresResources = true
      isCrossPlatform = false
 }
@@ -110,7 +110,9 @@ publishing {
             groupId = project.group.toString()
             artifactId = project.name
             version = project.version.toString()
-            artifact(project.tasks.getByName("bundleReleaseAar"))
+            
+            // Perbaikan: Menggunakan 'assembleRelease' untuk mendapatkan file .aar
+            artifact(project.tasks.getByName("assembleRelease")) 
         }
     }
 }
