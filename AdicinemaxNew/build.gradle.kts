@@ -9,11 +9,8 @@ plugins {
     id("maven-publish") 
 }
 
-// Versi Plugin
-version = "465"
-
-// Versi Cloudstream3
-val cloudstream_version = "3.11.0" 
+// use an integer for version numbers
+version = 1
 
 android {
     compileSdk = 34
@@ -72,21 +69,33 @@ android {
     }
 }
 
-// Konfigurasi Cloudstream
 cloudstream {
-    language = "en"
-    description = "Adicinemax: High-quality, non-anime sources using advanced API extraction."
-    authors = listOf("Phisher98", "AdicinemaxDev") 
-    status = 1 
-    tvTypes = listOf("TvSeries", "Movie") 
-    iconUrl = "https://i.imgur.com/example-icon.png"
-    requiresResources = true
-    isCrossPlatform = false
+    // All of these properties are optional, you can safely remove them
+    description = "Adimoviebox (moviebox.ph)" // Deskripsi yang diperbarui
+    language = "en" // Bahasa dari Moviebox
+    authors = listOf("AdimovieboxUser") // Ganti sesuai keinginan Anda
+
+    /**
+    * Status int as the following:
+    * 0: Down
+    * 1: Ok
+    * 2: Slow
+    * 3: Beta only
+    * */
+    status = 1 // will be 3 if unspecified
+
+    // List of video source types. Users are able to filter for extensions in a given category.
+    // Anda mendukung semua tipe dari Moviebox
+    tvTypes = listOf("Movie", "TvSeries", "Anime", "AsianDrama")
+
+    iconUrl = "https://www.google.com/s2/favicons?domain=moviebox.ph&sz=%size%"
+
+    isCrossPlatform = true
 }
 
 dependencies {
     // Cloudstream dependency
-    implementation("com.lagradost:cloudstream3:$cloudstream_version")
+    implementation("com.lagradost:cloudstream3:3.11.0")
 
     // Dependensi yang dibutuhkan untuk parsing JSON
     implementation("com.google.code.gson:gson:2.10.1")
@@ -98,13 +107,11 @@ dependencies {
     implementation("androidx.browser:browser:1.9.0")
 }
 
-// ADD REPOSITORIES BLOCK - This is crucial for finding dependencies
+// Repository configuration
 repositories {
     google()
     mavenCentral()
-    // Add JitPack repository where Cloudstream is likely hosted
     maven { url = uri("https://jitpack.io") }
-    // You might also need these additional repositories:
     maven { url = uri("https://repo1.maven.org/maven2") }
 }
 
@@ -118,14 +125,6 @@ afterEvaluate {
                 version = project.version.toString()
                 
                 from(components["release"])
-            }
-        }
-        
-        // Optional: Add repositories for publishing
-        repositories {
-            maven {
-                name = "localDir"
-                url = uri("${project.buildDir}/repo")
             }
         }
     }
