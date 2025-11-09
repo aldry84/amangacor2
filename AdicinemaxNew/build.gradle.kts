@@ -2,41 +2,17 @@
 
 import org.jetbrains.kotlin.konan.properties.Properties
 
-plugins {
-    id("com.android.library")
-    id("org.jetbrains.kotlin.android")
-    // Memastikan plugin maven-publish dimuat
-    id("maven-publish") 
-}
-
-// Nomor versi plugin
-version = 465 
-
-// Versi Cloudstream3 (Contoh)
-val cloudstream_version = "3.11.0" 
+version = 465
 
 android {
     buildFeatures {
         buildConfig = true
         viewBinding = true
     }
-    
     defaultConfig {
-        namespace = "com.AdicinemaxNew"
-        minSdk = 26 
-        targetSdk = 34 
-        
-        // Memuat kunci API dari file lokal (local.properties)
         val properties = Properties()
-        // Asumsi local.properties ada di root proyek
         properties.load(project.rootProject.file("local.properties").inputStream())
-        
-        android.buildFeatures.buildConfig = true
-
-        // =================================================================
-        // FIELD KONFIGURASI BUILD (Kunci yang Sesuai dengan Proyek Kita)
-        // =================================================================
-
+        android.buildFeatures.buildConfig=true
         buildConfigField("String", "TMDB_API", "\"${properties.getProperty("TMDB_API")}\"")
         buildConfigField("String", "REMOTE_PROXY_LIST", "\"${properties.getProperty("REMOTE_PROXY_LIST")}\"") 
         
@@ -52,74 +28,44 @@ android {
         // HubCloud & GDFlix (Jika diperlukan oleh scraper)
         buildConfigField("String", "HUBCLOUD_API", "\"${properties.getProperty("HUBCLOUD_API")}\"")
         buildConfigField("String", "GDFLIX_API", "\"${properties.getProperty("GDFLIX_API")}\"")
-
-        // Subtitle API
-        buildConfigField("String", "OPENSUBTITLES_API", "\"https://opensubtitles-v3.strem.io\"")
-    }
-
-    buildTypes {
-        release {
-            isMinifyEnabled = false
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
-        }
-    }
-    
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
-    }
-    kotlinOptions {
-        jvmTarget = "1.8"
-    }
-
-    // WAJIB: Mendaftarkan komponen Android untuk publikasi Maven
-    publishing {
-        singleVariant("release") {
-            withSourcesJar()
-            withJavadocJar()
-        }
     }
 }
 
-// Konfigurasi Cloudstream
 cloudstream {
     language = "en"
-     description = "Adicinemax: High-quality, non-anime sources (Movies & TV) based on robust API extraction."
-     authors = listOf("Phisher98", "AdicinemaxDev") 
-     status = 1 
-     tvTypes = listOf("TvSeries", "Movie") 
-     iconUrl = "https://i.imgur.com/example-icon.png" // Ganti dengan URL ikon yang relevan
-     requiresResources = true
-     isCrossPlatform = false
+    // All of these properties are optional, you can safely remove them
+
+     description = "#1 best extention based on MultiAPI"
+     authors = listOf("Phisher98", "AdicinemaxNew")
+
+    /**
+     * Status int as the following:
+     * 0: Down
+     * 1: Ok
+     * 2: Slow
+     * 3: Beta only
+     * */
+    status = 1 // will be 3 if unspecified
+    tvTypes = listOf(
+        "AsianDrama",
+        "TvSeries",
+        "Anime",
+        "Movie",
+        "Cartoon",
+        "AnimeMovie"
+    )
+
+    iconUrl = "https://i3.wp.com/yt3.googleusercontent.com/ytc/AIdro_nCBArSmvOc6o-k2hTYpLtQMPrKqGtAw_nC20rxm70akA=s900-c-k-c0x00ffffff-no-rj?ssl=1"
+
+    requiresResources = true
+    isCrossPlatform = false
+
 }
 
 dependencies {
-    // Dependensi Cloudstream3 Wajib
+    // FIXME remove this when crossplatform is fully supported
     val cloudstream by configurations
-    cloudstream("com.lagradost:cloudstream3:$cloudstream_version")
-
-    // Dependensi yang dibutuhkan untuk parsing JSON
-    implementation("com.google.code.gson:gson:2.10.1")
-    implementation("com.fasterxml.jackson.core:jackson-databind:2.15.2")
-    implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.15.2")
-    
-    // Dependensi UI/Platform
     implementation("com.google.android.material:material:1.13.0")
     implementation("androidx.browser:browser:1.9.0")
-}
-
-// Blok Publikasi Utama
-publishing {
-    publications {
-        create<MavenPublication>("release") {
-            groupId = project.group.toString()
-            artifactId = project.name
-            version = project.version.toString()
-            
-            from(components["release"])
-        }
-    }
+    cloudstream("com.lagradost:cloudstream3:pre-release")
 }
