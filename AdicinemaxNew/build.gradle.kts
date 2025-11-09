@@ -25,7 +25,8 @@ android {
         // Nama paket untuk plugin Anda
         namespace = "com.AdicinemaxNew"
         minSdk = 26 
-        targetSdk = 34
+        // Perhatian: 'targetSdk' sudah usang, namun tetap dipertahankan untuk kompatibilitas lingkungan Cloudstream3 lama
+        targetSdk = 34 
         
         // Memuat properties dari local.properties
         val properties = Properties()
@@ -34,29 +35,19 @@ android {
         android.buildFeatures.buildConfig = true
 
         // ====================================================================
-        // Konfigurasi BuildConfig untuk API Kunci & URL (Non-Anime Fokus)
+        // Konfigurasi BuildConfig untuk API Kunci & URL
         // ====================================================================
 
-        // 1. Metadata (Wajib: TMDB)
         buildConfigField("String", "TMDB_API", "\"${properties.getProperty("TMDB_API")}\"")
         buildConfigField("String", "REMOTE_PROXY_LIST", "\"${properties.getProperty("REMOTE_PROXY_LIST")}\"") 
-
-        // 2. API Streaming Canggih
         buildConfigField("String", "VIDSRC_CC_API", "\"${properties.getProperty("VIDSRC_CC_API")}\"") 
         buildConfigField("String", "VIDSRC_XYZ", "\"${properties.getProperty("VIDSRC_XYZ")}\"") 
         buildConfigField("String", "XPRIME_API", "\"${properties.getProperty("XPRIME_API")}\"") 
-        
-        // 3. Kunci XPrime/MovieBox Signature 
         buildConfigField("String", "MOVIEBOX_SECRET_KEY_ALT", "\"${properties.getProperty("MOVIEBOX_SECRET_KEY_ALT")}\"")
         buildConfigField("String", "MOVIEBOX_SECRET_KEY_DEFAULT", "\"${properties.getProperty("MOVIEBOX_SECRET_KEY_DEFAULT")}\"")
-        
-        // 4. API Subtitle (Wajib)
         buildConfigField("String", "OPENSUBTITLES_API", "\"https://opensubtitles-v3.strem.io\"")
-        
-        // 5. Host Terkait 
         buildConfigField("String", "HUBCLOUD_API", "\"${properties.getProperty("HUBCLOUD_API")}\"")
         buildConfigField("String", "GDFLIX_API", "\"${properties.getProperty("GDFLIX_API")}\"")
-
     }
 
     buildTypes {
@@ -78,6 +69,7 @@ android {
     }
 }
 
+// Konfigurasi Cloudstream
 cloudstream {
     language = "en"
      description = "Adicinemax: High-quality, non-anime sources using advanced API extraction."
@@ -104,6 +96,7 @@ dependencies {
     implementation("androidx.browser:browser:1.9.0")
 }
 
+// Blok Publikasi yang diperbaiki
 publishing {
     publications {
         create<MavenPublication>("release") {
@@ -111,8 +104,11 @@ publishing {
             artifactId = project.name
             version = project.version.toString()
             
-            // Perbaikan: Menggunakan 'assembleRelease' untuk mendapatkan file .aar
-            artifact(project.tasks.getByName("assembleRelease")) 
+            // Perbaikan: Menggunakan 'assembleRelease' dan memastikan task tersebut berjalan
+            artifact(project.tasks.getByName("assembleRelease")) {
+                // Konfigurasi tambahan: memastikan task build AAR dijalankan sebelum publishing
+                (this as org.gradle.api.artifacts.PublishArtifact).builtBy(project.tasks.getByName("assembleRelease"))
+            }
         }
     }
 }
