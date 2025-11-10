@@ -1,5 +1,3 @@
-AdicinemaxNew/src/main/kotlin/com/AdicinemaxNew/AdicinemaxNew.kt
-
 package com.AdicinemaxNew
 
 import android.content.SharedPreferences
