@@ -3,8 +3,7 @@ package com.Adimoviebox
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
-import com.lagradost.cloudstream3.utils.* // toScoreInt seharusnya tersedia dari import ini
-import com.lagradost.cloudstream3.utils.AppUtils.parseJson
+import com.lagradost.cloudstream3.utils.* import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.nicehttp.RequestBodyTypes
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -13,7 +12,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
     private val apiUrl = "https://fmoviesunblocked.net"
-    override val instantLinkLoading = true
+    override val instantLinkLoading = true // ✅ Properti ini sudah bernilai true.
     override var name = "Adimoviebox"
     override val hasMainPage = true
     override val hasQuickSearch = true
@@ -87,7 +86,8 @@ class Adimoviebox : MainAPI() {
         val tvType = if (subject?.subjectType == 2) TvType.TvSeries else TvType.Movie
         val description = subject?.description
         val trailer = subject?.trailer?.videoAddress?.url
-        val score = Score.from10(subject?.imdbRatingValue)
+        // ✅ PERBAIKAN: Gunakan Score.from10() untuk nilai rating IMDb.
+        val score = Score.from10(subject?.imdbRatingValue?.toString()) 
         val actors = document?.stars?.mapNotNull { cast ->
             ActorData(
                 Actor(
@@ -100,7 +100,7 @@ class Adimoviebox : MainAPI() {
 
         val recommendations =
             app.get("$mainUrl/wefeed-h5-bff/web/subject/detail-rec?subjectId=$id&page=1&perPage=12")
-                .parsedSafe<Media>()?.data?.items?.map { // Perbaikan: Memastikan pemanggilan .items
+                .parsedSafe<Media>()?.data?.items?.map {
                     it.toSearchResponse(this)
                 }
 
@@ -189,7 +189,7 @@ class Adimoviebox : MainAPI() {
             referer = referer
         ).parsedSafe<Media>()?.data?.captions?.map { subtitle ->
             subtitleCallback.invoke(
-                newSubtitleFile( // Mengganti SubtitleFile(...)
+                newSubtitleFile(
                     subtitle.lanName ?: "",
                     subtitle.url ?: return@map
                 )
@@ -273,17 +273,23 @@ data class Items(
     @JsonProperty("trailer") val trailer: Trailer? = null,
     @JsonProperty("detailPath") val detailPath: String? = null,
 ) {
-    // Perbaikan: Memperbaiki sintaksis fungsi toSearchResponse
+    // ⬇️ PERUBAHAN UTAMA DI SINI
     fun toSearchResponse(provider: Adimoviebox): SearchResponse {
+        // Mendefinisikan URL yang akan digunakan di load()
+        val url = "${provider.mainUrl}/detail/${subjectId}"
+
         return provider.newMovieSearchResponse(
             title ?: "",
-            subjectId ?: "",
+            url, // Menggunakan URL lengkap (sebagai string data untuk load)
             if (subjectType == 1) TvType.Movie else TvType.TvSeries,
-            false
+            false // Tidak memiliki dub
         ) {
             this.posterUrl = cover?.url
+            // ✅ PENAMBAHAN: Menambahkan skor ke SearchResponse
+            this.score = Score.from10(imdbRatingValue?.toString())
         }
     }
+    // ⬆️ PERUBAHAN UTAMA DI SINI
 
     data class Cover(
         @JsonProperty("url") val url: String? = null,
