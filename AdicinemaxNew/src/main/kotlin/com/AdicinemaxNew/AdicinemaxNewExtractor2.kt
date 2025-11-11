@@ -1,5 +1,3 @@
-AdicinemaxNew/src/main/kotlin/com/AdicinemaxNew/AdicinemaxNewExtractor2.kt
-
 package com.AdicinemaxNew
 
 import android.annotation.SuppressLint
