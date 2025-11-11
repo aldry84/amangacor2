@@ -39,7 +39,7 @@ import com.phisher98.StreamPlayExtractor.invokevidrock
 import com.phisher98.StreamPlayExtractor.sharedPref
 
 class StreamPlayLite() : StreamPlay(sharedPref) {
-    override var name = "AmanGacorPlay-2"
+    override var name = "AmanGacorPlay-Ringan"
 
     override suspend fun loadLinks(
         data: String,
