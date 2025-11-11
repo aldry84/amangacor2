@@ -1,3 +1,5 @@
+// AdicinemaxNew/src/main/kotlin/com/AdicinemaxNew/Extractor.kt
+
 package com.AdicinemaxNew
 
 import android.annotation.SuppressLint
@@ -1575,7 +1577,7 @@ open class MegaUp : ExtractorApi() {
         val m3u8Data=app.post(BuildConfig.KAIMEG, requestBody = body).text
 
         if (m3u8Data.isBlank()) {
-            Log.d("AdicinemaxNew", "Encoded result is null or empty")
+            Log.d("Phisher", "Encoded result is null or empty")
             return
         }
 
