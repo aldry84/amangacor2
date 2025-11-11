@@ -44,7 +44,7 @@ import org.json.JSONObject
 import java.util.Calendar
 
 open class StreamplayTorrentAnime : MainAPI() {
-    override var name = "StremplayTorrent-Anime"
+    override var name = "KakaAdiTorrent-Anime"
     override var mainUrl = "https://anilist.co"
     override var supportedTypes = setOf(TvType.Anime, TvType.AnimeMovie, TvType.OVA)
     override var lang = "en"
