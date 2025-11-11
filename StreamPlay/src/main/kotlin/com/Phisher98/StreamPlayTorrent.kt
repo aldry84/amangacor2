@@ -12,7 +12,7 @@ import org.json.JSONObject
 
 @Suppress("NAME_SHADOWING")
 class StreamPlayTorrent() : StreamPlay() {
-    override var name = "StreamPlay-Torrent"
+    override var name = "AmanGacorPlay-Torrent"
     override var supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.AsianDrama,TvType.Torrent)
     override var lang = "en"
     override val hasMainPage = true
