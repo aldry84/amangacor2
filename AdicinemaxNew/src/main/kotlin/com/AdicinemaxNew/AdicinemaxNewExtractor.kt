@@ -75,7 +75,7 @@ import kotlin.math.max
 
 val session = Session(Requests().baseClient)
 
-object AdicinemaxNewExtractor2 : AdicinemaxNew() {
+object AdicinemaxNewExtractor : AdicinemaxNew() {
 
     //Need Fix
     @Suppress("NewApi")
