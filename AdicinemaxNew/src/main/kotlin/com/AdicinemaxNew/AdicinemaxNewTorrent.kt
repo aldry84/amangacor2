@@ -1,7 +1,7 @@
 package com.AdicinemaxNew
 
-import com.AdicinemaxNew.AdicinemaxNewExtractor.invokeSubtitleAPI
-import com.AdicinemaxNew.AdicinemaxNewExtractor.invokeWyZIESUBAPI
+import com.AdicinemaxNew.AdicinemaxNewExtractor2.invokeSubtitleAPI
+import com.AdicinemaxNew.AdicinemaxNewExtractor2.invokeWyZIESUBAPI
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.app
