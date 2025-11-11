@@ -14,20 +14,43 @@ android {
         properties.load(project.rootProject.file("local.properties").inputStream())
         android.buildFeatures.buildConfig=true
         buildConfigField("String", "TMDB_API", "\"${properties.getProperty("TMDB_API")}\"")
-        buildConfigField("String", "REMOTE_PROXY_LIST", "\"${properties.getProperty("REMOTE_PROXY_LIST")}\"") 
-        
-        // Vidsrc & Xprime APIs
-        buildConfigField("String", "VIDSRC_CC_API", "\"${properties.getProperty("VIDSRC_CC_API")}\"") 
-        buildConfigField("String", "VIDSRC_XYZ", "\"${properties.getProperty("VIDSRC_XYZ")}\"") 
-        buildConfigField("String", "XPRIME_API", "\"${properties.getProperty("XPRIME_API")}\"") 
-        
-        // Kunci MovieBox/Enkripsi (untuk XPrime/API canggih)
+        buildConfigField("String", "CINEMATV_API", "\"${properties.getProperty("CINEMATV_API")}\"")
+        buildConfigField("String", "SFMOVIES_API", "\"${properties.getProperty("SFMOVIES_API")}\"")
+        buildConfigField("String", "ZSHOW_API", "\"${properties.getProperty("ZSHOW_API")}\"")
+        buildConfigField("String", "DUMP_API", "\"${properties.getProperty("DUMP_API")}\"")
+        buildConfigField("String", "DUMP_KEY", "\"${properties.getProperty("DUMP_KEY")}\"")
+        buildConfigField("String", "CRUNCHYROLL_BASIC_TOKEN", "\"${properties.getProperty("CRUNCHYROLL_BASIC_TOKEN")}\"")
+        buildConfigField("String", "CRUNCHYROLL_REFRESH_TOKEN", "\"${properties.getProperty("CRUNCHYROLL_REFRESH_TOKEN")}\"")
+        buildConfigField("String", "MOVIE_API", "\"${properties.getProperty("MOVIE_API")}\"")
+        buildConfigField("String", "ANICHI_API", "\"${properties.getProperty("ANICHI_API")}\"")
+        buildConfigField("String", "Whvx_API", "\"${properties.getProperty("Whvx_API")}\"")
+        buildConfigField("String", "CatflixAPI", "\"${properties.getProperty("CatflixAPI")}\"")
+        buildConfigField("String", "ConsumetAPI", "\"${properties.getProperty("ConsumetAPI")}\"")
+        buildConfigField("String", "FlixHQAPI", "\"${properties.getProperty("FlixHQAPI")}\"")
+        buildConfigField("String", "WhvxAPI", "\"${properties.getProperty("WhvxAPI")}\"")
+        buildConfigField("String", "WhvxT", "\"${properties.getProperty("WhvxT")}\"")
+        buildConfigField("String", "SharmaflixApikey", "\"${properties.getProperty("SharmaflixApikey")}\"")
+        buildConfigField("String", "SharmaflixApi", "\"${properties.getProperty("SharmaflixApi")}\"")
+        buildConfigField("String", "Theyallsayflix", "\"${properties.getProperty("Theyallsayflix")}\"")
+        buildConfigField("String", "GojoAPI", "\"${properties.getProperty("GojoAPI")}\"")
+        buildConfigField("String", "HianimeAPI", "\"${properties.getProperty("HianimeAPI")}\"")
+        buildConfigField("String", "Vidsrccc", "\"${properties.getProperty("Vidsrccc")}\"")
+        buildConfigField("String", "WASMAPI", "\"${properties.getProperty("WASMAPI")}\"")
+        buildConfigField("String", "KissKh", "\"${properties.getProperty("KissKh")}\"")
+        buildConfigField("String", "KisskhSub", "\"${properties.getProperty("KisskhSub")}\"")
+        buildConfigField("String", "SUPERSTREAM_THIRD_API", "\"${properties.getProperty("SUPERSTREAM_THIRD_API")}\"")
+        buildConfigField("String", "SUPERSTREAM_FOURTH_API", "\"${properties.getProperty("SUPERSTREAM_FOURTH_API")}\"")
+        buildConfigField("String", "SUPERSTREAM_FIRST_API", "\"${properties.getProperty("SUPERSTREAM_FIRST_API")}\"")
+        buildConfigField("String", "AdicinemaxNewAPI", "\"${properties.getProperty("AdicinemaxNewAPI")}\"")
+        buildConfigField("String", "PROXYAPI", "\"${properties.getProperty("PROXYAPI")}\"")
+        buildConfigField("String", "KAISVA", "\"${properties.getProperty("KAISVA")}\"")
         buildConfigField("String", "MOVIEBOX_SECRET_KEY_ALT", "\"${properties.getProperty("MOVIEBOX_SECRET_KEY_ALT")}\"")
         buildConfigField("String", "MOVIEBOX_SECRET_KEY_DEFAULT", "\"${properties.getProperty("MOVIEBOX_SECRET_KEY_DEFAULT")}\"")
-        
-        // HubCloud & GDFlix (Jika diperlukan oleh scraper)
-        buildConfigField("String", "HUBCLOUD_API", "\"${properties.getProperty("HUBCLOUD_API")}\"")
-        buildConfigField("String", "GDFLIX_API", "\"${properties.getProperty("GDFLIX_API")}\"")
+        buildConfigField("String", "KAIMEG", "\"${properties.getProperty("KAIMEG")}\"")
+        buildConfigField("String", "KAIDEC", "\"${properties.getProperty("KAIDEC")}\"")
+        buildConfigField("String", "KAIENC", "\"${properties.getProperty("KAIENC")}\"")
+        buildConfigField("String", "Nuviostreams", "\"${properties.getProperty("Nuviostreams")}\"")
+        buildConfigField("String", "VideasyDEC", "\"${properties.getProperty("VideasyDEC")}\"")
     }
 }
 
@@ -36,7 +59,7 @@ cloudstream {
     // All of these properties are optional, you can safely remove them
 
      description = "#1 best extention based on MultiAPI"
-     authors = listOf("Phisher98", "AdicinemaxNew")
+     authors = listOf("AdicinemaxNew", "Hexated")
 
     /**
      * Status int as the following:
