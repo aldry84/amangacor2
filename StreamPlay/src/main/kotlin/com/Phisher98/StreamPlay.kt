@@ -23,7 +23,7 @@ import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 
 open class StreamPlay(val sharedPref: SharedPreferences? = null) : TmdbProvider() {
-    override var name = "StreamPlay"
+    override var name = "AmanGacorPlay"
     override val hasMainPage = true
     override val instantLinkLoading = true
     override val useMetaLoadResponse = true
