@@ -40,8 +40,8 @@ import com.lagradost.cloudstream3.toNewSearchResponseList
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.AdicinemaxNew.AdicinemaxNewExtractor.invokeSubtitleAPI
-import com.AdicinemaxNew.AdicinemaxNewExtractor.invokeWyZIESUBAPI
+import com.AdicinemaxNew.AdicinemaxNewExtractor2.invokeSubtitleAPI
+import com.AdicinemaxNew.AdicinemaxNewExtractor2.invokeWyZIESUBAPI
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 
