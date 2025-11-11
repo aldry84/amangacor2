@@ -55,7 +55,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.Calendar
 
 class StreamPlayAnime : MainAPI() {
-    override var name = "StreamPlay-Anime"
+    override var name = "KakaAdiAnime"
     override var mainUrl = "https://anilist.co"
     override var supportedTypes = setOf(TvType.Anime, TvType.AnimeMovie, TvType.OVA)
     override var lang = "en"
