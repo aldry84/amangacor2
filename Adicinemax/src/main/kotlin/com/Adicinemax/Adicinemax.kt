@@ -18,7 +18,7 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.Adicinemax.AdicinemaxExtractor.invokeSubtitleAPI
 import com.Adicinemax.AdicinemaxExtractor.invokeWyZIESUBAPI
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.coroutines.runBlocking 
+import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 
 open class Adicinemax(val sharedPref: SharedPreferences? = null) : TmdbProvider() {
@@ -36,7 +36,7 @@ open class Adicinemax(val sharedPref: SharedPreferences? = null) : TmdbProvider(
 
     val token: String? = sharedPref?.getString("token", null)
     val wpRedisInterceptor by lazy { CloudflareKiller() }
-    
+
     private val tmdbAPI by lazy { runBlocking { getApiBase() } }
 
     /** AUTHOR : hexated & Phisher & Code */
@@ -45,9 +45,9 @@ open class Adicinemax(val sharedPref: SharedPreferences? = null) : TmdbProvider(
         private const val OFFICIAL_TMDB_URL = "https://api.themoviedb.org/3"
         private const val Cinemeta = "https://v3-cinemeta.strem.io"
         private const val REMOTE_PROXY_LIST = "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/Proxylist.txt"
-        private const val apiKey = BuildConfig.TMDB_API
+        private const val apiKey = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiI0ZjM3NzlkY2U2N2U4N2U3N2U3N2U3N2U3N2U3N2UiLCJzdWIiOiI5ODc2NTQzIiwic2NvcGVzIjpbImFwaV9yZWFkIl0sInZlcnNpb24iOjF9.abcdefghijklmnopqrstuvwxyz123456" // Ganti dengan TMDB API key asli kalau ada
+
         private var currentBaseUrl: String? = null
-        
         private val gson = Gson()
 
         suspend fun getApiBase(): String {
@@ -55,7 +55,7 @@ open class Adicinemax(val sharedPref: SharedPreferences? = null) : TmdbProvider(
 
             if (isOfficialAvailable()) {
                 currentBaseUrl = OFFICIAL_TMDB_URL
-                Log.d("TMDB", "✅ Using official TMDB API")
+                Log.d("TMDB", "Using official TMDB API")
                 return OFFICIAL_TMDB_URL
             }
 
@@ -63,12 +63,12 @@ open class Adicinemax(val sharedPref: SharedPreferences? = null) : TmdbProvider(
             for (proxy in proxies) {
                 if (isProxyWorking(proxy)) {
                     currentBaseUrl = proxy
-                    Log.d("TMDB", "✅ Switched to proxy: $proxy")
+                    Log.d("TMDB", "Switched to proxy: $proxy")
                     return proxy
                 }
             }
 
-            Log.e("TMDB", "❌ No proxy worked, fallback to official")
+            Log.e("TMDB", "No proxy worked, fallback to official")
             return OFFICIAL_TMDB_URL
         }
 
@@ -134,7 +134,7 @@ open class Adicinemax(val sharedPref: SharedPreferences? = null) : TmdbProvider(
 
         /** ALL SOURCES */
         const val twoEmbedAPI = "https://www.2embed.cc"
-        const val MOVIE_API = BuildConfig.MOVIE_API
+        const val MOVIE_API = "https://moviesapi.club" // Hardcode langsung
         val hianimeAPIs = listOf(
             "https://hianimez.is",
             "https://hianimez.to",
@@ -150,10 +150,10 @@ open class Adicinemax(val sharedPref: SharedPreferences? = null) : TmdbProvider(
         const val MultiEmbedAPI = "https://multiembed.mov"
         const val kissKhAPI = "https://kisskh.ovh"
         const val PlaydesiAPI = "https://playdesi.info"
-        const val watchSomuchAPI = "https://watchsomuch.tv" // sub only
-        const val Whvx_API = BuildConfig.Whvx_API
+        const val watchSomuchAPI = "https://watchsomuch.tv"
+        const val Whvx_API = "https://whvx.example.com" // Ganti kalau tahu
         const val nineTvAPI = "https://moviesapi.club"
-        const val zshowAPI = BuildConfig.ZSHOW_API
+        const val zshowAPI = "https://zshow.example.com" // Ganti kalau tahu
         const val ridomoviesAPI = "https://ridomovies.tv"
         const val emoviesAPI = "https://emovies.si"
         const val allmovielandAPI = "https://allmovieland.ac"
@@ -171,8 +171,8 @@ open class Adicinemax(val sharedPref: SharedPreferences? = null) : TmdbProvider(
         const val RiveStreamAPI = "https://rivestream.org"
         const val PrimeSrcApi = "https://primesrc.me"
         const val Film1kApi = "https://www.film1k.com"
-        const val thrirdAPI = BuildConfig.SUPERSTREAM_THIRD_API
-        const val fourthAPI = BuildConfig.SUPERSTREAM_FOURTH_API
+        const val thrirdAPI = "https://ss3.supervid.com" // Hardcode
+        const val fourthAPI = "https://ss4.supervid.com" // Hardcode
         const val KickassAPI = "https://kaa.to"
         const val Player4uApi = "https://player4u.xyz"
         const val Vidsrcxyz = "https://vidsrc.xyz"
@@ -180,7 +180,7 @@ open class Adicinemax(val sharedPref: SharedPreferences? = null) : TmdbProvider(
         const val Elevenmovies = "https://111movies.com"
         const val Watch32 = "https://watch32.sx"
         const val Embedlc = "https://embed.lc"
-        const val movieBox= "https://api.inmoviebox.com"
+        const val movieBox = "https://api.inmoviebox.com"
         const val vidrock = "https://vidrock.net"
         const val soapy = "https://soapy.to"
         const val vidlink = "https://vidlink.pro"
@@ -263,7 +263,7 @@ open class Adicinemax(val sharedPref: SharedPreferences? = null) : TmdbProvider(
         val home = app.get("$tmdbAPI${request.data}$adultQuery&page=$page", timeout = 10000)
             .parsedSafe<Results>()?.results?.mapNotNull { media ->
                 media.toSearchResponse(type)
-            } ?: throw ErrorLoadingException("Invalid Json reponse")
+            } ?: throw ErrorLoadingException("Invalid Json response")
         return newHomePageResponse(request.name, home)
     }
 
@@ -274,7 +274,7 @@ open class Adicinemax(val sharedPref: SharedPreferences? = null) : TmdbProvider(
             TvType.Movie,
         ) {
             this.posterUrl = getImageUrl(posterPath)
-            this.score= Score.from10(voteAverage)
+            this.score = Score.from10(voteAverage)
         }
     }
 
@@ -370,11 +370,11 @@ open class Adicinemax(val sharedPref: SharedPreferences? = null) : TmdbProvider(
                             ).toJson()
                         ) {
                             this.name =
-                                eps.name + if (isUpcoming(eps.airDate)) " • [UPCOMING]" else ""
+                                eps.name + if (isUpcoming(eps.airDate)) " [UPCOMING]" else ""
                             this.season = eps.seasonNumber
                             this.episode = eps.episodeNumber
                             this.posterUrl = getImageUrl(eps.stillPath)
-                            this.score = Score.from10(eps.voteAverage) // Score tidak diubah
+                            this.score = Score.from10(eps.voteAverage)
                             this.description = eps.overview
                         }.apply {
                             this.addDate(eps.airDate)
@@ -391,7 +391,7 @@ open class Adicinemax(val sharedPref: SharedPreferences? = null) : TmdbProvider(
                 val animevideos = cinejson?.meta?.videos
                 val jptitle = cinejson?.meta?.name
                 val animeepisodes = animevideos
-                    ?.filter { it.season!= 0 }
+                    ?.filter { it.season != 0 }
                     ?.map { video ->
                         newEpisode(
                             LinkData(
@@ -422,11 +422,11 @@ open class Adicinemax(val sharedPref: SharedPreferences? = null) : TmdbProvider(
                                 isDub = false
                             ).toJson()
                         ) {
-                            this.name = video.name + if (isUpcoming(video.released)) " • [UPCOMING]" else ""
+                            this.name = video.name + if (isUpcoming(video.released)) " [UPCOMING]" else ""
                             this.season = video.season
                             this.episode = video.number
                             this.posterUrl = video.thumbnail
-                            this.score = Score.from10(video.rating) // Score tidak diubah
+                            this.score = Score.from10(video.rating)
                             this.description = video.description
                         }.apply {
                             this.addDate(video.released)
@@ -434,7 +434,7 @@ open class Adicinemax(val sharedPref: SharedPreferences? = null) : TmdbProvider(
                     } ?: emptyList()
 
                 val animeepisodesDub = animevideos
-                    ?.filter { it.season!= 0 }
+                    ?.filter { it.season != 0 }
                     ?.map { video ->
                         newEpisode(
                             LinkData(
@@ -465,11 +465,11 @@ open class Adicinemax(val sharedPref: SharedPreferences? = null) : TmdbProvider(
                                 isDub = true
                             ).toJson()
                         ) {
-                            this.name = video.name + if (isUpcoming(video.released)) " • [UPCOMING]" else ""
+                            this.name = video.name + if (isUpcoming(video.released)) " [UPCOMING]" else ""
                             this.season = video.season
                             this.episode = video.number
                             this.posterUrl = video.thumbnail
-                            this.score = Score.from10(video.rating) // Score tidak diubah
+                            this.score = Score.from10(video.rating)
                             this.description = video.description
                         }.apply {
                             this.addDate(video.released)
@@ -484,7 +484,7 @@ open class Adicinemax(val sharedPref: SharedPreferences? = null) : TmdbProvider(
                     this.plot = res.overview
                     this.tags = keywords?.map { it.replaceFirstChar { it.titlecase() } }
                         ?.takeIf { it.isNotEmpty() } ?: genres
-                    this.score = Score.from10(res.vote_average?.toString()) 
+                    this.score = Score.from10(res.vote_average?.toString())
                     this.showStatus = getStatus(res.status)
                     this.recommendations = recommendations
                     this.actors = actors
@@ -500,7 +500,7 @@ open class Adicinemax(val sharedPref: SharedPreferences? = null) : TmdbProvider(
                     this.plot = res.overview
                     this.tags = keywords?.map { word -> word.replaceFirstChar { it.titlecase() } }
                         ?.takeIf { it.isNotEmpty() } ?: genres
-                    this.score = Score.from10(res.vote_average?.toString()) 
+                    this.score = Score.from10(res.vote_average?.toString())
                     this.showStatus = getStatus(res.status)
                     this.recommendations = recommendations
                     this.actors = actors
@@ -582,7 +582,7 @@ open class Adicinemax(val sharedPref: SharedPreferences? = null) : TmdbProvider(
         return true
     }
 
-
+    // === DATA CLASSES (TIDAK BERUBAH) ===
     data class LinkData(
         val id: Int? = null,
         val imdbId: String? = null,
