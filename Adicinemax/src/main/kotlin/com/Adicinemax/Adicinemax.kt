@@ -1,4 +1,4 @@
-package com.phisher98
+package com.Adicinemax
 
 import android.content.SharedPreferences
 import android.os.Build
@@ -15,15 +15,15 @@ import com.lagradost.cloudstream3.network.CloudflareKiller
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.phisher98.StreamPlayExtractor.invokeSubtitleAPI
-import com.phisher98.StreamPlayExtractor.invokeWyZIESUBAPI
+import com.Adicinemax.AdicinemaxExtractor.invokeSubtitleAPI
+import com.Adicinemax.AdicinemaxExtractor.invokeWyZIESUBAPI
 import kotlinx.coroutines.withTimeoutOrNull
 // FIX: Tambahkan impor untuk runBlocking agar dapat memanggil getApiBase() di properti lazy
 import kotlinx.coroutines.runBlocking 
 import org.json.JSONObject
 
-open class StreamPlay(val sharedPref: SharedPreferences? = null) : TmdbProvider() {
-    override var name = "AmanGacorPlay"
+open class Adicinemax(val sharedPref: SharedPreferences? = null) : TmdbProvider() {
+    override var name = "Adicinemax"
     override val hasMainPage = true
     override val instantLinkLoading = true
     override val useMetaLoadResponse = true
