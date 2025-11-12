@@ -1,4 +1,4 @@
-package com.phisher98
+package com.Adicinemax
 
 import android.content.Context
 import androidx.appcompat.app.AppCompatActivity
@@ -27,37 +27,37 @@ import com.lagradost.api.Log
 import com.lagradost.cloudstream3.extractors.Vidguardto2
 
 @CloudstreamPlugin
-class StreamPlayPlugin: Plugin() {
+class AdicinemaxPlugin: Plugin() {
     private val registeredMainApis = mutableListOf<MainAPI>()
 
     override fun load(context: Context) {
 
-        val sharedPref = context.getSharedPreferences("StreamPlay", Context.MODE_PRIVATE)
+        val sharedPref = context.getSharedPreferences("Adicinemax", Context.MODE_PRIVATE)
         val mainApis = listOf(
-            StreamPlay(sharedPref), StreamPlayLite(),
-            StreamPlayTorrent()
+            Adicinemax(sharedPref), AdicinemaxLite(),
+            AdicinemaxTorrent()
         )
         val savedSet = sharedPref.getStringSet("enabled_plugins_saved", null)
         val defaultEnabled = mainApis.map { it.name }.toSet()
         val enabledSet = savedSet ?: defaultEnabled
 
-        Log.d("StreamPlay", "SavedSet: $savedSet, DefaultEnabled: $defaultEnabled")
-        Log.d("StreamPlay", "Final enabled set: $enabledSet")
+        Log.d("Adicinemax", "SavedSet: $savedSet, DefaultEnabled: $defaultEnabled")
+        Log.d("Adicinemax", "Final enabled set: $enabledSet")
 
         for (api in mainApis) {
             if (enabledSet.contains(api.name)) {
                 registerMainAPI(api)
                 registeredMainApis.add(api)
-                Log.d("StreamPlay", "Registered plugin: ${api.name}")
+                Log.d("Adicinemax", "Registered plugin: ${api.name}")
             } else {
-                Log.d("StreamPlay", "Not enabled: ${api.name}")
+                Log.d("Adicinemax", "Not enabled: ${api.name}")
             }
         }
 
         sharedPref.edit { remove("enabled_plugins_set") }
         //=====================MainAPI============================//
 
-        //registerMainAPI(StreamPlayTest(sharedPref))
+        //registerMainAPI(AdicinemaxTest(sharedPref))
 
         //=====================Extractors=========================//
 
