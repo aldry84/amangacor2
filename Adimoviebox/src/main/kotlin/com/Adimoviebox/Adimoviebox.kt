@@ -12,7 +12,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
     private val apiUrl = "https://fmoviesunblocked.net"
-    override val instantLinkLoading = true // ✅ Properti ini sudah bernilai true.
+    override val instantLinkLoading = true
     override var name = "Adimoviebox"
     override val hasMainPage = true
     override val hasQuickSearch = true
@@ -62,15 +62,17 @@ class Adimoviebox : MainAPI() {
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
     override suspend fun search(query: String): List<SearchResponse> {
+        // Diperbarui agar lebih akurat dengan memastikan parameter multi-tipe (subjectType 0)
         return app.post(
-            "$mainUrl/wefeed-h5-bff/web/subject/search", requestBody = mapOf(
+            "$mainUrl/wefeed-h5-bff/web/subject/search", 
+            requestBody = mapOf(
                 "keyword" to query,
                 "page" to "1",
-                "perPage" to "0",
-                "subjectType" to "0",
+                "perPage" to "0", // 0 diasumsikan sebagai "tidak terbatas" atau default
+                "subjectType" to "0", // 0 diasumsikan sebagai pencarian multi-tipe/semua
             ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
         ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
-            ?: throw ErrorLoadingException()
+            ?: throw ErrorLoadingException("Search failed or returned no results.")
     }
 
     override suspend fun load(url: String): LoadResponse {
@@ -86,7 +88,7 @@ class Adimoviebox : MainAPI() {
         val tvType = if (subject?.subjectType == 2) TvType.TvSeries else TvType.Movie
         val description = subject?.description
         val trailer = subject?.trailer?.videoAddress?.url
-        // ✅ PERBAIKAN: Gunakan Score.from10() untuk nilai rating IMDb.
+        // ✅ Peningkatan Skor: Menggunakan Score.from10() dengan pengecekan aman
         val score = Score.from10(subject?.imdbRatingValue?.toString()) 
         val actors = document?.stars?.mapNotNull { cast ->
             ActorData(
@@ -151,7 +153,6 @@ class Adimoviebox : MainAPI() {
         }
     }
 
-    // Perbaikan: Fungsi loadLinks dipindahkan kembali ke dalam class Adimoviebox
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -273,23 +274,20 @@ data class Items(
     @JsonProperty("trailer") val trailer: Trailer? = null,
     @JsonProperty("detailPath") val detailPath: String? = null,
 ) {
-    // ⬇️ PERUBAHAN UTAMA DI SINI
     fun toSearchResponse(provider: Adimoviebox): SearchResponse {
-        // Mendefinisikan URL yang akan digunakan di load()
         val url = "${provider.mainUrl}/detail/${subjectId}"
 
         return provider.newMovieSearchResponse(
             title ?: "",
-            url, // Menggunakan URL lengkap (sebagai string data untuk load)
+            url, // Menggunakan URL lengkap sebagai data yang diteruskan ke load()
             if (subjectType == 1) TvType.Movie else TvType.TvSeries,
-            false // Tidak memiliki dub
+            false
         ) {
             this.posterUrl = cover?.url
-            // ✅ PENAMBAHAN: Menambahkan skor ke SearchResponse
+            // ✅ Peningkatan Skor: Menambahkan skor ke SearchResponse
             this.score = Score.from10(imdbRatingValue?.toString())
         }
     }
-    // ⬆️ PERUBAHAN UTAMA DI SINI
 
     data class Cover(
         @JsonProperty("url") val url: String? = null,
