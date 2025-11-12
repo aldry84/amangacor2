@@ -1,4 +1,4 @@
-package com.Adicinemax
+package com.Adicinemax.settings
 
 import android.content.Intent
 import android.graphics.drawable.Drawable
@@ -9,8 +9,10 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import androidx.appcompat.app.AlertDialog
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
-import com.Adicinemax.settings.SettingsFragment
-import com.Adicinemax.settings.ToggleFragment
+// PERBAIKAN: Import BuildConfig yang benar
+import com.Adicinemax.BuildConfig
+import com.Adicinemax.AdicinemaxPlugin
+import com.Adicinemax.ProvidersFragment
 
 class MainSettingsFragment(
     private val plugin: AdicinemaxPlugin,
@@ -20,22 +22,26 @@ class MainSettingsFragment(
     private val res = plugin.resources ?: throw Exception("Unable to access plugin resources")
 
     private fun getDrawable(name: String): Drawable {
+        // PERBAIKAN: Menggunakan BuildConfig.LIBRARY_PACKAGE_NAME
         val id = res.getIdentifier(name, "drawable", BuildConfig.LIBRARY_PACKAGE_NAME)
         return res.getDrawable(id, null) ?: throw Exception("Drawable $name not found")
     }
 
     private fun <T : View> View.findView(name: String): T {
+        // PERBAIKAN: Menggunakan BuildConfig.LIBRARY_PACKAGE_NAME
         val id = res.getIdentifier(name, "id", BuildConfig.LIBRARY_PACKAGE_NAME)
-        if (id == 0) throw Exception("View ID $name not found.")
+        if (id == 0) throw Exception("View ID $name not found")
         return this.findViewById(id)
     }
 
     private fun View.makeTvCompatible() {
+        // PERBAIKAN: Menggunakan BuildConfig.LIBRARY_PACKAGE_NAME
         val outlineId = res.getIdentifier("outline", "drawable", BuildConfig.LIBRARY_PACKAGE_NAME)
         this.background = res.getDrawable(outlineId, null)
     }
 
     private fun getLayout(name: String, inflater: LayoutInflater, container: ViewGroup?): View {
+        // PERBAIKAN: Menggunakan BuildConfig.LIBRARY_PACKAGE_NAME
         val id = res.getIdentifier(name, "layout", BuildConfig.LIBRARY_PACKAGE_NAME)
         val layout = res.getLayout(id)
         return inflater.inflate(layout, container, false)
