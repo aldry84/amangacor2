@@ -1,7 +1,7 @@
-package com.phisher98
+package com.Adicinemax
 
-import com.phisher98.StreamPlayExtractor.invokeSubtitleAPI
-import com.phisher98.StreamPlayExtractor.invokeWyZIESUBAPI
+import com.Adicinemax.AdicinemaxExtractor.invokeSubtitleAPI
+import com.Adicinemax.AdicinemaxExtractor.invokeWyZIESUBAPI
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.app
@@ -11,8 +11,8 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import org.json.JSONObject
 
 @Suppress("NAME_SHADOWING")
-class StreamPlayTorrent() : StreamPlay() {
-    override var name = "AmanGacorPlay-Torrent"
+class AdicinemaxTorrent() : Adicinemax() {
+    override var name = "Adicinemax-Torrent"
     override var supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.AsianDrama,TvType.Torrent)
     override var lang = "en"
     override val hasMainPage = true
