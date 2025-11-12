@@ -1,6 +1,5 @@
 package com.Adicinemax
 
-
 import android.content.SharedPreferences
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.runAllAsync
@@ -19,6 +18,8 @@ class AdicinemaxTest(sharedPreferences:SharedPreferences?=null) : Adicinemax(sha
         val res = AppUtils.parseJson<LinkData>(data)
         runAllAsync(
             {
+                // PERBAIKAN: Logika Anda menggunakan provider Asia untuk media non-anime. 
+                // Asumsi ini benar karena provider ini adalah provider pengujian.
                 if (!res.isAnime) invokeKisskhAsia(
                     res.id,
                     res.season,
