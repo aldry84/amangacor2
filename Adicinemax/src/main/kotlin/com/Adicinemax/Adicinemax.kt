@@ -18,7 +18,6 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.Adicinemax.AdicinemaxExtractor.invokeSubtitleAPI
 import com.Adicinemax.AdicinemaxExtractor.invokeWyZIESUBAPI
 import kotlinx.coroutines.withTimeoutOrNull
-// FIX: Tambahkan impor untuk runBlocking agar dapat memanggil getApiBase() di properti lazy
 import kotlinx.coroutines.runBlocking 
 import org.json.JSONObject
 
@@ -38,7 +37,6 @@ open class Adicinemax(val sharedPref: SharedPreferences? = null) : TmdbProvider(
     val token: String? = sharedPref?.getString("token", null)
     val wpRedisInterceptor by lazy { CloudflareKiller() }
     
-    // FIX: Menggunakan runBlocking untuk memanggil suspend function di properti lazy.
     private val tmdbAPI by lazy { runBlocking { getApiBase() } }
 
     /** AUTHOR : hexated & Phisher & Code */
@@ -47,24 +45,21 @@ open class Adicinemax(val sharedPref: SharedPreferences? = null) : TmdbProvider(
         private const val OFFICIAL_TMDB_URL = "https://api.themoviedb.org/3"
         private const val Cinemeta = "https://v3-cinemeta.strem.io"
         private const val REMOTE_PROXY_LIST = "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/Proxylist.txt"
+        // PERBAIKAN: Menggunakan BuildConfig
         private const val apiKey = BuildConfig.TMDB_API
         private var currentBaseUrl: String? = null
         
-        // Perbaikan: Pindahkan Gson ke companion object untuk penggunaan ulang
         private val gson = Gson()
 
         suspend fun getApiBase(): String {
-            // Jika sudah ditemukan base yang berfungsi, gunakan kembali
             currentBaseUrl?.let { return it }
 
-            // Coba resmi dulu
             if (isOfficialAvailable()) {
                 currentBaseUrl = OFFICIAL_TMDB_URL
                 Log.d("TMDB", "✅ Using official TMDB API")
                 return OFFICIAL_TMDB_URL
             }
 
-            // Jika resmi gagal, coba proxy dari daftar jarak jauh
             val proxies = fetchProxyList()
             for (proxy in proxies) {
                 if (isProxyWorking(proxy)) {
@@ -74,7 +69,6 @@ open class Adicinemax(val sharedPref: SharedPreferences? = null) : TmdbProvider(
                 }
             }
 
-            // Fallback ke resmi jika tidak ada yang berhasil
             Log.e("TMDB", "❌ No proxy worked, fallback to official")
             return OFFICIAL_TMDB_URL
         }
@@ -125,7 +119,6 @@ open class Adicinemax(val sharedPref: SharedPreferences? = null) : TmdbProvider(
 
         private suspend fun fetchProxyList(): List<String> = try {
             val response = app.get(REMOTE_PROXY_LIST).text
-            // Perbaikan: Gunakan 'parsedSafe' dan pastikan format JSON
             val json = JSONObject(response)
             val arr = json.getJSONArray("proxies")
 
@@ -142,6 +135,7 @@ open class Adicinemax(val sharedPref: SharedPreferences? = null) : TmdbProvider(
 
         /** ALL SOURCES */
         const val twoEmbedAPI = "https://www.2embed.cc"
+        // PERBAIKAN: Menggunakan BuildConfig
         const val MOVIE_API = BuildConfig.MOVIE_API
         val hianimeAPIs = listOf(
             "https://hianimez.is",
@@ -159,8 +153,10 @@ open class Adicinemax(val sharedPref: SharedPreferences? = null) : TmdbProvider(
         const val kissKhAPI = "https://kisskh.ovh"
         const val PlaydesiAPI = "https://playdesi.info"
         const val watchSomuchAPI = "https://watchsomuch.tv" // sub only
+        // PERBAIKAN: Menggunakan BuildConfig
         const val Whvx_API = BuildConfig.Whvx_API
         const val nineTvAPI = "https://moviesapi.club"
+        // PERBAIKAN: Menggunakan BuildConfig
         const val zshowAPI = BuildConfig.ZSHOW_API
         const val ridomoviesAPI = "https://ridomovies.tv"
         const val emoviesAPI = "https://emovies.si"
@@ -179,7 +175,9 @@ open class Adicinemax(val sharedPref: SharedPreferences? = null) : TmdbProvider(
         const val RiveStreamAPI = "https://rivestream.org"
         const val PrimeSrcApi = "https://primesrc.me"
         const val Film1kApi = "https://www.film1k.com"
+        // PERBAIKAN: Menggunakan BuildConfig
         const val thrirdAPI = BuildConfig.SUPERSTREAM_THIRD_API
+        // PERBAIKAN: Menggunakan BuildConfig
         const val fourthAPI = BuildConfig.SUPERSTREAM_FOURTH_API
         const val KickassAPI = "https://kaa.to"
         const val Player4uApi = "https://player4u.xyz"
@@ -265,7 +263,6 @@ open class Adicinemax(val sharedPref: SharedPreferences? = null) : TmdbProvider(
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        // Gunakan val tmdbAPI untuk mendapatkan base URL
         val adultQuery =
             if (settingsForProvider.enableAdult) "" else "&without_keywords=190370|13059|226161|195669"
         val type = if (request.data.contains("/movie")) "movie" else "tv"
@@ -290,7 +287,6 @@ open class Adicinemax(val sharedPref: SharedPreferences? = null) : TmdbProvider(
     override suspend fun quickSearch(query: String): List<SearchResponse>? = search(query)
 
     override suspend fun search(query: String, page: Int): SearchResponseList? {
-        // Penambahan: Menggunakan setting filter dewasa di pencarian
         val adultQuery = if (settingsForProvider.enableAdult) "true" else "false"
         return app.get("$tmdbAPI/search/multi?api_key=$apiKey&language=en-US&query=$query&page=$page&include_adult=$adultQuery")
             .parsedSafe<Results>()?.results?.mapNotNull { media ->
@@ -303,7 +299,6 @@ open class Adicinemax(val sharedPref: SharedPreferences? = null) : TmdbProvider(
         val type = getType(data.type)
         val append = "alternative_titles,credits,external_ids,videos,recommendations"
 
-        // Penambahan: Filter dewasa untuk detail media
         val adultQuery = if (settingsForProvider.enableAdult) "" else "&without_keywords=190370|13059|226161|195669"
 
         val resUrl = if (type == TvType.Movie) {
@@ -319,12 +314,10 @@ open class Adicinemax(val sharedPref: SharedPreferences? = null) : TmdbProvider(
         val bgPoster = getOriImageUrl(res.backdropPath)
         val orgTitle = res.originalTitle ?: res.originalName ?: return null
         val releaseDate = res.releaseDate ?: res.firstAirDate
-        // Perbaikan: Gunakan elvis operator untuk keamanan null
         val year = releaseDate?.split("-")?.firstOrNull()?.toIntOrNull()
         val genres = res.genres?.mapNotNull { it.name }
 
         val isCartoon = genres?.contains("Animation") ?: false
-        // Perbaikan: Pengecekan null yang lebih aman
         val isAnime = isCartoon && (res.original_language?.equals("zh") == true || res.original_language?.equals("ja") == true)
         val isAsian = !isAnime && (res.original_language?.equals("zh") == true || res.original_language?.equals("ko") == true)
         val isBollywood = res.production_countries?.any { it.name == "India" } ?: false
@@ -353,7 +346,6 @@ open class Adicinemax(val sharedPref: SharedPreferences? = null) : TmdbProvider(
         if (type == TvType.TvSeries) {
             val lastSeason = res.last_episode_to_air?.season_number
             val episodes = res.seasons?.mapNotNull { season ->
-                // Perbaikan: Pengecekan null yang lebih aman untuk season.seasonNumber
                 val seasonNumber = season.seasonNumber ?: return@mapNotNull null
                 app.get("$tmdbAPI/${data.type}/${data.id}/season/$seasonNumber?api_key=$apiKey")
                     .parsedSafe<MediaDetailEpisodes>()?.episodes?.map { eps ->
@@ -396,7 +388,6 @@ open class Adicinemax(val sharedPref: SharedPreferences? = null) : TmdbProvider(
                     }
             }?.flatten() ?: listOf()
             if (isAnime) {
-                // Perbaikan: Menggunakan 'gson' dari companion object
                 val animeType = if (data.type?.contains("tv", ignoreCase = true) == true) "series" else "movie"
                 val imdbId = res.external_ids?.imdb_id.orEmpty()
                 val cineJsonText = app.get("$Cinemeta/meta/$animeType/$imdbId.json").text
@@ -499,7 +490,6 @@ open class Adicinemax(val sharedPref: SharedPreferences? = null) : TmdbProvider(
                     this.plot = res.overview
                     this.tags = keywords?.map { it.replaceFirstChar { it.titlecase() } }
                         ?.takeIf { it.isNotEmpty() } ?: genres
-                    // FIX: Konversi Any? ke String untuk menghindari error Score.from10
                     this.score = Score.from10(res.vote_average?.toString()) 
                     this.showStatus = getStatus(res.status)
                     this.recommendations = recommendations
@@ -516,12 +506,10 @@ open class Adicinemax(val sharedPref: SharedPreferences? = null) : TmdbProvider(
                     this.plot = res.overview
                     this.tags = keywords?.map { word -> word.replaceFirstChar { it.titlecase() } }
                         ?.takeIf { it.isNotEmpty() } ?: genres
-                    // FIX: Konversi Any? ke String untuk menghindari error Score.from10
                     this.score = Score.from10(res.vote_average?.toString()) 
                     this.showStatus = getStatus(res.status)
                     this.recommendations = recommendations
                     this.actors = actors
-                    //this.contentRating = fetchContentRating(data.id, "US") ?: "Not Rated"
                     addTrailer(trailer)
                     addTMDbId(data.id.toString())
                     addImdbId(res.external_ids?.imdb_id)
@@ -558,11 +546,9 @@ open class Adicinemax(val sharedPref: SharedPreferences? = null) : TmdbProvider(
                 this.tags = keywords?.map { word -> word.replaceFirstChar { it.titlecase() } }
                     ?.takeIf { it.isNotEmpty() } ?: genres
 
-                // FIX: Konversi Any? ke String untuk menghindari error Score.from10
                 this.score = Score.from10(res.vote_average?.toString())
                 this.recommendations = recommendations
                 this.actors = actors
-                //this.contentRating = fetchContentRating(data.id, "US") ?: "Not Rated"
                 addTrailer(trailer)
                 addTMDbId(data.id.toString())
                 addImdbId(res.external_ids?.imdb_id)
