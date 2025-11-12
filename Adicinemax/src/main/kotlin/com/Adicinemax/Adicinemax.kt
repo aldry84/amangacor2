@@ -45,7 +45,6 @@ open class Adicinemax(val sharedPref: SharedPreferences? = null) : TmdbProvider(
         private const val OFFICIAL_TMDB_URL = "https://api.themoviedb.org/3"
         private const val Cinemeta = "https://v3-cinemeta.strem.io"
         private const val REMOTE_PROXY_LIST = "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/Proxylist.txt"
-        // PERBAIKAN: Menggunakan BuildConfig
         private const val apiKey = BuildConfig.TMDB_API
         private var currentBaseUrl: String? = null
         
@@ -135,7 +134,6 @@ open class Adicinemax(val sharedPref: SharedPreferences? = null) : TmdbProvider(
 
         /** ALL SOURCES */
         const val twoEmbedAPI = "https://www.2embed.cc"
-        // PERBAIKAN: Menggunakan BuildConfig
         const val MOVIE_API = BuildConfig.MOVIE_API
         val hianimeAPIs = listOf(
             "https://hianimez.is",
@@ -153,10 +151,8 @@ open class Adicinemax(val sharedPref: SharedPreferences? = null) : TmdbProvider(
         const val kissKhAPI = "https://kisskh.ovh"
         const val PlaydesiAPI = "https://playdesi.info"
         const val watchSomuchAPI = "https://watchsomuch.tv" // sub only
-        // PERBAIKAN: Menggunakan BuildConfig
         const val Whvx_API = BuildConfig.Whvx_API
         const val nineTvAPI = "https://moviesapi.club"
-        // PERBAIKAN: Menggunakan BuildConfig
         const val zshowAPI = BuildConfig.ZSHOW_API
         const val ridomoviesAPI = "https://ridomovies.tv"
         const val emoviesAPI = "https://emovies.si"
@@ -175,9 +171,7 @@ open class Adicinemax(val sharedPref: SharedPreferences? = null) : TmdbProvider(
         const val RiveStreamAPI = "https://rivestream.org"
         const val PrimeSrcApi = "https://primesrc.me"
         const val Film1kApi = "https://www.film1k.com"
-        // PERBAIKAN: Menggunakan BuildConfig
         const val thrirdAPI = BuildConfig.SUPERSTREAM_THIRD_API
-        // PERBAIKAN: Menggunakan BuildConfig
         const val fourthAPI = BuildConfig.SUPERSTREAM_FOURTH_API
         const val KickassAPI = "https://kaa.to"
         const val Player4uApi = "https://player4u.xyz"
