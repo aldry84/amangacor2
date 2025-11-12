@@ -1,10 +1,10 @@
-package com.phisher98
+package com.Adicinemax
 
 import com.google.gson.Gson
 import com.lagradost.api.Log
 import com.lagradost.cloudstream3.TvType
-import com.phisher98.StreamPlayTorrent.Companion.AnimetoshoAPI
-import com.phisher98.StreamPlayTorrent.Companion.TRACKER_LIST_URL
+import com.Adicinemax.AdicinemaxTorrent.Companion.AnimetoshoAPI
+import com.Adicinemax.AdicinemaxTorrent.Companion.TRACKER_LIST_URL
 import com.lagradost.cloudstream3.amap
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.ExtractorLink
