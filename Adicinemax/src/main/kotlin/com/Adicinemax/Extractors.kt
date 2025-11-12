@@ -1,4 +1,4 @@
-package com.phisher98
+package com.Adicinemax
 
 import android.annotation.SuppressLint
 import android.os.Build
