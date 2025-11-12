@@ -9,8 +9,8 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import androidx.appcompat.app.AlertDialog
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
-import com.phisher98.settings.SettingsFragment
-import com.phisher98.settings.ToggleFragment
+import com.Adicinemax.settings.SettingsFragment
+import com.Adicinemax.settings.ToggleFragment
 
 class MainSettingsFragment(
     private val plugin: AdicinemaxPlugin,
