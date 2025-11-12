@@ -1,4 +1,4 @@
-package com.phisher98
+package com.Adicinemax
 
 
 import android.content.SharedPreferences
@@ -6,10 +6,10 @@ import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.runAllAsync
 import com.lagradost.cloudstream3.utils.AppUtils
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.phisher98.StreamPlayExtractor.invokeKisskhAsia
+import com.Adicinemax.AdicinemaxExtractor.invokeKisskhAsia
 
-class StreamPlayTest(sharedPreferences:SharedPreferences?=null) : StreamPlay(sharedPreferences) {
-    override var name = "StreamPlay-Test"
+class AdicinemaxTest(sharedPreferences:SharedPreferences?=null) : Adicinemax(sharedPreferences) {
+    override var name = "Adicinemax-Test"
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
