@@ -1,4 +1,4 @@
-package com.phisher98
+package com.Adicinemax
 
 import android.content.Intent
 import android.graphics.drawable.Drawable
@@ -13,7 +13,7 @@ import com.phisher98.settings.SettingsFragment
 import com.phisher98.settings.ToggleFragment
 
 class MainSettingsFragment(
-    private val plugin: StreamPlayPlugin,
+    private val plugin: AdicinemaxPlugin,
     private val sharedPref: android.content.SharedPreferences
 ) : BottomSheetDialogFragment() {
 
