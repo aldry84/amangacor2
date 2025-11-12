@@ -1,4 +1,4 @@
-package com.phisher98
+package com.Adicinemax
 
 import android.annotation.SuppressLint
 import android.net.Uri
@@ -75,7 +75,7 @@ import kotlin.math.max
 
 val session = Session(Requests().baseClient)
 
-object StreamPlayExtractor : StreamPlay() {
+object AdicinemaxExtractor : Adicinemax() {
 
     //Need Fix
     @Suppress("NewApi")
