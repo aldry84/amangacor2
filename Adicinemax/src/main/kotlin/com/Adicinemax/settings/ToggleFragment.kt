@@ -1,4 +1,4 @@
-package com.phisher98.settings
+package com.Adicinemax.settings
 
 import android.annotation.SuppressLint
 import android.content.SharedPreferences
@@ -10,14 +10,14 @@ import android.os.Bundle
 import android.view.*
 import android.widget.*
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
-import com.phisher98.BuildConfig
-import com.phisher98.StreamPlayPlugin
+import com.Adicinemax.BuildConfig
+import com.Adicinemax.AdicinemaxPlugin
 import androidx.core.content.edit
 import com.lagradost.cloudstream3.CommonActivity.showToast
-import com.phisher98.*
+import com.Adicinemax.*
 
 class ToggleFragment(
-    private val plugin: StreamPlayPlugin,
+    private val plugin: AdicinemaxPlugin,
     private val sharedPref: SharedPreferences
 ) : BottomSheetDialogFragment() {
 
@@ -55,9 +55,9 @@ class ToggleFragment(
         val extensionList = root.findView<LinearLayout>("toggle_list_container")
 
         val apis = listOf(
-            StreamPlay(sharedPref),
-            StreamPlayLite(),
-            StreamPlayTorrent(),
+            Adicinemax(sharedPref),
+            Adicinemax(),
+            AdicinemaxTorrent(),
         )
 
         val savedKey = "enabled_plugins_saved"
