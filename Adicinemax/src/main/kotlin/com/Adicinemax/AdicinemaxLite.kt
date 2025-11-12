@@ -208,7 +208,7 @@ class AdicinemaxLite() : Adicinemax(sharedPref) {
                 }
             },
             {
-                invokeStreamPlay(
+                invokeAdicinemax(
                     res.id,
                     res.season,
                     res.episode,
