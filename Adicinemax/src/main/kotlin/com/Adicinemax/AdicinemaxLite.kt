@@ -1,44 +1,44 @@
-package com.phisher98
+package com.Adicinemax
 
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.runAllAsync
 import com.lagradost.cloudstream3.utils.AppUtils
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.phisher98.StreamPlayExtractor.invoke2embed
-import com.phisher98.StreamPlayExtractor.invokeAllMovieland
-import com.phisher98.StreamPlayExtractor.invokeAnimes
-import com.phisher98.StreamPlayExtractor.invokeDramadrip
-import com.phisher98.StreamPlayExtractor.invokeElevenmovies
-import com.phisher98.StreamPlayExtractor.invokeEmbedlc
-import com.phisher98.StreamPlayExtractor.invokeEmovies
-import com.phisher98.StreamPlayExtractor.invokeKisskh
-import com.phisher98.StreamPlayExtractor.invokeKisskhAsia
-import com.phisher98.StreamPlayExtractor.invokeMovieBox
-import com.phisher98.StreamPlayExtractor.invokeNepu
-import com.phisher98.StreamPlayExtractor.invokeNinetv
-import com.phisher98.StreamPlayExtractor.invokePlayer4U
-import com.phisher98.StreamPlayExtractor.invokeRidomovies
-import com.phisher98.StreamPlayExtractor.invokeRiveStream
-import com.phisher98.StreamPlayExtractor.invokeShowflix
-import com.phisher98.StreamPlayExtractor.invokeSoapy
-import com.phisher98.StreamPlayExtractor.invokeStreamPlay
-import com.phisher98.StreamPlayExtractor.invokeSubtitleAPI
-import com.phisher98.StreamPlayExtractor.invokeSuperstream
-import com.phisher98.StreamPlayExtractor.invokeVidSrcXyz
-import com.phisher98.StreamPlayExtractor.invokeVidlink
-import com.phisher98.StreamPlayExtractor.invokeVidsrccc
-import com.phisher98.StreamPlayExtractor.invokeVidzee
-import com.phisher98.StreamPlayExtractor.invokeWatch32APIHQ
-import com.phisher98.StreamPlayExtractor.invokeWatchsomuch
-import com.phisher98.StreamPlayExtractor.invokeWyZIESUBAPI
-import com.phisher98.StreamPlayExtractor.invokeXPrimeAPI
-import com.phisher98.StreamPlayExtractor.invokeZoechip
-import com.phisher98.StreamPlayExtractor.invokeZshow
-import com.phisher98.StreamPlayExtractor.invokemorph
-import com.phisher98.StreamPlayExtractor.invokevidrock
-import com.phisher98.StreamPlayExtractor.sharedPref
+import com.Adicinemax.AdicinemaxExtractor.invoke2embed
+import com.Adicinemax.AdicinemaxExtractor.invokeAllMovieland
+import com.Adicinemax.AdicinemaxExtractor.invokeAnimes
+import com.Adicinemax.AdicinemaxExtractor.invokeDramadrip
+import com.Adicinemax.AdicinemaxExtractor.invokeElevenmovies
+import com.Adicinemax.AdicinemaxExtractor.invokeEmbedlc
+import com.Adicinemax.AdicinemaxExtractor.invokeEmovies
+import com.Adicinemax.AdicinemaxExtractor.invokeKisskh
+import com.Adicinemax.AdicinemaxExtractor.invokeKisskhAsia
+import com.Adicinemax.AdicinemaxExtractor.invokeMovieBox
+import com.Adicinemax.AdicinemaxExtractor.invokeNepu
+import com.Adicinemax.AdicinemaxExtractor.invokeNinetv
+import com.Adicinemax.AdicinemaxExtractor.invokePlayer4U
+import com.Adicinemax.AdicinemaxExtractor.invokeRidomovies
+import com.Adicinemax.AdicinemaxExtractor.invokeRiveStream
+import com.Adicinemax.AdicinemaxExtractor.invokeShowflix
+import com.Adicinemax.AdicinemaxExtractor.invokeSoapy
+import com.Adicinemax.AdicinemaxExtractor.invokeAdicinemax
+import com.Adicinemax.AdicinemaxExtractor.invokeSubtitleAPI
+import com.Adicinemax.AdicinemaxExtractor.invokeSuperstream
+import com.Adicinemax.AdicinemaxExtractor.invokeVidSrcXyz
+import com.Adicinemax.AdicinemaxExtractor.invokeVidlink
+import com.Adicinemax.AdicinemaxExtractor.invokeVidsrccc
+import com.Adicinemax.AdicinemaxExtractor.invokeVidzee
+import com.Adicinemax.AdicinemaxExtractor.invokeWatch32APIHQ
+import com.Adicinemax.AdicinemaxExtractor.invokeWatchsomuch
+import com.Adicinemax.AdicinemaxExtractor.invokeWyZIESUBAPI
+import com.Adicinemax.AdicinemaxExtractor.invokeXPrimeAPI
+import com.Adicinemax.AdicinemaxExtractor.invokeZoechip
+import com.Adicinemax.AdicinemaxExtractor.invokeZshow
+import com.Adicinemax.AdicinemaxExtractor.invokemorph
+import com.Adicinemax.AdicinemaxExtractor.invokevidrock
+import com.Adicinemax.AdicinemaxExtractor.sharedPref
 
-class StreamPlayLite() : StreamPlay(sharedPref) {
+class AdicinemaxLite() : Adicinemax(sharedPref) {
     override var name = "AmanGacorPlay-Ringan"
 
     override suspend fun loadLinks(
