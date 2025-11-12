@@ -25,7 +25,7 @@ cloudstream {
     requiresResources = true
     language = "en"
 
-    iconUrl = "https://www.google.com/s2/favicons?domain=dramafull.cc&sz=%size%"
+    iconUrl = "https://cekstatusgizi.linisehat.com/assets/img/icon/dewasa.png"
 
     isCrossPlatform = true
 }
