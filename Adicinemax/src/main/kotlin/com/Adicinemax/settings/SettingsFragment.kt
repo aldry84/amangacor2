@@ -1,4 +1,4 @@
-package com.phisher98.settings
+package com.Adicinemax.settings
 
 import android.annotation.SuppressLint
 import android.content.SharedPreferences
@@ -15,11 +15,11 @@ import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import com.phisher98.BuildConfig
-import com.phisher98.StreamPlayPlugin
+import com.Adicinemax.AdicinemaxPlugin
 import com.lagradost.cloudstream3.CommonActivity.showToast
 
 class SettingsFragment(
-    plugin: StreamPlayPlugin,
+    plugin: AdicinemaxPlugin,
     private val sharedPref: SharedPreferences,
 ) : BottomSheetDialogFragment() {
     private val res = plugin.resources ?: throw Exception("Unable to read resources")
