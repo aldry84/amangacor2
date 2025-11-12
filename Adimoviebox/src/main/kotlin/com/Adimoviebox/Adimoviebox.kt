@@ -16,7 +16,7 @@ class Adimoviebox : MainAPI() {
     override var name = "Adimoviebox"
     override val hasMainPage = true
     override val hasQuickSearch = true
-    override var lang = "id" // <-- PERUBAHAN 1: Set bahasa provider ke Indonesia
+    override var lang = "id" 
     override val supportedTypes = setOf(
         TvType.Movie,
         TvType.TvSeries,
@@ -93,13 +93,15 @@ class Adimoviebox : MainAPI() {
         // Dapatkan deskripsi asli
         val description = subject?.description
         
-        // PERUBAHAN 2: Terjemahkan deskripsi ke Bahasa Indonesia
+        // Terjemahkan deskripsi ke Bahasa Indonesia (menggunakan placeholder)
         val translatedPlot = description?.let {
             translateToIndonesian(it) 
         } ?: description
         
         val trailer = subject?.trailer?.videoAddress?.url
         val score = Score.from10(subject?.imdbRatingValue?.toString()) 
+        
+        // Perbaikan Error: pastikan hasilnya List<ActorData> dan bukan List<ActorData>?
         val actors = document?.stars?.mapNotNull { cast ->
             ActorData(
                 Actor(
@@ -108,7 +110,10 @@ class Adimoviebox : MainAPI() {
                 ),
                 roleString = cast.character
             )
-        }.distinctBy { it.actor }
+        } ?: emptyList() // <-- Jika null, jadikan List kosong
+
+        // Sekarang 'actors' dijamin bukan null, panggil distinctBy
+        val distinctActors = actors.distinctBy { it.actor }
 
         val recommendations =
             app.get("$mainUrl/wefeed-h5-bff/web/subject/detail-rec?subjectId=$id&page=1&perPage=12")
@@ -137,10 +142,10 @@ class Adimoviebox : MainAPI() {
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episode) {
                 this.posterUrl = poster
                 this.year = year
-                this.plot = translatedPlot // <-- Gunakan sinopsis yang diterjemahkan
+                this.plot = translatedPlot 
                 this.tags = tags
                 this.score = score
-                this.actors = actors
+                this.actors = distinctActors // <-- Gunakan list yang sudah distinct
                 this.recommendations = recommendations
                 addTrailer(trailer, addRaw = true)
             }
@@ -153,10 +158,10 @@ class Adimoviebox : MainAPI() {
             ) {
                 this.posterUrl = poster
                 this.year = year
-                this.plot = translatedPlot // <-- Gunakan sinopsis yang diterjemahkan
+                this.plot = translatedPlot 
                 this.tags = tags
                 this.score = score
-                this.actors = actors
+                this.actors = distinctActors // <-- Gunakan list yang sudah distinct
                 this.recommendations = recommendations
                 addTrailer(trailer, addRaw = true)
             }
@@ -171,7 +176,7 @@ class Adimoviebox : MainAPI() {
     ): Boolean {
 
         val media = parseJson<LoadData>(data)
-        // PERUBAHAN 3: Ganti lang=en menjadi lang=id pada referer (Opsional)
+        // Ganti lang=en menjadi lang=id pada referer (Opsional)
         val referer = "$apiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&lang=id"
 
         val streams = app.get(
