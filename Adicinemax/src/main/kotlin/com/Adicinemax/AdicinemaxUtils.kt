@@ -1,4 +1,4 @@
-package com.phisher98
+package com.Adicinemax
 
 import android.os.Build
 import androidx.annotation.RequiresApi
@@ -30,9 +30,9 @@ import com.lagradost.cloudstream3.utils.getQualityFromName
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.nicehttp.RequestBodyTypes
-import com.phisher98.StreamPlay.Companion.anilistAPI
-import com.phisher98.StreamPlay.Companion.fourthAPI
-import com.phisher98.StreamPlay.Companion.thrirdAPI
+import com.Adicinemax.Adicinemax.Companion.anilistAPI
+import com.Adicinemax.Adicinemax.Companion.fourthAPI
+import com.Adicinemax.Adicinemax.Companion.thrirdAPI
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
