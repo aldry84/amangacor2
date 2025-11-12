@@ -16,7 +16,7 @@ class Adimoviebox : MainAPI() {
     override var name = "Adimoviebox"
     override val hasMainPage = true
     override val hasQuickSearch = true
-    override var lang = "en"
+    override var lang = "id" // <-- PERUBAHAN 1: Set bahasa provider ke Indonesia
     override val supportedTypes = setOf(
         TvType.Movie,
         TvType.TvSeries,
@@ -80,15 +80,25 @@ class Adimoviebox : MainAPI() {
         val document = app.get("$mainUrl/wefeed-h5-bff/web/subject/detail?subjectId=$id")
             .parsedSafe<MediaDetail>()?.data
         val subject = document?.subject
-        val title = subject?.title ?: ""
+        
+        // Judul tetap asli (tidak diterjemahkan)
+        val title = subject?.title ?: "" 
+        
         val poster = subject?.cover?.url
         val tags = subject?.genre?.split(",")?.map { it.trim() }
 
         val year = subject?.releaseDate?.substringBefore("-")?.toIntOrNull()
         val tvType = if (subject?.subjectType == 2) TvType.TvSeries else TvType.Movie
+        
+        // Dapatkan deskripsi asli
         val description = subject?.description
+        
+        // PERUBAHAN 2: Terjemahkan deskripsi ke Bahasa Indonesia
+        val translatedPlot = description?.let {
+            translateToIndonesian(it) 
+        } ?: description
+        
         val trailer = subject?.trailer?.videoAddress?.url
-        // ✅ Peningkatan Skor: Menggunakan Score.from10() dengan pengecekan aman
         val score = Score.from10(subject?.imdbRatingValue?.toString()) 
         val actors = document?.stars?.mapNotNull { cast ->
             ActorData(
@@ -98,7 +108,7 @@ class Adimoviebox : MainAPI() {
                 ),
                 roleString = cast.character
             )
-        }?.distinctBy { it.actor }
+        }.distinctBy { it.actor }
 
         val recommendations =
             app.get("$mainUrl/wefeed-h5-bff/web/subject/detail-rec?subjectId=$id&page=1&perPage=12")
@@ -127,7 +137,7 @@ class Adimoviebox : MainAPI() {
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episode) {
                 this.posterUrl = poster
                 this.year = year
-                this.plot = description
+                this.plot = translatedPlot // <-- Gunakan sinopsis yang diterjemahkan
                 this.tags = tags
                 this.score = score
                 this.actors = actors
@@ -143,7 +153,7 @@ class Adimoviebox : MainAPI() {
             ) {
                 this.posterUrl = poster
                 this.year = year
-                this.plot = description
+                this.plot = translatedPlot // <-- Gunakan sinopsis yang diterjemahkan
                 this.tags = tags
                 this.score = score
                 this.actors = actors
@@ -161,7 +171,8 @@ class Adimoviebox : MainAPI() {
     ): Boolean {
 
         val media = parseJson<LoadData>(data)
-        val referer = "$apiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&lang=en"
+        // PERUBAHAN 3: Ganti lang=en menjadi lang=id pada referer (Opsional)
+        val referer = "$apiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&lang=id"
 
         val streams = app.get(
             "$apiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}",
@@ -198,6 +209,20 @@ class Adimoviebox : MainAPI() {
         }
 
         return true
+    }
+
+    /**
+     * FUNGSI PENERJEMAHAN SINOPSIS KONSEPTUAL (PLACEHOLDER)
+     * ⚠️ PERHATIAN: Isi fungsi ini harus diganti dengan logika pemanggilan API 
+     * Terjemahan yang sebenarnya (misalnya, Google Translate API, DeepL, dll.) 
+     * agar terjemahan benar-benar terjadi.
+     */
+    private suspend fun translateToIndonesian(text: String): String {
+        // --- GANTI SELURUH BLOK INI DENGAN LOGIKA API TERJEMAHAN NYATA ---
+        
+        // Placeholder: Hanya menambahkan prefix peringatan
+        return "⚠️ SINOPSIS TERJEMAHAN KONSEPTUAL: " + text
+        // --- BATAS AKHIR BLOK YANG HARUS DIGANTI ---
     }
 }
 
