@@ -24,9 +24,9 @@ import com.lagradost.cloudstream3.network.CloudflareKiller
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlin.math.roundToInt
 
 open class SoraStream : TmdbProvider() {
     override var name = "SoraStream"
@@ -290,53 +290,51 @@ open class SoraStream : TmdbProvider() {
         return if (type == TvType.TvSeries) {
             val lastSeason = res.last_episode_to_air?.season_number
             val episodes = res.seasons?.mapNotNull { season ->
-                // Gunakan async untuk menerjemahkan deskripsi episode secara paralel
-                val episodeDeferred = app.get("$tmdbAPI/${data.type}/${data.id}/season/${season.seasonNumber}?api_key=$apiKey")
-                    .parsedSafe<MediaDetailEpisodes>()?.episodes?.map { eps ->
-                        async {
-                            val translatedDescription = if (enableIndonesianTranslation && eps.overview?.isNotBlank() == true) {
-                                translateToIndonesian(eps.overview)
-                            } else {
-                                eps.overview
-                            }
-                            
-                            newEpisode(
-                                data = LinkData(
-                                    data.id,
-                                    res.external_ids?.imdb_id,
-                                    res.external_ids?.tvdb_id,
-                                    data.type,
-                                    eps.seasonNumber,
-                                    eps.episodeNumber,
-                                    title = title,
-                                    year = season.airDate?.split("-")?.first()?.toIntOrNull(),
-                                    orgTitle = orgTitle,
-                                    isAnime = isAnime,
-                                    airedYear = year,
-                                    lastSeason = lastSeason,
-                                    epsTitle = eps.name,
-                                    jpTitle = res.alternative_titles?.results?.find { it.iso_3166_1 == "JP" }?.title,
-                                    date = season.airDate,
-                                    airedDate = res.releaseDate
-                                        ?: res.firstAirDate,
-                                    isAsian = isAsian,
-                                    isBollywood = isBollywood,
-                                    isCartoon = isCartoon
-                                ).toJson()
-                            ) {
-                                this.name = eps.name + if (isUpcoming(eps.airDate)) " • [UPCOMING]" else ""
-                                this.season = eps.seasonNumber
-                                this.episode = eps.episodeNumber
-                                this.posterUrl = getImageUrl(eps.stillPath)
-                                this.score = Score.from10(eps.voteAverage)
-                                this.description = translatedDescription
-                            }.apply {
-                                this.addDate(eps.airDate)
-                            }
-                        }
-                    }
+                val seasonEpisodes = app.get("$tmdbAPI/${data.type}/${data.id}/season/${season.seasonNumber}?api_key=$apiKey")
+                    .parsedSafe<MediaDetailEpisodes>()?.episodes ?: return@mapNotNull null
                 
-                episodeDeferred?.awaitAll()
+                // Terjemahkan deskripsi episode secara sequential untuk menghindari kompleksitas
+                seasonEpisodes.map { eps ->
+                    val translatedDescription = if (enableIndonesianTranslation && eps.overview?.isNotBlank() == true) {
+                        translateToIndonesian(eps.overview)
+                    } else {
+                        eps.overview
+                    }
+                    
+                    newEpisode(
+                        data = LinkData(
+                            data.id,
+                            res.external_ids?.imdb_id,
+                            res.external_ids?.tvdb_id,
+                            data.type,
+                            eps.seasonNumber,
+                            eps.episodeNumber,
+                            title = title,
+                            year = season.airDate?.split("-")?.first()?.toIntOrNull(),
+                            orgTitle = orgTitle,
+                            isAnime = isAnime,
+                            airedYear = year,
+                            lastSeason = lastSeason,
+                            epsTitle = eps.name,
+                            jpTitle = res.alternative_titles?.results?.find { it.iso_3166_1 == "JP" }?.title,
+                            date = season.airDate,
+                            airedDate = res.releaseDate
+                                ?: res.firstAirDate,
+                            isAsian = isAsian,
+                            isBollywood = isBollywood,
+                            isCartoon = isCartoon
+                        ).toJson()
+                    ) {
+                        this.name = eps.name + if (isUpcoming(eps.airDate)) " • [UPCOMING]" else ""
+                        this.season = eps.seasonNumber
+                        this.episode = eps.episodeNumber
+                        this.posterUrl = getImageUrl(eps.stillPath)
+                        this.score = Score.from10(eps.voteAverage)
+                        this.description = translatedDescription
+                    }.apply {
+                        this.addDate(eps.airDate)
+                    }
+                }
             }?.flatten() ?: listOf()
             
             newTvSeriesLoadResponse(
@@ -398,7 +396,6 @@ open class SoraStream : TmdbProvider() {
         }
     }
 
-    // ... (fungsi loadLinks dan data classes tetap sama)
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -487,7 +484,6 @@ open class SoraStream : TmdbProvider() {
         return true
     }
 
-    // ... (data classes tetap sama seperti sebelumnya)
     data class LinkData(
         val id: Int? = null,
         val imdbId: String? = null,
