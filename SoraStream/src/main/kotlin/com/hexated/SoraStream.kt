@@ -38,6 +38,10 @@ open class SoraStream : TmdbProvider() {
         TvType.Anime,
     )
 
+    // Tambahkan setting untuk toggle terjemahan
+    override var mainUrl = "https://api.themoviedb.org/3"
+    private val enableIndonesianTranslation = true // Set false untuk nonaktifkan terjemahan
+
     val wpRedisInterceptor by lazy { CloudflareKiller() }
 
     /** AUTHOR : Hexated & Sora */
@@ -48,6 +52,7 @@ open class SoraStream : TmdbProvider() {
         const val anilistAPI = "https://graphql.anilist.co"
         const val malsyncAPI = "https://api.malsync.moe"
         const val jikanAPI = "https://api.jikan.moe/v4"
+        const val translateAPI = "https://translate.googleapis.com/translate_a/single" // API Google Translate
 
         private const val apiKey = "b030404650f279792a8d3287232358e3"
 
@@ -114,6 +119,59 @@ open class SoraStream : TmdbProvider() {
     private fun getOriImageUrl(link: String?): String? {
         if (link == null) return null
         return if (link.startsWith("/")) "https://image.tmdb.org/t/p/original/$link" else link
+    }
+
+    // Fungsi untuk menerjemahkan teks ke Bahasa Indonesia
+    private suspend fun translateToIndonesian(text: String): String {
+        if (!enableIndonesianTranslation || text.isBlank()) return text
+        
+        return try {
+            val translated = app.get(
+                "$translateAPI?client=gtx&sl=auto&tl=id&dt=t&q=${encode(text)}",
+                headers = mapOf(
+                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                )
+            ).text
+            
+            // Parse response Google Translate
+            parseTranslationResponse(translated) ?: text
+        } catch (e: Exception) {
+            // Jika gagal, kembalikan teks asli
+            text
+        }
+    }
+
+    // Parse response dari Google Translate
+    private fun parseTranslationResponse(response: String): String? {
+        return try {
+            // Response format: [[["terjemahan", "original", null, null]], null, "en"]
+            val jsonArray = parseJson<List<Any>>(response)
+            val mainArray = jsonArray?.get(0) as? List<*>
+            mainArray?.let { 
+                val translationArray = it.firstOrNull() as? List<*>
+                translationArray?.get(0) as? String
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    // Fungsi untuk mendapatkan sinopsis dalam Bahasa Indonesia dari TMDB
+    private suspend fun getIndonesianOverview(tmdbId: Int?, type: String): String? {
+        if (!enableIndonesianTranslation) return null
+        
+        return try {
+            val url = if (type == "movie") {
+                "$tmdbAPI/movie/$tmdbId?api_key=$apiKey&language=id-ID"
+            } else {
+                "$tmdbAPI/tv/$tmdbId?api_key=$apiKey&language=id-ID"
+            }
+            
+            val response = app.get(url).parsedSafe<MediaDetail>()
+            response?.overview?.takeIf { it.isNotBlank() }
+        } catch (e: Exception) {
+            null
+        }
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -184,7 +242,7 @@ open class SoraStream : TmdbProvider() {
         val orgTitle = res.originalTitle ?: res.originalName ?: return null
         val releaseDate = res.releaseDate ?: res.firstAirDate
         val year = releaseDate?.split("-")?.first()?.toIntOrNull()
-        // Hapus variabel lokal 'rating' yang tidak diperlukan lagi
+        
         val genres = res.genres?.mapNotNull { it.name }
 
         val isCartoon = genres?.contains("Animation") ?: false
@@ -207,6 +265,25 @@ open class SoraStream : TmdbProvider() {
             res.recommendations?.results?.mapNotNull { media -> media.toSearchResponse() }
 
         val trailer = res.videos?.results?.map { "https://www.youtube.com/watch?v=${it.key}" }
+
+        // DAPATKAN SINOPSIS DALAM BAHASA INDONESIA
+        val originalOverview = res.overview ?: ""
+        val indonesianOverview = if (enableIndonesianTranslation && originalOverview.isNotBlank()) {
+            // Coba ambil dari TMDB bahasa Indonesia dulu
+            getIndonesianOverview(data.id, data.type ?: "") ?: 
+            // Jika tidak ada, gunakan Google Translate
+            translateToIndonesian(originalOverview)
+        } else {
+            originalOverview
+        }
+
+        // FORMAT SINOPSIS DENGAN TERJEMAHAN
+        val finalOverview = if (enableIndonesianTranslation && originalOverview.isNotBlank() && indonesianOverview != originalOverview) {
+            "🇮🇩 **Sinopsis (Terjemahan):**\n$indonesianOverview\n\n" +
+            "🇺🇸 **Original Synopsis:**\n$originalOverview"
+        } else {
+            originalOverview
+        }
 
         return if (type == TvType.TvSeries) {
             val lastSeason = res.last_episode_to_air?.season_number
@@ -242,8 +319,14 @@ open class SoraStream : TmdbProvider() {
                             this.season = eps.seasonNumber
                             this.episode = eps.episodeNumber
                             this.posterUrl = getImageUrl(eps.stillPath)
-                            this.score = Score.from10(eps.voteAverage) // Diganti dari 'rating'
-                            this.description = eps.overview
+                            this.score = Score.from10(eps.voteAverage)
+                            this.description = eps.overview?.let { 
+                                if (enableIndonesianTranslation) {
+                                    translateToIndonesian(it)
+                                } else {
+                                    it
+                                }
+                            }
                         }.apply {
                             this.addDate(eps.airDate)
                         }
@@ -258,9 +341,9 @@ open class SoraStream : TmdbProvider() {
                 this.posterUrl = poster
                 this.backgroundPosterUrl = bgPoster
                 this.year = year
-                this.plot = res.overview
+                this.plot = finalOverview // Gunakan sinopsis yang sudah diterjemahkan
                 this.tags = keywords.takeIf { !it.isNullOrEmpty() } ?: genres
-                this.score = Score.from10(res.vote_average?.toString()) // Diganti dari 'rating'
+                this.score = Score.from10(res.vote_average?.toString())
                 this.showStatus = getStatus(res.status)
                 this.recommendations = recommendations
                 this.actors = actors
@@ -294,10 +377,10 @@ open class SoraStream : TmdbProvider() {
                 this.backgroundPosterUrl = bgPoster
                 this.comingSoon = isUpcoming(releaseDate)
                 this.year = year
-                this.plot = res.overview
+                this.plot = finalOverview // Gunakan sinopsis yang sudah diterjemahkan
                 this.duration = res.runtime
                 this.tags = keywords.takeIf { !it.isNullOrEmpty() } ?: genres
-                this.score = Score.from10(res.vote_average?.toString()) // Diganti dari 'rating'
+                this.score = Score.from10(res.vote_average?.toString())
                 this.recommendations = recommendations
                 this.actors = actors
                 this.contentRating = fetchContentRating(data.id, "US")
@@ -308,6 +391,7 @@ open class SoraStream : TmdbProvider() {
         }
     }
 
+    // ... (fungsi loadLinks dan data classes tetap sama)
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
