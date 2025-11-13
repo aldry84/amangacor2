@@ -9,6 +9,7 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.getAndUnpack
 import com.lagradost.cloudstream3.utils.newExtractorLink
+import com.lagradost.cloudstream3.newSubtitleFile
 
 open class Jeniusplay2 : ExtractorApi() {
     override val name = "Jeniusplay"
@@ -42,18 +43,16 @@ open class Jeniusplay2 : ExtractorApi() {
             }
         )
 
-
         document.select("script").map { script ->
             if (script.data().contains("eval(function(p,a,c,k,e,d)")) {
                 val subData =
                     getAndUnpack(script.data()).substringAfter("\"tracks\":[").substringBefore("],")
                 tryParseJson<List<Tracks>>("[$subData]")?.map { subtitle ->
                     subtitleCallback.invoke(
-                        SubtitleFile(
-                            getLanguage(subtitle.label ?: "")
-                        ).apply {
-                            this.url = subtitle.file
-                        }
+                        newSubtitleFile(
+                            getLanguage(subtitle.label ?: ""),
+                            subtitle.file
+                        )
                     )
                 }
             }
