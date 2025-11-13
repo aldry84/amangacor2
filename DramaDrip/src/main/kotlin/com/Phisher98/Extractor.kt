@@ -45,8 +45,6 @@ class Driveseed : ExtractorApi() {
         }
     }
 
-
-
     private suspend fun resumeBot(url: String): String? {
         return runCatching {
             val response = app.get(url)
@@ -96,7 +94,6 @@ class Driveseed : ExtractorApi() {
         }
     }
 
-
     override suspend fun getUrl(
         url: String,
         referer: String?,
@@ -121,35 +118,6 @@ class Driveseed : ExtractorApi() {
             return
         }
 
-        // --- START: SUBTITLE LOGIC WITH WIDER CRITERIA ---
-        document.select("a").forEach { element ->
-            val href = element.attr("href")
-            val text = element.text()
-
-            // Kriteria Baru: Mencari kata kunci bahasa Indonesia (indonesia, sub indo, indonesian)
-            val isIndonesianSub = text.contains("indonesian", ignoreCase = true) || 
-                                 text.contains("indonesia", ignoreCase = true) || 
-                                 text.contains("sub indo", ignoreCase = true)
-            
-            // Pengecualian: Pastikan tautan ini BUKAN tautan unduhan video utama
-            val isDownloadLink = text.contains("Download", ignoreCase = true) || 
-                                 text.contains("Worker Bot", ignoreCase = true) || 
-                                 text.contains("Resume Cloud", ignoreCase = true) ||
-                                 text.contains("Instant Download", ignoreCase = true)
-
-
-            if (isIndonesianSub && !isDownloadLink) {
-                // Asumsi ini adalah tautan subtitle karena mengandung kata kunci bahasa dan bukan tautan unduhan video utama
-                subtitleCallback(
-                    SubtitleFile(
-                        "ID Subtitle: ${text.ifEmpty { "Tautan Sub Indo" }}",
-                        href
-                    )
-                )
-            }
-        }
-        // --- END: SUBTITLE LOGIC ---
-
         val qualityText = document.selectFirst("li.list-group-item")?.text().orEmpty()
         val rawFileName = qualityText.replace("Name : ", "").trim()
         val fileName = cleanTitle(rawFileName)
@@ -158,6 +126,19 @@ class Driveseed : ExtractorApi() {
         val labelExtras = buildString {
             if (fileName.isNotEmpty()) append("[$fileName]")
             if (size.isNotEmpty()) append("[$size]")
+        }
+
+        // === TAMBAHKAN: Cari subtitle di halaman driveseed ===
+        document.select("a[href$=.srt], a[href$=.vtt], a[href$=.ass], a[href$=.ssa]").forEach { element ->
+            val subtitleUrl = element.attr("href")
+            val text = element.text().lowercase()
+            if (isIndonesianSubtitle(text) || isIndonesianSubtitle(subtitleUrl)) {
+                val fullSubtitleUrl = fixUrl(subtitleUrl, Basedomain)
+                subtitleCallback(
+                    SubtitleFile("Indonesian", fullSubtitleUrl, null, getSubtitleFormat(fullSubtitleUrl))
+                )
+                Log.d("DriveseedSubtitle", "Found Indonesian subtitle: $fullSubtitleUrl")
+            }
         }
 
         document.select("div.text-center > a").forEach { element ->
@@ -239,7 +220,6 @@ class Driveseed : ExtractorApi() {
         }
     }
 }
-
 
 fun cleanTitle(title: String): String {
     val parts = title.split(".", "-", "_")
