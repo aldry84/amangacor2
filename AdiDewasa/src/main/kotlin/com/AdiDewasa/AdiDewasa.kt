@@ -1,4 +1,4 @@
-package com.AdiDewas
+package com.AdiDewasa
 
 import com.lagradost.cloudstream3.HomePageList
 import com.lagradost.cloudstream3.HomePageResponse
