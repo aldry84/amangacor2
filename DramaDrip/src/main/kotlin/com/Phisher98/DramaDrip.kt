@@ -256,8 +256,8 @@ class DramaDrip : MainAPI() {
                 this.plot = description
                 this.tags = tags
                 this.recommendations = recommendations
-                // PERBAIKAN: Gunakan subtitleList yang sudah dideklarasikan
-                this.subtitles = subtitleList
+                // PERBAIKAN: Hapus assignment subtitles karena tidak tersedia di builder
+                // this.subtitles = subtitleList
                 addTrailer(trailer)
                 addActors(cast)
                 addImdbId(imdbId)
@@ -270,8 +270,8 @@ class DramaDrip : MainAPI() {
                 this.plot = description
                 this.tags = tags
                 this.recommendations = recommendations
-                // PERBAIKAN: Gunakan subtitleList yang sudah dideklarasikan
-                this.subtitles = subtitleList
+                // PERBAIKAN: Hapus assignment subtitles karena tidak tersedia di builder
+                // this.subtitles = subtitleList
                 addTrailer(trailer)
                 addActors(cast)
                 addImdbId(imdbId)
@@ -356,8 +356,8 @@ class DramaDrip : MainAPI() {
                 
                 if (subtitleUrl.isNotBlank()) {
                     val fullSubtitleUrl = fixUrl(subtitleUrl, getBaseUrl(videoUrl))
-                    // Gunakan factory function yang benar
-                    subtitleCallback(createSubtitleFile("Indonesian", fullSubtitleUrl))
+                    // Langsung buat SubtitleFile
+                    subtitleCallback(SubtitleFile("Indonesian", fullSubtitleUrl))
                     Log.d("Subtitle", "Found Indonesian subtitle: $fullSubtitleUrl")
                 }
             }
@@ -370,9 +370,4 @@ class DramaDrip : MainAPI() {
             Log.e("SubtitleExtract", "Error extracting subtitles from video page: ${e.message}")
         }
     }
-}
-
-// Tambahkan factory function di luar class
-fun createSubtitleFile(language: String, url: String): SubtitleFile {
-    return SubtitleFile(language, url)
 }
