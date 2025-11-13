@@ -14,28 +14,10 @@ import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import kotlinx.coroutines.runBlocking
 import org.jsoup.nodes.Element
-
-// Asumsikan data class yang Anda gunakan di StreamPlay untuk meta
-data class ResponseData(
-    val meta: CinemetaMeta? = null
-)
-data class CinemetaMeta(
-    val description: String? = null,
-    val cast: List<String>? = null,
-    val background: String? = null,
-    val videos: List<CinemetaVideo>? = null,
-    val year: String? = null,
-    val imdb_rating: String? = null // Asumsi ini adalah field rating dari Cinemeta
-)
-data class CinemetaVideo(
-    val season: Int? = null,
-    val episode: Int? = null,
-    val name: String? = null,
-    val thumbnail: String? = null,
-    val overview: String? = null,
-    val rating: String? = null // Asumsi ini adalah rating per episode dari Cinemeta
-)
-// End asumsi data class
+// Asumsikan Anda mengimpor data class dari tempat lain, contoh:
+// import com.Phisher98.Utils.ResponseData 
+// import com.Phisher98.Utils.CinemetaMeta 
+// import com.Phisher98.Utils.CinemetaVideo 
 
 class DramaDrip : MainAPI() {
     override var mainUrl: String = runBlocking {
@@ -93,7 +75,7 @@ class DramaDrip : MainAPI() {
         val posterUrl = highestResUrl ?: imgElement?.attr("src")
         return newMovieSearchResponse(title, href, TvType.Movie) {
             this.posterUrl = posterUrl
-            // Tidak ada cara mudah mendapatkan skor di halaman utama, jadi biarkan null atau 0
+            // Tambahkan skor default di halaman pencarian
             this.score = Score.from10("0") 
         }
 
@@ -144,7 +126,6 @@ class DramaDrip : MainAPI() {
         
         // Panggil Cinemeta jika ada imdbId atau tmdbId
         val responseData = if (imdbId?.isNotEmpty() == true || tmdbId?.isNotEmpty() == true) {
-            // Gunakan imdbId jika ada, jika tidak, gunakan tmdbId (walaupun Cinemeta lebih suka imdbId)
             val id = if (imdbId?.isNotEmpty() == true) imdbId else tmdbId
             val cineUrl = if (imdbId?.isNotEmpty() == true) 
                 "$cinemeta_url/$typeset/$id.json" 
@@ -155,6 +136,7 @@ class DramaDrip : MainAPI() {
             if (jsonResponse.isNotEmpty() && jsonResponse.startsWith("{")) {
                 val gson = Gson()
                 runCatching { 
+                    // Pastikan ResponseData diimpor atau didefinisikan dengan benar
                     gson.fromJson(jsonResponse, ResponseData::class.java) 
                 }.getOrNull()
             } else null
@@ -163,14 +145,12 @@ class DramaDrip : MainAPI() {
         var cast: List<String> = emptyList()
         var background: String = image
         var description: String? = null
-        // Tambahkan variabel untuk skor
         var score: Score? = null 
         
         if (responseData != null) {
             description = responseData.meta?.description ?: descriptions
             cast = responseData.meta?.cast ?: emptyList()
             background = responseData.meta?.background ?: image
-            // Ambil skor dari Cinemeta jika tersedia
             score = Score.from10(responseData.meta?.imdb_rating)
         }
 
@@ -284,7 +264,6 @@ class DramaDrip : MainAPI() {
                     this.season = season
                     this.episode = epNo
                     this.description = info?.overview
-                    // Tambahkan skor episode jika tersedia dari Cinemeta
                     this.score = Score.from10(info?.rating)
                 }
             }
@@ -299,7 +278,6 @@ class DramaDrip : MainAPI() {
                 addActors(cast)
                 addImdbId(imdbId)
                 addTMDbId(tmdbId)
-                // Tetapkan skor untuk series
                 this.score = score
             }
         } else {
@@ -313,7 +291,6 @@ class DramaDrip : MainAPI() {
                 addActors(cast)
                 addImdbId(imdbId)
                 addTMDbId(tmdbId)
-                // Tetapkan skor untuk movie
                 this.score = score
             }
         }
