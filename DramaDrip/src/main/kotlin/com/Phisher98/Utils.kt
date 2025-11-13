@@ -132,7 +132,7 @@ suspend fun cinematickitBypass(url: String): String? {
         val redirectPath = match.groupValues[1]
         return if (redirectPath.startsWith("http")) redirectPath else URI(decodedGoUrl).let { "${it.scheme}://${it.host}$redirectPath" }
     } catch (e: Exception) {
-        e.printStackTrace()
+        Log.e("CinematickitBypass", "Error: ${e.message}")
         null
     }
 }
@@ -149,7 +149,7 @@ suspend fun cinematickitloadBypass(url: String): String? {
         Log.d("Phisher",goValue)
         return base64Decode(goValue)
     } catch (e: Exception) {
-        e.printStackTrace()
+        Log.e("CinematickitLoadBypass", "Error: ${e.message}")
         null
     }
 }
@@ -162,7 +162,7 @@ fun base64Decode(string: String): String {
         val decodedBytes = Base64.getDecoder().decode(padded)
         String(decodedBytes, Charsets.UTF_8)
     } catch (e: Exception) {
-        e.printStackTrace()
+        Log.e("Base64Decode", "Error: ${e.message}")
         ""
     }
 }
@@ -192,9 +192,8 @@ suspend fun extractEmbeddedSubtitles(embedUrl: String): List<SubtitleFile> {
                     label.contains("indo")
                 )) {
                     val fullUrl = fixUrl(src, getBaseUrl(embedUrl))
-                    subtitles.add(
-                        SubtitleFile("Indonesian", fullUrl, null, getSubtitleFormat(fullUrl))
-                    )
+                    // Gunakan constructor yang benar
+                    subtitles.add(SubtitleFile(language = "Indonesian", url = fullUrl))
                 }
             }
         }
@@ -206,14 +205,13 @@ suspend fun extractEmbeddedSubtitles(embedUrl: String): List<SubtitleFile> {
             val subtitlePattern = Regex("""(https?://[^"\']*\.(?:srt|vtt|ass)[^"\']*indonesia[^"\']*)""", RegexOption.IGNORE_CASE)
             subtitlePattern.findAll(script).forEach { match ->
                 val subtitleUrl = match.value
-                subtitles.add(
-                    SubtitleFile("Indonesian", subtitleUrl, null, getSubtitleFormat(subtitleUrl))
-                )
+                // Gunakan constructor yang benar
+                subtitles.add(SubtitleFile(language = "Indonesian", url = subtitleUrl))
             }
         }
         
     } catch (e: Exception) {
-        Log.e("EmbeddedSubtitle", "Failed to extract embedded subtitles", e)
+        Log.e("EmbeddedSubtitle", "Failed to extract embedded subtitles: ${e.message}")
     }
     
     return subtitles
@@ -278,11 +276,12 @@ suspend fun extractSubtitlesFromPage(document: Document, pageUrl: String): List<
                     }
                     
                     if (finalSubtitleUrl != null) {
-                        // Download dan parse subtitle
-                        downloadAndParseSubtitle(finalSubtitleUrl, "Indonesian", subtitles)
+                        // Gunakan constructor yang benar
+                        subtitles.add(SubtitleFile(language = "Indonesian", url = finalSubtitleUrl))
+                        Log.d("Subtitle", "Added Indonesian subtitle: $finalSubtitleUrl")
                     }
                 } catch (e: Exception) {
-                    Log.e("SubtitleExtract", "Failed to process subtitle link: $subtitleUrl", e)
+                    Log.e("SubtitleExtract", "Failed to process subtitle link: $subtitleUrl - ${e.message}")
                 }
             }
         }
@@ -293,7 +292,9 @@ suspend fun extractSubtitlesFromPage(document: Document, pageUrl: String): List<
             val text = element.text().lowercase()
             if (isIndonesianSubtitle(text) || isIndonesianSubtitle(subtitleUrl)) {
                 val finalUrl = fixUrl(subtitleUrl, getBaseUrl(pageUrl))
-                downloadAndParseSubtitle(finalUrl, "Indonesian", subtitles)
+                // Gunakan constructor yang benar
+                subtitles.add(SubtitleFile(language = "Indonesian", url = finalUrl))
+                Log.d("Subtitle", "Added Indonesian subtitle from file: $finalUrl")
             }
         }
 
@@ -302,29 +303,4 @@ suspend fun extractSubtitlesFromPage(document: Document, pageUrl: String): List<
     }
     
     return subtitles
-}
-
-/**
- * Download dan parse subtitle file
- */
-private suspend fun downloadAndParseSubtitle(
-    subtitleUrl: String, 
-    language: String, 
-    subtitleList: MutableList<SubtitleFile>
-) {
-    try {
-        // Validasi URL subtitle
-        if (!subtitleUrl.startsWith("http")) {
-            Log.w("SubtitleDownload", "Invalid subtitle URL: $subtitleUrl")
-            return
-        }
-        
-        val format = getSubtitleFormat(subtitleUrl)
-        subtitleList.add(
-            SubtitleFile(language, subtitleUrl, null, format)
-        )
-        Log.d("Subtitle", "Added $language subtitle: $subtitleUrl (format: $format)")
-    } catch (e: Exception) {
-        Log.e("SubtitleDownload", "Failed to add subtitle: $subtitleUrl", e)
-    }
 }
