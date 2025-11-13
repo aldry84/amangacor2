@@ -51,7 +51,8 @@ open class Jeniusplay2 : ExtractorApi() {
                     subtitleCallback.invoke(
                         SubtitleFile(
                             getLanguage(subtitle.label ?: ""),
-                            subtitle.file
+                            subtitle.file,
+                            null
                         )
                     )
                 }
