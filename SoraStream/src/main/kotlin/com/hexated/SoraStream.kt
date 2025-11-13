@@ -24,6 +24,8 @@ import com.lagradost.cloudstream3.network.CloudflareKiller
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlin.math.roundToInt
 
 open class SoraStream : TmdbProvider() {
@@ -266,7 +268,7 @@ open class SoraStream : TmdbProvider() {
 
         val trailer = res.videos?.results?.map { "https://www.youtube.com/watch?v=${it.key}" }
 
-        // DAPATKAN SINOPSIS DALAM BAHASA INDONESIA
+        // DAPATKAN SINOPSIS DALAM BAHASA INDONESIA - DI DALAM COROUTINE
         val originalOverview = res.overview ?: ""
         val indonesianOverview = if (enableIndonesianTranslation && originalOverview.isNotBlank()) {
             // Coba ambil dari TMDB bahasa Indonesia dulu
@@ -288,50 +290,55 @@ open class SoraStream : TmdbProvider() {
         return if (type == TvType.TvSeries) {
             val lastSeason = res.last_episode_to_air?.season_number
             val episodes = res.seasons?.mapNotNull { season ->
-                app.get("$tmdbAPI/${data.type}/${data.id}/season/${season.seasonNumber}?api_key=$apiKey")
+                // Gunakan async untuk menerjemahkan deskripsi episode secara paralel
+                val episodeDeferred = app.get("$tmdbAPI/${data.type}/${data.id}/season/${season.seasonNumber}?api_key=$apiKey")
                     .parsedSafe<MediaDetailEpisodes>()?.episodes?.map { eps ->
-                        newEpisode(
-                            data = LinkData(
-                                data.id,
-                                res.external_ids?.imdb_id,
-                                res.external_ids?.tvdb_id,
-                                data.type,
-                                eps.seasonNumber,
-                                eps.episodeNumber,
-                                title = title,
-                                year = season.airDate?.split("-")?.first()?.toIntOrNull(),
-                                orgTitle = orgTitle,
-                                isAnime = isAnime,
-                                airedYear = year,
-                                lastSeason = lastSeason,
-                                epsTitle = eps.name,
-                                jpTitle = res.alternative_titles?.results?.find { it.iso_3166_1 == "JP" }?.title,
-                                date = season.airDate,
-                                airedDate = res.releaseDate
-                                    ?: res.firstAirDate,
-                                isAsian = isAsian,
-                                isBollywood = isBollywood,
-                                isCartoon = isCartoon
-                            ).toJson()
-                        ) {
-                            this.name =
-                                eps.name + if (isUpcoming(eps.airDate)) " • [UPCOMING]" else ""
-                            this.season = eps.seasonNumber
-                            this.episode = eps.episodeNumber
-                            this.posterUrl = getImageUrl(eps.stillPath)
-                            this.score = Score.from10(eps.voteAverage)
-                            this.description = eps.overview?.let { 
-                                if (enableIndonesianTranslation) {
-                                    translateToIndonesian(it)
-                                } else {
-                                    it
-                                }
+                        async {
+                            val translatedDescription = if (enableIndonesianTranslation && eps.overview?.isNotBlank() == true) {
+                                translateToIndonesian(eps.overview)
+                            } else {
+                                eps.overview
                             }
-                        }.apply {
-                            this.addDate(eps.airDate)
+                            
+                            newEpisode(
+                                data = LinkData(
+                                    data.id,
+                                    res.external_ids?.imdb_id,
+                                    res.external_ids?.tvdb_id,
+                                    data.type,
+                                    eps.seasonNumber,
+                                    eps.episodeNumber,
+                                    title = title,
+                                    year = season.airDate?.split("-")?.first()?.toIntOrNull(),
+                                    orgTitle = orgTitle,
+                                    isAnime = isAnime,
+                                    airedYear = year,
+                                    lastSeason = lastSeason,
+                                    epsTitle = eps.name,
+                                    jpTitle = res.alternative_titles?.results?.find { it.iso_3166_1 == "JP" }?.title,
+                                    date = season.airDate,
+                                    airedDate = res.releaseDate
+                                        ?: res.firstAirDate,
+                                    isAsian = isAsian,
+                                    isBollywood = isBollywood,
+                                    isCartoon = isCartoon
+                                ).toJson()
+                            ) {
+                                this.name = eps.name + if (isUpcoming(eps.airDate)) " • [UPCOMING]" else ""
+                                this.season = eps.seasonNumber
+                                this.episode = eps.episodeNumber
+                                this.posterUrl = getImageUrl(eps.stillPath)
+                                this.score = Score.from10(eps.voteAverage)
+                                this.description = translatedDescription
+                            }.apply {
+                                this.addDate(eps.airDate)
+                            }
                         }
                     }
+                
+                episodeDeferred?.awaitAll()
             }?.flatten() ?: listOf()
+            
             newTvSeriesLoadResponse(
                 title,
                 url,
@@ -480,6 +487,7 @@ open class SoraStream : TmdbProvider() {
         return true
     }
 
+    // ... (data classes tetap sama seperti sebelumnya)
     data class LinkData(
         val id: Int? = null,
         val imdbId: String? = null,
