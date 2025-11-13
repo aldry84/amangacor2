@@ -121,24 +121,34 @@ class Driveseed : ExtractorApi() {
             return
         }
 
-        // --- START: SUBTITLE LOGIC ADDED ---
+        // --- START: SUBTITLE LOGIC WITH WIDER CRITERIA ---
         document.select("a").forEach { element ->
             val href = element.attr("href")
             val text = element.text()
 
-            // Cek apakah tautan mengarah ke file subtitle dan mengandung kata kunci Bahasa Indonesia
-            if ((href.endsWith(".srt", ignoreCase = true) || href.endsWith(".vtt", ignoreCase = true)) &&
-                (text.contains("indonesia", ignoreCase = true) || text.contains("sub indo", ignoreCase = true))) {
-                
+            // Kriteria Baru: Mencari kata kunci bahasa Indonesia (indonesia, sub indo, indonesian)
+            val isIndonesianSub = text.contains("indonesian", ignoreCase = true) || 
+                                 text.contains("indonesia", ignoreCase = true) || 
+                                 text.contains("sub indo", ignoreCase = true)
+            
+            // Pengecualian: Pastikan tautan ini BUKAN tautan unduhan video utama
+            val isDownloadLink = text.contains("Download", ignoreCase = true) || 
+                                 text.contains("Worker Bot", ignoreCase = true) || 
+                                 text.contains("Resume Cloud", ignoreCase = true) ||
+                                 text.contains("Instant Download", ignoreCase = true)
+
+
+            if (isIndonesianSub && !isDownloadLink) {
+                // Asumsi ini adalah tautan subtitle karena mengandung kata kunci bahasa dan bukan tautan unduhan video utama
                 subtitleCallback(
                     SubtitleFile(
-                        "ID Sub: $text", // Label untuk CloudStream
-                        href // Tautan file subtitle
+                        "ID Subtitle: ${text.ifEmpty { "Tautan Sub Indo" }}",
+                        href
                     )
                 )
             }
         }
-        // --- END: SUBTITLE LOGIC ADDED ---
+        // --- END: SUBTITLE LOGIC ---
 
         val qualityText = document.selectFirst("li.list-group-item")?.text().orEmpty()
         val rawFileName = qualityText.replace("Name : ", "").trim()
