@@ -9,7 +9,7 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.getAndUnpack
 import com.lagradost.cloudstream3.utils.newExtractorLink
-import com.lagradost.cloudstream3.utils.newSubtitleFile // BARIS INI (12) MEMPERBAIKI 'UNRESOLVED REFERENCE'
+// BARIS 12: import com.lagradost.cloudstream3.utils.newSubtitleFile TELAH DIHAPUS
 
 open class Jeniusplay2 : ExtractorApi() {
     override val name = "Jeniusplay"
@@ -50,7 +50,7 @@ open class Jeniusplay2 : ExtractorApi() {
                     getAndUnpack(script.data()).substringAfter("\"tracks\":[").substringBefore("],")
                 tryParseJson<List<Tracks>>("[$subData]")?.map { subtitle ->
                     subtitleCallback.invoke(
-                        newSubtitleFile( // PENGGUNAAN newSubtitleFile (BARIS 53)
+                        SubtitleFile( // BARIS 53: Menggunakan konstruktor lama SubtitleFile
                             getLanguage(subtitle.label ?: ""),
                             subtitle.file
                         )
