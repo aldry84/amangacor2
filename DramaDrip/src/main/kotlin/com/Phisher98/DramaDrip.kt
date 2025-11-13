@@ -15,6 +15,28 @@ import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import kotlinx.coroutines.runBlocking
 import org.jsoup.nodes.Element
 
+// Asumsikan data class yang Anda gunakan di StreamPlay untuk meta
+data class ResponseData(
+    val meta: CinemetaMeta? = null
+)
+data class CinemetaMeta(
+    val description: String? = null,
+    val cast: List<String>? = null,
+    val background: String? = null,
+    val videos: List<CinemetaVideo>? = null,
+    val year: String? = null,
+    val imdb_rating: String? = null // Asumsi ini adalah field rating dari Cinemeta
+)
+data class CinemetaVideo(
+    val season: Int? = null,
+    val episode: Int? = null,
+    val name: String? = null,
+    val thumbnail: String? = null,
+    val overview: String? = null,
+    val rating: String? = null // Asumsi ini adalah rating per episode dari Cinemeta
+)
+// End asumsi data class
+
 class DramaDrip : MainAPI() {
     override var mainUrl: String = runBlocking {
         DramaDripProvider.getDomains()?.dramadrip ?: "https://dramadrip.com"
@@ -71,6 +93,8 @@ class DramaDrip : MainAPI() {
         val posterUrl = highestResUrl ?: imgElement?.attr("src")
         return newMovieSearchResponse(title, href, TvType.Movie) {
             this.posterUrl = posterUrl
+            // Tidak ada cara mudah mendapatkan skor di halaman utama, jadi biarkan null atau 0
+            this.score = Score.from10("0") 
         }
 
     }
@@ -117,21 +141,37 @@ class DramaDrip : MainAPI() {
             ?.substringAfter("(")?.substringBefore(")")?.toIntOrNull()
         val descriptions = document.selectFirst("div.content-section p.mt-4")?.text()?.trim()
         val typeset = if (tvType == TvType.TvSeries) "series" else "movie"
-        val responseData = if (tmdbId?.isNotEmpty() == true) {
-            val jsonResponse = app.get("$cinemeta_url/$typeset/$imdbId.json").text
+        
+        // Panggil Cinemeta jika ada imdbId atau tmdbId
+        val responseData = if (imdbId?.isNotEmpty() == true || tmdbId?.isNotEmpty() == true) {
+            // Gunakan imdbId jika ada, jika tidak, gunakan tmdbId (walaupun Cinemeta lebih suka imdbId)
+            val id = if (imdbId?.isNotEmpty() == true) imdbId else tmdbId
+            val cineUrl = if (imdbId?.isNotEmpty() == true) 
+                "$cinemeta_url/$typeset/$id.json" 
+            else 
+                "$cinemeta_url/$typeset/tmdb:$id.json"
+            
+            val jsonResponse = app.get(cineUrl).text
             if (jsonResponse.isNotEmpty() && jsonResponse.startsWith("{")) {
                 val gson = Gson()
-                gson.fromJson(jsonResponse, ResponseData::class.java)
+                runCatching { 
+                    gson.fromJson(jsonResponse, ResponseData::class.java) 
+                }.getOrNull()
             } else null
         } else null
+        
         var cast: List<String> = emptyList()
-
         var background: String = image
         var description: String? = null
+        // Tambahkan variabel untuk skor
+        var score: Score? = null 
+        
         if (responseData != null) {
             description = responseData.meta?.description ?: descriptions
             cast = responseData.meta?.cast ?: emptyList()
             background = responseData.meta?.background ?: image
+            // Ambil skor dari Cinemeta jika tersedia
+            score = Score.from10(responseData.meta?.imdb_rating)
         }
 
 
@@ -244,6 +284,8 @@ class DramaDrip : MainAPI() {
                     this.season = season
                     this.episode = epNo
                     this.description = info?.overview
+                    // Tambahkan skor episode jika tersedia dari Cinemeta
+                    this.score = Score.from10(info?.rating)
                 }
             }
 
@@ -257,6 +299,8 @@ class DramaDrip : MainAPI() {
                 addActors(cast)
                 addImdbId(imdbId)
                 addTMDbId(tmdbId)
+                // Tetapkan skor untuk series
+                this.score = score
             }
         } else {
             return newMovieLoadResponse(title, url, TvType.Movie, hrefs) {
@@ -269,6 +313,8 @@ class DramaDrip : MainAPI() {
                 addActors(cast)
                 addImdbId(imdbId)
                 addTMDbId(tmdbId)
+                // Tetapkan skor untuk movie
+                this.score = score
             }
         }
     }
