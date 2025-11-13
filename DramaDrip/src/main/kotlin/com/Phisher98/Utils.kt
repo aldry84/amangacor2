@@ -218,20 +218,6 @@ suspend fun extractEmbeddedSubtitles(embedUrl: String): List<SubtitleFile> {
 }
 
 /**
- * Clean subtitle filename untuk deteksi bahasa Indonesia
- */
-fun isIndonesianSubtitle(filename: String): Boolean {
-    val cleanName = filename.lowercase()
-    return cleanName.contains("indonesia") || 
-           cleanName.contains("indonesian") || 
-           cleanName.contains("indo") ||
-           cleanName.contains("idn") ||
-           cleanName.contains(".id.") ||
-           cleanName.contains("_id") ||
-           cleanName.contains("[id]")
-}
-
-/**
  * Deteksi format subtitle dari URL
  */
 fun getSubtitleFormat(url: String): String {
