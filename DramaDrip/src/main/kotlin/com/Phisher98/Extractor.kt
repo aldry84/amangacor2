@@ -121,6 +121,25 @@ class Driveseed : ExtractorApi() {
             return
         }
 
+        // --- START: SUBTITLE LOGIC ADDED ---
+        document.select("a").forEach { element ->
+            val href = element.attr("href")
+            val text = element.text()
+
+            // Cek apakah tautan mengarah ke file subtitle dan mengandung kata kunci Bahasa Indonesia
+            if ((href.endsWith(".srt", ignoreCase = true) || href.endsWith(".vtt", ignoreCase = true)) &&
+                (text.contains("indonesia", ignoreCase = true) || text.contains("sub indo", ignoreCase = true))) {
+                
+                subtitleCallback(
+                    SubtitleFile(
+                        "ID Sub: $text", // Label untuk CloudStream
+                        href // Tautan file subtitle
+                    )
+                )
+            }
+        }
+        // --- END: SUBTITLE LOGIC ADDED ---
+
         val qualityText = document.selectFirst("li.list-group-item")?.text().orEmpty()
         val rawFileName = qualityText.replace("Name : ", "").trim()
         val fileName = cleanTitle(rawFileName)
