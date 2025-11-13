@@ -8,7 +8,6 @@ import com.lagradost.cloudstream3.network.WebViewResolver
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
-import com.lagradost.cloudstream3.utils.newSubtitleFile
 import com.lagradost.nicehttp.RequestBodyTypes
 import com.lagradost.nicehttp.Requests
 import com.lagradost.nicehttp.Session
@@ -277,10 +276,11 @@ object SoraExtractor : SoraStream() {
 
                     sources.subtitles?.map {
                         subtitleCallback.invoke(
-                            newSubtitleFile(
-                                it.label ?: return@map,
-                                it.file ?: return@map
-                            )
+                            SubtitleFile(
+                                it.label ?: return@map
+                            ).apply {
+                                this.url = it.file ?: return@map
+                            }
                         )
                     }
                 }
@@ -437,10 +437,11 @@ object SoraExtractor : SoraStream() {
 
                 sources?.subtitles?.map { subtitle ->
                     subtitleCallback.invoke(
-                        newSubtitleFile(
-                            subtitle.label ?: "",
-                            subtitle.file ?: return@map
-                        )
+                        SubtitleFile(
+                            subtitle.label ?: ""
+                        ).apply {
+                            this.url = subtitle.file ?: return@map
+                        }
                     )
                 }
 
@@ -481,10 +482,11 @@ object SoraExtractor : SoraStream() {
 
         app.get(subUrl).parsedSafe<WatchsomuchSubResponses>()?.subtitles?.map { sub ->
             subtitleCallback.invoke(
-                newSubtitleFile(
-                    sub.label?.substringBefore("&nbsp")?.trim() ?: "",
-                    fixUrl(sub.url ?: return@map null, watchSomuchAPI)
-                )
+                SubtitleFile(
+                    sub.label?.substringBefore("&nbsp")?.trim() ?: ""
+                ).apply {
+                    this.url = fixUrl(sub.url ?: return@map null, watchSomuchAPI)
+                }
             )
         }
 
@@ -543,10 +545,11 @@ object SoraExtractor : SoraStream() {
         ).text
         tryParseJson<ArrayList<MappleSubtitle>>(subRes)?.map { subtitle ->
             subtitleCallback.invoke(
-                newSubtitleFile(
-                    subtitle.display ?: "",
-                    fixUrl(subtitle.url ?: return@map, mappleAPI)
-                )
+                SubtitleFile(
+                    subtitle.display ?: ""
+                ).apply {
+                    this.url = fixUrl(subtitle.url ?: return@map, mappleAPI)
+                }
             )
         }
 
@@ -624,10 +627,11 @@ object SoraExtractor : SoraStream() {
                 if (index == 1) {
                     source.tracks?.map { subtitle ->
                         subtitleCallback.invoke(
-                            newSubtitleFile(
-                                subtitle.label ?: return@map,
-                                subtitle.file ?: return@map
-                            )
+                            SubtitleFile(
+                                subtitle.label ?: return@map
+                            ).apply {
+                                this.url = subtitle.file ?: return@map
+                            }
                         )
                     }
                 }
@@ -653,10 +657,11 @@ object SoraExtractor : SoraStream() {
 
         tryParseJson<ArrayList<WyzieSubtitle>>(res)?.map { subtitle ->
             subtitleCallback.invoke(
-                newSubtitleFile(
-                    subtitle.display ?: return@map,
-                    subtitle.url ?: return@map
-                )
+                SubtitleFile(
+                    subtitle.display ?: return@map
+                ).apply {
+                    this.url = subtitle.url ?: return@map
+                }
             )
         }
 
@@ -789,10 +794,11 @@ object SoraExtractor : SoraStream() {
             val (subLang, subUrl) = Regex("""\[(\w+)](http\S+)""").find(it)?.destructured
                 ?: return@map
             subtitleCallback.invoke(
-                newSubtitleFile(
-                    subLang.trim(),
-                    subUrl.trim()
-                )
+                SubtitleFile(
+                    subLang.trim()
+                ).apply {
+                    this.url = subUrl.trim()
+                }
             )
         }
 
@@ -853,10 +859,11 @@ object SoraExtractor : SoraStream() {
         val res = app.get(subUrl).text
         tryParseJson<ArrayList<VidrockSubtitle>>(res)?.map { subtitle ->
             subtitleCallback.invoke(
-                newSubtitleFile(
-                    subtitle.label?.replace(Regex("\\d"), "")?.replace(Regex("\\s+Hi"), "")?.trim() ?: return@map,
-                    subtitle.file ?: return@map
-                )
+                SubtitleFile(
+                    subtitle.label?.replace(Regex("\\d"), "")?.replace(Regex("\\s+Hi"), "")?.trim() ?: return@map
+                ).apply {
+                    this.url = subtitle.file ?: return@map
+                }
             )
         }
 
