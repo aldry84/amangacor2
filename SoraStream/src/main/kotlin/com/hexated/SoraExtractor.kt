@@ -1,4 +1,4 @@
-package com.hexated
+package com.hexate
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.APIHolder.capitalize
