@@ -146,6 +146,9 @@ class DramaDrip : MainAPI() {
 
         val trailer = document.selectFirst("div.wp-block-embed__wrapper > iframe")?.attr("src")
 
+        // === TAMBAHKAN: Extract Subtitle ===
+        val subtitles = extractSubtitlesFromPage(document, url)
+
         val recommendations =
             document.select("div.entry-related-inner-content article").mapNotNull {
                 val recName = it.select("h3").text().substringAfter("Download")
@@ -253,6 +256,7 @@ class DramaDrip : MainAPI() {
                 this.plot = description
                 this.tags = tags
                 this.recommendations = recommendations
+                this.subtitles = subtitles  // ← Tambahkan subtitles di sini
                 addTrailer(trailer)
                 addActors(cast)
                 addImdbId(imdbId)
@@ -265,6 +269,7 @@ class DramaDrip : MainAPI() {
                 this.plot = description
                 this.tags = tags
                 this.recommendations = recommendations
+                this.subtitles = subtitles  // ← Tambahkan subtitles di sini
                 addTrailer(trailer)
                 addActors(cast)
                 addImdbId(imdbId)
@@ -285,6 +290,16 @@ class DramaDrip : MainAPI() {
             Log.e("LoadLinks", "No links found in data: $data")
             return false
         }
+
+        // === TAMBAHKAN: Cari subtitle dari halaman video ===
+        links.firstOrNull()?.let { firstLink ->
+            try {
+                extractSubtitlesFromVideoPage(firstLink, subtitleCallback)
+            } catch (e: Exception) {
+                Log.e("LoadLinks", "Failed to extract subtitles from video page", e)
+            }
+        }
+
         for (link in links) {
             try {
                 val finalLink = when {
@@ -305,5 +320,53 @@ class DramaDrip : MainAPI() {
         }
 
         return true
+    }
+
+    // === FUNGSI BARU: Extract Subtitles dari Video Page ===
+    private suspend fun extractSubtitlesFromVideoPage(
+        videoUrl: String, 
+        subtitleCallback: (SubtitleFile) -> Unit
+    ) {
+        try {
+            val doc = app.get(videoUrl).document
+            
+            // Cari elemen subtitle dengan keyword Indonesia
+            val subtitleElements = doc.select("a, track").filter { element ->
+                val text = element.text().lowercase()
+                val href = element.attr("href").lowercase()
+                val src = element.attr("src").lowercase()
+                
+                text.contains("subtitle") && (
+                    text.contains("indonesia") || 
+                    text.contains("indonesian") || 
+                    text.contains("indo") ||
+                    href.contains("indonesia") ||
+                    src.contains("indonesia")
+                ) || element.attr("srclang").equals("id", ignoreCase = true) ||
+                   element.attr("label").lowercase().contains("indonesia")
+            }
+
+            subtitleElements.forEach { element ->
+                val subtitleUrl = when {
+                    element.tagName() == "track" -> element.attr("src")
+                    else -> element.attr("href")
+                }
+                
+                if (subtitleUrl.isNotBlank()) {
+                    val fullSubtitleUrl = fixUrl(subtitleUrl, getBaseUrl(videoUrl))
+                    subtitleCallback(
+                        SubtitleFile("Indonesian", fullSubtitleUrl, null, getSubtitleFormat(fullSubtitleUrl))
+                    )
+                    Log.d("Subtitle", "Found Indonesian subtitle: $fullSubtitleUrl")
+                }
+            }
+
+            // Juga cari di embedded players
+            val embeddedSubtitles = extractEmbeddedSubtitles(videoUrl)
+            embeddedSubtitles.forEach { subtitleCallback(it) }
+
+        } catch (e: Exception) {
+            Log.e("SubtitleExtract", "Error extracting subtitles from video page", e)
+        }
     }
 }
