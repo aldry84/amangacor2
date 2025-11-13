@@ -319,19 +319,77 @@ fun getFDoviesQuality(str: String): String {
     }
 }
 
+// Perbaikan fungsi getVipLanguage - gunakan method yang tersedia
 fun getVipLanguage(str: String): String {
     return when (str) {
         "in_ID" -> "Indonesian"
         "pt" -> "Portuguese"
         else -> str.split("_").first().let {
-            SubtitleHelper.fromIsoToLanguage(it)?.language ?: it
+            // Gunakan method yang tersedia atau return string asli
+            when (it.lowercase()) {
+                "en" -> "English"
+                "es" -> "Spanish"
+                "fr" -> "French"
+                "de" -> "German"
+                "it" -> "Italian"
+                "ja" -> "Japanese"
+                "ko" -> "Korean"
+                "zh" -> "Chinese"
+                "ru" -> "Russian"
+                "ar" -> "Arabic"
+                "hi" -> "Hindi"
+                "tr" -> "Turkish"
+                "nl" -> "Dutch"
+                "pl" -> "Polish"
+                "vi" -> "Vietnamese"
+                "th" -> "Thai"
+                else -> it
+            }
         }
     }
 }
 
+// Perbaikan fungsi fixCrunchyrollLang
 fun fixCrunchyrollLang(language: String?): String? {
-    return SubtitleHelper.fromIsoToLanguage(language ?: return null)?.language
-        ?: SubtitleHelper.fromIsoToLanguage(language.substringBefore("-"))?.language
+    if (language == null) return null
+    
+    return when (language.lowercase()) {
+        "en", "en-us", "en_us" -> "English"
+        "es", "es-es", "es_es" -> "Spanish"
+        "fr", "fr-fr", "fr_fr" -> "French"
+        "de", "de-de", "de_de" -> "German"
+        "it", "it-it", "it_it" -> "Italian"
+        "ja", "ja-jp", "ja_jp" -> "Japanese"
+        "ko", "ko-kr", "ko_kr" -> "Korean"
+        "zh", "zh-cn", "zh_cn" -> "Chinese"
+        "pt", "pt-br", "pt_br" -> "Portuguese"
+        "ru", "ru-ru", "ru_ru" -> "Russian"
+        "ar", "ar-sa", "ar_sa" -> "Arabic"
+        "hi", "hi-in", "hi_in" -> "Hindi"
+        "tr", "tr-tr", "tr_tr" -> "Turkish"
+        "nl", "nl-nl", "nl_nl" -> "Dutch"
+        "pl", "pl-pl", "pl_pl" -> "Polish"
+        "vi", "vi-vn", "vi_vn" -> "Vietnamese"
+        "th", "th-th", "th_th" -> "Thai"
+        "id", "id-id", "id_id" -> "Indonesian"
+        else -> language.substringBefore("-").let { baseLang ->
+            when (baseLang.lowercase()) {
+                "en" -> "English"
+                "es" -> "Spanish"
+                "fr" -> "French"
+                "de" -> "German"
+                "it" -> "Italian"
+                "ja" -> "Japanese"
+                "ko" -> "Korean"
+                "zh" -> "Chinese"
+                "pt" -> "Portuguese"
+                "ru" -> "Russian"
+                "ar" -> "Arabic"
+                "hi" -> "Hindi"
+                else -> baseLang
+            }
+        }
+    }
 }
 
 fun getDeviceId(length: Int = 16): String {
