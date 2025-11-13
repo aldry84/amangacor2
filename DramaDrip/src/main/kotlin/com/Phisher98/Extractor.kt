@@ -134,8 +134,8 @@ class Driveseed : ExtractorApi() {
             val text = element.text().lowercase()
             if (isIndonesianSubtitle(text) || isIndonesianSubtitle(subtitleUrl)) {
                 val fullSubtitleUrl = fixUrl(subtitleUrl, Basedomain)
-                // Gunakan factory function yang benar
-                subtitleCallback(createSubtitleFile("Indonesian", fullSubtitleUrl))
+                // Langsung buat SubtitleFile
+                subtitleCallback(SubtitleFile("Indonesian", fullSubtitleUrl))
                 Log.d("DriveseedSubtitle", "Found Indonesian subtitle: $fullSubtitleUrl")
             }
         }
@@ -258,4 +258,18 @@ fun cleanTitle(title: String): String {
     } else {
         parts.takeLast(3).joinToString(".")
     }
+}
+
+/**
+ * Clean subtitle filename untuk deteksi bahasa Indonesia
+ */
+fun isIndonesianSubtitle(filename: String): Boolean {
+    val cleanName = filename.lowercase()
+    return cleanName.contains("indonesia") || 
+           cleanName.contains("indonesian") || 
+           cleanName.contains("indo") ||
+           cleanName.contains("idn") ||
+           cleanName.contains(".id.") ||
+           cleanName.contains("_id") ||
+           cleanName.contains("[id]")
 }
