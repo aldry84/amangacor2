@@ -319,19 +319,38 @@ fun getFDoviesQuality(str: String): String {
     }
 }
 
+/**
+ * Fungsi pembantu untuk mengkonversi kode bahasa dua huruf ke nama bahasa.
+ * Menggantikan SubtitleHelper.fromTwoLettersToLanguage yang sudah deprecated.
+ */
+fun getLanguageNameFromCode(code: String?): String? {
+    // Ambil hanya kode dua huruf pertama sebelum "_"
+    return code?.split("_")?.first()?.let { langCode ->
+        try {
+            // Gunakan Locale untuk mendapatkan nama bahasa yang dilokalkan
+            Locale(langCode).displayLanguage.capitalize() // capitalize() adalah ekstensi string umum
+        } catch (e: Exception) {
+            langCode // Fallback ke kode jika terjadi kesalahan
+        }
+    }
+}
+
 fun getVipLanguage(str: String): String {
     return when (str) {
         "in_ID" -> "Indonesian"
         "pt" -> "Portuguese"
-        else -> str.split("_").first().let {
-            SubtitleHelper.fromTwoLettersToLanguage(it).toString()
+        // Memperbaiki peringatan deprecation baris 327
+        else -> str.split("_").first().let { code ->
+            getLanguageNameFromCode(code) ?: code
         }
     }
 }
 
 fun fixCrunchyrollLang(language: String?): String? {
-    return SubtitleHelper.fromTwoLettersToLanguage(language ?: return null)
-        ?: SubtitleHelper.fromTwoLettersToLanguage(language.substringBefore("-"))
+    // Memperbaiki peringatan deprecation baris 333 dan 334
+    val langCode = language?.split("_")?.first()
+    return getLanguageNameFromCode(langCode)
+        ?: getLanguageNameFromCode(langCode?.substringBefore("-"))
 }
 
 fun getDeviceId(length: Int = 16): String {
