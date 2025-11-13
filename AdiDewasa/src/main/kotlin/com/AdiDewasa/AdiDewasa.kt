@@ -232,7 +232,8 @@ class AdiDewasa : MainAPI() {
                 subJson?.optJSONArray(bestQualityKey)?.let { array ->
                     for (i in 0 until array.length()) {
                         val subUrl = array.getString(i)
-                        subtitleCallback(SubtitleFile("English", mainUrl + subUrl))
+                        // PERBAIKAN: Mengganti SubtitleFile(...) dengan newSubtitleFile(...)
+                        subtitleCallback(newSubtitleFile("English", mainUrl + subUrl))
                     }
                 }
                 
