@@ -18,12 +18,7 @@ class AdiDewasa : MainAPI() {
 
     override val mainPage: List<MainPageData>
         get() {
-            val basePages = mutableListOf(
-                MainPageData("Recently Added", "-1:1"),
-                MainPageData("TV-Shows", "1:3"),
-                MainPageData("Movies", "2:4"),
-                MainPageData("Most Watched", "-1:5")
-            )
+            val basePages = mutableListOf<MainPageData>() // Mengubah dari inisialisasi awal ke list kosong
 
             if (settingsForProvider.enableAdult) {
                 basePages.addAll(
