@@ -278,7 +278,8 @@ object SoraExtractor : SoraStream() {
                         subtitleCallback.invoke(
                             SubtitleFile(
                                 it.label ?: return@map,
-                                it.file ?: return@map
+                                it.file ?: return@map,
+                                null
                             )
                         )
                     }
@@ -438,7 +439,8 @@ object SoraExtractor : SoraStream() {
                     subtitleCallback.invoke(
                         SubtitleFile(
                             subtitle.label ?: "",
-                            subtitle.file ?: return@map
+                            subtitle.file ?: return@map,
+                            null
                         )
                     )
                 }
@@ -482,7 +484,8 @@ object SoraExtractor : SoraStream() {
             subtitleCallback.invoke(
                 SubtitleFile(
                     sub.label?.substringBefore("&nbsp")?.trim() ?: "",
-                    fixUrl(sub.url ?: return@map null, watchSomuchAPI)
+                    fixUrl(sub.url ?: return@map null, watchSomuchAPI),
+                    null
                 )
             )
         }
@@ -544,7 +547,8 @@ object SoraExtractor : SoraStream() {
             subtitleCallback.invoke(
                 SubtitleFile(
                     subtitle.display ?: "",
-                    fixUrl(subtitle.url ?: return@map, mappleAPI)
+                    fixUrl(subtitle.url ?: return@map, mappleAPI),
+                    null
                 )
             )
         }
@@ -625,7 +629,8 @@ object SoraExtractor : SoraStream() {
                         subtitleCallback.invoke(
                             SubtitleFile(
                                 subtitle.label ?: return@map,
-                                subtitle.file ?: return@map
+                                subtitle.file ?: return@map,
+                                null
                             )
                         )
                     }
@@ -655,6 +660,7 @@ object SoraExtractor : SoraStream() {
                 SubtitleFile(
                     subtitle.display ?: return@map,
                     subtitle.url ?: return@map,
+                    null
                 )
             )
         }
@@ -764,7 +770,7 @@ object SoraExtractor : SoraStream() {
         val playRes = app.get(playUrl).document
         val iframe = playRes.selectFirst("iframe.source-frame")?.attr("src") ?: run {
             val captchaId = playRes.select("input[name=captcha_id]").attr("value")
-            app.post(playUrl, requestBody = "captcha_id=TEduRVR6NmZ3Sk5Jc3JpZEJCSlhTM25GREs2RCswK0VQN2ZsclI5KzNKL2cyV3dIaFEwZzNRRHVwMzdqVmoxV0t2QlBrNjNTY04wY2NSaHlWYS9Jc09nb25wZTV2YmxDSXNRZVNuQUpuRW5nbkF2dURsQUdJWVpwOWxUZzU5Tnh0NXllQjdYUG83Y0ZVaG1XRGtPOTBudnZvN0RFK0wxdGZvYXpFKzVNM2U1a2lBMG40REJmQ042SA%3D%3D&captcha_answer%5B%5D=8yhbjraxqf3o&captcha_answer%5B%5D=10zxn5vi746w&captcha_answer%5B%5D=gxfpe17tdwub".toRequestBody(RequestBodyTypes.TEXT.toMediaTypeOrNull())
+            app.post(playUrl, requestBody = "captcha_id=TEduRVR6NmZ3Sk5Jc3JpZEJCSlhTM25GREs2RCswK0VQN2ZsclI5KzNKL2cyV3dIaFEwZzNRRHvVwMzdqVmoxV0t2QlBrNjNTY04wY2NSaHlWYS9Jc09nb25wZTV2YmxDSXNRZVNuQUpuRW5nbkF2dURsQUdJWVpwOWxUZzU5Tnh0NXllQjdYUG83Y0ZVaG1XRGtPOTBudnZvN0RFK0wxdGZvYXpFKzVNM2U1a2lBMG40REJmQ042SA%3D%3D&captcha_answer%5B%5D=8yhbjraxqf3o&captcha_answer%5B%5D=10zxn5vi746w&captcha_answer%5B%5D=gxfpe17tdwub".toRequestBody(RequestBodyTypes.TEXT.toMediaTypeOrNull())
             ).document.selectFirst("iframe.source-frame")?.attr("src")
         }
         val json = app.get(iframe ?: return).text.substringAfter("Playerjs(").substringBefore(");")
@@ -790,7 +796,8 @@ object SoraExtractor : SoraStream() {
             subtitleCallback.invoke(
                 SubtitleFile(
                     subLang.trim(),
-                    subUrl.trim()
+                    subUrl.trim(),
+                    null
                 )
             )
         }
@@ -855,6 +862,7 @@ object SoraExtractor : SoraStream() {
                 SubtitleFile(
                     subtitle.label?.replace(Regex("\\d"), "")?.replace(Regex("\\s+Hi"), "")?.trim() ?: return@map,
                     subtitle.file ?: return@map,
+                    null
                 )
             )
         }
@@ -862,4 +870,3 @@ object SoraExtractor : SoraStream() {
     }
 
 }
-
