@@ -228,8 +228,8 @@ class DramaDrip : MainAPI() {
                                         )
                                     }
                                 }
-                            } catch (_: Exception) {
-                                Log.e("EpisodeFetch", "Failed to load or parse $qualityPageLink")
+                            } catch (e: Exception) {
+                                Log.e("EpisodeFetch", "Failed to load or parse $qualityPageLink - ${e.message}")
                             }
                         }
                     }
@@ -296,7 +296,7 @@ class DramaDrip : MainAPI() {
             try {
                 extractSubtitlesFromVideoPage(firstLink, subtitleCallback)
             } catch (e: Exception) {
-                Log.e("LoadLinks", "Failed to extract subtitles from video page", e)
+                Log.e("LoadLinks", "Failed to extract subtitles from video page: ${e.message}")
             }
         }
 
@@ -314,8 +314,8 @@ class DramaDrip : MainAPI() {
                 } else {
                     Log.w("LoadLinks", "Bypass returned null for link: $link")
                 }
-            } catch (_: Exception) {
-                Log.e("LoadLinks", "Failed to load link: $link")
+            } catch (e: Exception) {
+                Log.e("LoadLinks", "Failed to load link: $link - ${e.message}")
             }
         }
 
@@ -354,9 +354,8 @@ class DramaDrip : MainAPI() {
                 
                 if (subtitleUrl.isNotBlank()) {
                     val fullSubtitleUrl = fixUrl(subtitleUrl, getBaseUrl(videoUrl))
-                    subtitleCallback(
-                        SubtitleFile("Indonesian", fullSubtitleUrl, null, getSubtitleFormat(fullSubtitleUrl))
-                    )
+                    // Gunakan constructor yang benar
+                    subtitleCallback(SubtitleFile(language = "Indonesian", url = fullSubtitleUrl))
                     Log.d("Subtitle", "Found Indonesian subtitle: $fullSubtitleUrl")
                 }
             }
@@ -366,7 +365,7 @@ class DramaDrip : MainAPI() {
             embeddedSubtitles.forEach { subtitleCallback(it) }
 
         } catch (e: Exception) {
-            Log.e("SubtitleExtract", "Error extracting subtitles from video page", e)
+            Log.e("SubtitleExtract", "Error extracting subtitles from video page: ${e.message}")
         }
     }
 }
