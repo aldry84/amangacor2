@@ -192,8 +192,8 @@ suspend fun extractEmbeddedSubtitles(embedUrl: String): List<SubtitleFile> {
                     label.contains("indo")
                 )) {
                     val fullUrl = fixUrl(src, getBaseUrl(embedUrl))
-                    // Gunakan constructor yang benar
-                    subtitles.add(SubtitleFile(language = "Indonesian", url = fullUrl))
+                    // Gunakan factory function yang benar
+                    subtitles.add(createSubtitleFile("Indonesian", fullUrl))
                 }
             }
         }
@@ -205,8 +205,8 @@ suspend fun extractEmbeddedSubtitles(embedUrl: String): List<SubtitleFile> {
             val subtitlePattern = Regex("""(https?://[^"\']*\.(?:srt|vtt|ass)[^"\']*indonesia[^"\']*)""", RegexOption.IGNORE_CASE)
             subtitlePattern.findAll(script).forEach { match ->
                 val subtitleUrl = match.value
-                // Gunakan constructor yang benar
-                subtitles.add(SubtitleFile(language = "Indonesian", url = subtitleUrl))
+                // Gunakan factory function yang benar
+                subtitles.add(createSubtitleFile("Indonesian", subtitleUrl))
             }
         }
         
@@ -276,8 +276,8 @@ suspend fun extractSubtitlesFromPage(document: Document, pageUrl: String): List<
                     }
                     
                     if (finalSubtitleUrl != null) {
-                        // Gunakan constructor yang benar
-                        subtitles.add(SubtitleFile(language = "Indonesian", url = finalSubtitleUrl))
+                        // Gunakan factory function yang benar
+                        subtitles.add(createSubtitleFile("Indonesian", finalSubtitleUrl))
                         Log.d("Subtitle", "Added Indonesian subtitle: $finalSubtitleUrl")
                     }
                 } catch (e: Exception) {
@@ -292,8 +292,8 @@ suspend fun extractSubtitlesFromPage(document: Document, pageUrl: String): List<
             val text = element.text().lowercase()
             if (isIndonesianSubtitle(text) || isIndonesianSubtitle(subtitleUrl)) {
                 val finalUrl = fixUrl(subtitleUrl, getBaseUrl(pageUrl))
-                // Gunakan constructor yang benar
-                subtitles.add(SubtitleFile(language = "Indonesian", url = finalUrl))
+                // Gunakan factory function yang benar
+                subtitles.add(createSubtitleFile("Indonesian", finalUrl))
                 Log.d("Subtitle", "Added Indonesian subtitle from file: $finalUrl")
             }
         }
@@ -303,4 +303,11 @@ suspend fun extractSubtitlesFromPage(document: Document, pageUrl: String): List<
     }
     
     return subtitles
+}
+
+/**
+ * Factory function untuk membuat SubtitleFile dengan cara yang benar
+ */
+fun createSubtitleFile(language: String, url: String): SubtitleFile {
+    return SubtitleFile(language, url)
 }
