@@ -5,6 +5,7 @@ import androidx.annotation.RequiresApi
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.api.Log
 import com.lagradost.cloudstream3.app
+import com.lagradost.cloudstream3.SubtitleFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jsoup.nodes.Document
@@ -16,7 +17,6 @@ data class DomainsParser(
     @JsonProperty("dramadrip")
     val dramadrip: String,
 )
-
 
 data class Meta(
     val id: String?,
@@ -95,7 +95,6 @@ fun getBaseUrl(url: String): String {
     }
 }
 
-
 fun fixUrl(url: String, domain: String): String {
     if (url.startsWith("http")) {
         return url
@@ -138,7 +137,6 @@ suspend fun cinematickitBypass(url: String): String? {
     }
 }
 
-
 @RequiresApi(Build.VERSION_CODES.O)
 suspend fun cinematickitloadBypass(url: String): String? {
     return try {
@@ -166,5 +164,167 @@ fun base64Decode(string: String): String {
     } catch (e: Exception) {
         e.printStackTrace()
         ""
+    }
+}
+
+// === FUNGSI BARU UNTUK SUBTITLE ===
+
+/**
+ * Extract subtitles from embedded video players
+ */
+suspend fun extractEmbeddedSubtitles(embedUrl: String): List<SubtitleFile> {
+    val subtitles = mutableListOf<SubtitleFile>()
+    
+    try {
+        val doc = app.get(embedUrl).document
+        
+        // Cari track elements di video players
+        doc.select("track").forEach { track ->
+            val kind = track.attr("kind")
+            if (kind == "subtitles" || kind == "captions") {
+                val src = track.attr("src")
+                val srclang = track.attr("srclang")
+                val label = track.attr("label").lowercase()
+                
+                if (src.isNotBlank() && (
+                    srclang == "id" || 
+                    label.contains("indonesia") || 
+                    label.contains("indo")
+                )) {
+                    val fullUrl = fixUrl(src, getBaseUrl(embedUrl))
+                    subtitles.add(
+                        SubtitleFile("Indonesian", fullUrl, null, getSubtitleFormat(fullUrl))
+                    )
+                }
+            }
+        }
+        
+        // Cari subtitle links di JavaScript data
+        val scriptContents = doc.select("script").mapNotNull { it.data() }
+        scriptContents.forEach { script ->
+            // Pattern untuk mencari URL subtitle dalam JavaScript
+            val subtitlePattern = Regex("""(https?://[^"\']*\.(?:srt|vtt|ass)[^"\']*indonesia[^"\']*)""", RegexOption.IGNORE_CASE)
+            subtitlePattern.findAll(script).forEach { match ->
+                val subtitleUrl = match.value
+                subtitles.add(
+                    SubtitleFile("Indonesian", subtitleUrl, null, getSubtitleFormat(subtitleUrl))
+                )
+            }
+        }
+        
+    } catch (e: Exception) {
+        Log.e("EmbeddedSubtitle", "Failed to extract embedded subtitles", e)
+    }
+    
+    return subtitles
+}
+
+/**
+ * Clean subtitle filename untuk deteksi bahasa Indonesia
+ */
+fun isIndonesianSubtitle(filename: String): Boolean {
+    val cleanName = filename.lowercase()
+    return cleanName.contains("indonesia") || 
+           cleanName.contains("indonesian") || 
+           cleanName.contains("indo") ||
+           cleanName.contains("idn") ||
+           cleanName.contains(".id.") ||
+           cleanName.contains("_id") ||
+           cleanName.contains("[id]")
+}
+
+/**
+ * Deteksi format subtitle dari URL
+ */
+fun getSubtitleFormat(url: String): String {
+    return when {
+        url.endsWith(".vtt", ignoreCase = true) -> "vtt"
+        url.endsWith(".ass", ignoreCase = true) -> "ass"
+        url.endsWith(".ssa", ignoreCase = true) -> "ssa"
+        else -> "srt" // default
+    }
+}
+
+/**
+ * Extract subtitles dari halaman utama
+ */
+suspend fun extractSubtitlesFromPage(document: Document, pageUrl: String): List<SubtitleFile> {
+    val subtitles = mutableListOf<SubtitleFile>()
+    
+    try {
+        // Cari link subtitle berdasarkan keyword Indonesia/Indonesian
+        val subtitleLinks = document.select("a").filter { element ->
+            val text = element.text().lowercase()
+            val href = element.attr("href").lowercase()
+            
+            (text.contains("subtitle") || text.contains("sub")) && (
+                text.contains("indonesia") || 
+                text.contains("indonesian") || 
+                text.contains("indo") ||
+                text.contains("idn") ||
+                href.contains("indonesia") ||
+                href.contains("indonesian") ||
+                href.contains("indo")
+            )
+        }
+
+        subtitleLinks.forEach { subtitleElement ->
+            val subtitleUrl = subtitleElement.attr("href")
+            if (subtitleUrl.isNotBlank()) {
+                try {
+                    val finalSubtitleUrl = when {
+                        subtitleUrl.contains("safelink=") -> cinematickitloadBypass(subtitleUrl)
+                        else -> fixUrl(subtitleUrl, getBaseUrl(pageUrl))
+                    }
+                    
+                    if (finalSubtitleUrl != null) {
+                        // Download dan parse subtitle
+                        downloadAndParseSubtitle(finalSubtitleUrl, "Indonesian", subtitles)
+                    }
+                } catch (e: Exception) {
+                    Log.e("SubtitleExtract", "Failed to process subtitle link: $subtitleUrl", e)
+                }
+            }
+        }
+
+        // Juga cari di dalam konten halaman untuk link .srt/.vtt
+        document.select("a[href$=.srt], a[href$=.vtt], a[href$=.ass], a[href$=.ssa]").forEach { element ->
+            val subtitleUrl = element.attr("href")
+            val text = element.text().lowercase()
+            if (isIndonesianSubtitle(text) || isIndonesianSubtitle(subtitleUrl)) {
+                val finalUrl = fixUrl(subtitleUrl, getBaseUrl(pageUrl))
+                downloadAndParseSubtitle(finalUrl, "Indonesian", subtitles)
+            }
+        }
+
+    } catch (e: Exception) {
+        Log.e("SubtitleExtract", "Error extracting subtitles from page: ${e.message}")
+    }
+    
+    return subtitles
+}
+
+/**
+ * Download dan parse subtitle file
+ */
+private suspend fun downloadAndParseSubtitle(
+    subtitleUrl: String, 
+    language: String, 
+    subtitleList: MutableList<SubtitleFile>
+) {
+    try {
+        // Validasi URL subtitle
+        if (!subtitleUrl.startsWith("http")) {
+            Log.w("SubtitleDownload", "Invalid subtitle URL: $subtitleUrl")
+            return
+        }
+        
+        val format = getSubtitleFormat(subtitleUrl)
+        subtitleList.add(
+            SubtitleFile(language, subtitleUrl, null, format)
+        )
+        Log.d("Subtitle", "Added $language subtitle: $subtitleUrl (format: $format)")
+    } catch (e: Exception) {
+        Log.e("SubtitleDownload", "Failed to add subtitle: $subtitleUrl", e)
     }
 }
