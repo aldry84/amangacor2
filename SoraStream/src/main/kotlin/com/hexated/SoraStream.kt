@@ -286,19 +286,11 @@ open class SoraStream : TmdbProvider() {
 
         // DAPATKAN SINOPSIS DALAM BAHASA INDONESIA - DI DALAM COROUTINE
         val originalOverview = res.overview ?: ""
-        val indonesianOverview = if (enableIndonesianTranslation && originalOverview.isNotBlank()) {
+        val finalOverview = if (enableIndonesianTranslation && originalOverview.isNotBlank()) {
             // Coba ambil dari TMDB bahasa Indonesia dulu
             getIndonesianOverview(data.id, data.type ?: "") ?: 
             // Jika tidak ada, gunakan Google Translate
             translateToIndonesian(originalOverview)
-        } else {
-            originalOverview
-        }
-
-        // FORMAT SINOPSIS DENGAN TERJEMAHAN
-        val finalOverview = if (enableIndonesianTranslation && originalOverview.isNotBlank() && indonesianOverview != originalOverview) {
-            "🇮🇩 **Sinopsis (Terjemahan):**\n$indonesianOverview\n\n" +
-            "🇺🇸 **Original Synopsis:**\n$originalOverview"
         } else {
             originalOverview
         }
@@ -356,7 +348,7 @@ open class SoraStream : TmdbProvider() {
                 this.posterUrl = poster
                 this.backgroundPosterUrl = bgPoster
                 this.year = year
-                this.plot = finalOverview // Gunakan sinopsis yang sudah diterjemahkan
+                this.plot = finalOverview // Gunakan sinopsis dalam Bahasa Indonesia saja
                 this.tags = keywords.takeIf { !it.isNullOrEmpty() } ?: genres
                 this.score = Score.from10(res.vote_average?.toString())
                 this.showStatus = getStatus(res.status)
@@ -392,7 +384,7 @@ open class SoraStream : TmdbProvider() {
                 this.backgroundPosterUrl = bgPoster
                 this.comingSoon = isUpcoming(releaseDate)
                 this.year = year
-                this.plot = finalOverview // Gunakan sinopsis yang sudah diterjemahkan
+                this.plot = finalOverview // Gunakan sinopsis dalam Bahasa Indonesia saja
                 this.duration = res.runtime
                 this.tags = keywords.takeIf { !it.isNullOrEmpty() } ?: genres
                 this.score = Score.from10(res.vote_average?.toString())
