@@ -256,7 +256,8 @@ class DramaDrip : MainAPI() {
                 this.plot = description
                 this.tags = tags
                 this.recommendations = recommendations
-                this.subtitles = subtitleList  // ← Tambahkan subtitles di sini
+                // PERBAIKAN: Gunakan subtitleList yang sudah dideklarasikan
+                this.subtitles = subtitleList
                 addTrailer(trailer)
                 addActors(cast)
                 addImdbId(imdbId)
@@ -269,7 +270,8 @@ class DramaDrip : MainAPI() {
                 this.plot = description
                 this.tags = tags
                 this.recommendations = recommendations
-                this.subtitles = subtitleList  // ← Tambahkan subtitles di sini
+                // PERBAIKAN: Gunakan subtitleList yang sudah dideklarasikan
+                this.subtitles = subtitleList
                 addTrailer(trailer)
                 addActors(cast)
                 addImdbId(imdbId)
@@ -368,4 +370,9 @@ class DramaDrip : MainAPI() {
             Log.e("SubtitleExtract", "Error extracting subtitles from video page: ${e.message}")
         }
     }
+}
+
+// Tambahkan factory function di luar class
+fun createSubtitleFile(language: String, url: String): SubtitleFile {
+    return SubtitleFile(language, url)
 }
