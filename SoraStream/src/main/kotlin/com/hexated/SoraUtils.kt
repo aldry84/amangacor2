@@ -8,7 +8,6 @@ import com.lagradost.cloudstream3.mvvm.logError
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
-import com.lagradost.nicehttp.RequestBodyTypes
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.net.*
@@ -93,7 +92,7 @@ suspend fun tmdbToAnimeId(title: String?, year: Int?, season: String?, type: TvT
     val data = mapOf(
         "query" to query,
         "variables" to variables
-    ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
+    ).toJson().toRequestBody("application/json".toMediaTypeOrNull())
 
     val res = app.post(anilistAPI, requestBody = data)
         .parsedSafe<AniSearch>()?.data?.Page?.media?.firstOrNull()
@@ -319,38 +318,19 @@ fun getFDoviesQuality(str: String): String {
     }
 }
 
-/**
- * Fungsi pembantu untuk mengkonversi kode bahasa dua huruf ke nama bahasa.
- * Menggantikan SubtitleHelper.fromTwoLettersToLanguage yang sudah deprecated.
- */
-fun getLanguageNameFromCode(code: String?): String? {
-    // Ambil hanya kode dua huruf pertama sebelum "_"
-    return code?.split("_")?.first()?.let { langCode ->
-        try {
-            // Gunakan Locale untuk mendapatkan nama bahasa yang dilokalkan
-            Locale(langCode).displayLanguage.capitalize() // capitalize() adalah ekstensi string umum
-        } catch (e: Exception) {
-            langCode // Fallback ke kode jika terjadi kesalahan
-        }
-    }
-}
-
 fun getVipLanguage(str: String): String {
     return when (str) {
         "in_ID" -> "Indonesian"
         "pt" -> "Portuguese"
-        // Memperbaiki peringatan deprecation baris 327
-        else -> str.split("_").first().let { code ->
-            getLanguageNameFromCode(code) ?: code
+        else -> str.split("_").first().let {
+            SubtitleHelper.fromIso639_1ToLanguage(it)?.name ?: it
         }
     }
 }
 
 fun fixCrunchyrollLang(language: String?): String? {
-    // Memperbaiki peringatan deprecation baris 333 dan 334
-    val langCode = language?.split("_")?.first()
-    return getLanguageNameFromCode(langCode)
-        ?: getLanguageNameFromCode(langCode?.substringBefore("-"))
+    return SubtitleHelper.fromIso639_1ToLanguage(language ?: return null)?.name
+        ?: SubtitleHelper.fromIso639_1ToLanguage(language.substringBefore("-"))?.name
 }
 
 fun getDeviceId(length: Int = 16): String {
