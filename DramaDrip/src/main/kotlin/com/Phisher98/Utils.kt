@@ -2,372 +2,305 @@ package com.Phisher98
 
 import android.os.Build
 import androidx.annotation.RequiresApi
-import com.google.gson.Gson
+import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.api.Log
-import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.utils.*
-import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
-import com.lagradost.cloudstream3.LoadResponse.Companion.addImdbId
-import com.lagradost.cloudstream3.LoadResponse.Companion.addTMDbId
-import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
-import com.lagradost.cloudstream3.utils.AppUtils.toJson
-import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
-import kotlinx.coroutines.runBlocking
-import org.jsoup.nodes.Element
+import com.lagradost.cloudstream3.app
+import com.lagradost.cloudstream3.SubtitleFile
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.jsoup.nodes.Document
+import java.net.URI
+import java.net.URLEncoder
+import java.util.Base64
 
-class DramaDrip : MainAPI() {
-    override var mainUrl: String = runBlocking {
-        DramaDripProvider.getDomains()?.dramadrip ?: "https://dramadrip.com"
+data class DomainsParser(
+    @JsonProperty("dramadrip")
+    val dramadrip: String,
+)
+
+data class Meta(
+    val id: String?,
+    val imdb_id: String?,
+    val type: String?,
+    val poster: String?,
+    val logo: String?,
+    val background: String?,
+    val moviedb_id: Int?,
+    val name: String?,
+    val description: String?,
+    val genre: List<String>?,
+    val releaseInfo: String?,
+    val status: String?,
+    val runtime: String?,
+    val cast: List<String>?,
+    val language: String?,
+    val country: String?,
+    val imdbRating: String?,
+    val slug: String?,
+    val year: String?,
+    val videos: List<EpisodeDetails>?
+)
+
+data class EpisodeDetails(
+    val id: String?,
+    val name: String?,
+    val title: String?,
+    val season: Int?,
+    val episode: Int?,
+    val released: String?,
+    val overview: String?,
+    val thumbnail: String?,
+    val moviedb_id: Int?
+)
+
+data class ResponseData(
+    val meta: Meta?
+)
+
+suspend fun bypassHrefli(url: String): String? {
+    fun Document.getFormUrl(): String {
+        return this.select("form#landing").attr("action")
     }
-    override var name = "DramaDrip"
-    override val hasMainPage = true
-    override var lang = "en"
-    override val hasDownloadSupport = true
-    override val hasQuickSearch = true
-    override val supportedTypes = setOf(TvType.Movie, TvType.AsianDrama, TvType.TvSeries)
-    private val cinemeta_url = "https://v3-cinemeta.strem.io/meta"
 
-    override val mainPage = mainPageOf(
-        "drama/ongoing" to "Ongoing Dramas",
-        "latest" to "Latest Releases",
-        "drama/chinese-drama" to "Chinese Dramas",
-        "drama/japanese-drama" to "Japanese Dramas",
-        "drama/korean-drama" to "Korean Dramas",
-        "movies" to "Movies",
-        "web-series" to "Web Series",
-    )
+    fun Document.getFormData(): Map<String, String> {
+        return this.select("form#landing input").associate { it.attr("name") to it.attr("value") }
+    }
 
-    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val document = app.get("$mainUrl/${request.data}/page/$page").document
-        val home = document.select("article").mapNotNull { it.toSearchResult() }
+    val host = getBaseUrl(url)
+    var res = app.get(url).document
+    var formUrl = res.getFormUrl()
+    var formData = res.getFormData()
 
-        return newHomePageResponse(
-            list = HomePageList(
-                name = request.name,
-                list = home,
-                isHorizontalImages = false
-            ),
-            hasNext = true
+    res = app.post(formUrl, data = formData).document
+    formUrl = res.getFormUrl()
+    formData = res.getFormData()
+
+    res = app.post(formUrl, data = formData).document
+    val skToken = res.selectFirst("script:containsData(?go=)")?.data()?.substringAfter("?go=")
+        ?.substringBefore("\"") ?: return null
+    val driveUrl = app.get(
+        "$host?go=$skToken", cookies = mapOf(
+            skToken to "${formData["_wp_http2"]}"
         )
+    ).document.selectFirst("meta[http-equiv=refresh]")?.attr("content")?.substringAfter("url=")
+    val path = app.get(driveUrl ?: return null).text.substringAfter("replace(\"")
+        .substringBefore("\")")
+    if (path == "/404") return null
+    return fixUrl(path, getBaseUrl(driveUrl))
+}
+
+fun getBaseUrl(url: String): String {
+    return URI(url).let {
+        "${it.scheme}://${it.host}"
+    }
+}
+
+fun fixUrl(url: String, domain: String): String {
+    if (url.startsWith("http")) {
+        return url
+    }
+    if (url.isEmpty()) {
+        return ""
     }
 
-    private fun Element.toSearchResult(): SearchResponse? {
-        val title =
-            this.selectFirst("h2.entry-title")?.text()?.substringAfter("Download") ?: return null
-        val href = this.select("h2.entry-title > a").attr("href")
-        val imgElement = this.selectFirst("img")
-        val srcset = imgElement?.attr("srcset")
-
-        val highestResUrl = srcset
-            ?.split(",")
-            ?.map { it.trim() }
-            ?.mapNotNull {
-                val parts = it.split(" ")
-                if (parts.size == 2) parts[0] to parts[1].removeSuffix("w").toIntOrNull() else null
-            }
-            ?.maxByOrNull { it.second ?: 0 }
-            ?.first
-
-        val posterUrl = highestResUrl ?: imgElement?.attr("src")
-        return newMovieSearchResponse(title, href, TvType.Movie) {
-            this.posterUrl = posterUrl
+    val startsWithNoHttp = url.startsWith("//")
+    if (startsWithNoHttp) {
+        return "https:$url"
+    } else {
+        if (url.startsWith('/')) {
+            return domain + url
         }
-
+        return "$domain/$url"
     }
+}
 
-    override suspend fun search(query: String): List<SearchResponse> {
-        val document = app.get("$mainUrl/?s=$query").document
-        val results = document.select("article").mapNotNull {
-            it.toSearchResult()
-        }
-        return results
+@RequiresApi(Build.VERSION_CODES.O)
+suspend fun cinematickitBypass(url: String): String? {
+    return try {
+        val cleanedUrl = url.replace("&#038;", "&")
+        val encodedLink = cleanedUrl.substringAfter("safelink=").substringBefore("-")
+        if (encodedLink.isEmpty()) return null
+        val decodedUrl = base64Decode(encodedLink)
+        val doc = app.get(decodedUrl).document
+        val goValue = doc.select("form#landing input[name=go]").attr("value")
+        if (goValue.isBlank()) return null
+        val decodedGoUrl = base64Decode(goValue).replace("&#038;", "&")
+        val responseDoc = app.get(decodedGoUrl).document
+        val script = responseDoc.select("script").firstOrNull { it.data().contains("window.location.replace") }?.data() ?: return null
+        val regex = Regex("""window\.location\.replace\s*\(\s*["'](.+?)["']\s*\)\s*;?""")
+        val match = regex.find(script) ?: return null
+        val redirectPath = match.groupValues[1]
+        return if (redirectPath.startsWith("http")) redirectPath else URI(decodedGoUrl).let { "${it.scheme}://${it.host}$redirectPath" }
+    } catch (e: Exception) {
+        Log.e("CinematickitBypass", "Error: ${e.message}")
+        null
     }
+}
 
-    @RequiresApi(Build.VERSION_CODES.O)
-    override suspend fun load(url: String): LoadResponse {
-        val document = app.get(url).document
-
-        var imdbId: String? = null
-        var tmdbId: String? = null
-        var tmdbType: String? = null
-
-        document.select("div.su-spoiler-content ul.wp-block-list > li").forEach { li ->
-            val text = li.text()
-            if (imdbId == null && "imdb.com/title/tt" in text) {
-                imdbId = Regex("tt\\d+").find(text)?.value
-            }
-
-            if (tmdbId == null && tmdbType == null && "themoviedb.org" in text) {
-                Regex("/(movie|tv)/(\\d+)").find(text)?.let { match ->
-                    tmdbType = match.groupValues[1] // movie or tv
-                    tmdbId = match.groupValues[2]   // numeric ID
-                }
-            }
-        }
-        val tvType = when (true) {
-            (tmdbType?.contains("Movie", ignoreCase = true) == true) -> TvType.Movie
-            else -> TvType.TvSeries
-        }
-
-        val image = document.select("meta[property=og:image]").attr("content")
-        val title = document.selectFirst("div.wp-block-column > h2.wp-block-heading")?.text()
-            ?.substringBefore("(")?.trim().toString()
-        val tags = document.select("div.mt-2 span.badge").map { it.text() }
-        val year = document.selectFirst("div.wp-block-column > h2.wp-block-heading")?.text()
-            ?.substringAfter("(")?.substringBefore(")")?.toIntOrNull()
-        val descriptions = document.selectFirst("div.content-section p.mt-4")?.text()?.trim()
-        val typeset = if (tvType == TvType.TvSeries) "series" else "movie"
-        val responseData = if (tmdbId?.isNotEmpty() == true) {
-            val jsonResponse = app.get("$cinemeta_url/$typeset/$imdbId.json").text
-            if (jsonResponse.isNotEmpty() && jsonResponse.startsWith("{")) {
-                val gson = Gson()
-                gson.fromJson(jsonResponse, ResponseData::class.java)
-            } else null
-        } else null
-        var cast: List<String> = emptyList()
-
-        var background: String = image
-        var description: String? = null
-        if (responseData != null) {
-            description = responseData.meta?.description ?: descriptions
-            cast = responseData.meta?.cast ?: emptyList()
-            background = responseData.meta?.background ?: image
-        }
-
-
-        val hrefs: List<String> = document.select("div.wp-block-button > a")
-            .mapNotNull { linkElement ->
-                val link = linkElement.attr("href")
-                val actual=cinematickitloadBypass(link) ?: return@mapNotNull null
-                val page = app.get(actual).document
-                page.select("div.wp-block-button.movie_btn a")
-                    .eachAttr("href")
-            }.flatten()
-
-        val trailer = document.selectFirst("div.wp-block-embed__wrapper > iframe")?.attr("src")
-
-        // === TAMBAHKAN: Extract Subtitle ===
-        val subtitleList = extractSubtitlesFromPage(document, url)
-
-        val recommendations =
-            document.select("div.entry-related-inner-content article").mapNotNull {
-                val recName = it.select("h3").text().substringAfter("Download")
-                val recHref = it.select("h3 a").attr("href")
-                val recPosterUrl = it.select("img").attr("src")
-                newTvSeriesSearchResponse(recName, recHref, TvType.TvSeries) {
-                    this.posterUrl = recPosterUrl
-                }
-            }
-
-        if (tvType == TvType.TvSeries) {
-            val tvSeriesEpisodes = mutableMapOf<Pair<Int, Int>, MutableList<String>>()
-
-            val seasonBlocks = document.select("div.su-accordion h2")
-
-            for (seasonHeader in seasonBlocks) {
-                val seasonText = seasonHeader.text()
-                if (seasonText.contains("ZIP", ignoreCase = true)) {
-                    Log.d("Skip", "Skipping ZIP season: $seasonText")
-                } else {
-                    val seasonMatch = Regex("""S?e?a?s?o?n?\s*([0-9]+)""", RegexOption.IGNORE_CASE)
-                        .find(seasonText)
-                    val season = seasonMatch?.groupValues?.getOrNull(1)?.toIntOrNull()
-
-                    if (season != null) {
-                        // Try to get the links block; if next sibling doesn't have buttons, try alternative selection
-                        var linksBlock = seasonHeader.nextElementSibling()
-                        if (linksBlock == null || linksBlock.select("div.wp-block-button")
-                                .isEmpty()
-                        ) {
-                            // Sometimes buttons could be inside a child or sibling div
-                            linksBlock = seasonHeader.parent()?.selectFirst("div.wp-block-button")
-                                ?: linksBlock
-                        }
-
-                        val qualityLinks = linksBlock?.select("div.wp-block-button a")
-                            ?.mapNotNull { it.attr("href").takeIf { href -> href.isNotBlank() } }
-                            ?.distinct() ?: emptyList()
-
-                        for (qualityPageLink in qualityLinks) {
-                            try {
-                                val rawqualityPageLink=if (qualityPageLink.contains("modpro")) qualityPageLink else cinematickitloadBypass(qualityPageLink) ?: ""
-                                val response = app.get(rawqualityPageLink)
-                                val episodeDoc = response.document
-
-                                val episodeButtons =
-                                    episodeDoc.select("a").filter { element: Element ->
-                                        element.text()
-                                            .matches(Regex("""(?i)(Episode|Ep|E)?\s*0*\d+"""))
-                                    }
-
-                                for (btn in episodeButtons) {
-                                    val ephref = btn.attr("href")
-                                    val epText = btn.text()
-
-                                    if (ephref.isNotBlank()) {
-                                        val epNo = Regex(
-                                            """(?:Episode|Ep|E)?\s*0*([0-9]+)""",
-                                            RegexOption.IGNORE_CASE
-                                        )
-                                            .find(epText)?.groupValues?.getOrNull(1)?.toIntOrNull()
-
-                                        if (epNo != null) {
-                                            val key = season to epNo
-                                            tvSeriesEpisodes.getOrPut(key) { mutableListOf() }
-                                                .add(ephref)
-                                        } else {
-                                            Log.w(
-                                                "EpisodeFetch",
-                                                "Could not extract episode number from text: '$epText'"
-                                            )
-                                        }
-                                    } else {
-                                        Log.w(
-                                            "EpisodeFetch",
-                                            "Empty href for episode button with text: '$epText'"
-                                        )
-                                    }
-                                }
-                            } catch (e: Exception) {
-                                Log.e("EpisodeFetch", "Failed to load or parse $qualityPageLink - ${e.message}")
-                            }
-                        }
-                    }
-                }
-            }
-
-            val finalEpisodes = tvSeriesEpisodes.map { (seasonEpisode, links) ->
-                val (season, epNo) = seasonEpisode
-                val info =
-                    responseData?.meta?.videos?.find { it.season == season && it.episode == epNo }
-
-                newEpisode(links.distinct().toJson()) {
-                    this.name = info?.name ?: "Episode $epNo"
-                    this.posterUrl = info?.thumbnail
-                    this.season = season
-                    this.episode = epNo
-                    this.description = info?.overview
-                }
-            }
-
-            return newTvSeriesLoadResponse(title, url, TvType.TvSeries, finalEpisodes) {
-                this.backgroundPosterUrl = background
-                this.year = year
-                this.plot = description
-                this.tags = tags
-                this.recommendations = recommendations
-                // PERBAIKAN: Hapus assignment subtitles karena tidak tersedia di builder
-                // this.subtitles = subtitleList
-                addTrailer(trailer)
-                addActors(cast)
-                addImdbId(imdbId)
-                addTMDbId(tmdbId)
-            }
-        } else {
-            return newMovieLoadResponse(title, url, TvType.Movie, hrefs) {
-                this.backgroundPosterUrl = background
-                this.year = year
-                this.plot = description
-                this.tags = tags
-                this.recommendations = recommendations
-                // PERBAIKAN: Hapus assignment subtitles karena tidak tersedia di builder
-                // this.subtitles = subtitleList
-                addTrailer(trailer)
-                addActors(cast)
-                addImdbId(imdbId)
-                addTMDbId(tmdbId)
-            }
-        }
+@RequiresApi(Build.VERSION_CODES.O)
+suspend fun cinematickitloadBypass(url: String): String? {
+    return try {
+        val cleanedUrl = url.replace("&#038;", "&")
+        val encodedLink = cleanedUrl.substringAfter("safelink=").substringBefore("-")
+        if (encodedLink.isEmpty()) return null
+        val decodedUrl = base64Decode(encodedLink)
+        val doc = app.get(decodedUrl).document
+        val goValue = doc.select("form#landing input[name=go]").attr("value")
+        Log.d("Phisher",goValue)
+        return base64Decode(goValue)
+    } catch (e: Exception) {
+        Log.e("CinematickitLoadBypass", "Error: ${e.message}")
+        null
     }
+}
 
-    @RequiresApi(Build.VERSION_CODES.O)
-    override suspend fun loadLinks(
-        data: String,
-        isCasting: Boolean,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ): Boolean {
-        val links = tryParseJson<List<String>>(data).orEmpty()
-        if (links.isEmpty()) {
-            Log.e("LoadLinks", "No links found in data: $data")
-            return false
-        }
-
-        // === TAMBAHKAN: Cari subtitle dari halaman video ===
-        links.firstOrNull()?.let { firstLink ->
-            try {
-                extractSubtitlesFromVideoPage(firstLink, subtitleCallback)
-            } catch (e: Exception) {
-                Log.e("LoadLinks", "Failed to extract subtitles from video page: ${e.message}")
-            }
-        }
-
-        for (link in links) {
-            try {
-                val finalLink = when {
-                    "safelink=" in link -> cinematickitBypass(link)
-                    "unblockedgames" in link -> bypassHrefli(link)
-                    "examzculture" in link -> bypassHrefli(link)
-                    else -> link
-                }
-
-                if (finalLink != null) {
-                    loadExtractor(finalLink, subtitleCallback, callback)
-                } else {
-                    Log.w("LoadLinks", "Bypass returned null for link: $link")
-                }
-            } catch (e: Exception) {
-                Log.e("LoadLinks", "Failed to load link: $link - ${e.message}")
-            }
-        }
-
-        return true
+@RequiresApi(Build.VERSION_CODES.O)
+fun base64Decode(string: String): String {
+    val clean = string.trim().replace("\n", "").replace("\r", "")
+    val padded = clean.padEnd((clean.length + 3) / 4 * 4, '=')
+    return try {
+        val decodedBytes = Base64.getDecoder().decode(padded)
+        String(decodedBytes, Charsets.UTF_8)
+    } catch (e: Exception) {
+        Log.e("Base64Decode", "Error: ${e.message}")
+        ""
     }
+}
 
-    // === FUNGSI BARU: Extract Subtitles dari Video Page ===
-    private suspend fun extractSubtitlesFromVideoPage(
-        videoUrl: String, 
-        subtitleCallback: (SubtitleFile) -> Unit
-    ) {
-        try {
-            val doc = app.get(videoUrl).document
-            
-            // Cari elemen subtitle dengan keyword Indonesia
-            val subtitleElements = doc.select("a, track").filter { element ->
-                val text = element.text().lowercase()
-                val href = element.attr("href").lowercase()
-                val src = element.attr("src").lowercase()
+// === FUNGSI BARU UNTUK SUBTITLE ===
+
+/**
+ * Extract subtitles from embedded video players
+ */
+suspend fun extractEmbeddedSubtitles(embedUrl: String): List<SubtitleFile> {
+    val subtitles = mutableListOf<SubtitleFile>()
+    
+    try {
+        val doc = app.get(embedUrl).document
+        
+        // Cari track elements di video players
+        doc.select("track").forEach { track ->
+            val kind = track.attr("kind")
+            if (kind == "subtitles" || kind == "captions") {
+                val src = track.attr("src")
+                val srclang = track.attr("srclang")
+                val label = track.attr("label").lowercase()
                 
-                text.contains("subtitle") && (
-                    text.contains("indonesia") || 
-                    text.contains("indonesian") || 
-                    text.contains("indo") ||
-                    href.contains("indonesia") ||
-                    src.contains("indonesia")
-                ) || element.attr("srclang").equals("id", ignoreCase = true) ||
-                   element.attr("label").lowercase().contains("indonesia")
-            }
-
-            subtitleElements.forEach { element ->
-                val subtitleUrl = when {
-                    element.tagName() == "track" -> element.attr("src")
-                    else -> element.attr("href")
-                }
-                
-                if (subtitleUrl.isNotBlank()) {
-                    val fullSubtitleUrl = fixUrl(subtitleUrl, getBaseUrl(videoUrl))
+                if (src.isNotBlank() && (
+                    srclang == "id" || 
+                    label.contains("indonesia") || 
+                    label.contains("indo")
+                )) {
+                    val fullUrl = fixUrl(src, getBaseUrl(embedUrl))
                     // Langsung buat SubtitleFile
-                    subtitleCallback(SubtitleFile("Indonesian", fullSubtitleUrl))
-                    Log.d("Subtitle", "Found Indonesian subtitle: $fullSubtitleUrl")
+                    subtitles.add(SubtitleFile("Indonesian", fullUrl))
                 }
             }
-
-            // Juga cari di embedded players
-            val embeddedSubtitles = extractEmbeddedSubtitles(videoUrl)
-            embeddedSubtitles.forEach { subtitleCallback(it) }
-
-        } catch (e: Exception) {
-            Log.e("SubtitleExtract", "Error extracting subtitles from video page: ${e.message}")
         }
+        
+        // Cari subtitle links di JavaScript data
+        val scriptContents = doc.select("script").mapNotNull { it.data() }
+        scriptContents.forEach { script ->
+            // Pattern untuk mencari URL subtitle dalam JavaScript
+            val subtitlePattern = Regex("""(https?://[^"\']*\.(?:srt|vtt|ass)[^"\']*indonesia[^"\']*)""", RegexOption.IGNORE_CASE)
+            subtitlePattern.findAll(script).forEach { match ->
+                val subtitleUrl = match.value
+                // Langsung buat SubtitleFile
+                subtitles.add(SubtitleFile("Indonesian", subtitleUrl))
+            }
+        }
+        
+    } catch (e: Exception) {
+        Log.e("EmbeddedSubtitle", "Failed to extract embedded subtitles: ${e.message}")
     }
+    
+    return subtitles
+}
+
+/**
+ * Clean subtitle filename untuk deteksi bahasa Indonesia
+ */
+fun isIndonesianSubtitle(filename: String): Boolean {
+    val cleanName = filename.lowercase()
+    return cleanName.contains("indonesia") || 
+           cleanName.contains("indonesian") || 
+           cleanName.contains("indo") ||
+           cleanName.contains("idn") ||
+           cleanName.contains(".id.") ||
+           cleanName.contains("_id") ||
+           cleanName.contains("[id]")
+}
+
+/**
+ * Deteksi format subtitle dari URL
+ */
+fun getSubtitleFormat(url: String): String {
+    return when {
+        url.endsWith(".vtt", ignoreCase = true) -> "vtt"
+        url.endsWith(".ass", ignoreCase = true) -> "ass"
+        url.endsWith(".ssa", ignoreCase = true) -> "ssa"
+        else -> "srt" // default
+    }
+}
+
+/**
+ * Extract subtitles dari halaman utama
+ */
+suspend fun extractSubtitlesFromPage(document: Document, pageUrl: String): List<SubtitleFile> {
+    val subtitles = mutableListOf<SubtitleFile>()
+    
+    try {
+        // Cari link subtitle berdasarkan keyword Indonesia/Indonesian
+        val subtitleLinks = document.select("a").filter { element ->
+            val text = element.text().lowercase()
+            val href = element.attr("href").lowercase()
+            
+            (text.contains("subtitle") || text.contains("sub")) && (
+                text.contains("indonesia") || 
+                text.contains("indonesian") || 
+                text.contains("indo") ||
+                text.contains("idn") ||
+                href.contains("indonesia") ||
+                href.contains("indonesian") ||
+                href.contains("indo")
+            )
+        }
+
+        subtitleLinks.forEach { subtitleElement ->
+            val subtitleUrl = subtitleElement.attr("href")
+            if (subtitleUrl.isNotBlank()) {
+                try {
+                    val finalSubtitleUrl = when {
+                        subtitleUrl.contains("safelink=") -> cinematickitloadBypass(subtitleUrl)
+                        else -> fixUrl(subtitleUrl, getBaseUrl(pageUrl))
+                    }
+                    
+                    if (finalSubtitleUrl != null) {
+                        // Langsung buat SubtitleFile
+                        subtitles.add(SubtitleFile("Indonesian", finalSubtitleUrl))
+                        Log.d("Subtitle", "Added Indonesian subtitle: $finalSubtitleUrl")
+                    }
+                } catch (e: Exception) {
+                    Log.e("SubtitleExtract", "Failed to process subtitle link: $subtitleUrl - ${e.message}")
+                }
+            }
+        }
+
+        // Juga cari di dalam konten halaman untuk link .srt/.vtt
+        document.select("a[href$=.srt], a[href$=.vtt], a[href$=.ass], a[href$=.ssa]").forEach { element ->
+            val subtitleUrl = element.attr("href")
+            val text = element.text().lowercase()
+            if (isIndonesianSubtitle(text) || isIndonesianSubtitle(subtitleUrl)) {
+                val finalUrl = fixUrl(subtitleUrl, getBaseUrl(pageUrl))
+                // Langsung buat SubtitleFile
+                subtitles.add(SubtitleFile("Indonesian", finalUrl))
+                Log.d("Subtitle", "Added Indonesian subtitle from file: $finalUrl")
+            }
+        }
+
+    } catch (e: Exception) {
+        Log.e("SubtitleExtract", "Error extracting subtitles from page: ${e.message}")
+    }
+    
+    return subtitles
 }
