@@ -14,10 +14,8 @@ import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import kotlinx.coroutines.runBlocking
 import org.jsoup.nodes.Element
-// Asumsikan Anda mengimpor data class dari tempat lain, contoh:
-// import com.Phisher98.Utils.ResponseData 
-// import com.Phisher98.Utils.CinemetaMeta 
-// import com.Phisher98.Utils.CinemetaVideo 
+
+// Catatan: ResponseData, Meta, dan EpisodeDetails diasumsikan diimpor/didefinisikan di tempat lain (Utils.kt)
 
 class DramaDrip : MainAPI() {
     override var mainUrl: String = runBlocking {
@@ -75,7 +73,7 @@ class DramaDrip : MainAPI() {
         val posterUrl = highestResUrl ?: imgElement?.attr("src")
         return newMovieSearchResponse(title, href, TvType.Movie) {
             this.posterUrl = posterUrl
-            // Tambahkan skor default di halaman pencarian
+            // Set skor default (atau 0) di halaman pencarian
             this.score = Score.from10("0") 
         }
 
@@ -136,7 +134,6 @@ class DramaDrip : MainAPI() {
             if (jsonResponse.isNotEmpty() && jsonResponse.startsWith("{")) {
                 val gson = Gson()
                 runCatching { 
-                    // Pastikan ResponseData diimpor atau didefinisikan dengan benar
                     gson.fromJson(jsonResponse, ResponseData::class.java) 
                 }.getOrNull()
             } else null
@@ -151,7 +148,8 @@ class DramaDrip : MainAPI() {
             description = responseData.meta?.description ?: descriptions
             cast = responseData.meta?.cast ?: emptyList()
             background = responseData.meta?.background ?: image
-            score = Score.from10(responseData.meta?.imdb_rating)
+            // FIX: Menggunakan imdbRating (sesuai Utils.kt)
+            score = Score.from10(responseData.meta?.imdbRating)
         }
 
 
@@ -264,7 +262,7 @@ class DramaDrip : MainAPI() {
                     this.season = season
                     this.episode = epNo
                     this.description = info?.overview
-                    this.score = Score.from10(info?.rating)
+                    // FIX: Hapus skor episode karena 'rating' tidak ada di EpisodeDetails
                 }
             }
 
@@ -278,7 +276,7 @@ class DramaDrip : MainAPI() {
                 addActors(cast)
                 addImdbId(imdbId)
                 addTMDbId(tmdbId)
-                this.score = score
+                this.score = score // Skor keseluruhan series
             }
         } else {
             return newMovieLoadResponse(title, url, TvType.Movie, hrefs) {
@@ -291,7 +289,7 @@ class DramaDrip : MainAPI() {
                 addActors(cast)
                 addImdbId(imdbId)
                 addTMDbId(tmdbId)
-                this.score = score
+                this.score = score // Skor keseluruhan movie
             }
         }
     }
