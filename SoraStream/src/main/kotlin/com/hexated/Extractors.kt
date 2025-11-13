@@ -9,7 +9,7 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.getAndUnpack
 import com.lagradost.cloudstream3.utils.newExtractorLink
-import com.lagradost.cloudstream3.utils.newSubtitleFile // Import yang ditambahkan
+import com.lagradost.cloudstream3.utils.newSubtitleFile
 
 open class Jeniusplay2 : ExtractorApi() {
     override val name = "Jeniusplay"
