@@ -1,0 +1,207 @@
+[
+    {
+        "iconUrl": "https://cdn.discordapp.com/attachments/1109266606292488297/1193122096159674448/2-modified.png?ex=65ec2a0a&is=65d9b50a&hm=f1e0b0165e71101e5440b47592d9e15727a6c00cdeb3512108067bfbdbef1af7&",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/aldry84/amangacor2",
+        "fileSize": 138020,
+        "status": 1,
+        "language": "en",
+        "authors": [
+            "Adicinemax21",
+            "Sora"
+        ],
+        "tvTypes": [
+            "AsianDrama",
+            "TvSeries",
+            "Anime",
+            "Movie"
+        ],
+        "version": 247,
+        "internalName": "Adicinemax21",
+        "description": "#1 best extention based on MultiAPI",
+        "url": "https://raw.githubusercontent.com/aldry84/amangacor2/builds/Adicinemax21.cs3",
+        "name": "Adicinemax21"
+    },
+    {
+        "iconUrl": "https://cekstatusgizi.linisehat.com/assets/img/icon/dewasa.png",
+        "jarFileSize": 76568,
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/aldry84/amangacor2",
+        "fileSize": 21708,
+        "status": 1,
+        "language": "en",
+        "authors": [
+            "AdiDewasa"
+        ],
+        "tvTypes": [
+            "AsianDrama",
+            "TvSeries",
+            "Movie"
+        ],
+        "version": 1,
+        "internalName": "AdiDewasa",
+        "jarUrl": "https://raw.githubusercontent.com/aldry84/amangacor2/builds/AdiDewasa.jar",
+        "description": "Film Semi Dewasa",
+        "url": "https://raw.githubusercontent.com/aldry84/amangacor2/builds/AdiDewasa.cs3",
+        "name": "AdiDewasa"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=moviebox.ph&sz=%size%",
+        "jarFileSize": 126818,
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/aldry84/amangacor2",
+        "fileSize": 27643,
+        "status": 1,
+        "language": "en",
+        "authors": [
+            "AdimovieboxUser"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "Anime",
+            "AsianDrama"
+        ],
+        "version": 1,
+        "internalName": "Adimoviebox",
+        "jarUrl": "https://raw.githubusercontent.com/aldry84/amangacor2/builds/Adimoviebox.jar",
+        "description": "Adimoviebox (moviebox.ph)",
+        "url": "https://raw.githubusercontent.com/aldry84/amangacor2/builds/Adimoviebox.cs3",
+        "name": "Adimoviebox"
+    },
+    {
+        "iconUrl": "https://cdn.discordapp.com/attachments/1109266606292488297/1193122096159674448/2-modified.png?ex=65ec2a0a&is=65d9b50a&hm=f1e0b0165e71101e5440b47592d9e15727a6c00cdeb3512108067bfbdbef1af7&",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/aldry84/amangacor2",
+        "fileSize": 137197,
+        "status": 1,
+        "language": "en",
+        "authors": [
+            "Hexated",
+            "Sora"
+        ],
+        "tvTypes": [
+            "AsianDrama",
+            "TvSeries",
+            "Anime",
+            "Movie"
+        ],
+        "version": 247,
+        "internalName": "AsianDrama",
+        "description": "#1 best extention based on MultiAPI",
+        "url": "https://raw.githubusercontent.com/aldry84/amangacor2/builds/AsianDrama.cs3",
+        "name": "AsianDrama"
+    },
+    {
+        "iconUrl": "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/Icons/Funmovieslix.png",
+        "jarFileSize": 73465,
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/aldry84/amangacor2",
+        "fileSize": 19204,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "Phisher98"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries"
+        ],
+        "version": 3,
+        "internalName": "Funmovieslix",
+        "jarUrl": "https://raw.githubusercontent.com/aldry84/amangacor2/builds/Funmovieslix.jar",
+        "description": "Indonesia Source",
+        "url": "https://raw.githubusercontent.com/aldry84/amangacor2/builds/Funmovieslix.cs3",
+        "name": "Funmovieslix"
+    },
+    {
+        "iconUrl": "https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://idlixian.com&size=16",
+        "jarFileSize": 95112,
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/aldry84/amangacor2",
+        "fileSize": 24524,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "Hexated,Phisher98"
+        ],
+        "tvTypes": [
+            "TvSeries",
+            "Movie",
+            "Anime",
+            "AsianDrama"
+        ],
+        "version": 3,
+        "internalName": "IdlixProvider",
+        "jarUrl": "https://raw.githubusercontent.com/aldry84/amangacor2/builds/IdlixProvider.jar",
+        "url": "https://raw.githubusercontent.com/aldry84/amangacor2/builds/IdlixProvider.cs3",
+        "name": "IdlixProvider"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=noxx.to&sz=%size%",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/aldry84/amangacor2",
+        "fileSize": 13865,
+        "status": 1,
+        "language": "en",
+        "authors": [
+            "LikDev-256,Phisher98"
+        ],
+        "tvTypes": [
+            "TvSeries"
+        ],
+        "version": 3,
+        "internalName": "NOXXProvider",
+        "description": "HD TV Shows (Not all links are working because of a unsolvable issue)",
+        "url": "https://raw.githubusercontent.com/aldry84/amangacor2/builds/NOXXProvider.cs3",
+        "name": "NOXXProvider"
+    },
+    {
+        "iconUrl": "https://cdn.discordapp.com/attachments/1109266606292488297/1193122096159674448/2-modified.png?ex=65ec2a0a&is=65d9b50a&hm=f1e0b0165e71101e5440b47592d9e15727a6c00cdeb3512108067bfbdbef1af7&",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/aldry84/amangacor2",
+        "fileSize": 141293,
+        "status": 1,
+        "language": "en",
+        "authors": [
+            "Hexated",
+            "Sora"
+        ],
+        "tvTypes": [
+            "AsianDrama",
+            "TvSeries",
+            "Anime",
+            "Movie"
+        ],
+        "version": 247,
+        "internalName": "SoraStream",
+        "description": "#1 best extention based on MultiAPI",
+        "url": "https://raw.githubusercontent.com/aldry84/amangacor2/builds/SoraStream.cs3",
+        "name": "SoraStream"
+    },
+    {
+        "iconUrl": "https://i3.wp.com/yt3.googleusercontent.com/ytc/AIdro_nCBArSmvOc6o-k2hTYpLtQMPrKqGtAw_nC20rxm70akA=s900-c-k-c0x00ffffff-no-rj?ssl=1",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/aldry84/amangacor2",
+        "fileSize": 756553,
+        "status": 1,
+        "language": "en",
+        "authors": [
+            "Phisher98",
+            "Hexated"
+        ],
+        "tvTypes": [
+            "AsianDrama",
+            "TvSeries",
+            "Anime",
+            "Movie",
+            "Cartoon",
+            "AnimeMovie"
+        ],
+        "version": 453,
+        "internalName": "StreamPlay",
+        "description": "#1 best extention based on MultiAPI",
+        "url": "https://raw.githubusercontent.com/aldry84/amangacor2/builds/StreamPlay.cs3",
+        "name": "StreamPlay"
+    }
+]
