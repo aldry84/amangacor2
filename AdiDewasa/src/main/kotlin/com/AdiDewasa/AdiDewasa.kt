@@ -7,7 +7,6 @@ import com.lagradost.cloudstream3.utils.newExtractorLink
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
-import com.lagradost.cloudstream3.debug
 
 class AdiDewasa : MainAPI() {
     override var mainUrl = "https://dramafull.cc"
@@ -63,25 +62,18 @@ class AdiDewasa : MainAPI() {
                 "keyword": ""
             }""".trimIndent()
 
-            debug("Sending payload: $jsonPayload")
-
             val payload = jsonPayload.toRequestBody("application/json".toMediaType())
 
             val response = app.post("$mainUrl/api/filter", requestBody = payload)
-            debug("Raw API Response: ${response.text}")
-
+            
             val homeResponse = response.parsedSafe<HomeResponse>()
             
             if (homeResponse?.success == false) {
-                debug("API returned success: false")
                 return newHomePageResponse(emptyList(), hasNext = false)
             }
 
             val mediaList = homeResponse?.data ?: emptyList()
-            debug("Found ${mediaList.size} media items")
-
             val searchResults = mediaList.mapNotNull { it.toSearchResult() }
-            debug("Successfully converted ${searchResults.size} search results")
 
             return newHomePageResponse(
                 list = HomePageList(
@@ -92,7 +84,6 @@ class AdiDewasa : MainAPI() {
                 hasNext = homeResponse?.nextPageUrl != null
             )
         } catch (e: Exception) {
-            debug("Error in getMainPage: ${e.message}")
             e.printStackTrace()
             return newHomePageResponse(emptyList(), hasNext = false)
         }
@@ -105,7 +96,7 @@ class AdiDewasa : MainAPI() {
                 return null
             }
 
-            // Gunakan title atau name, mana yang tersedia
+            // Use title or name, whichever is available
             val itemTitle = this.title ?: this.name ?: "Unknown Title"
             val itemSlug = this.slug ?: return null
             val itemImage = this.image ?: this.poster ?: ""
@@ -117,13 +108,10 @@ class AdiDewasa : MainAPI() {
                 ""
             }
 
-            debug("Converting item: $itemTitle, slug: $itemSlug, image: $itemImage")
-
             return newMovieSearchResponse(itemTitle, href, TvType.Movie) {
                 this.posterUrl = posterUrl
             }
         } catch (e: Exception) {
-            debug("Error in toSearchResult: ${e.message}")
             return null
         }
     }
@@ -131,15 +119,11 @@ class AdiDewasa : MainAPI() {
     override suspend fun search(query: String): List<SearchResponse>? {
         try {
             val url = "$mainUrl/api/live-search/$query"
-            debug("Searching: $url")
-            
             val response = app.get(url)
-            debug("Search response: ${response.text}")
-            
-            val searchResponse = response.parsedSafe<SearchResponse>()
+            val searchResponse = response.parsedSafe<ApiSearchResponse>()
             return searchResponse?.data?.mapNotNull { it.toSearchResult() }
         } catch (e: Exception) {
-            debug("Error in search: ${e.message}")
+            e.printStackTrace()
             return null
         }
     }
@@ -212,7 +196,7 @@ class AdiDewasa : MainAPI() {
                 }
             }
         } catch (e: Exception) {
-            debug("Error in load: ${e.message}")
+            e.printStackTrace()
             throw e
         }
     }
@@ -229,8 +213,6 @@ class AdiDewasa : MainAPI() {
             
             val signedUrl = Regex("""window\.signedUrl\s*=\s*"(.+?)"""").find(script)?.groupValues?.get(1)?.replace("\\/", "/") 
                 ?: return false
-
-            debug("Found signedUrl: $signedUrl")
             
             val res = app.get(signedUrl).text
             val resJson = JSONObject(res)
@@ -246,8 +228,7 @@ class AdiDewasa : MainAPI() {
                     newExtractorLink(
                         name,
                         name,
-                        bestQualityUrl,
-                        referer = mainUrl
+                        bestQualityUrl
                     )
                 )
                 
@@ -263,7 +244,7 @@ class AdiDewasa : MainAPI() {
                 return true
             }
         } catch (e: Exception) {
-            debug("Error in loadLinks: ${e.message}")
+            e.printStackTrace()
         }
         
         return false
