@@ -262,6 +262,7 @@ fun cleanTitle(title: String): String {
 
 /**
  * Clean subtitle filename untuk deteksi bahasa Indonesia
+ * HANYA SIMPAN SATU FUNCTION INI DI EXTRACTOR.KT
  */
 fun isIndonesianSubtitle(filename: String): Boolean {
     val cleanName = filename.lowercase()
