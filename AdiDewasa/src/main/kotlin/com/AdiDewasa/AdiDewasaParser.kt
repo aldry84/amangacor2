@@ -22,11 +22,10 @@ data class HomeResponse(
 data class MediaItem(
     @JsonProperty("is_adult") val isAdult: Int? = null,
     @JsonProperty("name") val name: String? = null,
-    @JsonProperty("title") val title: String? = null, // Tambahan field alternatif
+    @JsonProperty("title") val title: String? = null,
     @JsonProperty("slug") val slug: String? = null,
     @JsonProperty("image") val image: String? = null,
-    @JsonProperty("poster") val poster: String? = null, // Tambahan field alternatif
-    @JsonProperty("url") val url: String? = null // Tambahan field alternatif
+    @JsonProperty("poster") val poster: String? = null
 )
 
 data class Link(
@@ -35,7 +34,8 @@ data class Link(
     @JsonProperty("active") val active: Boolean? = null
 )
 
-data class SearchResponse(
+// Ganti nama class SearchResponse untuk menghindari konflik
+data class ApiSearchResponse(
     @JsonProperty("data") val data: List<MediaItem>? = null,
     @JsonProperty("success") val success: Boolean? = null
 )
