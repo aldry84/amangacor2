@@ -12,6 +12,9 @@ import com.lagradost.cloudstream3.LoadResponse.Companion.addTMDbId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
 import org.jsoup.nodes.Element
 
@@ -134,15 +137,21 @@ class DramaDrip : MainAPI() {
             background = responseData.meta?.background ?: image
         }
 
-
-        val hrefs: List<String> = document.select("div.wp-block-button > a")
-            .mapNotNull { linkElement ->
-                val link = linkElement.attr("href")
-                val actual=cinematickitloadBypass(link) ?: return@mapNotNull null
-                val page = app.get(actual).document
-                page.select("div.wp-block-button.movie_btn a")
-                    .eachAttr("href")
-            }.flatten()
+        // PERBAIKAN: Menggunakan coroutineScope dan async/awaitAll untuk pengambilan link film paralel
+        val hrefs = coroutineScope {
+            document.select("div.wp-block-button > a").mapNotNull { linkElement ->
+                async {
+                    val link = linkElement.attr("href")
+                    // Menggabungkan dua panggilan jaringan (cinematickitloadBypass dan app.get) dalam satu async
+                    val actual = cinematickitloadBypass(link) ?: return@async null
+                    app.get(actual).document
+                        .select("div.wp-block-button.movie_btn a")
+                        .eachAttr("href")
+                }
+            }.awaitAll() // Tunggu semua panggilan selesai
+                .filterNotNull()
+                .flatten()
+        }
 
         val trailer = document.selectFirst("div.wp-block-embed__wrapper > iframe")?.attr("src")
 
@@ -158,80 +167,94 @@ class DramaDrip : MainAPI() {
 
         if (tvType == TvType.TvSeries) {
             val tvSeriesEpisodes = mutableMapOf<Pair<Int, Int>, MutableList<String>>()
-
             val seasonBlocks = document.select("div.su-accordion h2")
 
-            for (seasonHeader in seasonBlocks) {
-                val seasonText = seasonHeader.text()
-                if (seasonText.contains("ZIP", ignoreCase = true)) {
-                    Log.d("Skip", "Skipping ZIP season: $seasonText")
-                } else {
-                    val seasonMatch = Regex("""S?e?a?s?o?n?\s*([0-9]+)""", RegexOption.IGNORE_CASE)
-                        .find(seasonText)
-                    val season = seasonMatch?.groupValues?.getOrNull(1)?.toIntOrNull()
+            // PERBAIKAN: Menggunakan coroutineScope untuk memparalelkan proses pengambilan episode
+            coroutineScope {
+                val allEpisodeFetchJobs = mutableListOf<kotlinx.coroutines.Deferred<Unit>>()
 
-                    if (season != null) {
-                        // Try to get the links block; if next sibling doesn't have buttons, try alternative selection
-                        var linksBlock = seasonHeader.nextElementSibling()
-                        if (linksBlock == null || linksBlock.select("div.wp-block-button")
-                                .isEmpty()
-                        ) {
-                            // Sometimes buttons could be inside a child or sibling div
-                            linksBlock = seasonHeader.parent()?.selectFirst("div.wp-block-button")
-                                ?: linksBlock
-                        }
+                for (seasonHeader in seasonBlocks) {
+                    val seasonText = seasonHeader.text()
+                    if (seasonText.contains("ZIP", ignoreCase = true)) {
+                        Log.d("Skip", "Skipping ZIP season: $seasonText")
+                    } else {
+                        val seasonMatch = Regex("""S?e?a?s?o?n?\s*([0-9]+)""", RegexOption.IGNORE_CASE)
+                            .find(seasonText)
+                        val season = seasonMatch?.groupValues?.getOrNull(1)?.toIntOrNull()
 
-                        val qualityLinks = linksBlock?.select("div.wp-block-button a")
-                            ?.mapNotNull { it.attr("href").takeIf { href -> href.isNotBlank() } }
-                            ?.distinct() ?: emptyList()
+                        if (season != null) {
+                            var linksBlock = seasonHeader.nextElementSibling()
+                            if (linksBlock == null || linksBlock.select("div.wp-block-button")
+                                    .isEmpty()
+                            ) {
+                                linksBlock = seasonHeader.parent()?.selectFirst("div.wp-block-button")
+                                    ?: linksBlock
+                            }
 
-                        for (qualityPageLink in qualityLinks) {
-                            try {
-                                val rawqualityPageLink=if (qualityPageLink.contains("modpro")) qualityPageLink else cinematickitloadBypass(qualityPageLink) ?: ""
-                                val response = app.get(rawqualityPageLink)
-                                val episodeDoc = response.document
+                            val qualityLinks = linksBlock?.select("div.wp-block-button a")
+                                ?.mapNotNull { it.attr("href").takeIf { href -> href.isNotBlank() } }
+                                ?.distinct() ?: emptyList()
 
-                                val episodeButtons =
-                                    episodeDoc.select("a").filter { element: Element ->
-                                        element.text()
-                                            .matches(Regex("""(?i)(Episode|Ep|E)?\s*0*\d+"""))
-                                    }
+                            // Meluncurkan async untuk setiap qualityPageLink di semua season
+                            qualityLinks.mapTo(allEpisodeFetchJobs) { qualityPageLink ->
+                                async {
+                                    try {
+                                        val rawqualityPageLink =
+                                            if (qualityPageLink.contains("modpro")) qualityPageLink else cinematickitloadBypass(
+                                                qualityPageLink
+                                            ) ?: return@async
 
-                                for (btn in episodeButtons) {
-                                    val ephref = btn.attr("href")
-                                    val epText = btn.text()
+                                        val response = app.get(rawqualityPageLink)
+                                        val episodeDoc = response.document
 
-                                    if (ephref.isNotBlank()) {
-                                        val epNo = Regex(
-                                            """(?:Episode|Ep|E)?\s*0*([0-9]+)""",
-                                            RegexOption.IGNORE_CASE
-                                        )
-                                            .find(epText)?.groupValues?.getOrNull(1)?.toIntOrNull()
+                                        val episodeButtons =
+                                            episodeDoc.select("a").filter { element: Element ->
+                                                element.text()
+                                                    .matches(Regex("""(?i)(Episode|Ep|E)?\s*0*\d+"""))
+                                            }
 
-                                        if (epNo != null) {
-                                            val key = season to epNo
-                                            tvSeriesEpisodes.getOrPut(key) { mutableListOf() }
-                                                .add(ephref)
-                                        } else {
-                                            Log.w(
-                                                "EpisodeFetch",
-                                                "Could not extract episode number from text: '$epText'"
-                                            )
+                                        for (btn in episodeButtons) {
+                                            val ephref = btn.attr("href")
+                                            val epText = btn.text()
+
+                                            if (ephref.isNotBlank()) {
+                                                val epNo = Regex(
+                                                    """(?:Episode|Ep|E)?\s*0*([0-9]+)""",
+                                                    RegexOption.IGNORE_CASE
+                                                )
+                                                    .find(epText)?.groupValues?.getOrNull(1)?.toIntOrNull()
+
+                                                if (epNo != null) {
+                                                    // PENTING: Gunakan synchronized saat memodifikasi shared mutable map
+                                                    synchronized(tvSeriesEpisodes) {
+                                                        val key = season to epNo
+                                                        tvSeriesEpisodes.getOrPut(key) { mutableListOf() }
+                                                            .add(ephref)
+                                                    }
+                                                } else {
+                                                    Log.w(
+                                                        "EpisodeFetch",
+                                                        "Could not extract episode number from text: '$epText'"
+                                                    )
+                                                }
+                                            } else {
+                                                Log.w(
+                                                    "EpisodeFetch",
+                                                    "Empty href for episode button with text: '$epText'"
+                                                )
+                                            }
                                         }
-                                    } else {
-                                        Log.w(
-                                            "EpisodeFetch",
-                                            "Empty href for episode button with text: '$epText'"
-                                        )
+                                    } catch (e: Exception) {
+                                        Log.e("EpisodeFetch", "Failed to load or parse $qualityPageLink: ${e.message}")
                                     }
                                 }
-                            } catch (_: Exception) {
-                                Log.e("EpisodeFetch", "Failed to load or parse $qualityPageLink")
                             }
                         }
                     }
                 }
+                allEpisodeFetchJobs.awaitAll() // Tunggu semua job selesai
             }
+
 
             val finalEpisodes = tvSeriesEpisodes.map { (seasonEpisode, links) ->
                 val (season, epNo) = seasonEpisode
@@ -285,23 +308,29 @@ class DramaDrip : MainAPI() {
             Log.e("LoadLinks", "No links found in data: $data")
             return false
         }
-        for (link in links) {
-            try {
-                val finalLink = when {
-                    "safelink=" in link -> cinematickitBypass(link)
-                    "unblockedgames" in link -> bypassHrefli(link)
-                    "examzculture" in link -> bypassHrefli(link)
-                    else -> link
-                }
 
-                if (finalLink != null) {
-                    loadExtractor(finalLink, subtitleCallback, callback)
-                } else {
-                    Log.w("LoadLinks", "Bypass returned null for link: $link")
+        // PERBAIKAN: Menjalankan pemrosesan link secara paralel
+        coroutineScope {
+            links.map { link ->
+                async {
+                    try {
+                        val finalLink = when {
+                            "safelink=" in link -> cinematickitBypass(link)
+                            "unblockedgames" in link -> bypassHrefli(link)
+                            "examzculture" in link -> bypassHrefli(link)
+                            else -> link
+                        }
+
+                        if (finalLink != null) {
+                            loadExtractor(finalLink, subtitleCallback, callback)
+                        } else {
+                            Log.w("LoadLinks", "Bypass returned null for link: $link")
+                        }
+                    } catch (e: Exception) {
+                        Log.e("LoadLinks", "Failed to load link: $link, error: ${e.message}")
+                    }
                 }
-            } catch (_: Exception) {
-                Log.e("LoadLinks", "Failed to load link: $link")
-            }
+            }.awaitAll() // Tunggu semua link selesai diproses
         }
 
         return true
