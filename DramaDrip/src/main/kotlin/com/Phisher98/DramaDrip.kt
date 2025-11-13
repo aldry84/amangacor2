@@ -147,7 +147,7 @@ class DramaDrip : MainAPI() {
         val trailer = document.selectFirst("div.wp-block-embed__wrapper > iframe")?.attr("src")
 
         // === TAMBAHKAN: Extract Subtitle ===
-        val subtitles = extractSubtitlesFromPage(document, url)
+        val subtitleList = extractSubtitlesFromPage(document, url)
 
         val recommendations =
             document.select("div.entry-related-inner-content article").mapNotNull {
@@ -256,7 +256,7 @@ class DramaDrip : MainAPI() {
                 this.plot = description
                 this.tags = tags
                 this.recommendations = recommendations
-                this.subtitles = subtitles  // ← Tambahkan subtitles di sini
+                this.subtitles = subtitleList  // ← Tambahkan subtitles di sini
                 addTrailer(trailer)
                 addActors(cast)
                 addImdbId(imdbId)
@@ -269,7 +269,7 @@ class DramaDrip : MainAPI() {
                 this.plot = description
                 this.tags = tags
                 this.recommendations = recommendations
-                this.subtitles = subtitles  // ← Tambahkan subtitles di sini
+                this.subtitles = subtitleList  // ← Tambahkan subtitles di sini
                 addTrailer(trailer)
                 addActors(cast)
                 addImdbId(imdbId)
@@ -354,8 +354,8 @@ class DramaDrip : MainAPI() {
                 
                 if (subtitleUrl.isNotBlank()) {
                     val fullSubtitleUrl = fixUrl(subtitleUrl, getBaseUrl(videoUrl))
-                    // Gunakan constructor yang benar
-                    subtitleCallback(SubtitleFile(language = "Indonesian", url = fullSubtitleUrl))
+                    // Gunakan factory function yang benar
+                    subtitleCallback(createSubtitleFile("Indonesian", fullSubtitleUrl))
                     Log.d("Subtitle", "Found Indonesian subtitle: $fullSubtitleUrl")
                 }
             }
