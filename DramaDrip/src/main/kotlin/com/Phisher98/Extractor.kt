@@ -134,8 +134,8 @@ class Driveseed : ExtractorApi() {
             val text = element.text().lowercase()
             if (isIndonesianSubtitle(text) || isIndonesianSubtitle(subtitleUrl)) {
                 val fullSubtitleUrl = fixUrl(subtitleUrl, Basedomain)
-                // Gunakan constructor yang benar
-                subtitleCallback(SubtitleFile(language = "Indonesian", url = fullSubtitleUrl))
+                // Gunakan factory function yang benar
+                subtitleCallback(createSubtitleFile("Indonesian", fullSubtitleUrl))
                 Log.d("DriveseedSubtitle", "Found Indonesian subtitle: $fullSubtitleUrl")
             }
         }
