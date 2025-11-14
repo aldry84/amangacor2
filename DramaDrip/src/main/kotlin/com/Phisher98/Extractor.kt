@@ -23,13 +23,6 @@ class Driveseed : ExtractorApi() {
     override val mainUrl: String = "https://driveseed.org"
     override val requiresReferer = false
 
-    override val supportedUrls: List<Regex> = listOf(
-        Regex("https?://(www\\.)?driveseed\\.org/.*"),
-        Regex("https?://(www\\.)?driveseed\\.(xyz|top|online)/.*"),
-        Regex("https?://(www\\.)?video-seed\\.pro/.*"),
-        Regex("https?://(www\\.)?video-leech\\.pro/.*")
-    )
-
     private fun getIndexQuality(str: String?): Int {
         return Regex("(\\d{3,4})[pP]").find(str ?: "")?.groupValues?.getOrNull(1)?.toIntOrNull()
             ?: Qualities.Unknown.value
@@ -112,6 +105,11 @@ class Driveseed : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
+        // Check if URL is supported by this extractor
+        if (!isSupportedUrl(url)) {
+            return
+        }
+
         val Basedomain = getBaseUrl(url)
 
         val document = try {
@@ -222,6 +220,15 @@ class Driveseed : ExtractorApi() {
             }
         }
     }
+
+    private fun isSupportedUrl(url: String): Boolean {
+        return url.contains("driveseed") || 
+               url.contains("video-seed") || 
+               url.contains("video-leech") ||
+               getBaseUrl(url).contains("driveseed") ||
+               getBaseUrl(url).contains("video-seed") ||
+               getBaseUrl(url).contains("video-leech")
+    }
 }
 
 // ========== JENIUSPLAY EXTRACTOR ==========
@@ -230,19 +237,17 @@ class Jeniusplay : ExtractorApi() {
     override val mainUrl = "https://jeniusplay.com"
     override val requiresReferer = true
 
-    override val supportedUrls: List<Regex> = listOf(
-        Regex("https?://(www\\.)?jeniusplay\\.com/.*"),
-        Regex("https?://(www\\.)?jeniusplay\\.(net|org|xyz)/.*"),
-        Regex(".*jeniusplay.*"),
-        Regex(".*/embed\\.php\\?data=.*")
-    )
-
     override suspend fun getUrl(
         url: String,
         referer: String?,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
+        // Check if URL is supported by this extractor
+        if (!isSupportedUrl(url)) {
+            return
+        }
+
         try {
             Log.d("Jeniusplay", "Processing URL: $url")
             val document = app.get(url, referer = "$mainUrl/").document
@@ -336,6 +341,12 @@ class Jeniusplay : ExtractorApi() {
             else -> str
         }
     }
+
+    private fun isSupportedUrl(url: String): Boolean {
+        return url.contains("jeniusplay") || 
+               url.contains("/embed.php?data=") ||
+               getBaseUrl(url).contains("jeniusplay")
+    }
 }
 
 // Data classes untuk Jeniusplay
@@ -357,20 +368,17 @@ class UniversalExtractor : ExtractorApi() {
     override val mainUrl = ""
     override val requiresReferer = true
 
-    override val supportedUrls: List<Regex> = listOf(
-        Regex(".*\\.(mp4|m3u8|mkv|avi|mov|wmv|flv|webm).*"),
-        Regex(".*/video/.*"),
-        Regex(".*/stream/.*"),
-        Regex(".*/embed/.*"),
-        Regex(".*/player/.*")
-    )
-
     override suspend fun getUrl(
         url: String,
         referer: String?,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
+        // Skip if URL is already handled by specific extractors
+        if (isHandledBySpecificExtractor(url)) {
+            return
+        }
+
         try {
             Log.d("UniversalExtractor", "Processing URL: $url")
             
@@ -467,6 +475,15 @@ class UniversalExtractor : ExtractorApi() {
         }
     }
 
+    private fun isHandledBySpecificExtractor(url: String): Boolean {
+        return url.contains("driveseed") ||
+               url.contains("jeniusplay") ||
+               url.contains("streamtake") ||
+               url.contains("vidmoly") ||
+               url.contains("filemoon") ||
+               url.contains("dupload")
+    }
+
     private fun extractQualityFromUrl(url: String): Int {
         return when {
             "1080" in url -> 1080
@@ -507,17 +524,17 @@ class StreamTake : ExtractorApi() {
     override val mainUrl = "https://streamtake.xyz"
     override val requiresReferer = true
 
-    override val supportedUrls: List<Regex> = listOf(
-        Regex("https?://(www\\.)?streamtake\\.(xyz|com|net)/.*"),
-        Regex(".*streamtake.*")
-    )
-
     override suspend fun getUrl(
         url: String,
         referer: String?,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
+        // Check if URL is supported by this extractor
+        if (!isSupportedUrl(url)) {
+            return
+        }
+
         val document = app.get(url, referer = referer).document
         
         // Extract m3u8 from script tags
@@ -541,6 +558,10 @@ class StreamTake : ExtractorApi() {
             )
         }
     }
+
+    private fun isSupportedUrl(url: String): Boolean {
+        return url.contains("streamtake") || getBaseUrl(url).contains("streamtake")
+    }
 }
 
 class VidMoly : ExtractorApi() {
@@ -548,17 +569,17 @@ class VidMoly : ExtractorApi() {
     override val mainUrl = "https://vidmoly.to"
     override val requiresReferer = true
 
-    override val supportedUrls: List<Regex> = listOf(
-        Regex("https?://(www\\.)?vidmoly\\.(to|me|com)/.*"),
-        Regex(".*vidmoly.*")
-    )
-
     override suspend fun getUrl(
         url: String,
         referer: String?,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
+        // Check if URL is supported by this extractor
+        if (!isSupportedUrl(url)) {
+            return
+        }
+
         val document = app.get(url, referer = referer).document
         
         // Multiple extraction methods for VidMoly
@@ -592,6 +613,10 @@ class VidMoly : ExtractorApi() {
             )
         }
     }
+
+    private fun isSupportedUrl(url: String): Boolean {
+        return url.contains("vidmoly") || getBaseUrl(url).contains("vidmoly")
+    }
 }
 
 class FileMoon : ExtractorApi() {
@@ -599,17 +624,17 @@ class FileMoon : ExtractorApi() {
     override val mainUrl = "https://filemoon.sx"
     override val requiresReferer = true
 
-    override val supportedUrls: List<Regex> = listOf(
-        Regex("https?://(www\\.)?filemoon\\.(sx|com|net)/.*"),
-        Regex(".*filemoon.*")
-    )
-
     override suspend fun getUrl(
         url: String,
         referer: String?,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
+        // Check if URL is supported by this extractor
+        if (!isSupportedUrl(url)) {
+            return
+        }
+
         val response = app.get(url, referer = referer)
         val document = response.document
         
@@ -640,6 +665,10 @@ class FileMoon : ExtractorApi() {
             )
         }
     }
+
+    private fun isSupportedUrl(url: String): Boolean {
+        return url.contains("filemoon") || getBaseUrl(url).contains("filemoon")
+    }
     
     private fun decodeEvalScript(script: String): String {
         return try {
@@ -659,17 +688,17 @@ class DUpload : ExtractorApi() {
     override val mainUrl = "https://dupload.org"
     override val requiresReferer = false
 
-    override val supportedUrls: List<Regex> = listOf(
-        Regex("https?://(www\\.)?dupload\\.(org|com|net)/.*"),
-        Regex(".*dupload.*")
-    )
-
     override suspend fun getUrl(
         url: String,
         referer: String?,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
+        // Check if URL is supported by this extractor
+        if (!isSupportedUrl(url)) {
+            return
+        }
+
         val document = app.get(url).document
         
         // DUpload usually has direct video links
@@ -693,6 +722,10 @@ class DUpload : ExtractorApi() {
             )
         }
     }
+
+    private fun isSupportedUrl(url: String): Boolean {
+        return url.contains("dupload") || getBaseUrl(url).contains("dupload")
+    }
     
     private fun extractQualityFromUrl(url: String): Int {
         return when {
@@ -714,16 +747,17 @@ class MultiQualityM3u8 : ExtractorApi() {
     override val mainUrl = ""
     override val requiresReferer = true
 
-    override val supportedUrls: List<Regex> = listOf(
-        Regex(".*\\.m3u8.*")
-    )
-
     override suspend fun getUrl(
         url: String,
         referer: String?,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
+        // Check if URL is supported by this extractor
+        if (!url.contains(".m3u8")) {
+            return
+        }
+
         // For m3u8 files with multiple quality levels
         M3u8Helper.generateM3u8(
             name,
@@ -771,5 +805,14 @@ fun cleanTitle(title: String): String {
         parts.subList(startIndex, parts.size).joinToString(".")
     } else {
         parts.takeLast(3).joinToString(".")
+    }
+}
+
+// Helper function to get base URL
+private fun getBaseUrl(url: String): String {
+    return try {
+        URI(url).let { "${it.scheme}://${it.host}" }
+    } catch (e: Exception) {
+        ""
     }
 }
