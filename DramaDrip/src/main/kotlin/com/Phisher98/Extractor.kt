@@ -12,6 +12,7 @@ import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.getAndUnpack
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
+import com.lagradost.cloudstream3.utils.M3u8Helper
 import okhttp3.FormBody
 import org.json.JSONObject
 import java.net.URI
@@ -144,7 +145,7 @@ class Driveseed : ExtractorApi() {
                                 newExtractorLink(
                                     "$name Instant(Download)(VLC) $labelExtras",
                                     "$name Instant(Download)(VLC) $labelExtras",
-                                    url = link,
+                                    link,
                                     INFER_TYPE
                                 ) {
                                     this.quality = getIndexQuality(qualityText)
@@ -159,7 +160,8 @@ class Driveseed : ExtractorApi() {
                                 newExtractorLink(
                                     "$name ResumeBot $labelExtras",
                                     "$name ResumeBot $labelExtras",
-                                    url = link
+                                    link,
+                                    INFER_TYPE
                                 ) {
                                     this.quality = getIndexQuality(qualityText)
                                 }
@@ -173,7 +175,8 @@ class Driveseed : ExtractorApi() {
                                 newExtractorLink(
                                     "$name CF Type1 $labelExtras",
                                     "$name CF Type1 $labelExtras",
-                                    url = link
+                                    link,
+                                    INFER_TYPE
                                 ) {
                                     this.quality = getIndexQuality(qualityText)
                                 }
@@ -187,7 +190,8 @@ class Driveseed : ExtractorApi() {
                                 newExtractorLink(
                                     "$name ResumeCloud $labelExtras",
                                     "$name ResumeCloud $labelExtras",
-                                    url = link
+                                    link,
+                                    INFER_TYPE
                                 ) {
                                     this.quality = getIndexQuality(qualityText)
                                 }
@@ -200,7 +204,8 @@ class Driveseed : ExtractorApi() {
                             newExtractorLink(
                                 "$name Cloud Download $labelExtras",
                                 "$name Cloud Download $labelExtras",
-                                url = href
+                                href,
+                                INFER_TYPE
                             ) {
                                 this.quality = getIndexQuality(qualityText)
                             }
@@ -239,7 +244,7 @@ class Jeniusplay : ExtractorApi() {
             val m3uLink = jsonResponse.videoSource
 
             // Callback untuk video stream
-            callback.invoke(
+            callback(
                 newExtractorLink(
                     this.name,
                     this.name,
@@ -321,9 +326,11 @@ class StreamTake : ExtractorApi() {
                     name,
                     name,
                     m3u8Url,
-                    referer = url,
-                    quality = quality
-                )
+                    ExtractorLinkType.M3U8
+                ) {
+                    this.referer = url
+                    this.quality = quality
+                }
             )
         }
     }
@@ -353,27 +360,17 @@ class VidMoly : ExtractorApi() {
         ).filter { it.isNotBlank() && it.contains("m3u8") }
         
         sources.forEach { source ->
-            if (source.startsWith("//")) {
-                callback(
-                    newExtractorLink(
-                        name,
-                        name,
-                        "https:$source",
-                        referer = url,
-                        quality = Qualities.Unknown.value
-                    )
-                )
-            } else if (source.startsWith("http")) {
-                callback(
-                    newExtractorLink(
-                        name,
-                        name,
-                        source,
-                        referer = url,
-                        quality = Qualities.Unknown.value
-                    )
-                )
-            }
+            val finalUrl = if (source.startsWith("//")) "https:$source" else source
+            callback(
+                newExtractorLink(
+                    name,
+                    name,
+                    finalUrl,
+                    ExtractorLinkType.M3U8
+                ) {
+                    this.referer = url
+                }
+            )
         }
     }
     
@@ -417,9 +414,10 @@ class FileMoon : ExtractorApi() {
                     name,
                     name,
                     finalUrl,
-                    referer = url,
-                    quality = Qualities.Unknown.value
-                )
+                    ExtractorLinkType.M3U8
+                ) {
+                    this.referer = url
+                }
             )
         }
     }
@@ -457,15 +455,18 @@ class DUpload : ExtractorApi() {
         
         if (!videoUrl.isNullOrEmpty()) {
             val quality = extractQualityFromUrl(videoUrl)
+            val finalUrl = fixUrl(videoUrl, mainUrl)
             
             callback(
                 newExtractorLink(
                     name,
                     name,
-                    fixUrl(videoUrl, mainUrl),
-                    referer = url,
-                    quality = quality
-                )
+                    finalUrl,
+                    INFER_TYPE
+                ) {
+                    this.referer = url
+                    this.quality = quality
+                }
             )
         }
     }
