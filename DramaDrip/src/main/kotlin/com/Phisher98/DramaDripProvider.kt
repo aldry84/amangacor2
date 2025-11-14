@@ -9,8 +9,18 @@ import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 class DramaDripProvider: BasePlugin() {
     override fun load() {
         registerMainAPI(DramaDrip())
+        
+        // Register all extractors in priority order
         registerExtractorAPI(Driveseed())
+        registerExtractorAPI(Jeniusplay())
+        registerExtractorAPI(UniversalExtractor()) // Universal should be after specific ones
+        registerExtractorAPI(StreamTake())
+        registerExtractorAPI(VidMoly())
+        registerExtractorAPI(FileMoon())
+        registerExtractorAPI(DUpload())
+        registerExtractorAPI(MultiQualityM3u8())
     }
+    
     companion object {
         // TMDb Configuration
         const val TMDB_API_KEY = "b030404650f279792a8d3287232358e3"
