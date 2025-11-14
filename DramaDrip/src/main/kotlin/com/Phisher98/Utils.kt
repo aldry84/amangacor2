@@ -5,11 +5,9 @@ import androidx.annotation.RequiresApi
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.api.Log
 import com.lagradost.cloudstream3.app
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
 import org.jsoup.nodes.Document
 import java.net.URI
-import java.net.URLEncoder
 import java.util.Base64
 import java.util.concurrent.TimeUnit
 
@@ -66,7 +64,7 @@ suspend fun <T> withRetry(
         } catch (e: Exception) {
             Log.w("Retry", "Attempt ${attempt + 1}/$attempts failed: ${e.message}")
             if (attempt == attempts - 1) throw e
-            kotlinx.coroutines.delay(delayMs * (attempt + 1))
+            delay(delayMs * (attempt + 1))
         }
     }
     return null
@@ -180,7 +178,7 @@ suspend fun fetchTMDbData(tmdbId: String, type: String): TMDbResponse? {
     if (tmdbId.isEmpty()) return null
     
     val cacheKey = "tmdb_${type}_$tmdbId"
-    return CacheManager.get(cacheKey) ?: withRetry {
+    return CacheManager.get<TMDbResponse>(cacheKey) ?: withRetry {
         try {
             val url = when (type.lowercase()) {
                 "movie" -> "${DramaDripProvider.TMDB_BASE_URL}/movie/$tmdbId?api_key=${DramaDripProvider.TMDB_API_KEY}&append_to_response=credits,videos"
@@ -201,7 +199,7 @@ suspend fun fetchTMDbEpisode(tmdbId: String, season: Int, episode: Int): TMDbEpi
     if (tmdbId.isEmpty()) return null
     
     val cacheKey = "tmdb_episode_${tmdbId}_${season}_${episode}"
-    return CacheManager.get(cacheKey) ?: withRetry {
+    return CacheManager.get<TMDbEpisode>(cacheKey) ?: withRetry {
         try {
             val url = "${DramaDripProvider.TMDB_BASE_URL}/tv/$tmdbId/season/$season/episode/$episode?api_key=${DramaDripProvider.TMDB_API_KEY}"
             val response = app.get(url).parsedSafe<TMDbEpisode>()
