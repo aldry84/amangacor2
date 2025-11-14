@@ -88,7 +88,7 @@ class DramaDrip : MainAPI() {
         val document = app.get(url).document
 
         var imdbId: String? = null
-        var tmdbId: String? = null
+        var tmdbId: Int? = null // Diubah menjadi Int?
         var tmdbType: String? = null
 
         document.select("div.su-spoiler-content ul.wp-block-list > li").forEach { li ->
@@ -100,12 +100,12 @@ class DramaDrip : MainAPI() {
             if (tmdbId == null && tmdbType == null && "themoviedb.org" in text) {
                 Regex("/(movie|tv)/(\\d+)").find(text)?.let { match ->
                     tmdbType = match.groupValues[1] // movie or tv
-                    tmdbId = match.groupValues[2]   // numeric ID
+                    tmdbId = match.groupValues[2]?.toIntOrNull()   // numeric ID
                 }
             }
         }
         val tvType = when (true) {
-            (tmdbType?.contains("Movie", ignoreCase = true) == true) -> TvType.Movie
+            (tmdbType?.contains("movie", ignoreCase = true) == true) -> TvType.Movie
             else -> TvType.TvSeries
         }
 
@@ -117,7 +117,7 @@ class DramaDrip : MainAPI() {
             ?.substringAfter("(")?.substringBefore(")")?.toIntOrNull()
         val descriptions = document.selectFirst("div.content-section p.mt-4")?.text()?.trim()
         val typeset = if (tvType == TvType.TvSeries) "series" else "movie"
-        val responseData = if (tmdbId?.isNotEmpty() == true) {
+        val responseData = if (imdbId?.isNotEmpty() == true) {
             val jsonResponse = app.get("$cinemeta_url/$typeset/$imdbId.json").text
             if (jsonResponse.isNotEmpty() && jsonResponse.startsWith("{")) {
                 val gson = Gson()
@@ -132,9 +132,12 @@ class DramaDrip : MainAPI() {
             description = responseData.meta?.description ?: descriptions
             cast = responseData.meta?.cast ?: emptyList()
             background = responseData.meta?.background ?: image
+            // Jika tmdbId tidak ditemukan di halaman, coba ambil dari Cinemeta
+            if (tmdbId == null) tmdbId = responseData.meta?.moviedb_id
         }
 
 
+        // Untuk Movie, hrefs akan berisi tautan yang ditemukan di halaman
         val hrefs: List<String> = document.select("div.wp-block-button > a")
             .mapNotNull { linkElement ->
                 val link = linkElement.attr("href")
@@ -156,6 +159,7 @@ class DramaDrip : MainAPI() {
                 }
             }
 
+        // --- Perubahan untuk TvSeries Load ---
         if (tvType == TvType.TvSeries) {
             val tvSeriesEpisodes = mutableMapOf<Pair<Int, Int>, MutableList<String>>()
 
@@ -238,7 +242,16 @@ class DramaDrip : MainAPI() {
                 val info =
                     responseData?.meta?.videos?.find { it.season == season && it.episode == epNo }
 
-                newEpisode(links.distinct().toJson()) {
+                // --- DATA BARU UNTUK loadLinks: Menyertakan TMDB ID dan Tipe ---
+                val dataJson = mapOf(
+                    "links" to links.distinct(),
+                    "tmdbId" to tmdbId,
+                    "tmdbType" to "TvSeries",
+                    "season" to season,
+                    "episode" to epNo
+                ).toJson()
+
+                newEpisode(dataJson) {
                     this.name = info?.name ?: "Episode $epNo"
                     this.posterUrl = info?.thumbnail
                     this.season = season
@@ -256,10 +269,19 @@ class DramaDrip : MainAPI() {
                 addTrailer(trailer)
                 addActors(cast)
                 addImdbId(imdbId)
-                addTMDbId(tmdbId)
+                addTMDbId(tmdbId?.toString())
             }
         } else {
-            return newMovieLoadResponse(title, url, TvType.Movie, hrefs) {
+            // --- DATA BARU UNTUK loadLinks: Menyertakan TMDB ID dan Tipe ---
+            val dataJson = mapOf(
+                "links" to hrefs,
+                "tmdbId" to tmdbId,
+                "tmdbType" to "Movie",
+                "season" to null,
+                "episode" to null
+            ).toJson()
+
+            return newMovieLoadResponse(title, url, TvType.Movie, dataJson) {
                 this.backgroundPosterUrl = background
                 this.year = year
                 this.plot = description
@@ -268,7 +290,7 @@ class DramaDrip : MainAPI() {
                 addTrailer(trailer)
                 addActors(cast)
                 addImdbId(imdbId)
-                addTMDbId(tmdbId)
+                addTMDbId(tmdbId?.toString())
             }
         }
     }
@@ -280,29 +302,63 @@ class DramaDrip : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val links = tryParseJson<List<String>>(data).orEmpty()
-        if (links.isEmpty()) {
-            Log.e("LoadLinks", "No links found in data: $data")
-            return false
-        }
-        for (link in links) {
-            try {
-                val finalLink = when {
-                    "safelink=" in link -> cinematickitBypass(link)
-                    "unblockedgames" in link -> bypassHrefli(link)
-                    "examzculture" in link -> bypassHrefli(link)
-                    else -> link
-                }
+        
+        // --- Ekstraksi Data dari JSON Baru ---
+        val episodeData = tryParseJson<Map<String, Any>>(data)
+        
+        // Data untuk DramaDrip links
+        val dramadripLinks = tryParseJson<List<String>>(episodeData?.get("links")?.toString() ?: "[]").orEmpty()
 
-                if (finalLink != null) {
-                    loadExtractor(finalLink, subtitleCallback, callback)
-                } else {
-                    Log.w("LoadLinks", "Bypass returned null for link: $link")
+        // Data untuk Vidrock
+        val tmdbId = episodeData?.get("tmdbId")?.toString()?.toIntOrNull()
+        val tmdbType = episodeData?.get("tmdbType")?.toString()
+        val season = episodeData?.get("season")?.toString()?.toIntOrNull()
+        val episode = episodeData?.get("episode")?.toString()?.toIntOrNull()
+        
+        // Konversi tmdbType ke format Vidrock ("movie" atau "tv")
+        val vidrockType = when (tmdbType) {
+            "Movie" -> "movie"
+            "TvSeries" -> "tv"
+            else -> null
+        }
+        
+        val actions = mutableListOf<() -> Unit>()
+
+        // 1. Tugas untuk memproses tautan DRAMADRIP yang ada (menggunakan logic lama)
+        for (link in dramadripLinks) {
+            actions.add {
+                try {
+                    val finalLink = when {
+                        "safelink=" in link -> cinematickitBypass(link)
+                        "unblockedgames" in link -> bypassHrefli(link)
+                        "examzculture" in link -> bypassHrefli(link)
+                        else -> link
+                    }
+
+                    if (finalLink != null) {
+                        loadExtractor(finalLink, subtitleCallback, callback)
+                    } else {
+                        Log.w("LoadLinks", "Bypass returned null for link: $link")
+                    }
+                } catch (_: Exception) {
+                    Log.e("LoadLinks", "Failed to load link: $link")
                 }
-            } catch (_: Exception) {
-                Log.e("LoadLinks", "Failed to load link: $link")
             }
         }
+        
+        // 2. Tugas untuk menjalankan Vidrock (jika memiliki TMDB ID yang valid)
+        if (tmdbId != null && vidrockType != null) {
+            actions.add {
+                try {
+                    DramaDripExtractor.invokeVidrock(tmdbId, vidrockType, season, episode, subtitleCallback, callback)
+                } catch (e: Exception) {
+                    Log.e("LoadLinks", "Failed to load Vidrock link: ${e.message}")
+                }
+            }
+        }
+
+        // Jalankan semua tugas secara paralel
+        runAllAsync(actions)
 
         return true
     }
