@@ -248,7 +248,7 @@ class DramaDrip : MainAPI() {
                     "episode" to epNo
                 ).toJson()
 
-                newEpisode(dataJson) { // Menggunakan dataJson baru
+                newEpisode(dataJson) { 
                     this.name = info?.name ?: "Episode $epNo"
                     this.posterUrl = info?.thumbnail
                     this.season = season
@@ -278,7 +278,7 @@ class DramaDrip : MainAPI() {
                 "episode" to null
             ).toJson()
 
-            return newMovieLoadResponse(title, url, TvType.Movie, dataJson) { // Menggunakan dataJson baru
+            return newMovieLoadResponse(title, url, TvType.Movie, dataJson) { 
                 this.backgroundPosterUrl = background
                 this.year = year
                 this.plot = description
@@ -355,8 +355,8 @@ class DramaDrip : MainAPI() {
             }
         }
 
-        // Jalankan semua tugas secara paralel
-        runAllAsync(actions)
+        // PERBAIKAN: Gunakan spread operator (*) dengan toTypedArray() untuk runAllAsync
+        runAllAsync(*actions.toTypedArray())
 
         return true
     }
