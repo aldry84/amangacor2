@@ -282,7 +282,8 @@ class AsianDramaProvider : MainAPI() {
         return null
     }
 
-    private fun extractEpisodesFromDocument(document: Document): List<Episode> {
+    // PERBAIKAN: Tambahkan keyword 'suspend' di sini
+    private suspend fun extractEpisodesFromDocument(document: Document): List<Episode> {
         val episodes = mutableListOf<Episode>()
         val seasonBlocks = document.select("div.su-accordion h2")
 
@@ -307,7 +308,7 @@ class AsianDramaProvider : MainAPI() {
 
                 for (qualityPageLink in qualityLinks) {
                     try {
-                        // Untuk sekarang langsung proses tanpa bypass
+                        // PERBAIKAN: app.get() adalah suspend function, jadi ini sudah benar
                         val episodeDoc = app.get(qualityPageLink).document
                         val episodeButtons = episodeDoc.select("a").filter { element ->
                             element.text().matches(Regex("""(?i)(Episode|Ep|E)?\s*0*\d+"""))
