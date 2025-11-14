@@ -147,6 +147,47 @@ open class Adicinemax21 : TmdbProvider() {
             }
     }
 
+    // Fungsi untuk mengambil sinopsis dalam bahasa Indonesia
+    private suspend fun fetchIndonesianOverview(data: Data, type: TvType): String? {
+        return try {
+            val append = "alternative_titles,credits,external_ids,keywords,videos,recommendations"
+            val resUrl = if (type == TvType.Movie) {
+                "$tmdbAPI/movie/${data.id}?api_key=$apiKey&language=id&append_to_response=$append"
+            } else {
+                "$tmdbAPI/tv/${data.id}?api_key=$apiKey&language=id&append_to_response=$append"
+            }
+            
+            val indonesianRes = app.get(resUrl).parsedSafe<MediaDetail>()
+            indonesianRes?.overview
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    // Fungsi untuk mengambil rating konten dalam bahasa Indonesia
+    private suspend fun fetchIndonesianContentRating(id: Int?, type: String): String? {
+        if (id == null) return null
+        return try {
+            val url = if (type == "movie") {
+                "$tmdbAPI/movie/$id/release_dates?api_key=$apiKey"
+            } else {
+                "$tmdbAPI/tv/$id/content_ratings?api_key=$apiKey"
+            }
+            
+            val response = app.get(url)
+            if (type == "movie") {
+                val releaseDates = response.parsedSafe<MovieReleaseDates>()
+                releaseDates?.results?.find { it.iso_3166_1 == "ID" }
+                    ?.release_dates?.firstOrNull()?.certification
+            } else {
+                val contentRatings = response.parsedSafe<TVContentRatings>()
+                contentRatings?.results?.find { it.iso_3166_1 == "ID" }?.rating
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     override suspend fun load(url: String): LoadResponse? {
         val data = try {
             // Handle case where url is a direct TMDB URL
@@ -178,13 +219,18 @@ open class Adicinemax21 : TmdbProvider() {
         val res = app.get(resUrl).parsedSafe<MediaDetail>()
             ?: throw ErrorLoadingException("Invalid Json Response")
 
+        // Ambil sinopsis dalam bahasa Indonesia
+        val indonesianOverview = fetchIndonesianOverview(data, type)
+        
+        // Ambil rating konten dalam bahasa Indonesia
+        val indonesianContentRating = fetchIndonesianContentRating(data.id, data.type ?: "")
+
         val title = res.title ?: res.name ?: return null
         val poster = getOriImageUrl(res.posterPath)
         val bgPoster = getOriImageUrl(res.backdropPath)
         val orgTitle = res.originalTitle ?: res.originalName ?: return null
         val releaseDate = res.releaseDate ?: res.firstAirDate
         val year = releaseDate?.split("-")?.first()?.toIntOrNull()
-        // Hapus variabel lokal 'rating' yang tidak diperlukan lagi
         val genres = res.genres?.mapNotNull { it.name }
 
         val isCartoon = genres?.contains("Animation") ?: false
@@ -242,13 +288,14 @@ open class Adicinemax21 : TmdbProvider() {
                             this.season = eps.seasonNumber
                             this.episode = eps.episodeNumber
                             this.posterUrl = getImageUrl(eps.stillPath)
-                            this.score = Score.from10(eps.voteAverage) // Diganti dari 'rating'
+                            this.score = Score.from10(eps.voteAverage)
                             this.description = eps.overview
                         }.apply {
                             this.addDate(eps.airDate)
                         }
                     }
             }?.flatten() ?: listOf()
+            
             newTvSeriesLoadResponse(
                 title,
                 url,
@@ -258,13 +305,13 @@ open class Adicinemax21 : TmdbProvider() {
                 this.posterUrl = poster
                 this.backgroundPosterUrl = bgPoster
                 this.year = year
-                this.plot = res.overview
+                this.plot = indonesianOverview ?: res.overview // Prioritaskan sinopsis Indonesia
                 this.tags = keywords.takeIf { !it.isNullOrEmpty() } ?: genres
-                this.score = Score.from10(res.vote_average?.toString()) // Diganti dari 'rating'
+                this.score = Score.from10(res.vote_average?.toString())
                 this.showStatus = getStatus(res.status)
                 this.recommendations = recommendations
                 this.actors = actors
-                this.contentRating = fetchContentRating(data.id, "US")
+                this.contentRating = indonesianContentRating ?: fetchContentRating(data.id, "US")
                 addTrailer(trailer)
                 addTMDbId(data.id.toString())
                 addImdbId(res.external_ids?.imdb_id)
@@ -294,13 +341,13 @@ open class Adicinemax21 : TmdbProvider() {
                 this.backgroundPosterUrl = bgPoster
                 this.comingSoon = isUpcoming(releaseDate)
                 this.year = year
-                this.plot = res.overview
+                this.plot = indonesianOverview ?: res.overview // Prioritaskan sinopsis Indonesia
                 this.duration = res.runtime
                 this.tags = keywords.takeIf { !it.isNullOrEmpty() } ?: genres
-                this.score = Score.from10(res.vote_average?.toString()) // Diganti dari 'rating'
+                this.score = Score.from10(res.vote_average?.toString())
                 this.recommendations = recommendations
                 this.actors = actors
-                this.contentRating = fetchContentRating(data.id, "US")
+                this.contentRating = indonesianContentRating ?: fetchContentRating(data.id, "US")
                 addTrailer(trailer)
                 addTMDbId(data.id.toString())
                 addImdbId(res.external_ids?.imdb_id)
@@ -555,4 +602,26 @@ open class Adicinemax21 : TmdbProvider() {
         @JsonProperty("production_countries") val production_countries: ArrayList<ProductionCountries>? = arrayListOf(),
     )
 
+    // Data classes untuk rating konten Indonesia
+    data class MovieReleaseDates(
+        @JsonProperty("results") val results: ArrayList<MovieReleaseDateResult>? = arrayListOf()
+    )
+
+    data class MovieReleaseDateResult(
+        @JsonProperty("iso_3166_1") val iso_3166_1: String? = null,
+        @JsonProperty("release_dates") val release_dates: ArrayList<MovieReleaseDate>? = arrayListOf()
+    )
+
+    data class MovieReleaseDate(
+        @JsonProperty("certification") val certification: String? = null
+    )
+
+    data class TVContentRatings(
+        @JsonProperty("results") val results: ArrayList<TVContentRatingResult>? = arrayListOf()
+    )
+
+    data class TVContentRatingResult(
+        @JsonProperty("iso_3166_1") val iso_3166_1: String? = null,
+        @JsonProperty("rating") val rating: String? = null
+    )
 }
