@@ -41,7 +41,11 @@ object AsianDramaExtractors {
             }
         }
 
-        private fun extractFromScript(scriptData: String, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
+        private suspend fun extractFromScript(
+            scriptData: String, 
+            subtitleCallback: (SubtitleFile) -> Unit, 
+            callback: (ExtractorLink) -> Unit
+        ) {
             try {
                 // Extract M3U8 URLs from JavaScript
                 val m3u8Regex = """(https?://[^"'\]\s]+\.m3u8[^"'\]\s]*)""".toRegex()
@@ -49,6 +53,7 @@ object AsianDramaExtractors {
                 
                 matches.forEach { match ->
                     val url = match.value
+                    // Use non-suspend version of callback
                     callback.invoke(
                         newExtractorLink(
                             name,
@@ -151,7 +156,7 @@ object AsianDramaExtractors {
             try {
                 // For Asian drama, we'll provide common subtitle languages
                 val commonSubtitles = listOf(
-                    "Indonesian" to "https://example.com/sub/id.vtt", // Example URLs
+                    "Indonesian" to "https://example.com/sub/id.vtt",
                     "English" to "https://example.com/sub/en.vtt",
                     "Chinese" to "https://example.com/sub/zh.vtt"
                 )
@@ -212,7 +217,11 @@ object AsianDramaExtractors {
             }
         }
 
-        private suspend fun extractFromGomoviesEmbed(url: String, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
+        private suspend fun extractFromGomoviesEmbed(
+            url: String, 
+            subtitleCallback: (SubtitleFile) -> Unit, 
+            callback: (ExtractorLink) -> Unit
+        ) {
             try {
                 val document = app.get(url).document
                 
