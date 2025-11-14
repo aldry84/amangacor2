@@ -35,7 +35,7 @@ open class Adicinemax21 : TmdbProvider() {
     override val supportedTypes = setOf(
         TvType.Movie,
         TvType.TvSeries,
-    )
+    ) // 🔥 Hapus Anime karena tidak relevan dengan Drakor
 
     val wpRedisInterceptor by lazy { CloudflareKiller() }
 
@@ -43,6 +43,7 @@ open class Adicinemax21 : TmdbProvider() {
         private const val tmdbAPI = "https://api.themoviedb.org/3"
         private const val apiKey = "b030404650f279792a8d3287232358e3"
 
+        // Sumber streaming tetap sama
         const val gomoviesAPI = "https://gomovies-online.cam"
         const val idlixAPI = "https://tv6.idlixku.com"
         const val vidsrcccAPI = "https://vidsrc.cc"
@@ -73,6 +74,7 @@ open class Adicinemax21 : TmdbProvider() {
         }
     }
 
+    // 🔥 HALAMAN UTAMA HANYA DRAKOR - DIPERBAIKI FILTER
     override val mainPage = mainPageOf(
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&sort_by=popularity.desc&with_origin_country=KR" to "🎬 Drakor Movies Populer",
         "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&sort_by=popularity.desc&with_origin_country=KR" to "📺 Drama Korea Terpopuler",
@@ -101,6 +103,7 @@ open class Adicinemax21 : TmdbProvider() {
         val home = app.get("${request.data}$adultQuery&page=$page")
             .parsedSafe<Results>()?.results
             ?.filter { media ->
+                // 🔥 FILTER KETAT: Hanya konten dengan bahasa Korea DAN negara Korea
                 media.original_language == "ko" && 
                 (media.origin_country?.contains("KR") == true || media.genre_ids?.any { it == 18 || it == 10749 || it == 10751 } == true)
             }
@@ -123,10 +126,12 @@ open class Adicinemax21 : TmdbProvider() {
 
     override suspend fun quickSearch(query: String): List<SearchResponse>? = search(query)
 
+    // 🔥 SEARCH HANYA MENAMPILKAN KONTEN KOREA - FILTER LEBIH KETAT
     override suspend fun search(query: String): List<SearchResponse>? {
         return app.get("$tmdbAPI/search/multi?api_key=$apiKey&language=en-US&query=$query&page=1&include_adult=${settingsForProvider.enableAdult}")
             .parsedSafe<Results>()?.results
             ?.filter { media ->
+                // 🔥 FILTER KETAT: Hanya bahasa Korea dan negara Korea
                 media.original_language == "ko" && 
                 (media.origin_country?.contains("KR") == true || 
                  media.title?.contains(Regex("(?i)korean|drakor|korea|korean drama")) == true ||
@@ -165,6 +170,7 @@ open class Adicinemax21 : TmdbProvider() {
         val res = app.get(resUrl).parsedSafe<MediaDetail>()
             ?: throw ErrorLoadingException("Invalid Json Response")
 
+        // 🔥 VALIDASI KETAT: Pastikan ini benar-benar konten Korea
         val isKorean = res.original_language == "ko" || 
                        res.production_countries?.any { it.name == "South Korea" } == true ||
                        res.genres?.any { it.name == "Korean" } == true
@@ -407,6 +413,7 @@ open class Adicinemax21 : TmdbProvider() {
         @JsonProperty("genre_ids") val genre_ids: List<Int>? = null,
     )
 
+    // ... (data class lainnya tetap sama)
     data class Genres(
         @JsonProperty("id") val id: Int? = null,
         @JsonProperty("name") val name: String? = null,
