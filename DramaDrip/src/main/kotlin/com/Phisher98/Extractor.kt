@@ -110,7 +110,7 @@ class Driveseed : ExtractorApi() {
             return
         }
 
-        val Basedomain = getBaseUrl(url)
+        val Basedomain = getBaseUrlExtractor(url)
 
         val document = try {
             if (url.contains("r?key=")) {
@@ -225,9 +225,9 @@ class Driveseed : ExtractorApi() {
         return url.contains("driveseed") || 
                url.contains("video-seed") || 
                url.contains("video-leech") ||
-               getBaseUrl(url).contains("driveseed") ||
-               getBaseUrl(url).contains("video-seed") ||
-               getBaseUrl(url).contains("video-leech")
+               getBaseUrlExtractor(url).contains("driveseed") ||
+               getBaseUrlExtractor(url).contains("video-seed") ||
+               getBaseUrlExtractor(url).contains("video-leech")
     }
 }
 
@@ -345,7 +345,7 @@ class Jeniusplay : ExtractorApi() {
     private fun isSupportedUrl(url: String): Boolean {
         return url.contains("jeniusplay") || 
                url.contains("/embed.php?data=") ||
-               getBaseUrl(url).contains("jeniusplay")
+               getBaseUrlExtractor(url).contains("jeniusplay")
     }
 }
 
@@ -500,20 +500,12 @@ class UniversalExtractor : ExtractorApi() {
         } else if (videoUrl.startsWith("//")) {
             "https:$videoUrl"
         } else {
-            val base = getBaseUrl(baseUrl)
+            val base = getBaseUrlExtractor(baseUrl)
             if (videoUrl.startsWith("/")) {
                 "$base$videoUrl"
             } else {
                 "$base/$videoUrl"
             }
-        }
-    }
-
-    private fun getBaseUrl(url: String): String {
-        return try {
-            URI(url).let { "${it.scheme}://${it.host}" }
-        } catch (e: Exception) {
-            ""
         }
     }
 }
@@ -560,7 +552,7 @@ class StreamTake : ExtractorApi() {
     }
 
     private fun isSupportedUrl(url: String): Boolean {
-        return url.contains("streamtake") || getBaseUrl(url).contains("streamtake")
+        return url.contains("streamtake") || getBaseUrlExtractor(url).contains("streamtake")
     }
 }
 
@@ -615,7 +607,7 @@ class VidMoly : ExtractorApi() {
     }
 
     private fun isSupportedUrl(url: String): Boolean {
-        return url.contains("vidmoly") || getBaseUrl(url).contains("vidmoly")
+        return url.contains("vidmoly") || getBaseUrlExtractor(url).contains("vidmoly")
     }
 }
 
@@ -667,7 +659,7 @@ class FileMoon : ExtractorApi() {
     }
 
     private fun isSupportedUrl(url: String): Boolean {
-        return url.contains("filemoon") || getBaseUrl(url).contains("filemoon")
+        return url.contains("filemoon") || getBaseUrlExtractor(url).contains("filemoon")
     }
     
     private fun decodeEvalScript(script: String): String {
@@ -724,7 +716,7 @@ class DUpload : ExtractorApi() {
     }
 
     private fun isSupportedUrl(url: String): Boolean {
-        return url.contains("dupload") || getBaseUrl(url).contains("dupload")
+        return url.contains("dupload") || getBaseUrlExtractor(url).contains("dupload")
     }
     
     private fun extractQualityFromUrl(url: String): Int {
@@ -808,8 +800,8 @@ fun cleanTitle(title: String): String {
     }
 }
 
-// Helper function to get base URL
-private fun getBaseUrl(url: String): String {
+// Helper function to get base URL (different name to avoid conflict)
+private fun getBaseUrlExtractor(url: String): String {
     return try {
         URI(url).let { "${it.scheme}://${it.host}" }
     } catch (e: Exception) {
