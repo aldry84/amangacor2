@@ -23,6 +23,13 @@ class Driveseed : ExtractorApi() {
     override val mainUrl: String = "https://driveseed.org"
     override val requiresReferer = false
 
+    override val supportedUrls: List<Regex> = listOf(
+        Regex("https?://(www\\.)?driveseed\\.org/.*"),
+        Regex("https?://(www\\.)?driveseed\\.(xyz|top|online)/.*"),
+        Regex("https?://(www\\.)?video-seed\\.pro/.*"),
+        Regex("https?://(www\\.)?video-leech\\.pro/.*")
+    )
+
     private fun getIndexQuality(str: String?): Int {
         return Regex("(\\d{3,4})[pP]").find(str ?: "")?.groupValues?.getOrNull(1)?.toIntOrNull()
             ?: Qualities.Unknown.value
@@ -223,6 +230,13 @@ class Jeniusplay : ExtractorApi() {
     override val mainUrl = "https://jeniusplay.com"
     override val requiresReferer = true
 
+    override val supportedUrls: List<Regex> = listOf(
+        Regex("https?://(www\\.)?jeniusplay\\.com/.*"),
+        Regex("https?://(www\\.)?jeniusplay\\.(net|org|xyz)/.*"),
+        Regex(".*jeniusplay.*"),
+        Regex(".*/embed\\.php\\?data=.*")
+    )
+
     override suspend fun getUrl(
         url: String,
         referer: String?,
@@ -230,8 +244,14 @@ class Jeniusplay : ExtractorApi() {
         callback: (ExtractorLink) -> Unit
     ) {
         try {
+            Log.d("Jeniusplay", "Processing URL: $url")
             val document = app.get(url, referer = "$mainUrl/").document
-            val hash = url.split("/").last().substringAfter("data=")
+            val hash = extractHashFromUrl(url)
+
+            if (hash.isBlank()) {
+                Log.e("Jeniusplay", "No hash found in URL: $url")
+                return
+            }
 
             // Get video source
             val response = app.post(
@@ -240,8 +260,21 @@ class Jeniusplay : ExtractorApi() {
                 referer = url,
                 headers = mapOf("X-Requested-With" to "XMLHttpRequest")
             )
-            val jsonResponse = response.parsed<JeniusplayResponse>()
-            val m3uLink = jsonResponse.videoSource
+            
+            if (!response.isSuccessful) {
+                Log.e("Jeniusplay", "API request failed: ${response.code}")
+                return
+            }
+
+            val jsonResponse = response.parsedSafe<JeniusplayResponse>()
+            val m3uLink = jsonResponse?.videoSource
+
+            if (m3uLink.isNullOrEmpty()) {
+                Log.e("Jeniusplay", "No video source found in response")
+                return
+            }
+
+            Log.d("Jeniusplay", "Found M3U8 URL: $m3uLink")
 
             // Callback untuk video stream
             callback(
@@ -256,19 +289,26 @@ class Jeniusplay : ExtractorApi() {
             )
 
             // Extract subtitles
-            document.select("script").map { script ->
-                if (script.data().contains("eval(function(p,a,c,k,e,d)")) {
-                    val subData = getAndUnpack(script.data())
-                        .substringAfter("\"tracks\":[")
-                        .substringBefore("],")
-                    
-                    tryParseJson<List<JeniusplaySubtitle>>("[$subData]")?.map { subtitle ->
-                        subtitleCallback.invoke(
-                            SubtitleFile(
-                                getLanguage(subtitle.label ?: ""),
-                                subtitle.file
-                            )
-                        )
+            document.select("script").forEach { script ->
+                val scriptData = script.data()
+                if (scriptData.contains("eval(function(p,a,c,k,e,d)")) {
+                    try {
+                        val unpacked = getAndUnpack(scriptData)
+                        val subData = unpacked.substringAfter("\"tracks\":[").substringBefore("],")
+                        
+                        tryParseJson<List<JeniusplaySubtitle>>("[$subData]")?.forEach { subtitle ->
+                            if (subtitle.file.isNotBlank()) {
+                                subtitleCallback.invoke(
+                                    SubtitleFile(
+                                        getLanguage(subtitle.label ?: ""),
+                                        subtitle.file
+                                    )
+                                )
+                                Log.d("Jeniusplay", "Found subtitle: ${subtitle.label} - ${subtitle.file}")
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e("Jeniusplay", "Failed to extract subtitles: ${e.message}")
                     }
                 }
             }
@@ -277,10 +317,22 @@ class Jeniusplay : ExtractorApi() {
         }
     }
 
+    private fun extractHashFromUrl(url: String): String {
+        return when {
+            "data=" in url -> url.substringAfter("data=").substringBefore("&")
+            "/embed.php" in url -> url.substringAfter("data=").substringBefore("&")
+            else -> url.split("/").last()
+        }
+    }
+
     private fun getLanguage(str: String): String {
         return when {
             str.contains("indonesia", true) || str.contains("bahasa", true) -> "Indonesian"
             str.contains("english", true) || str.contains("inggris", true) -> "English"
+            str.contains("spanish", true) || str.contains("spanyol", true) -> "Spanish"
+            str.contains("portuguese", true) || str.contains("portugis", true) -> "Portuguese"
+            str.contains("japanese", true) || str.contains("jepang", true) -> "Japanese"
+            str.contains("korean", true) || str.contains("korea", true) -> "Korean"
             else -> str
         }
     }
@@ -299,11 +351,166 @@ data class JeniusplaySubtitle(
     @JsonProperty("label") val label: String?,
 )
 
+// ========== UNIVERSAL EXTRACTOR ==========
+class UniversalExtractor : ExtractorApi() {
+    override val name = "Universal"
+    override val mainUrl = ""
+    override val requiresReferer = true
+
+    override val supportedUrls: List<Regex> = listOf(
+        Regex(".*\\.(mp4|m3u8|mkv|avi|mov|wmv|flv|webm).*"),
+        Regex(".*/video/.*"),
+        Regex(".*/stream/.*"),
+        Regex(".*/embed/.*"),
+        Regex(".*/player/.*")
+    )
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        try {
+            Log.d("UniversalExtractor", "Processing URL: $url")
+            
+            // Direct video file detection
+            if (url.contains(".m3u8")) {
+                callback(
+                    newExtractorLink(
+                        "Direct M3U8",
+                        "Direct M3U8",
+                        url,
+                        ExtractorLinkType.M3U8
+                    ) {
+                        this.referer = referer ?: ""
+                    }
+                )
+                return
+            }
+
+            if (url.contains(".mp4") || url.contains(".mkv") || url.contains(".avi")) {
+                callback(
+                    newExtractorLink(
+                        "Direct Video",
+                        "Direct Video", 
+                        url,
+                        INFER_TYPE
+                    ) {
+                        this.referer = referer ?: ""
+                        this.quality = extractQualityFromUrl(url)
+                    }
+                )
+                return
+            }
+
+            // Try to extract from webpage
+            val document = app.get(url, referer = referer).document
+            
+            // Method 1: Direct video tags
+            document.select("video source").forEach { source ->
+                val videoUrl = source.attr("src")
+                if (videoUrl.isNotBlank() && (videoUrl.contains(".m3u8") || videoUrl.contains(".mp4"))) {
+                    callback(
+                        newExtractorLink(
+                            "HTML5 Video",
+                            "HTML5 Video",
+                            fixUrl(videoUrl, url),
+                            if (videoUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else INFER_TYPE
+                        ) {
+                            this.referer = url
+                            this.quality = extractQualityFromUrl(videoUrl)
+                        }
+                    )
+                }
+            }
+
+            // Method 2: Script tags with video sources
+            document.select("script").forEach { script ->
+                val scriptData = script.data()
+                if (scriptData.contains("m3u8") || scriptData.contains("mp4")) {
+                    // Look for M3U8 URLs
+                    Regex("""(https?://[^\s"']*?\.m3u8[^\s"']*)""").findAll(scriptData).forEach { match ->
+                        val m3u8Url = match.groupValues[1]
+                        callback(
+                            newExtractorLink(
+                                "Script M3U8",
+                                "Script M3U8",
+                                m3u8Url,
+                                ExtractorLinkType.M3U8
+                            ) {
+                                this.referer = url
+                            }
+                        )
+                    }
+                    
+                    // Look for MP4 URLs
+                    Regex("""(https?://[^\s"']*?\.(mp4|mkv|avi)[^\s"']*)""").findAll(scriptData).forEach { match ->
+                        val videoUrl = match.groupValues[1]
+                        callback(
+                            newExtractorLink(
+                                "Script Video",
+                                "Script Video",
+                                videoUrl,
+                                INFER_TYPE
+                            ) {
+                                this.referer = url
+                                this.quality = extractQualityFromUrl(videoUrl)
+                            }
+                        )
+                    }
+                }
+            }
+
+        } catch (e: Exception) {
+            Log.e("UniversalExtractor", "Failed to extract: ${e.message}")
+        }
+    }
+
+    private fun extractQualityFromUrl(url: String): Int {
+        return when {
+            "1080" in url -> 1080
+            "720" in url -> 720
+            "480" in url -> 480
+            "360" in url -> 360
+            else -> Qualities.Unknown.value
+        }
+    }
+
+    private fun fixUrl(videoUrl: String, baseUrl: String): String {
+        return if (videoUrl.startsWith("http")) {
+            videoUrl
+        } else if (videoUrl.startsWith("//")) {
+            "https:$videoUrl"
+        } else {
+            val base = getBaseUrl(baseUrl)
+            if (videoUrl.startsWith("/")) {
+                "$base$videoUrl"
+            } else {
+                "$base/$videoUrl"
+            }
+        }
+    }
+
+    private fun getBaseUrl(url: String): String {
+        return try {
+            URI(url).let { "${it.scheme}://${it.host}" }
+        } catch (e: Exception) {
+            ""
+        }
+    }
+}
+
 // ========== ADDITIONAL EXTRACTORS ==========
 class StreamTake : ExtractorApi() {
     override val name = "StreamTake"
     override val mainUrl = "https://streamtake.xyz"
     override val requiresReferer = true
+
+    override val supportedUrls: List<Regex> = listOf(
+        Regex("https?://(www\\.)?streamtake\\.(xyz|com|net)/.*"),
+        Regex(".*streamtake.*")
+    )
 
     override suspend fun getUrl(
         url: String,
@@ -341,6 +548,11 @@ class VidMoly : ExtractorApi() {
     override val mainUrl = "https://vidmoly.to"
     override val requiresReferer = true
 
+    override val supportedUrls: List<Regex> = listOf(
+        Regex("https?://(www\\.)?vidmoly\\.(to|me|com)/.*"),
+        Regex(".*vidmoly.*")
+    )
+
     override suspend fun getUrl(
         url: String,
         referer: String?,
@@ -350,33 +562,35 @@ class VidMoly : ExtractorApi() {
         val document = app.get(url, referer = referer).document
         
         // Multiple extraction methods for VidMoly
-        val sources = listOf(
-            // Method 1: Direct m3u8 in source tag
-            document.select("source").attr("src"),
-            // Method 2: In script tags
-            extractFromScript(document, """file:\s*["'](.*?)["']"""),
-            // Method 3: In iframe
-            document.select("iframe").attr("src")
-        ).filter { it.isNotBlank() && it.contains("m3u8") }
+        val sources = mutableListOf<String>()
         
-        sources.forEach { source ->
+        // Method 1: Direct source tags
+        sources.add(document.select("source").attr("src"))
+        
+        // Method 2: Script tags
+        document.select("script").forEach { script ->
+            val scriptData = script.data()
+            if (scriptData.contains("file:\"")) {
+                Regex("""file:\"(.*?\.m3u8)\"""").find(scriptData)?.groupValues?.get(1)?.let { sources.add(it) }
+            }
+        }
+        
+        // Method 3: Iframe sources
+        sources.add(document.select("iframe").attr("src"))
+        
+        sources.filter { it.isNotBlank() && (it.contains("m3u8") || it.contains("mp4")) }.forEach { source ->
             val finalUrl = if (source.startsWith("//")) "https:$source" else source
             callback(
                 newExtractorLink(
                     name,
                     name,
                     finalUrl,
-                    ExtractorLinkType.M3U8
+                    if (finalUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else INFER_TYPE
                 ) {
                     this.referer = url
                 }
             )
         }
-    }
-    
-    private fun extractFromScript(document: org.jsoup.nodes.Document, regex: String): String {
-        val script = document.select("script").find { it.data().contains(regex) }?.data()
-        return Regex(regex).find(script ?: "")?.groupValues?.get(1) ?: ""
     }
 }
 
@@ -384,6 +598,11 @@ class FileMoon : ExtractorApi() {
     override val name = "FileMoon"
     override val mainUrl = "https://filemoon.sx"
     override val requiresReferer = true
+
+    override val supportedUrls: List<Regex> = listOf(
+        Regex("https?://(www\\.)?filemoon\\.(sx|com|net)/.*"),
+        Regex(".*filemoon.*")
+    )
 
     override suspend fun getUrl(
         url: String,
@@ -424,7 +643,6 @@ class FileMoon : ExtractorApi() {
     
     private fun decodeEvalScript(script: String): String {
         return try {
-            // Simple eval decoding
             script.substringAfter("eval(\"").substringBefore("\")")
         } catch (e: Exception) {
             ""
@@ -440,6 +658,11 @@ class DUpload : ExtractorApi() {
     override val name = "DUpload"
     override val mainUrl = "https://dupload.org"
     override val requiresReferer = false
+
+    override val supportedUrls: List<Regex> = listOf(
+        Regex("https?://(www\\.)?dupload\\.(org|com|net)/.*"),
+        Regex(".*dupload.*")
+    )
 
     override suspend fun getUrl(
         url: String,
@@ -472,7 +695,6 @@ class DUpload : ExtractorApi() {
     }
     
     private fun extractQualityFromUrl(url: String): Int {
-        // Gunakan nilai integer langsung untuk kualitas
         return when {
             "1080" in url -> 1080
             "720" in url -> 720
@@ -491,6 +713,10 @@ class MultiQualityM3u8 : ExtractorApi() {
     override val name = "MultiQualityM3u8"
     override val mainUrl = ""
     override val requiresReferer = true
+
+    override val supportedUrls: List<Regex> = listOf(
+        Regex(".*\\.m3u8.*")
+    )
 
     override suspend fun getUrl(
         url: String,
