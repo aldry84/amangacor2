@@ -1,4 +1,3 @@
-// AsianDrama/src/main/kotlin/com/AsianDrama/AsianDramaPlugin.kt
 package com.AsianDrama
 
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
