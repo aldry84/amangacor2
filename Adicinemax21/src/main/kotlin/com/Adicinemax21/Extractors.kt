@@ -42,7 +42,6 @@ open class Jeniusplay2 : ExtractorApi() {
             }
         )
 
-
         document.select("script").map { script ->
             if (script.data().contains("eval(function(p,a,c,k,e,d)")) {
                 val subData =
