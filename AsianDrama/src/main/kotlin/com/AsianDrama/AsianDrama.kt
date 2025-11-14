@@ -2,9 +2,6 @@ package com.AsianDrama
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
-import com.lagradost.cloudstream3.LoadResponse.Companion.addImdbId
-import com.lagradost.cloudstream3.LoadResponse.Companion.addTMDbId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
@@ -20,39 +17,18 @@ class AsianDrama : MainAPI() {
     override val hasQuickSearch = true
     override val supportedTypes = setOf(TvType.Movie, TvType.AsianDrama, TvType.TvSeries)
 
-    companion object {
-        private const val DOMAINS_URL = "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/domains.json"
-        var cachedDomains: Domains? = null
-
-        suspend fun getDomains(forceRefresh: Boolean = false): Domains? {
-            if (cachedDomains == null || forceRefresh) {
-                try {
-                    cachedDomains = app.get(DOMAINS_URL).parsedSafe<Domains>()
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                    return null
-                }
-            }
-            return cachedDomains
-        }
-
-        data class Domains(
-            @JsonProperty("dramadrip") val dramadrip: String,
-        )
-    }
-
     override val mainPage = mainPageOf(
+        "" to "Latest Releases",
         "drama/ongoing" to "Ongoing Dramas",
-        "latest" to "Latest Releases", 
-        "drama/chinese-drama" to "Chinese Dramas",
-        "drama/japanese-drama" to "Japanese Dramas",
         "drama/korean-drama" to "Korean Dramas",
+        "drama/chinese-drama" to "Chinese Dramas", 
+        "drama/japanese-drama" to "Japanese Dramas",
         "movies" to "Movies",
-        "web-series" to "Web Series",
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val document = app.get("$mainUrl/${request.data}/page/$page").document
+        val url = if (request.data.isEmpty()) "$mainUrl/page/$page" else "$mainUrl/${request.data}/page/$page"
+        val document = app.get(url).document
         val home = document.select("article").mapNotNull { it.toSearchResult() }
 
         return newHomePageResponse(
@@ -66,29 +42,33 @@ class AsianDrama : MainAPI() {
     }
 
     private fun Element.toSearchResult(): SearchResponse? {
-        val title = this.selectFirst("h2.entry-title")?.text()?.substringAfter("Download") ?: return null
-        val href = this.select("h2.entry-title > a").attr("href")
+        val titleElement = this.selectFirst("h2.entry-title, h3.entry-title") ?: return null
+        val title = titleElement.text().replace("Download", "").trim()
+        if (title.isBlank()) return null
+
+        val href = titleElement.select("a").attr("href") ?: return null
+        
+        // Get poster image
         val imgElement = this.selectFirst("img")
-        val srcset = imgElement?.attr("srcset")
+        val posterUrl = when {
+            imgElement?.attr("src")?.isNotBlank() == true -> imgElement.attr("src")
+            imgElement?.attr("data-src")?.isNotBlank() == true -> imgElement.attr("data-src")
+            else -> null
+        }
 
-        val highestResUrl = srcset
-            ?.split(",")
-            ?.map { it.trim() }
-            ?.mapNotNull {
-                val parts = it.split(" ")
-                if (parts.size == 2) parts[0] to parts[1].removeSuffix("w").toIntOrNull() else null
-            }
-            ?.maxByOrNull { it.second ?: 0 }
-            ?.first
+        // Determine type from URL or content
+        val type = when {
+            href.contains("/movie/") -> TvType.Movie
+            else -> TvType.TvSeries
+        }
 
-        val posterUrl = highestResUrl ?: imgElement?.attr("src")
-        return newMovieSearchResponse(title, href, TvType.Movie) {
+        return newMovieSearchResponse(title, href, type) {
             this.posterUrl = posterUrl
         }
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val document = app.get("$mainUrl/?s=$query").document
+        val document = app.get("$mainUrl/?s=${query}").document
         return document.select("article").mapNotNull {
             it.toSearchResult()
         }
@@ -97,131 +77,110 @@ class AsianDrama : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url).document
 
-        // Extract metadata
+        // Extract basic metadata
+        val title = document.selectFirst("h1.entry-title, h2.wp-block-heading")?.text()
+            ?.replace("Download", "")?.trim() ?: "Unknown Title"
+        
+        val poster = document.selectFirst("meta[property=og:image]")?.attr("content")
+            ?: document.selectFirst("img.wp-post-image, img.attachment-full")?.attr("src")
+        
+        val description = document.selectFirst("div.entry-content, div.content-section")?.text()?.trim()
+            ?: document.selectFirst("meta[property=og:description]")?.attr("content")
+
+        // Extract year from title or content
+        val year = Regex("""\((\d{4})\)""").find(title)?.groupValues?.get(1)?.toIntOrNull()
+            ?: document.selectFirst("time.entry-date")?.text()?.takeLast(4)?.toIntOrNull()
+
+        // Check if it's a movie or series by looking for episodes
+        val hasEpisodes = document.select("div.su-accordion, .episode-list, .season-section").isNotEmpty()
+        val type = if (hasEpisodes) TvType.TvSeries else TvType.Movie
+
+        // Extract TMDB/IMDB IDs if available
+        var tmdbId: Int? = null
         var imdbId: String? = null
-        var tmdbId: String? = null
-        var tmdbType: String? = null
-
-        document.select("div.su-spoiler-content ul.wp-block-list > li").forEach { li ->
-            val text = li.text()
-            if (imdbId == null && "imdb.com/title/tt" in text) {
-                imdbId = Regex("tt\\d+").find(text)?.value
-            }
-
-            if (tmdbId == null && tmdbType == null && "themoviedb.org" in text) {
-                Regex("/(movie|tv)/(\\d+)").find(text)?.let { match ->
-                    tmdbType = match.groupValues[1]
-                    tmdbId = match.groupValues[2]
+        
+        document.select("a").forEach { link ->
+            val href = link.attr("href")
+            when {
+                href.contains("themoviedb.org/movie/") -> {
+                    tmdbId = Regex("""/movie/(\d+)""").find(href)?.groupValues?.get(1)?.toIntOrNull()
+                }
+                href.contains("themoviedb.org/tv/") -> {
+                    tmdbId = Regex("""/tv/(\d+)""").find(href)?.groupValues?.get(1)?.toIntOrNull()
+                }
+                href.contains("imdb.com/title/") -> {
+                    imdbId = Regex("""/title/(tt\d+)""").find(href)?.groupValues?.get(1)
                 }
             }
         }
 
-        val tvType = when {
-            tmdbType?.contains("movie", ignoreCase = true) == true -> TvType.Movie
-            else -> TvType.TvSeries
-        }
+        val trailer = document.selectFirst("iframe[src*='youtube'], iframe[src*='youtu.be']")?.attr("src")
 
-        val image = document.select("meta[property=og:image]").attr("content")
-        val title = document.selectFirst("div.wp-block-column > h2.wp-block-heading")?.text()
-            ?.substringBefore("(")?.trim() ?: "Unknown Title"
-        val tags = document.select("div.mt-2 span.badge").map { it.text() }
-        val year = document.selectFirst("div.wp-block-column > h2.wp-block-heading")?.text()
-            ?.substringAfter("(")?.substringBefore(")")?.toIntOrNull()
-        val description = document.selectFirst("div.content-section p.mt-4")?.text()?.trim()
-        val trailer = document.selectFirst("div.wp-block-embed__wrapper > iframe")?.attr("src")
-
-        val recommendations = document.select("div.entry-related-inner-content article").mapNotNull {
-            val recName = it.select("h3").text().substringAfter("Download")
-            val recHref = it.select("h3 a").attr("href")
-            val recPosterUrl = it.select("img").attr("src")
-            newTvSeriesSearchResponse(recName, recHref, TvType.TvSeries) {
-                this.posterUrl = recPosterUrl
-            }
-        }
-
-        // Prepare stream data
-        val streamData = StreamData(
-            tmdbId = tmdbId?.toIntOrNull(),
-            imdbId = imdbId,
-            title = title,
-            year = year,
-            type = if (tvType == TvType.Movie) "movie" else "tv"
-        )
-
-        return if (tvType == TvType.TvSeries) {
-            val episodes = parseDramaDripEpisodes(document, streamData)
+        if (type == TvType.TvSeries) {
+            val episodes = parseEpisodes(document, tmdbId, imdbId, title)
             
-            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
-                this.posterUrl = image
-                this.backgroundPosterUrl = image
+            return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+                this.posterUrl = poster
+                this.backgroundPosterUrl = poster
                 this.year = year
                 this.plot = description
-                this.tags = tags
-                this.recommendations = recommendations
                 addTrailer(trailer)
-                addImdbId(imdbId)
-                addTMDbId(tmdbId)
             }
         } else {
-            newMovieLoadResponse(title, url, TvType.Movie, streamData.toJson()) {
-                this.posterUrl = image
-                this.backgroundPosterUrl = image
+            return newMovieLoadResponse(title, url, TvType.Movie, MovieStreamData(tmdbId, imdbId, title).toJson()) {
+                this.posterUrl = poster
+                this.backgroundPosterUrl = poster
                 this.year = year
                 this.plot = description
-                this.tags = tags
-                this.recommendations = recommendations
                 addTrailer(trailer)
-                addImdbId(imdbId)
-                addTMDbId(tmdbId)
             }
         }
     }
 
-    private suspend fun parseDramaDripEpisodes(document: org.jsoup.nodes.Document, streamData: StreamData): List<Episode> {
+    private suspend fun parseEpisodes(document: org.jsoup.nodes.Document, tmdbId: Int?, imdbId: String?, title: String): List<Episode> {
         val episodes = mutableListOf<Episode>()
-        val seasonBlocks = document.select("div.su-accordion h2")
 
-        for (seasonHeader in seasonBlocks) {
-            val seasonText = seasonHeader.text()
-            if (seasonText.contains("ZIP", ignoreCase = true)) continue
-
-            val seasonMatch = Regex("""S?e?a?s?o?n?\s*([0-9]+)""", RegexOption.IGNORE_CASE)
-                .find(seasonText)
-            val season = seasonMatch?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 1
-
-            val linksBlock = seasonHeader.nextElementSibling()
-            val qualityLinks = linksBlock?.select("div.wp-block-button a")
-                ?.mapNotNull { it.attr("href").takeIf { href -> href.isNotBlank() } }
-                ?.distinct() ?: emptyList()
-
-            for (qualityPageLink in qualityLinks) {
-                try {
-                    val episodeDoc = app.get(qualityPageLink).document
-                    val episodeButtons = episodeDoc.select("a").filter { element ->
-                        element.text().matches(Regex("""(?i)(Episode|Ep|E)?\s*0*\d+"""))
+        // Method 1: Accordion style episodes (common in DramaDrip)
+        document.select("div.su-accordion, .season-section").forEach { seasonBlock ->
+            val seasonHeader = seasonBlock.selectFirst("h2, h3, .season-title")?.text() ?: ""
+            val seasonNumber = Regex("""(?i)season\s*(\d+)""").find(seasonHeader)?.groupValues?.get(1)?.toIntOrNull() ?: 1
+            
+            seasonBlock.select("a").forEach { episodeLink ->
+                val episodeText = episodeLink.text()
+                val episodeNumber = Regex("""(?i)episode\s*(\d+)""").find(episodeText)?.groupValues?.get(1)?.toIntOrNull()
+                    ?: Regex("""\b(\d+)\b""").find(episodeText)?.groupValues?.get(1)?.toIntOrNull()
+                
+                if (episodeNumber != null) {
+                    val episodeUrl = episodeLink.attr("href")
+                    if (episodeUrl.isNotBlank()) {
+                        episodes.add(
+                            newEpisode(EpisodeStreamData(tmdbId, imdbId, title, seasonNumber, episodeNumber, episodeUrl).toJson()) {
+                                this.name = "Episode $episodeNumber"
+                                this.season = seasonNumber
+                                this.episode = episodeNumber
+                            }
+                        )
                     }
+                }
+            }
+        }
 
-                    for (btn in episodeButtons) {
-                        val epText = btn.text()
-                        val epNo = Regex("""(?:Episode|Ep|E)?\s*0*([0-9]+)""", RegexOption.IGNORE_CASE)
-                            .find(epText)?.groupValues?.getOrNull(1)?.toIntOrNull()
-
-                        if (epNo != null) {
-                            val episodeData = streamData.copy(
-                                season = season,
-                                episode = epNo
-                            )
-                            episodes.add(
-                                newEpisode(episodeData.toJson()) {
-                                    this.name = "Episode $epNo"
-                                    this.season = season
-                                    this.episode = epNo
-                                }
-                            )
-                        }
+        // Method 2: Direct episode links
+        if (episodes.isEmpty()) {
+            document.select("a").forEach { link ->
+                val linkText = link.text()
+                if (linkText.contains("episode", true) || Regex("""\b(ep|episode)\s*\d+\b""", RegexOption.IGNORE_CASE).containsMatchIn(linkText)) {
+                    val episodeNumber = Regex("""(\d+)""").find(linkText)?.groupValues?.get(1)?.toIntOrNull()
+                    if (episodeNumber != null) {
+                        val episodeUrl = link.attr("href")
+                        episodes.add(
+                            newEpisode(EpisodeStreamData(tmdbId, imdbId, title, 1, episodeNumber, episodeUrl).toJson()) {
+                                this.name = "Episode $episodeNumber"
+                                this.season = 1
+                                this.episode = episodeNumber
+                            }
+                        )
                     }
-                } catch (e: Exception) {
-                    // Continue with next quality link
                 }
             }
         }
@@ -235,18 +194,39 @@ class AsianDrama : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val streamData = tryParseJson<StreamData>(data) ?: return false
-        AsianDramaExtractor.invokeAllExtractors(streamData, subtitleCallback, callback)
-        return true
+        return try {
+            // Try to parse as movie first
+            val movieData = tryParseJson<MovieStreamData>(data)
+            if (movieData != null) {
+                AsianDramaExtractor.extractForMovie(movieData, subtitleCallback, callback)
+                return true
+            }
+
+            // Try to parse as episode
+            val episodeData = tryParseJson<EpisodeStreamData>(data)
+            if (episodeData != null) {
+                AsianDramaExtractor.extractForEpisode(episodeData, subtitleCallback, callback)
+                return true
+            }
+
+            false
+        } catch (e: Exception) {
+            false
+        }
     }
 
-    data class StreamData(
+    data class MovieStreamData(
+        val tmdbId: Int? = null,
+        val imdbId: String? = null,
+        val title: String? = null
+    )
+
+    data class EpisodeStreamData(
         val tmdbId: Int? = null,
         val imdbId: String? = null,
         val title: String? = null,
-        val year: Int? = null,
-        val season: Int? = null,
-        val episode: Int? = null,
-        val type: String? = null
+        val season: Int = 1,
+        val episode: Int = 1,
+        val episodeUrl: String? = null
     )
 }
