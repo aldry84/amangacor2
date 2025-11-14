@@ -11,12 +11,26 @@ import org.jsoup.nodes.Document
 import java.net.URI
 import java.net.URLEncoder
 import java.util.Base64
+import javax.crypto.Cipher
+import javax.crypto.spec.IvParameterSpec
+import javax.crypto.spec.SecretKeySpec
 
 data class DomainsParser(
     @JsonProperty("dramadrip")
     val dramadrip: String,
 )
 
+// --- TAMBAHAN UNTUK VIDROCK ---
+data class VidrockSource(
+    @JsonProperty("resolution") val resolution: Int? = null,
+    @JsonProperty("url") val url: String? = null,
+)
+
+data class VidrockSubtitle(
+    @JsonProperty("label") val label: String? = null,
+    @JsonProperty("file") val file: String? = null,
+)
+// -----------------------------
 
 data class Meta(
     val id: String?,
@@ -168,3 +182,37 @@ fun base64Decode(string: String): String {
         ""
     }
 }
+
+// --- TAMBAHAN UNTUK VIDROCK ---
+@RequiresApi(Build.VERSION_CODES.O)
+fun base64UrlEncode(input: ByteArray): String {
+    return Base64.getEncoder().encodeToString(input)
+        .replace("+", "-")
+        .replace("/", "_")
+        .replace("=", "")
+}
+
+object VidrockHelper {
+    private const val Ww = "x7k9mPqT2rWvY8zA5bC3nF6hJ2lK4mN9"
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    fun encrypt(
+        r: Int?,
+        e: String,
+        t: Int?,
+        n: Int?
+    ): String {
+        val s = if (e == "tv") "${r}_${t}_${n}" else r.toString()
+        val keyBytes = Ww.toByteArray(Charsets.UTF_8)
+        val ivBytes = Ww.substring(0, 16).toByteArray(Charsets.UTF_8)
+
+        val secretKey = SecretKeySpec(keyBytes, "AES")
+        val ivSpec = IvParameterSpec(ivBytes)
+
+        val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+        cipher.init(Cipher.ENCRYPT_MODE, secretKey, ivSpec)
+        val encrypted = cipher.doFinal(s.toByteArray(Charsets.UTF_8))
+        return base64UrlEncode(encrypted)
+    }
+}
+// -----------------------------
