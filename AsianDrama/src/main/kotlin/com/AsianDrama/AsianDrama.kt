@@ -1,4 +1,3 @@
-// AsianDrama/src/main/kotlin/com/AsianDrama/AsianDrama.kt
 package com.AsianDrama
 
 import com.fasterxml.jackson.annotation.JsonProperty
@@ -22,7 +21,6 @@ class AsianDrama : MainAPI() {
     override val hasQuickSearch = true
     override val supportedTypes = setOf(TvType.Movie, TvType.AsianDrama, TvType.TvSeries)
 
-    // Domain management similar to DramaDrip
     companion object {
         private const val DOMAINS_URL = "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/domains.json"
         var cachedDomains: Domains? = null
@@ -92,16 +90,15 @@ class AsianDrama : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         val document = app.get("$mainUrl/?s=$query").document
-        val results = document.select("article").mapNotNull {
+        return document.select("article").mapNotNull {
             it.toSearchResult()
         }
-        return results
     }
 
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url).document
 
-        // Extract metadata from DramaDrip page
+        // Extract metadata
         var imdbId: String? = null
         var tmdbId: String? = null
         var tmdbType: String? = null
@@ -120,7 +117,6 @@ class AsianDrama : MainAPI() {
             }
         }
 
-        // Determine type
         val tvType = when {
             tmdbType?.contains("movie", ignoreCase = true) == true -> TvType.Movie
             else -> TvType.TvSeries
@@ -128,12 +124,11 @@ class AsianDrama : MainAPI() {
 
         val image = document.select("meta[property=og:image]").attr("content")
         val title = document.selectFirst("div.wp-block-column > h2.wp-block-heading")?.text()
-            ?.substringBefore("(")?.trim().toString()
+            ?.substringBefore("(")?.trim() ?: "Unknown Title"
         val tags = document.select("div.mt-2 span.badge").map { it.text() }
         val year = document.selectFirst("div.wp-block-column > h2.wp-block-heading")?.text()
             ?.substringAfter("(")?.substringBefore(")")?.toIntOrNull()
         val description = document.selectFirst("div.content-section p.mt-4")?.text()?.trim()
-        
         val trailer = document.selectFirst("div.wp-block-embed__wrapper > iframe")?.attr("src")
 
         val recommendations = document.select("div.entry-related-inner-content article").mapNotNull {
@@ -145,7 +140,7 @@ class AsianDrama : MainAPI() {
             }
         }
 
-        // Prepare data for SoraStream extractors
+        // Prepare stream data
         val streamData = StreamData(
             tmdbId = tmdbId?.toIntOrNull(),
             imdbId = imdbId,
@@ -154,11 +149,10 @@ class AsianDrama : MainAPI() {
             type = if (tvType == TvType.Movie) "movie" else "tv"
         )
 
-        if (tvType == TvType.TvSeries) {
-            // Parse episodes from DramaDrip
+        return if (tvType == TvType.TvSeries) {
             val episodes = parseDramaDripEpisodes(document, streamData)
             
-            return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                 this.posterUrl = image
                 this.backgroundPosterUrl = image
                 this.year = year
@@ -170,7 +164,7 @@ class AsianDrama : MainAPI() {
                 addTMDbId(tmdbId)
             }
         } else {
-            return newMovieLoadResponse(title, url, TvType.Movie, streamData.toJson()) {
+            newMovieLoadResponse(title, url, TvType.Movie, streamData.toJson()) {
                 this.posterUrl = image
                 this.backgroundPosterUrl = image
                 this.year = year
@@ -243,10 +237,7 @@ class AsianDrama : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val streamData = tryParseJson<StreamData>(data) ?: return false
-        
-        // Use SoraStream extractors
         AsianDramaExtractor.invokeAllExtractors(streamData, subtitleCallback, callback)
-        
         return true
     }
 
