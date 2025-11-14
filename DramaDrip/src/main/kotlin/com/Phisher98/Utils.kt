@@ -11,6 +11,19 @@ import org.jsoup.nodes.Document
 import java.net.URI
 import java.net.URLEncoder
 import java.util.Base64
+// Add to Utils.kt
+import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.SubtitleFile
+
+// Improved logging function
+fun logDebug(tag: String, message: String) {
+    Log.d(tag, message)
+}
+
+// Improved URL validation
+fun isValidUrl(url: String?): Boolean {
+    return !url.isNullOrBlank() && (url.startsWith("http://") || url.startsWith("https://"))
+}
 
 // Existing DomainsParser and other data classes remain the same
 data class DomainsParser(
