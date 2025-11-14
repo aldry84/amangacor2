@@ -177,7 +177,7 @@ fun searchIndex(
             season,
             episode
         )
-    )?.distinctBy { it.name }?.sortedByDescending { it.size?.toLongOrNull() ?: 0 } ?: return null
+    }?.distinctBy { it.name }?.sortedByDescending { it.size?.toLongOrNull() ?: 0 } ?: return null
 
     return if (isTrimmed) {
         files.let { file ->
@@ -330,8 +330,8 @@ fun getLanguageNameFromCode(code: String?): String? {
     return code?.split("_")?.first()?.let { langCode ->
         try {
             // Gunakan Locale untuk mendapatkan nama bahasa yang dilokalkan
-            Locale(langCode).displayLanguage.replaceFirstChar { 
-                if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() 
+            Locale(langCode).displayLanguage.replaceFirstChar {
+                if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString()
             }
         } catch (e: Exception) {
             langCode // Fallback ke kode jika terjadi kesalahan
