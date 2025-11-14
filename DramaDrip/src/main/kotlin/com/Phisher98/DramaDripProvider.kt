@@ -1,21 +1,20 @@
 package com.Phisher98
 
+import com.fasterxml.jackson.annotation.JsonProperty
+import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.plugins.BasePlugin
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
+import com.lagradost.cloudstream3.utils.AppUtils.parsedSafe
 
 @CloudstreamPlugin
 class DramaDripProvider: BasePlugin() {
     override fun load() {
         registerMainAPI(DramaDrip())
-        // Hapus baris berikut:
-        // registerExtractorAPI(Driveseed())
-        
-        // Tambahkan Jeniusplay2 extractor
         registerExtractorAPI(Jeniusplay2())
     }
     
     companion object {
-        // TMDb Configuration - tetap sama
+        // TMDb Configuration
         const val TMDB_API_KEY = "b030404650f279792a8d3287232358e3"
         const val TMDB_BASE_URL = "https://api.themoviedb.org/3"
         const val TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p"
