@@ -72,6 +72,7 @@ class DramaDrip : MainAPI() {
         return newMovieSearchResponse(title, href, TvType.Movie) {
             this.posterUrl = posterUrl
         }
+
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
@@ -90,7 +91,6 @@ class DramaDrip : MainAPI() {
         var tmdbId: String? = null
         var tmdbType: String? = null
 
-        // Extract IDs from the page
         document.select("div.su-spoiler-content ul.wp-block-list > li").forEach { li ->
             val text = li.text()
             if (imdbId == null && "imdb.com/title/tt" in text) {
@@ -104,11 +104,9 @@ class DramaDrip : MainAPI() {
                 }
             }
         }
-
-        val tvType = when {
-            tmdbType?.equals("movie", ignoreCase = true) == true -> TvType.Movie
-            tmdbType?.equals("tv", ignoreCase = true) == true -> TvType.TvSeries
-            else -> TvType.TvSeries // default to TvSeries for dramas
+        val tvType = when (true) {
+            (tmdbType?.contains("Movie", ignoreCase = true) == true) -> TvType.Movie
+            else -> TvType.TvSeries
         }
 
         val image = document.select("meta[property=og:image]").attr("content")
@@ -118,48 +116,35 @@ class DramaDrip : MainAPI() {
         val year = document.selectFirst("div.wp-block-column > h2.wp-block-heading")?.text()
             ?.substringAfter("(")?.substringBefore(")")?.toIntOrNull()
         val descriptions = document.selectFirst("div.content-section p.mt-4")?.text()?.trim()
-
-        // ========== TMDb INTEGRATION ==========
-        val tmdbData = if (!tmdbId.isNullOrEmpty() && !tmdbType.isNullOrEmpty()) {
-            fetchTMDbData(tmdbId!!, tmdbType!!)
+        val typeset = if (tvType == TvType.TvSeries) "series" else "movie"
+        val responseData = if (tmdbId?.isNotEmpty() == true) {
+            val jsonResponse = app.get("$cinemeta_url/$typeset/$imdbId.json").text
+            if (jsonResponse.isNotEmpty() && jsonResponse.startsWith("{")) {
+                val gson = Gson()
+                gson.fromJson(jsonResponse, ResponseData::class.java)
+            } else null
         } else null
+        var cast: List<String> = emptyList()
 
-        // Use TMDb data if available, otherwise use existing sources
-        val finalTitle = tmdbData?.title ?: tmdbData?.name ?: title
-        val finalDescription = tmdbData?.overview ?: descriptions
-        val finalYear = tmdbData?.release_date?.substringBefore("-")?.toIntOrNull() 
-            ?: tmdbData?.first_air_date?.substringBefore("-")?.toIntOrNull() 
-            ?: year
+        var background: String = image
+        var description: String? = null
+        if (responseData != null) {
+            description = responseData.meta?.description ?: descriptions
+            cast = responseData.meta?.cast ?: emptyList()
+            background = responseData.meta?.background ?: image
+        }
 
-        // Get high quality images from TMDb
-        val posterUrl = getTMDbImageUrl(tmdbData?.poster_path) ?: image
-        val background = getTMDbImageUrl(tmdbData?.backdrop_path, "w1280") ?: image
-
-        // Get cast from TMDb (limited to 10 main actors)
-        val cast = tmdbData?.credits?.cast
-            ?.sortedBy { it.order ?: 999 } // Sort by appearance order
-            ?.take(10)
-            ?.map { it.name ?: "" } 
-            ?: emptyList()
-
-        // Get genres from TMDb
-        val genres = tmdbData?.genres?.map { it.name ?: "" } ?: emptyList()
-        val allTags = (tags + genres).distinct()
-
-        // Get trailer from TMDb
-        val trailer = tmdbData?.videos?.results
-            ?.find { it.site == "YouTube" && (it.type == "Trailer" || it.type == "Teaser") }
-            ?.key
-        val trailerUrl = if (!trailer.isNullOrEmpty()) "https://www.youtube.com/watch?v=$trailer" else null
 
         val hrefs: List<String> = document.select("div.wp-block-button > a")
             .mapNotNull { linkElement ->
                 val link = linkElement.attr("href")
-                val actual = cinematickitloadBypass(link) ?: return@mapNotNull null
+                val actual=cinematickitloadBypass(link) ?: return@mapNotNull null
                 val page = app.get(actual).document
                 page.select("div.wp-block-button.movie_btn a")
                     .eachAttr("href")
             }.flatten()
+
+        val trailer = document.selectFirst("div.wp-block-embed__wrapper > iframe")?.attr("src")
 
         val recommendations =
             document.select("div.entry-related-inner-content article").mapNotNull {
@@ -186,10 +171,12 @@ class DramaDrip : MainAPI() {
                     val season = seasonMatch?.groupValues?.getOrNull(1)?.toIntOrNull()
 
                     if (season != null) {
+                        // Try to get the links block; if next sibling doesn't have buttons, try alternative selection
                         var linksBlock = seasonHeader.nextElementSibling()
                         if (linksBlock == null || linksBlock.select("div.wp-block-button")
                                 .isEmpty()
                         ) {
+                            // Sometimes buttons could be inside a child or sibling div
                             linksBlock = seasonHeader.parent()?.selectFirst("div.wp-block-button")
                                 ?: linksBlock
                         }
@@ -200,7 +187,7 @@ class DramaDrip : MainAPI() {
 
                         for (qualityPageLink in qualityLinks) {
                             try {
-                                val rawqualityPageLink = if (qualityPageLink.contains("modpro")) qualityPageLink else cinematickitloadBypass(qualityPageLink) ?: ""
+                                val rawqualityPageLink=if (qualityPageLink.contains("modpro")) qualityPageLink else cinematickitloadBypass(qualityPageLink) ?: ""
                                 val response = app.get(rawqualityPageLink)
                                 val episodeDoc = response.document
 
@@ -248,42 +235,37 @@ class DramaDrip : MainAPI() {
 
             val finalEpisodes = tvSeriesEpisodes.map { (seasonEpisode, links) ->
                 val (season, epNo) = seasonEpisode
-                
-                // Get episode data from TMDb if available
-                val episodeData = if (!tmdbId.isNullOrEmpty()) {
-                    fetchTMDbEpisode(tmdbId!!, season, epNo)
-                } else null
+                val info =
+                    responseData?.meta?.videos?.find { it.season == season && it.episode == epNo }
 
                 newEpisode(links.distinct().toJson()) {
-                    this.name = episodeData?.name ?: "Episode $epNo"
-                    this.posterUrl = getTMDbImageUrl(episodeData?.still_path)
+                    this.name = info?.name ?: "Episode $epNo"
+                    this.posterUrl = info?.thumbnail
                     this.season = season
                     this.episode = epNo
-                    this.description = episodeData?.overview
+                    this.description = info?.overview
                 }
             }
 
-            return newTvSeriesLoadResponse(finalTitle, url, TvType.TvSeries, finalEpisodes) {
-                this.posterUrl = posterUrl
+            return newTvSeriesLoadResponse(title, url, TvType.TvSeries, finalEpisodes) {
                 this.backgroundPosterUrl = background
-                this.year = finalYear
-                this.plot = finalDescription
-                this.tags = allTags
+                this.year = year
+                this.plot = description
+                this.tags = tags
                 this.recommendations = recommendations
-                addTrailer(trailerUrl)
+                addTrailer(trailer)
                 addActors(cast)
                 addImdbId(imdbId)
                 addTMDbId(tmdbId)
             }
         } else {
-            return newMovieLoadResponse(finalTitle, url, TvType.Movie, hrefs) {
-                this.posterUrl = posterUrl
+            return newMovieLoadResponse(title, url, TvType.Movie, hrefs) {
                 this.backgroundPosterUrl = background
-                this.year = finalYear
-                this.plot = finalDescription
-                this.tags = allTags
+                this.year = year
+                this.plot = description
+                this.tags = tags
                 this.recommendations = recommendations
-                addTrailer(trailerUrl)
+                addTrailer(trailer)
                 addActors(cast)
                 addImdbId(imdbId)
                 addTMDbId(tmdbId)
