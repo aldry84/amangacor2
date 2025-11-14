@@ -472,11 +472,12 @@ class DUpload : ExtractorApi() {
     }
     
     private fun extractQualityFromUrl(url: String): Int {
+        // Gunakan nilai integer langsung untuk kualitas
         return when {
-            "1080" in url -> Qualities.FullHd.value
-            "720" in url -> Qualities.HD.value
-            "480" in url -> Qualities.SD.value
-            "360" in url -> Qualities.Low.value
+            "1080" in url -> 1080
+            "720" in url -> 720
+            "480" in url -> 480
+            "360" in url -> 360
             else -> Qualities.Unknown.value
         }
     }
