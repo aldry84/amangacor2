@@ -8,7 +8,6 @@ import com.lagradost.cloudstream3.LoadResponse.Companion.addTMDbId
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.SubtitleFile
 import kotlinx.coroutines.runBlocking
 import org.jsoup.nodes.Element
 import com.lagradost.api.Log
@@ -242,17 +241,15 @@ class DramaDrip : MainAPI() {
         links.forEach { link ->
             try {
                 Log.d("DramaDrip", "Processing link: $link")
-                when {
-                    link.contains("jeniusplay.com") -> {
-                        Log.d("DramaDrip", "Using Jeniusplay extractor")
-                        loadExtractor(link, "$mainUrl/", subtitleCallback, callback)
-                        foundLinks = true
-                    }
-                    else -> {
-                        Log.d("DramaDrip", "Using default extractor")
-                        loadExtractor(link, "$mainUrl/", subtitleCallback, callback)
-                        foundLinks = true
-                    }
+                if (link.contains("jeniusplay.com")) {
+                    Log.d("DramaDrip", "Using Jeniusplay extractor")
+                    // Call Jeniusplay2 directly
+                    Jeniusplay2().getUrl(link, "$mainUrl/", subtitleCallback, callback)
+                    foundLinks = true
+                } else {
+                    Log.d("DramaDrip", "Skipping non-Jeniusplay link: $link")
+                    // For now, only handle Jeniusplay links
+                    // You can add more extractors here as needed
                 }
             } catch (e: Exception) {
                 Log.e("DramaDrip", "Error in loadLinks for $link: ${e.message}")
