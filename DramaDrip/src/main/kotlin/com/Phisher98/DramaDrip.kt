@@ -2,7 +2,6 @@ package com.Phisher98
 
 import android.os.Build
 import androidx.annotation.RequiresApi
-import com.google.gson.Gson
 import com.lagradost.api.Log
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
@@ -25,7 +24,6 @@ class DramaDrip : MainAPI() {
     override val hasDownloadSupport = true
     override val hasQuickSearch = true
     override val supportedTypes = setOf(TvType.Movie, TvType.AsianDrama, TvType.TvSeries)
-    private val cinemeta_url = "https://v3-cinemeta.strem.io/meta"
 
     override val mainPage = mainPageOf(
         "drama/ongoing" to "Ongoing Dramas",
@@ -52,241 +50,138 @@ class DramaDrip : MainAPI() {
     }
 
     private fun Element.toSearchResult(): SearchResponse? {
-        val title =
-            this.selectFirst("h2.entry-title")?.text()?.substringAfter("Download") ?: return null
-        val href = this.select("h2.entry-title > a").attr("href")
+        val title = this.selectFirst("h2.entry-title")?.text()?.substringAfter("Download") ?: return null
+        val href = fixUrl(this.selectFirst("h2.entry-title > a")?.attr("href") ?: return null, mainUrl)
         val imgElement = this.selectFirst("img")
-        val srcset = imgElement?.attr("srcset")
-
-        val highestResUrl = srcset
-            ?.split(",")
-            ?.map { it.trim() }
-            ?.mapNotNull {
-                val parts = it.split(" ")
-                if (parts.size == 2) parts[0] to parts[1].removeSuffix("w").toIntOrNull() else null
+        
+        val posterUrl = when {
+            imgElement?.hasAttr("srcset") == true -> {
+                imgElement.attr("srcset").split(",")
+                    .mapNotNull { it.trim().split(" ").takeIf { it.size == 2 }?.let { pair -> pair[0] to pair[1].removeSuffix("w").toIntOrNull() } }
+                    .maxByOrNull { it.second ?: 0 }?.first
             }
-            ?.maxByOrNull { it.second ?: 0 }
-            ?.first
+            else -> imgElement?.attr("src")
+        }
 
-        val posterUrl = highestResUrl ?: imgElement?.attr("src")
-        return newMovieSearchResponse(title, href, TvType.Movie) {
-            this.posterUrl = posterUrl
+        return newMovieSearchResponse(cleanTitle(title), href, TvType.Movie) {
+            this.posterUrl = fixUrl(posterUrl ?: "", mainUrl)
         }
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val document = app.get("$mainUrl/?s=$query").document
-        val results = document.select("article").mapNotNull {
-            it.toSearchResult()
-        }
-        return results
+        val document = app.get("$mainUrl/?s=${encode(query)}").document
+        return document.select("article").mapNotNull { it.toSearchResult() }
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
     override suspend fun load(url: String): LoadResponse {
+        Log.d("DramaDrip", "Loading URL: $url")
         val document = app.get(url).document
 
-        var imdbId: String? = null
-        var tmdbId: String? = null
-        var tmdbType: String? = null
-
-        // Extract IDs from the page
-        document.select("div.su-spoiler-content ul.wp-block-list > li").forEach { li ->
-            val text = li.text()
-            if (imdbId == null && "imdb.com/title/tt" in text) {
-                imdbId = Regex("tt\\d+").find(text)?.value
-            }
-
-            if (tmdbId == null && tmdbType == null && "themoviedb.org" in text) {
-                Regex("/(movie|tv)/(\\d+)").find(text)?.let { match ->
-                    tmdbType = match.groupValues[1] // movie or tv
-                    tmdbId = match.groupValues[2]   // numeric ID
-                }
-            }
-        }
-
-        val tvType = when {
-            tmdbType?.equals("movie", ignoreCase = true) == true -> TvType.Movie
-            tmdbType?.equals("tv", ignoreCase = true) == true -> TvType.TvSeries
-            else -> TvType.TvSeries // default to TvSeries for dramas
-        }
-
-        val image = document.select("meta[property=og:image]").attr("content")
+        // Extract metadata
         val title = document.selectFirst("div.wp-block-column > h2.wp-block-heading")?.text()
-            ?.substringBefore("(")?.trim().toString()
-        val tags = document.select("div.mt-2 span.badge").map { it.text() }
+            ?.substringBefore("(")?.trim() ?: "Unknown Title"
         val year = document.selectFirst("div.wp-block-column > h2.wp-block-heading")?.text()
             ?.substringAfter("(")?.substringBefore(")")?.toIntOrNull()
-        val descriptions = document.selectFirst("div.content-section p.mt-4")?.text()?.trim()
+        val description = document.selectFirst("div.content-section p.mt-4")?.text()?.trim()
+        val image = document.selectFirst("meta[property=og:image]")?.attr("content") ?: ""
+        val tags = document.select("div.mt-2 span.badge").map { it.text() }
 
-        // ========== TMDb INTEGRATION ==========
-        val tmdbData = if (!tmdbId.isNullOrEmpty() && !tmdbType.isNullOrEmpty()) {
-            fetchTMDbData(tmdbId!!, tmdbType!!)
-        } else null
-
-        // Use TMDb data if available, otherwise use existing sources
-        val finalTitle = tmdbData?.title ?: tmdbData?.name ?: title
-        val finalDescription = tmdbData?.overview ?: descriptions
-        val finalYear = tmdbData?.release_date?.substringBefore("-")?.toIntOrNull() 
-            ?: tmdbData?.first_air_date?.substringBefore("-")?.toIntOrNull() 
-            ?: year
-
-        // Get high quality images from TMDb
-        val posterUrl = getTMDbImageUrl(tmdbData?.poster_path) ?: image
-        val background = getTMDbImageUrl(tmdbData?.backdrop_path, "w1280") ?: image
-
-        // Get cast from TMDb (limited to 10 main actors)
-        val cast = tmdbData?.credits?.cast
-            ?.sortedBy { it.order ?: 999 } // Sort by appearance order
-            ?.take(10)
-            ?.map { it.name ?: "" } 
-            ?: emptyList()
-
-        // Get genres from TMDb
-        val genres = tmdbData?.genres?.map { it.name ?: "" } ?: emptyList()
-        val allTags = (tags + genres).distinct()
-
-        // Get trailer from TMDb
-        val trailer = tmdbData?.videos?.results
-            ?.find { it.site == "YouTube" && (it.type == "Trailer" || it.type == "Teaser") }
-            ?.key
-        val trailerUrl = if (!trailer.isNullOrEmpty()) "https://www.youtube.com/watch?v=$trailer" else null
-
-        val hrefs: List<String> = document.select("div.wp-block-button > a")
-            .mapNotNull { linkElement ->
-                val link = linkElement.attr("href")
-                val actual = cinematickitloadBypass(link) ?: return@mapNotNull null
-                val page = app.get(actual).document
-                page.select("div.wp-block-button.movie_btn a")
-                    .eachAttr("href")
-            }.flatten()
-
-        val recommendations =
-            document.select("div.entry-related-inner-content article").mapNotNull {
-                val recName = it.select("h3").text().substringAfter("Download")
-                val recHref = it.select("h3 a").attr("href")
-                val recPosterUrl = it.select("img").attr("src")
-                newTvSeriesSearchResponse(recName, recHref, TvType.TvSeries) {
-                    this.posterUrl = recPosterUrl
-                }
+        // Extract all available links
+        val hrefs = mutableListOf<String>()
+        
+        // Method 1: Direct download buttons
+        document.select("div.wp-block-button > a").forEach { button ->
+            val link = button.attr("href")
+            if (link.isNotBlank()) {
+                Log.d("DramaDrip", "Found button link: $link")
+                hrefs.add(link)
             }
+        }
 
-        if (tvType == TvType.TvSeries) {
-            val tvSeriesEpisodes = mutableMapOf<Pair<Int, Int>, MutableList<String>>()
+        // Method 2: Movie buttons in content
+        document.select("div.wp-block-button.movie_btn a").forEach { button ->
+            val link = button.attr("href")
+            if (link.isNotBlank()) {
+                Log.d("DramaDrip", "Found movie button link: $link")
+                hrefs.add(link)
+            }
+        }
 
-            val seasonBlocks = document.select("div.su-accordion h2")
-
-            for (seasonHeader in seasonBlocks) {
-                val seasonText = seasonHeader.text()
-                if (seasonText.contains("ZIP", ignoreCase = true)) {
-                    Log.d("Skip", "Skipping ZIP season: $seasonText")
-                } else {
-                    val seasonMatch = Regex("""S?e?a?s?o?n?\s*([0-9]+)""", RegexOption.IGNORE_CASE)
-                        .find(seasonText)
-                    val season = seasonMatch?.groupValues?.getOrNull(1)?.toIntOrNull()
-
-                    if (season != null) {
-                        var linksBlock = seasonHeader.nextElementSibling()
-                        if (linksBlock == null || linksBlock.select("div.wp-block-button")
-                                .isEmpty()
-                        ) {
-                            linksBlock = seasonHeader.parent()?.selectFirst("div.wp-block-button")
-                                ?: linksBlock
-                        }
-
-                        val qualityLinks = linksBlock?.select("div.wp-block-button a")
-                            ?.mapNotNull { it.attr("href").takeIf { href -> href.isNotBlank() } }
-                            ?.distinct() ?: emptyList()
-
-                        for (qualityPageLink in qualityLinks) {
-                            try {
-                                val rawqualityPageLink = if (qualityPageLink.contains("modpro")) qualityPageLink else cinematickitloadBypass(qualityPageLink) ?: ""
-                                val response = app.get(rawqualityPageLink)
-                                val episodeDoc = response.document
-
-                                val episodeButtons =
-                                    episodeDoc.select("a").filter { element: Element ->
-                                        element.text()
-                                            .matches(Regex("""(?i)(Episode|Ep|E)?\s*0*\d+"""))
-                                    }
-
-                                for (btn in episodeButtons) {
-                                    val ephref = btn.attr("href")
-                                    val epText = btn.text()
-
-                                    if (ephref.isNotBlank()) {
-                                        val epNo = Regex(
-                                            """(?:Episode|Ep|E)?\s*0*([0-9]+)""",
-                                            RegexOption.IGNORE_CASE
-                                        )
-                                            .find(epText)?.groupValues?.getOrNull(1)?.toIntOrNull()
-
-                                        if (epNo != null) {
-                                            val key = season to epNo
-                                            tvSeriesEpisodes.getOrPut(key) { mutableListOf() }
-                                                .add(ephref)
-                                        } else {
-                                            Log.w(
-                                                "EpisodeFetch",
-                                                "Could not extract episode number from text: '$epText'"
-                                            )
-                                        }
-                                    } else {
-                                        Log.w(
-                                            "EpisodeFetch",
-                                            "Empty href for episode button with text: '$epText'"
-                                        )
-                                    }
+        // Method 3: Try to bypass safelinks and get direct links
+        val processedLinks = mutableListOf<String>()
+        hrefs.forEach { link ->
+            try {
+                Log.d("DramaDrip", "Processing link: $link")
+                val processedLink = when {
+                    link.contains("safelink=") -> {
+                        val bypassed = cinematickitloadBypass(link)
+                        Log.d("DramaDrip", "Bypassed safelink: $bypassed")
+                        bypassed
+                    }
+                    link.contains("unblockedgames") || link.contains("examzculture") -> {
+                        val bypassed = bypassHrefli(link)
+                        Log.d("DramaDrip", "Bypassed hrefli: $bypassed")
+                        bypassed
+                    }
+                    else -> link
+                }
+                
+                if (!processedLink.isNullOrBlank()) {
+                    // If it's another page with multiple links, extract them
+                    if (processedLink.contains("modpro") || processedLink.contains("/series/") || processedLink.contains("/movie/")) {
+                        try {
+                            val linkDoc = app.get(processedLink).document
+                            linkDoc.select("div.wp-block-button a, a[href*='jeniusplay'], a[href*='stream']").forEach { innerLink ->
+                                val href = innerLink.attr("href")
+                                if (href.isNotBlank() && !href.contains("#") && !href.startsWith("javascript")) {
+                                    Log.d("DramaDrip", "Found inner link: $href")
+                                    processedLinks.add(fixUrl(href, mainUrl))
                                 }
-                            } catch (_: Exception) {
-                                Log.e("EpisodeFetch", "Failed to load or parse $qualityPageLink")
                             }
+                        } catch (e: Exception) {
+                            Log.e("DramaDrip", "Error processing inner links: ${e.message}")
+                            processedLinks.add(processedLink)
                         }
+                    } else {
+                        processedLinks.add(processedLink)
                     }
                 }
+            } catch (e: Exception) {
+                Log.e("DramaDrip", "Error processing link $link: ${e.message}")
             }
+        }
 
-            val finalEpisodes = tvSeriesEpisodes.map { (seasonEpisode, links) ->
-                val (season, epNo) = seasonEpisode
-                
-                // Get episode data from TMDb if available
-                val episodeData = if (!tmdbId.isNullOrEmpty()) {
-                    fetchTMDbEpisode(tmdbId!!, season, epNo)
-                } else null
+        Log.d("DramaDrip", "Final processed links: ${processedLinks.size}")
+        processedLinks.forEachIndexed { index, link -> 
+            Log.d("DramaDrip", "Link $index: $link")
+        }
 
-                newEpisode(links.distinct().toJson()) {
-                    this.name = episodeData?.name ?: "Episode $epNo"
-                    this.posterUrl = getTMDbImageUrl(episodeData?.still_path)
-                    this.season = season
-                    this.episode = epNo
-                    this.description = episodeData?.overview
+        // Determine content type and create response
+        val isMovie = processedLinks.isNotEmpty() && !url.contains("/series/") && !url.contains("/drama/")
+        val cleanTitle = cleanTitle(title)
+
+        if (isMovie) {
+            return newMovieLoadResponse(cleanTitle, url, TvType.Movie, processedLinks) {
+                this.posterUrl = fixUrl(image, mainUrl)
+                this.year = year
+                this.plot = description
+                this.tags = tags
+            }
+        } else {
+            // For TV series, create simple episodes
+            val episodes = processedLinks.mapIndexed { index, link ->
+                newEpisode(link) {
+                    this.name = "Episode ${index + 1}"
+                    this.episode = index + 1
                 }
             }
 
-            return newTvSeriesLoadResponse(finalTitle, url, TvType.TvSeries, finalEpisodes) {
-                this.posterUrl = posterUrl
-                this.backgroundPosterUrl = background
-                this.year = finalYear
-                this.plot = finalDescription
-                this.tags = allTags
-                this.recommendations = recommendations
-                addTrailer(trailerUrl)
-                addActors(cast)
-                addImdbId(imdbId)
-                addTMDbId(tmdbId)
-            }
-        } else {
-            return newMovieLoadResponse(finalTitle, url, TvType.Movie, hrefs) {
-                this.posterUrl = posterUrl
-                this.backgroundPosterUrl = background
-                this.year = finalYear
-                this.plot = finalDescription
-                this.tags = allTags
-                this.recommendations = recommendations
-                addTrailer(trailerUrl)
-                addActors(cast)
-                addImdbId(imdbId)
-                addTMDbId(tmdbId)
+            return newTvSeriesLoadResponse(cleanTitle, url, TvType.TvSeries, episodes) {
+                this.posterUrl = fixUrl(image, mainUrl)
+                this.year = year
+                this.plot = description
+                this.tags = tags
             }
         }
     }
@@ -298,98 +193,97 @@ class DramaDrip : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val links = tryParseJson<List<String>>(data).orEmpty()
+        Log.d("DramaDrip", "loadLinks called with data: ${data.take(100)}...")
+        
+        // Handle both single link and list of links
+        val links = if (data.startsWith("[")) {
+            tryParseJson<List<String>>(data).orEmpty()
+        } else {
+            listOf(data)
+        }
+
         if (links.isEmpty()) {
-            Log.e("LoadLinks", "No links found in data: $data")
+            Log.e("DramaDrip", "No links found in loadLinks")
             return false
         }
-        
-        for (link in links) {
-            try {
-                val finalLink = when {
-                    "safelink=" in link -> cinematickitBypass(link)
-                    "unblockedgames" in link -> bypassHrefli(link)
-                    "examzculture" in link -> bypassHrefli(link)
-                    else -> link
-                }
 
+        Log.d("DramaDrip", "Processing ${links.size} links in loadLinks")
+        var foundLinks = false
+
+        links.forEach { link ->
+            try {
+                Log.d("DramaDrip", "Processing link in loadLinks: $link")
+                
                 when {
-                    finalLink?.contains("jeniusplay.com") == true -> {
-                        // Handle Jeniusplay links specifically
-                        invokeJeniusplay(finalLink, subtitleCallback, callback)
+                    link.contains("jeniusplay.com") -> {
+                        Log.d("DramaDrip", "Direct Jeniusplay link found")
+                        invokeJeniusplay(link, subtitleCallback, callback)
+                        foundLinks = true
                     }
-                    finalLink != null -> {
-                        // For other links, use the standard extractor loading
-                        loadExtractor(finalLink, subtitleCallback, callback)
+                    link.contains("safelink=") -> {
+                        val bypassed = cinematickitBypass(link)
+                        if (!bypassed.isNullOrBlank()) {
+                            Log.d("DramaDrip", "Bypassed safelink to: $bypassed")
+                            loadExtractor(bypassed, "$mainUrl/", subtitleCallback, callback)
+                            foundLinks = true
+                        }
+                    }
+                    link.contains("unblockedgames") || link.contains("examzculture") -> {
+                        val bypassed = bypassHrefli(link)
+                        if (!bypassed.isNullOrBlank()) {
+                            Log.d("DramaDrip", "Bypassed hrefli to: $bypassed")
+                            loadExtractor(bypassed, "$mainUrl/", subtitleCallback, callback)
+                            foundLinks = true
+                        }
                     }
                     else -> {
-                        Log.w("LoadLinks", "Bypass returned null for link: $link")
+                        Log.d("DramaDrip", "Using default extractor for: $link")
+                        loadExtractor(link, "$mainUrl/", subtitleCallback, callback)
+                        foundLinks = true
                     }
                 }
             } catch (e: Exception) {
-                Log.e("LoadLinks", "Failed to load link: $link, error: ${e.message}")
+                Log.e("DramaDrip", "Error in loadLinks for $link: ${e.message}")
             }
         }
 
-        return true
+        Log.d("DramaDrip", "loadLinks completed. Found links: $foundLinks")
+        return foundLinks
     }
 
-    /**
-     * Function to handle Jeniusplay extraction specifically
-     */
     private suspend fun invokeJeniusplay(
         url: String,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
         try {
-            Log.d("Jeniusplay", "Extracting from Jeniusplay: $url")
+            Log.d("DramaDrip", "Invoking Jeniusplay for: $url")
             Jeniusplay2().getUrl(url, "$mainUrl/", subtitleCallback, callback)
         } catch (e: Exception) {
-            Log.e("Jeniusplay", "Failed to extract from Jeniusplay: ${e.message}")
-            // Fallback to standard extractor if Jeniusplay fails
-            loadExtractor(url, subtitleCallback, callback)
+            Log.e("DramaDrip", "Jeniusplay extraction failed: ${e.message}")
+            // Fallback to standard extractor
+            loadExtractor(url, "$mainUrl/", subtitleCallback, callback)
         }
     }
 }
 
-// Extension function untuk membersihkan title
+// Improved cleanTitle function
 fun cleanTitle(title: String): String {
-    val parts = title.split(".", "-", "_")
+    return title.replace("Download", "")
+        .replace("(?i)full\\s*movie".toRegex(), "")
+        .replace("(?i)season\\s*\\d+".toRegex(), "")
+        .replace("\\s+".toRegex(), " ")
+        .trim()
+}
 
-    val qualityTags = listOf(
-        "WEBRip", "WEB-DL", "WEB", "BluRay", "HDRip", "DVDRip", "HDTV",
-        "CAM", "TS", "R5", "DVDScr", "BRRip", "BDRip", "DVD", "PDTV",
-        "HD"
-    )
-
-    val audioTags = listOf(
-        "AAC", "AC3", "DTS", "MP3", "FLAC", "DD5", "EAC3", "Atmos"
-    )
-
-    val subTags = listOf(
-        "ESub", "ESubs", "Subs", "MultiSub", "NoSub", "EnglishSub", "HindiSub"
-    )
-
-    val codecTags = listOf(
-        "x264", "x265", "H264", "HEVC", "AVC"
-    )
-
-    val startIndex = parts.indexOfFirst { part ->
-        qualityTags.any { tag -> part.contains(tag, ignoreCase = true) }
-    }
-
-    val endIndex = parts.indexOfLast { part ->
-        subTags.any { tag -> part.contains(tag, ignoreCase = true) } ||
-                audioTags.any { tag -> part.contains(tag, ignoreCase = true) } ||
-                codecTags.any { tag -> part.contains(tag, ignoreCase = true) }
-    }
-
-    return if (startIndex != -1 && endIndex != -1 && endIndex >= startIndex) {
-        parts.subList(startIndex, endIndex + 1).joinToString(".")
-    } else if (startIndex != -1) {
-        parts.subList(startIndex, parts.size).joinToString(".")
-    } else {
-        parts.takeLast(3).joinToString(".")
+// Helper function to fix URLs
+fun fixUrl(url: String, domain: String = ""): String {
+    if (url.startsWith("http")) return url
+    if (url.isEmpty()) return ""
+    
+    return when {
+        url.startsWith("//") -> "https:$url"
+        url.startsWith("/") -> "${domain.removeSuffix("/")}$url"
+        else -> "${domain.removeSuffix("/")}/$url"
     }
 }
