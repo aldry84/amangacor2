@@ -40,7 +40,7 @@ open class Adicinemax21 : TmdbProvider() {
 
     val wpRedisInterceptor by lazy { CloudflareKiller() }
 
-    /** AUTHOR : Hexated & Sora */
+    /** AUTHOR : Hexated & Adicinemax21 */
     companion object {
         /** TOOLS */
         private const val tmdbAPI = "https://api.themoviedb.org/3"
@@ -134,7 +134,7 @@ open class Adicinemax21 : TmdbProvider() {
             TvType.Movie,
         ) {
             this.posterUrl = getImageUrl(posterPath)
-            this.score= Score.from10(voteAverage)
+            this.score = Score.from10(voteAverage)
         }
     }
 
