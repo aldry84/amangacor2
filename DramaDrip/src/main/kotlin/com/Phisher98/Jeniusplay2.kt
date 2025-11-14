@@ -21,49 +21,73 @@ class Jeniusplay2 : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        val document = app.get(url, referer = "$mainUrl/").document
-        val hash = url.split("/").last().substringAfter("data=")
+        try {
+            Log.d("Jeniusplay2", "Starting extraction for: $url")
+            
+            val document = app.get(url, referer = "$mainUrl/").document
+            val hash = url.split("/").last().substringAfter("data=")
 
-        val response = app.post(
-            url = "$mainUrl/player/index.php?data=$hash&do=getVideo",
-            data = mapOf("hash" to hash, "r" to "$referer"),
-            referer = url,
-            headers = mapOf("X-Requested-With" to "XMLHttpRequest")
-        ).text
+            Log.d("Jeniusplay2", "Found hash: $hash")
 
-        val m3uLink = tryParseJson<ResponseSource>(response)?.videoSource ?: return
+            val response = app.post(
+                url = "$mainUrl/player/index.php?data=$hash&do=getVideo",
+                data = mapOf("hash" to hash, "r" to "$referer"),
+                referer = url,
+                headers = mapOf("X-Requested-With" to "XMLHttpRequest")
+            ).text
 
-        callback.invoke(
-            newExtractorLink(
-                this.name,
-                this.name,
-                m3uLink,
-                ExtractorLinkType.M3U8
-            ) {
-                this.referer = url
+            Log.d("Jeniusplay2", "API response: ${response.take(200)}...")
+
+            val videoSource = tryParseJson<ResponseSource>(response)?.videoSource
+            if (videoSource != null) {
+                Log.d("Jeniusplay2", "Found video source: $videoSource")
+                
+                callback.invoke(
+                    newExtractorLink(
+                        this.name,
+                        this.name,
+                        videoSource,
+                        ExtractorLinkType.M3U8
+                    ) {
+                        this.referer = url
+                    }
+                )
+            } else {
+                Log.e("Jeniusplay2", "No video source found in response")
             }
-        )
 
-        document.select("script").map { script ->
-            if (script.data().contains("eval(function(p,a,c,k,e,d)")) {
-                val subData = getAndUnpack(script.data())
-                    .substringAfter("\"tracks\":[")
-                    .substringBefore("],")
-                tryParseJson<List<Tracks>>("[$subData]")?.map { subtitle ->
-                    subtitleCallback.invoke(
-                        SubtitleFile(
-                            getLanguage(subtitle.label ?: ""),
-                            subtitle.file
-                        )
-                    )
+            // Extract subtitles
+            document.select("script").forEach { script ->
+                if (script.data().contains("eval(function(p,a,c,k,e,d)")) {
+                    try {
+                        val unpacked = getAndUnpack(script.data())
+                        Log.d("Jeniusplay2", "Unpacked script: ${unpacked.take(200)}...")
+                        
+                        val subData = unpacked.substringAfter("\"tracks\":[").substringBefore("],")
+                        tryParseJson<List<Tracks>>("[$subData]")?.forEach { subtitle ->
+                            subtitleCallback.invoke(
+                                SubtitleFile(
+                                    getLanguage(subtitle.label ?: ""),
+                                    subtitle.file
+                                )
+                            )
+                            Log.d("Jeniusplay2", "Found subtitle: ${subtitle.label}")
+                        }
+                    } catch (e: Exception) {
+                        Log.e("Jeniusplay2", "Error extracting subtitles: ${e.message}")
+                    }
                 }
             }
+        } catch (e: Exception) {
+            Log.e("Jeniusplay2", "Extraction failed: ${e.message}")
+            throw e
         }
     }
 
     private fun getLanguage(str: String): String {
         return when {
             str.contains("indonesia", true) || str.contains("bahasa", true) -> "Indonesian"
+            str.contains("english", true) || str.contains("inggris", true) -> "English"
             else -> str
         }
     }
