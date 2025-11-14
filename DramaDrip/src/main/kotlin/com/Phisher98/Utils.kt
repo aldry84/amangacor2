@@ -1,13 +1,10 @@
 package com.Phisher98
 
-import com.lagradost.cloudstream3.app
-import com.lagradost.cloudstream3.utils.AppUtils.parsedSafe
 import android.os.Build
 import androidx.annotation.RequiresApi
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.api.Log
 import com.lagradost.cloudstream3.app
-import com.lagradost.cloudstream3.utils.Qualities
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jsoup.nodes.Document
@@ -128,7 +125,8 @@ suspend fun fetchTMDbData(tmdbId: String, type: String): TMDbResponse? {
             "tv" -> "${DramaDripProvider.TMDB_BASE_URL}/tv/$tmdbId?api_key=${DramaDripProvider.TMDB_API_KEY}&append_to_response=credits,videos"
             else -> return null
         }
-        app.get(url).parsedSafe()
+        val response = app.get(url)
+        com.lagradost.cloudstream3.utils.AppUtils.tryParseJson(response.text)
     } catch (e: Exception) {
         Log.e("TMDb", "Failed to fetch TMDb data for $type ID $tmdbId: ${e.message}")
         null
@@ -138,7 +136,8 @@ suspend fun fetchTMDbData(tmdbId: String, type: String): TMDbResponse? {
 suspend fun fetchTMDbEpisode(tmdbId: String, season: Int, episode: Int): TMDbEpisode? {
     return try {
         val url = "${DramaDripProvider.TMDB_BASE_URL}/tv/$tmdbId/season/$season/episode/$episode?api_key=${DramaDripProvider.TMDB_API_KEY}"
-        app.get(url).parsedSafe()
+        val response = app.get(url)
+        com.lagradost.cloudstream3.utils.AppUtils.tryParseJson(response.text)
     } catch (e: Exception) {
         Log.e("TMDb", "Failed to fetch episode data: ${e.message}")
         null
@@ -267,67 +266,3 @@ fun base64Decode(string: String): String {
         ""
     }
 }
-
-@RequiresApi(Build.VERSION_CODES.O)
-fun base64Encode(input: ByteArray): String {
-    return Base64.getEncoder().encodeToString(input)
-}
-
-// ========== NEW UTILITY FUNCTIONS FOR JENIUSPLAY ==========
-fun getAndUnpack(packedScript: String): String {
-    return try {
-        // Simple unpacker untuk eval(function(p,a,c,k,e,d){...})
-        val match = Regex("""eval\(function\(p,a,c,k,e,d\).*?\}\((.*?)\)\)""").find(packedScript)
-        if (match != null) {
-            val args = match.groupValues[1]
-            unpackJavaScript(args)
-        } else {
-            packedScript
-        }
-    } catch (e: Exception) {
-        Log.e("Unpack", "Failed to unpack script: ${e.message}")
-        packedScript
-    }
-}
-
-private fun unpackJavaScript(args: String): String {
-    // Implementasi sederhana unpacker JavaScript
-    val parts = args.split(",'")
-    if (parts.size >= 2) {
-        val packed = parts[0].removePrefix("'").removeSuffix("'")
-        return packed.replace(Regex("\\\\x([0-9A-Fa-f]{2})")) {
-            it.groupValues[1].toInt(16).toChar().toString()
-        }
-    }
-    return args
-}
-
-// Function to extract m3u8 from various patterns
-fun extractM3u8FromDocument(document: Document): List<String> {
-    val sources = mutableListOf<String>()
-    
-    // Method 1: Direct source tags
-    document.select("source[src*=.m3u8]").forEach { 
-        sources.add(it.attr("src")) 
-    }
-    
-    // Method 2: Script tags with m3u8
-    document.select("script").forEach { script ->
-        val scriptData = script.data()
-        if (scriptData.contains(".m3u8")) {
-            Regex("""(https?://[^\s"'<>]*?\.m3u8[^\s"'<>]*)""").findAll(scriptData).forEach {
-                sources.add(it.groupValues[1])
-            }
-        }
-    }
-    
-    // Method 3: Iframe sources
-    document.select("iframe[src*=.m3u8]").forEach {
-        sources.add(it.attr("src"))
-    }
-    
-    return sources.distinct()
-}
-
-// Helper function untuk encode URL
-fun encodeUrl(input: String): String = URLEncoder.encode(input, "utf-8").replace("+", "%20")
