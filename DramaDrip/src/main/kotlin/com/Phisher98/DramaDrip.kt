@@ -35,7 +35,6 @@ class DramaDrip : MainAPI() {
         "web-series" to "Web Series",
     )
 
-    // Enhanced error handling for main page
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         return try {
             val document = app.get("$mainUrl/${request.data}/page/$page").document
@@ -101,7 +100,6 @@ class DramaDrip : MainAPI() {
             loadWithFallback(url)
         } catch (e: Exception) {
             Log.e("Load", "Critical error loading $url: ${e.message}")
-            // Return a basic error response
             newMovieLoadResponse("Error", url, TvType.Movie, emptyList()) {
                 this.plot = "Failed to load content: ${e.message}"
             }
@@ -129,8 +127,8 @@ class DramaDrip : MainAPI() {
 
             if (tmdbId == null && tmdbType == null && "themoviedb.org" in text) {
                 Regex("/(movie|tv)/(\\d+)").find(text)?.let { match ->
-                    tmdbType = match.groupValues[1] // movie or tv
-                    tmdbId = match.groupValues[2]   // numeric ID
+                    tmdbType = match.groupValues[1]
+                    tmdbId = match.groupValues[2]
                 }
             }
         }
@@ -138,7 +136,7 @@ class DramaDrip : MainAPI() {
         val tvType = when {
             tmdbType?.equals("movie", ignoreCase = true) == true -> TvType.Movie
             tmdbType?.equals("tv", ignoreCase = true) == true -> TvType.TvSeries
-            else -> TvType.TvSeries // default to TvSeries for dramas
+            else -> TvType.TvSeries
         }
 
         val image = document.select("meta[property=og:image]").attr("content")
@@ -149,7 +147,7 @@ class DramaDrip : MainAPI() {
             ?.substringAfter("(")?.substringBefore(")")?.toIntOrNull()
         val descriptions = document.selectFirst("div.content-section p.mt-4")?.text()?.trim()
 
-        // ========== ENHANCED TMDb INTEGRATION WITH FALLBACK ==========
+        // TMDb Integration
         val tmdbData = if (!tmdbId.isNullOrEmpty() && !tmdbType.isNullOrEmpty()) {
             try {
                 fetchTMDbData(tmdbId!!, tmdbType!!)
@@ -159,29 +157,25 @@ class DramaDrip : MainAPI() {
             }
         } else null
 
-        // Use TMDb data if available, otherwise use existing sources with fallback
+        // Use TMDb data if available, otherwise use fallback
         val finalTitle = tmdbData?.title ?: tmdbData?.name ?: title.ifEmpty { "Unknown Title" }
         val finalDescription = tmdbData?.overview ?: descriptions ?: "No description available"
         val finalYear = tmdbData?.release_date?.substringBefore("-")?.toIntOrNull() 
             ?: tmdbData?.first_air_date?.substringBefore("-")?.toIntOrNull() 
             ?: year
 
-        // Get high quality images from TMDb with fallback
         val posterUrl = getTMDbImageUrl(tmdbData?.poster_path) ?: image
         val background = getTMDbImageUrl(tmdbData?.backdrop_path, "w1280") ?: image
 
-        // Get cast from TMDb (limited to 10 main actors) with fallback
         val cast = tmdbData?.credits?.cast
-            ?.sortedBy { it.order ?: 999 } // Sort by appearance order
+            ?.sortedBy { it.order ?: 999 }
             ?.take(10)
             ?.mapNotNull { it.name } 
             ?: emptyList()
 
-        // Get genres from TMDb with fallback
         val genres = tmdbData?.genres?.mapNotNull { it.name } ?: emptyList()
         val allTags = (tags + genres).distinct()
 
-        // Get trailer from TMDb
         val trailer = tmdbData?.videos?.results
             ?.find { it.site == "YouTube" && (it.type == "Trailer" || it.type == "Teaser") }
             ?.key
@@ -270,17 +264,7 @@ class DramaDrip : MainAPI() {
                                                 val key = season to epNo
                                                 tvSeriesEpisodes.getOrPut(key) { mutableListOf() }
                                                     .add(ephref)
-                                            } else {
-                                                Log.w(
-                                                    "EpisodeFetch",
-                                                    "Could not extract episode number from text: '$epText'"
-                                                )
                                             }
-                                        } else {
-                                            Log.w(
-                                                "EpisodeFetch",
-                                                "Empty href for episode button with text: '$epText'"
-                                            )
                                         }
                                     }
                                 } catch (e: Exception) {
@@ -297,7 +281,6 @@ class DramaDrip : MainAPI() {
             val finalEpisodes = tvSeriesEpisodes.map { (seasonEpisode, links) ->
                 val (season, epNo) = seasonEpisode
                 
-                // Get episode data from TMDb if available
                 val episodeData = if (!tmdbId.isNullOrEmpty()) {
                     try {
                         fetchTMDbEpisode(tmdbId!!, season, epNo)
@@ -372,8 +355,6 @@ class DramaDrip : MainAPI() {
                         if (loadExtractor(finalLink, subtitleCallback, callback)) {
                             successCount++
                         }
-                    } else {
-                        Log.w("LoadLinks", "Bypass returned null for link: $link")
                     }
                 } catch (e: Exception) {
                     Log.e("LoadLinks", "Failed to load link: $link - ${e.message}")
