@@ -8,12 +8,17 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.INFER_TYPE
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.newExtractorLink
+import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
+import com.lagradost.cloudstream3.utils.APIHolder.capitalize
+import com.lagradost.cloudstream3.utils.runAllAsync
 import okhttp3.FormBody
 import org.json.JSONObject
 import java.net.URI
 import kotlin.text.Regex
 
 class Driveseed : ExtractorApi() {
+    // ... (Logika Driveseed tetap sama) ...
+
     override val name: String = "Driveseed"
     override val mainUrl: String = "https://driveseed.org"
     override val requiresReferer = false
@@ -211,6 +216,89 @@ class Driveseed : ExtractorApi() {
     }
 }
 
+// --- TAMBAHAN UNTUK VIDROCK EKSTRAKTOR ---
+object DramaDripExtractor {
+    const val vidrockAPI = "https://vidrock.net"
+    const val subAPI = "https://sub-api.vidrock.net"
+
+    suspend fun invokeVidrock(
+        tmdbId: Int?,
+        type: String?,
+        season: Int?,
+        episode: Int?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit,
+    ) {
+        if (tmdbId == null || type == null) return
+
+        val encryptData = VidrockHelper.encrypt(
+            tmdbId,
+            type,
+            season,
+            episode
+        )
+
+        val url = "$vidrockAPI/api/$type/$encryptData"
+        val res = app.get(url).text
+
+        tryParseJson<Map<String, Map<String, VidrockSource>>>(res)?.map { (key, value) ->
+            value.map { (sourceKey, source) ->
+                val link = source.url ?: return@map
+                val quality = source.resolution ?: Qualities.Unknown.value
+
+                if (link.contains("source2")) {
+                    val downloadRes = app.get(link).text
+                    tryParseJson<Map<String, String>>(downloadRes)?.map { (key, value) ->
+                        val downloadQuality = Regex("(\\d{3,4})[pP]").find(key)?.groupValues?.getOrNull(1)?.toIntOrNull()
+                            ?: Qualities.Unknown.value
+
+                        callback.invoke(
+                            newExtractorLink(
+                                "Vidrock",
+                                "Vidrock [Download $key]",
+                                value,
+                                INFER_TYPE
+                            ) {
+                                this.quality = downloadQuality
+                                this.headers = mapOf(
+                                    "Referer" to "$vidrockAPI/"
+                                )
+                            }
+                        )
+                    }
+                } else {
+                    callback.invoke(
+                        newExtractorLink(
+                            "Vidrock",
+                            "Vidrock [${sourceKey.capitalize()}]",
+                            link,
+                            ExtractorLinkType.M3U8
+                        ) {
+                            this.quality = quality
+                            this.referer = "$vidrockAPI/"
+                            this.headers = mapOf(
+                                "Origin" to vidrockAPI
+                            )
+                        }
+                    )
+                }
+            }
+        }
+
+        // --- Logika Subtitle ---
+        val subUrl = "$subAPI/$type/$tmdbId${if (type == "movie") "" else "/$season/$episode"}"
+        val subRes = app.get(subUrl).text
+        tryParseJson<ArrayList<VidrockSubtitle>>(subRes)?.map { subtitle ->
+            subtitleCallback.invoke(
+                SubtitleFile(
+                    subtitle.label?.replace(Regex("\\d"), "")?.replace(Regex("\\s+Hi"), "")?.trim() ?: return@map,
+                    subtitle.file ?: return@map,
+                )
+            )
+        }
+    }
+}
+// ------------------------------------------
 
 fun cleanTitle(title: String): String {
     val parts = title.split(".", "-", "_")
