@@ -1,4 +1,3 @@
-// AsianDrama/src/main/kotlin/com/AsianDrama/AsianDramaExtractor.kt
 package com.AsianDrama
 
 import com.fasterxml.jackson.annotation.JsonProperty
@@ -9,35 +8,24 @@ import com.lagradost.nicehttp.RequestBodyTypes
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.jsoup.Jsoup
+import java.net.URI
 
 object AsianDramaExtractor {
-
-    // SoraStream API endpoints
     private const val vidsrcccAPI = "https://vidsrc.cc"
     private const val vidSrcAPI = "https://vidsrc.net"
     private const val superembedAPI = "https://multiembed.mov"
-    private const idlixAPI = "https://tv6.idlixku.com"
+    private const val idlixAPI = "https://tv6.idlixku.com"
 
     suspend fun invokeAllExtractors(
         data: AsianDrama.StreamData,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        // Run all extractors in parallel
-        runAllAsync(
-            {
-                invokeVidsrccc(data, subtitleCallback, callback)
-            },
-            {
-                invokeVidsrc(data, subtitleCallback, callback)
-            },
-            {
-                invokeIdlix(data, subtitleCallback, callback)
-            },
-            {
-                invokeSuperembed(data, subtitleCallback, callback)
-            }
-        )
+        // Run extractors sequentially for stability
+        invokeVidsrccc(data, subtitleCallback, callback)
+        invokeVidsrc(data, subtitleCallback, callback)
+        invokeIdlix(data, subtitleCallback, callback)
+        invokeSuperembed(data, subtitleCallback, callback)
     }
 
     private suspend fun invokeVidsrccc(
@@ -56,8 +44,8 @@ object AsianDramaExtractor {
             val userId = script.substringAfter("userId = \"").substringBefore("\";")
             val v = script.substringAfter("v = \"").substringBefore("\";")
 
-            // Simple VRF simulation (simplified from SoraStream)
-            val vrf = "vidsrc_${data.tmdbId}_${userId}"
+            // Simplified VRF for basic functionality
+            val vrf = "simple_${data.tmdbId}_${userId}"
 
             val serverUrl = if (data.type == "movie") {
                 "$vidsrcccAPI/api/${data.tmdbId}/servers?id=${data.tmdbId}&type=movie&v=$v&vrf=$vrf&imdbId=${data.imdbId}"
@@ -93,10 +81,6 @@ object AsianDramaExtractor {
                             )
                         }
                     }
-                    server.name.equals("UpCloud", ignoreCase = true) -> {
-                        // Handle UpCloud source
-                        handleUpCloudSource(server.hash, subtitleCallback, callback)
-                    }
                 }
             }
         } catch (e: Exception) {
@@ -116,11 +100,11 @@ object AsianDramaExtractor {
                 "$vidSrcAPI/embed/tv?imdb=${data.imdbId}&season=${data.season}&episode=${data.episode}"
             }
 
-            app.get(url).document.select(".serversList .server").forEach { server ->
+            app.get(url).document.select(".server").forEach { server ->
                 when {
                     server.text().contains("CloudStream", ignoreCase = true) -> {
                         val hash = server.attr("data-hash")
-                        // Simplified CloudStream extraction
+                        // Basic CloudStream extraction
                         extractCloudStreamSource(hash, callback)
                     }
                 }
@@ -156,8 +140,8 @@ object AsianDramaExtractor {
     ) {
         try {
             val path = if (data.type == "movie") "" else "&s=${data.season}&e=${data.episode}"
-            val token = app.get("$superembedAPI/directstream.php?video_id=${data.tmdbId}&tmdb=1$path")
-                .url.substringAfter("?play=")
+            val response = app.get("$superembedAPI/directstream.php?video_id=${data.tmdbId}&tmdb=1$path")
+            val token = response.url.toString().substringAfter("?play=")
 
             val api = "https://streamingnow.mov"
             val playRes = app.post(
@@ -166,17 +150,17 @@ object AsianDramaExtractor {
                 headers = mapOf("X-Requested-With" to "XMLHttpRequest")
             ).document
 
-            val server = playRes.select("ul.sources-list li:contains(vipstream-S)")
-                .attr("data-server")
-            val id = playRes.select("ul.sources-list li:contains(vipstream-S)")
-                .attr("data-id")
+            val serverElement = playRes.select("ul.sources-list li").firstOrNull()
+            val server = serverElement?.attr("data-server") ?: return
+            val id = serverElement.attr("data-id") ?: return
 
             val playUrl = "$api/playvideo.php?video_id=$id&server_id=$server&token=$token&init=1"
             val iframe = app.get(playUrl).document.selectFirst("iframe.source-frame")?.attr("src")
             
             iframe?.let { frameUrl ->
-                val json = app.get(frameUrl).text.substringAfter("Playerjs(").substringBefore(");")
-                val video = """file:"([^"]+)""".toRegex().find(json)?.groupValues?.get(1)
+                val frameContent = app.get(frameUrl).text
+                val jsonPart = frameContent.substringAfter("Playerjs(").substringBefore(");")
+                val video = """file:\s*"([^"]+)""".toRegex().find(jsonPart)?.groupValues?.get(1)
 
                 video?.let { 
                     callback.invoke(
@@ -190,8 +174,8 @@ object AsianDramaExtractor {
                 }
 
                 // Extract subtitles
-                """subtitle:"([^"]+)""".toRegex().find(json)?.groupValues?.get(1)?.split(",")?.forEach {
-                    val match = Regex("""\[(\w+)](http\S+)""").find(it)
+                """subtitle:\s*"([^"]+)""".toRegex().find(jsonPart)?.groupValues?.get(1)?.split(",")?.forEach { sub ->
+                    val match = Regex("""\[(\w+)](http\S+)""").find(sub)
                     match?.let { m ->
                         val (subLang, subUrl) = m.destructured
                         subtitleCallback.invoke(
@@ -215,53 +199,38 @@ object AsianDramaExtractor {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        val res = app.get(url)
-        val referer = getBaseUrl(res.url)
-        val document = res.document
-
-        document.select("ul#playeroptionsul > li").forEach { server ->
-            val id = server.attr("data-post")
-            val nume = server.attr("data-nume") 
-            val type = server.attr("data-type")
-
-            val json = app.post(
-                "$referer/wp-admin/admin-ajax.php",
-                data = mapOf(
-                    "action" to "doo_player_ajax",
-                    "post" to id,
-                    "nume" to nume, 
-                    "type" to type
-                ),
-                headers = mapOf("X-Requested-With" to "XMLHttpRequest"),
-                referer = url
-            ).text
-
-            val source = tryParseJson<ResponseHash>(json)?.embed_url ?: return@forEach
-            
-            when {
-                source.contains("jeniusplay", ignoreCase = true) -> {
-                    // Handle Jeniusplay source
-                    extractJeniusplaySource(source, referer, subtitleCallback, callback)
-                }
-                !source.contains("youtube") -> {
-                    loadExtractor(source, "$referer/", subtitleCallback, callback)
-                }
-            }
-        }
-    }
-
-    private suspend fun handleUpCloudSource(
-        hash: String,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ) {
         try {
-            val scriptData = app.get("$vidsrcccAPI/api/source/$hash", referer = "$vidsrcccAPI/")
-                .document.selectFirst("script:containsData(source =)")?.data()
-            
-            val iframe = Regex("source\\s*=\\s*\"([^\"]+)").find(scriptData ?: return)?.groupValues?.get(1)
-            iframe?.let { 
-                loadExtractor(it, "$vidsrcccAPI/", subtitleCallback, callback)
+            val res = app.get(url)
+            val referer = getBaseUrl(res.url)
+            val document = res.document
+
+            document.select("ul#playeroptionsul > li").forEach { server ->
+                val id = server.attr("data-post")
+                val nume = server.attr("data-nume") 
+                val type = server.attr("data-type")
+
+                val json = app.post(
+                    "$referer/wp-admin/admin-ajax.php",
+                    data = mapOf(
+                        "action" to "doo_player_ajax",
+                        "post" to id,
+                        "nume" to nume, 
+                        "type" to type
+                    ),
+                    headers = mapOf("X-Requested-With" to "XMLHttpRequest"),
+                    referer = url
+                ).text
+
+                val source = tryParseJson<ResponseHash>(json)?.embed_url ?: return@forEach
+                
+                when {
+                    source.contains("jeniusplay", ignoreCase = true) -> {
+                        extractJeniusplaySource(source, referer, subtitleCallback, callback)
+                    }
+                    !source.contains("youtube") -> {
+                        loadExtractor(source, "$referer/", subtitleCallback, callback)
+                    }
+                }
             }
         } catch (e: Exception) {
             // Continue
@@ -322,16 +291,19 @@ object AsianDramaExtractor {
             // Extract subtitles
             document.select("script").forEach { script ->
                 if (script.data().contains("eval(function(p,a,c,k,e,d)")) {
-                    val subData = getAndUnpack(script.data())
-                        .substringAfter("\"tracks\":[")
-                        .substringBefore("],")
-                    tryParseJson<List<Tracks>>("[$subData]")?.forEach { subtitle ->
-                        subtitleCallback.invoke(
-                            SubtitleFile(
-                                getLanguage(subtitle.label ?: ""),
-                                subtitle.file
+                    try {
+                        val unpacked = getAndUnpack(script.data())
+                        val subData = unpacked.substringAfter("\"tracks\":[").substringBefore("],")
+                        tryParseJson<List<Tracks>>("[$subData]")?.forEach { subtitle ->
+                            subtitleCallback.invoke(
+                                SubtitleFile(
+                                    getLanguage(subtitle.label ?: ""),
+                                    subtitle.file
+                                )
                             )
-                        )
+                        }
+                    } catch (e: Exception) {
+                        // Skip subtitle extraction if failed
                     }
                 }
             }
@@ -355,45 +327,50 @@ object AsianDramaExtractor {
     }
 
     private fun getBaseUrl(url: String): String {
-        return java.net.URI(url).let { "${it.scheme}://${it.host}" }
+        return try {
+            val uri = URI(url)
+            "${uri.scheme}://${uri.host}"
+        } catch (e: Exception) {
+            "https://dramadrip.com"
+        }
     }
 }
 
-// Data classes for JSON parsing
+// Data classes
 data class VidsrcccServer(
-    @JsonProperty("name") val name: String?,
-    @JsonProperty("hash") val hash: String?,
+    @JsonProperty("name") val name: String? = null,
+    @JsonProperty("hash") val hash: String? = null,
 )
 
 data class VidsrcccResponse(
-    @JsonProperty("data") val data: List<VidsrcccServer>?,
+    @JsonProperty("data") val data: List<VidsrcccServer>? = null,
 )
 
 data class VidsrcccResult(
-    @JsonProperty("data") val data: VidsrcccSources?,
+    @JsonProperty("data") val data: VidsrcccSources? = null,
 )
 
 data class VidsrcccSources(
-    @JsonProperty("subtitles") val subtitles: List<VidsrcccSubtitles>?,
-    @JsonProperty("source") val source: String?,
+    @JsonProperty("subtitles") val subtitles: List<VidsrcccSubtitles>? = null,
+    @JsonProperty("source") val source: String? = null,
 )
 
 data class VidsrcccSubtitles(
-    @JsonProperty("label") val label: String?,
-    @JsonProperty("file") val file: String?,
+    @JsonProperty("label") val label: String? = null,
+    @JsonProperty("file") val file: String? = null,
 )
 
 data class ResponseHash(
-    @JsonProperty("embed_url") val embed_url: String,
-    @JsonProperty("key") val key: String?,
+    @JsonProperty("embed_url") val embed_url: String = "",
+    @JsonProperty("key") val key: String? = null,
 )
 
 data class JeniusplayResponse(
-    @JsonProperty("videoSource") val videoSource: String,
+    @JsonProperty("videoSource") val videoSource: String = "",
 )
 
 data class Tracks(
-    @JsonProperty("kind") val kind: String?,
-    @JsonProperty("file") val file: String,
-    @JsonProperty("label") val label: String?,
+    @JsonProperty("kind") val kind: String? = null,
+    @JsonProperty("file") val file: String = "",
+    @JsonProperty("label") val label: String? = null,
 )
