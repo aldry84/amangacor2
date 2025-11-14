@@ -88,7 +88,7 @@ class DramaDrip : MainAPI() {
         val document = app.get(url).document
 
         var imdbId: String? = null
-        var tmdbId: Int? = null // Diubah menjadi Int?
+        var tmdbId: Int? = null 
         var tmdbType: String? = null
 
         document.select("div.su-spoiler-content ul.wp-block-list > li").forEach { li ->
@@ -99,8 +99,8 @@ class DramaDrip : MainAPI() {
 
             if (tmdbId == null && tmdbType == null && "themoviedb.org" in text) {
                 Regex("/(movie|tv)/(\\d+)").find(text)?.let { match ->
-                    tmdbType = match.groupValues[1] // movie or tv
-                    tmdbId = match.groupValues[2]?.toIntOrNull()   // numeric ID
+                    tmdbType = match.groupValues[1] 
+                    tmdbId = match.groupValues[2]?.toIntOrNull()   
                 }
             }
         }
@@ -132,12 +132,10 @@ class DramaDrip : MainAPI() {
             description = responseData.meta?.description ?: descriptions
             cast = responseData.meta?.cast ?: emptyList()
             background = responseData.meta?.background ?: image
-            // Jika tmdbId tidak ditemukan di halaman, coba ambil dari Cinemeta
             if (tmdbId == null) tmdbId = responseData.meta?.moviedb_id
         }
 
 
-        // Untuk Movie, hrefs akan berisi tautan yang ditemukan di halaman
         val hrefs: List<String> = document.select("div.wp-block-button > a")
             .mapNotNull { linkElement ->
                 val link = linkElement.attr("href")
@@ -159,7 +157,6 @@ class DramaDrip : MainAPI() {
                 }
             }
 
-        // --- Perubahan untuk TvSeries Load ---
         if (tvType == TvType.TvSeries) {
             val tvSeriesEpisodes = mutableMapOf<Pair<Int, Int>, MutableList<String>>()
 
@@ -251,7 +248,7 @@ class DramaDrip : MainAPI() {
                     "episode" to epNo
                 ).toJson()
 
-                newEpisode(dataJson) {
+                newEpisode(dataJson) { // Menggunakan dataJson baru
                     this.name = info?.name ?: "Episode $epNo"
                     this.posterUrl = info?.thumbnail
                     this.season = season
@@ -281,7 +278,7 @@ class DramaDrip : MainAPI() {
                 "episode" to null
             ).toJson()
 
-            return newMovieLoadResponse(title, url, TvType.Movie, dataJson) {
+            return newMovieLoadResponse(title, url, TvType.Movie, dataJson) { // Menggunakan dataJson baru
                 this.backgroundPosterUrl = background
                 this.year = year
                 this.plot = description
@@ -322,11 +319,12 @@ class DramaDrip : MainAPI() {
             else -> null
         }
         
-        val actions = mutableListOf<() -> Unit>()
+        // Perbaikan: Ubah MutableList menjadi fungsi suspend
+        val actions = mutableListOf<suspend () -> Unit>() 
 
         // 1. Tugas untuk memproses tautan DRAMADRIP yang ada (menggunakan logic lama)
         for (link in dramadripLinks) {
-            actions.add {
+            actions.add { 
                 try {
                     val finalLink = when {
                         "safelink=" in link -> cinematickitBypass(link)
