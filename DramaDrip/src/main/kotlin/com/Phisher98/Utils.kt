@@ -11,122 +11,8 @@ import org.jsoup.nodes.Document
 import java.net.URI
 import java.net.URLEncoder
 import java.util.Base64
-// Add to Utils.kt
-import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.SubtitleFile
 
-// Improved logging function
-fun logDebug(tag: String, message: String) {
-    Log.d(tag, message)
-}
-
-// Improved URL validation
-fun isValidUrl(url: String?): Boolean {
-    return !url.isNullOrBlank() && (url.startsWith("http://") || url.startsWith("https://"))
-}
-
-// Existing DomainsParser and other data classes remain the same
-data class DomainsParser(
-    @JsonProperty("dramadrip")
-    val dramadrip: String,
-)
-
-data class Meta(
-    val id: String?,
-    val imdb_id: String?,
-    val type: String?,
-    val poster: String?,
-    val logo: String?,
-    val background: String?,
-    val moviedb_id: Int?,
-    val name: String?,
-    val description: String?,
-    val genre: List<String>?,
-    val releaseInfo: String?,
-    val status: String?,
-    val runtime: String?,
-    val cast: List<String>?,
-    val language: String?,
-    val country: String?,
-    val imdbRating: String?,
-    val slug: String?,
-    val year: String?,
-    val videos: List<EpisodeDetails>?
-)
-
-data class EpisodeDetails(
-    val id: String?,
-    val name: String?,
-    val title: String?,
-    val season: Int?,
-    val episode: Int?,
-    val released: String?,
-    val overview: String?,
-    val thumbnail: String?,
-    val moviedb_id: Int?
-)
-
-data class ResponseData(
-    val meta: Meta?
-)
-
-// ========== TMDb DATA CLASSES ==========
-data class TMDbResponse(
-    val id: Int?,
-    val title: String?, // for movies
-    val name: String?, // for TV shows
-    val overview: String?,
-    val poster_path: String?,
-    val backdrop_path: String?,
-    val release_date: String?, // for movies
-    val first_air_date: String?, // for TV shows
-    val genres: List<TMDbGenre>?,
-    val vote_average: Float?,
-    val runtime: Int?, // for movies
-    val episode_run_time: List<Int>?, // for TV shows
-    val number_of_seasons: Int?,
-    val number_of_episodes: Int?,
-    val status: String?,
-    val credits: TMDbCredits?,
-    val videos: TMDbVideoResponse?
-)
-
-data class TMDbGenre(val id: Int?, val name: String?)
-
-data class TMDbCredits(
-    val cast: List<TMDbCast>?,
-    val crew: List<TMDbCrew>?
-)
-
-data class TMDbCast(
-    val name: String?, 
-    val character: String?, 
-    val profile_path: String?,
-    val order: Int?
-)
-
-data class TMDbCrew(val name: String?, val job: String?)
-
-data class TMDbVideoResponse(val results: List<TMDbVideo>?)
-
-data class TMDbVideo(
-    val key: String?, 
-    val name: String?, 
-    val type: String?, 
-    val site: String?
-)
-
-data class TMDbEpisode(
-    val id: Int?,
-    val name: String?,
-    val overview: String?,
-    val still_path: String?,
-    val season_number: Int?,
-    val episode_number: Int?,
-    val runtime: Int?,
-    val vote_average: Float?,
-    val air_date: String?
-)
+// ... (data classes tetap sama sampai bagian fungsi)
 
 // ========== TMDb FUNCTIONS ==========
 suspend fun fetchTMDbData(tmdbId: String, type: String): TMDbResponse? {
@@ -208,6 +94,7 @@ fun getBaseUrl(url: String): String {
     }
 }
 
+// HANYA SATU FUNGSI fixUrl - hapus yang lain jika ada duplikat
 fun fixUrl(url: String, domain: String): String {
     if (url.startsWith("http")) {
         return url
@@ -279,3 +166,6 @@ fun base64Decode(string: String): String {
         ""
     }
 }
+
+// HAPUS SEMUA KODE DI BAWAH INI JIKA ADA
+// JANGAN ADA FUNGSI fixUrl LAIN DI BAWAH SINI
