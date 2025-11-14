@@ -8,6 +8,7 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.INFER_TYPE
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.newExtractorLink
+import kotlinx.coroutines.delay
 import okhttp3.FormBody
 import org.json.JSONObject
 import java.net.URI
@@ -30,7 +31,7 @@ class Driveseed : ExtractorApi() {
             } catch (e: Exception) {
                 Log.e("Driveseed", "$operation attempt ${attempt + 1} failed: ${e.message}")
                 if (attempt == maxRetries - 1) throw e
-                kotlinx.coroutines.delay(1000 * (attempt + 1)) // Exponential backoff
+                delay(1000L * (attempt + 1)) // Exponential backoff
             }
         }
         return null
