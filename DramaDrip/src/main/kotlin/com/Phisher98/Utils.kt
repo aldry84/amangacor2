@@ -5,6 +5,7 @@ import androidx.annotation.RequiresApi
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.api.Log
 import com.lagradost.cloudstream3.app
+import com.lagradost.cloudstream3.utils.Qualities
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jsoup.nodes.Document
@@ -326,13 +327,5 @@ fun extractM3u8FromDocument(document: Document): List<String> {
     return sources.distinct()
 }
 
-// Function to extract quality from string
-fun extractQualityFromString(text: String): Int {
-    return when {
-        text.contains("1080") -> Qualities.FullHd.value
-        text.contains("720") -> Qualities.HD.value
-        text.contains("480") -> Qualities.SD.value
-        text.contains("360") -> Qualities.Low.value
-        else -> Qualities.Unknown.value
-    }
-}
+// Helper function untuk encode URL
+fun encodeUrl(input: String): String = URLEncoder.encode(input, "utf-8").replace("+", "%20")
