@@ -264,3 +264,75 @@ fun base64Decode(string: String): String {
         ""
     }
 }
+
+@RequiresApi(Build.VERSION_CODES.O)
+fun base64Encode(input: ByteArray): String {
+    return Base64.getEncoder().encodeToString(input)
+}
+
+// ========== NEW UTILITY FUNCTIONS FOR JENIUSPLAY ==========
+fun getAndUnpack(packedScript: String): String {
+    return try {
+        // Simple unpacker untuk eval(function(p,a,c,k,e,d){...})
+        val match = Regex("""eval\(function\(p,a,c,k,e,d\).*?\}\((.*?)\)\)""").find(packedScript)
+        if (match != null) {
+            val args = match.groupValues[1]
+            unpackJavaScript(args)
+        } else {
+            packedScript
+        }
+    } catch (e: Exception) {
+        Log.e("Unpack", "Failed to unpack script: ${e.message}")
+        packedScript
+    }
+}
+
+private fun unpackJavaScript(args: String): String {
+    // Implementasi sederhana unpacker JavaScript
+    val parts = args.split(",'")
+    if (parts.size >= 2) {
+        val packed = parts[0].removePrefix("'").removeSuffix("'")
+        return packed.replace(Regex("\\\\x([0-9A-Fa-f]{2})")) {
+            it.groupValues[1].toInt(16).toChar().toString()
+        }
+    }
+    return args
+}
+
+// Function to extract m3u8 from various patterns
+fun extractM3u8FromDocument(document: Document): List<String> {
+    val sources = mutableListOf<String>()
+    
+    // Method 1: Direct source tags
+    document.select("source[src*=.m3u8]").forEach { 
+        sources.add(it.attr("src")) 
+    }
+    
+    // Method 2: Script tags with m3u8
+    document.select("script").forEach { script ->
+        val scriptData = script.data()
+        if (scriptData.contains(".m3u8")) {
+            Regex("""(https?://[^\s"'<>]*?\.m3u8[^\s"'<>]*)""").findAll(scriptData).forEach {
+                sources.add(it.groupValues[1])
+            }
+        }
+    }
+    
+    // Method 3: Iframe sources
+    document.select("iframe[src*=.m3u8]").forEach {
+        sources.add(it.attr("src"))
+    }
+    
+    return sources.distinct()
+}
+
+// Function to extract quality from string
+fun extractQualityFromString(text: String): Int {
+    return when {
+        text.contains("1080") -> Qualities.FullHd.value
+        text.contains("720") -> Qualities.HD.value
+        text.contains("480") -> Qualities.SD.value
+        text.contains("360") -> Qualities.Low.value
+        else -> Qualities.Unknown.value
+    }
+}
