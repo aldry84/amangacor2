@@ -27,7 +27,7 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import kotlin.math.roundToInt
 
 open class Adicinemax21 : TmdbProvider() {
-    override var name = "DrakorMax21" // 🔥 Nama diubah jadi DrakorMax21
+    override var name = "DrakorMax21"
     override val hasMainPage = true
     override val instantLinkLoading = true
     override val useMetaLoadResponse = true
@@ -35,23 +35,15 @@ open class Adicinemax21 : TmdbProvider() {
     override val supportedTypes = setOf(
         TvType.Movie,
         TvType.TvSeries,
-        TvType.Anime,
-    )
+    ) // 🔥 Hapus Anime karena tidak relevan dengan Drakor
 
     val wpRedisInterceptor by lazy { CloudflareKiller() }
 
-    /** AUTHOR : Hexated & Adicinemax21 */
     companion object {
-        /** TOOLS */
         private const val tmdbAPI = "https://api.themoviedb.org/3"
-        const val gdbot = "https://gdtot.pro"
-        const val anilistAPI = "https://graphql.anilist.co"
-        const val malsyncAPI = "https://api.malsync.moe"
-        const val jikanAPI = "https://api.jikan.moe/v4"
-
         private const val apiKey = "b030404650f279792a8d3287232358e3"
 
-        /** ALL SOURCES */
+        // Sumber streaming tetap sama
         const val gomoviesAPI = "https://gomovies-online.cam"
         const val idlixAPI = "https://tv6.idlixku.com"
         const val vidsrcccAPI = "https://vidsrc.cc"
@@ -80,21 +72,20 @@ open class Adicinemax21 : TmdbProvider() {
                 else -> ShowStatus.Completed
             }
         }
-
     }
 
-    // 🔥 HALAMAN UTAMA HANYA MENAMPILKAN DRAKOR
+    // 🔥 HALAMAN UTAMA HANYA DRAKOR - DIPERBAIKI FILTER
     override val mainPage = mainPageOf(
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&sort_by=popularity.desc" to "🎬 Drakor Movies Populer",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&sort_by=popularity.desc" to "📺 Drama Korea Terpopuler",
-        "$tmdbAPI/trending/movie/day?api_key=$apiKey&with_original_language=ko" to "🔥 Drakor Trending Hari Ini",
-        "$tmdbAPI/trending/tv/day?api_key=$apiKey&with_original_language=ko" to "🚀 Drama Korea Trending",
-        "$tmdbAPI/movie/now_playing?api_key=$apiKey&with_original_language=ko" to "🎭 Drakor Sedang Tayang",
-        "$tmdbAPI/movie/upcoming?api_key=$apiKey&with_original_language=ko" to "📅 Drakor Coming Soon",
-        "$tmdbAPI/movie/top_rated?api_key=$apiKey&with_original_language=ko" to "⭐ Drakor Rating Tertinggi",
-        "$tmdbAPI/tv/on_the_air?api_key=$apiKey&with_original_language=ko" to "📡 Drama Sedang Tayang",
-        "$tmdbAPI/tv/airing_today?api_key=$apiKey&with_original_language=ko" to "📆 Tayang Hari Ini",
-        "$tmdbAPI/tv/top_rated?api_key=$apiKey&with_original_language=ko" to "🏆 Drama Korea Terbaik"
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&sort_by=popularity.desc&with_origin_country=KR" to "🎬 Drakor Movies Populer",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&sort_by=popularity.desc&with_origin_country=KR" to "📺 Drama Korea Terpopuler",
+        "$tmdbAPI/trending/movie/day?api_key=$apiKey&with_original_language=ko&with_origin_country=KR" to "🔥 Drakor Trending Hari Ini",
+        "$tmdbAPI/trending/tv/day?api_key=$apiKey&with_original_language=ko&with_origin_country=KR" to "🚀 Drama Korea Trending",
+        "$tmdbAPI/movie/now_playing?api_key=$apiKey&with_original_language=ko&with_origin_country=KR" to "🎭 Drakor Sedang Tayang",
+        "$tmdbAPI/movie/upcoming?api_key=$apiKey&with_original_language=ko&with_origin_country=KR" to "📅 Drakor Coming Soon",
+        "$tmdbAPI/movie/top_rated?api_key=$apiKey&with_original_language=ko&with_origin_country=KR" to "⭐ Drakor Rating Tertinggi",
+        "$tmdbAPI/tv/on_the_air?api_key=$apiKey&with_original_language=ko&with_origin_country=KR" to "📡 Drama Sedang Tayang",
+        "$tmdbAPI/tv/airing_today?api_key=$apiKey&with_original_language=ko&with_origin_country=KR" to "📆 Tayang Hari Ini",
+        "$tmdbAPI/tv/top_rated?api_key=$apiKey&with_original_language=ko&with_origin_country=KR" to "🏆 Drama Korea Terbaik"
     )
 
     private fun getImageUrl(link: String?): String? {
@@ -109,10 +100,15 @@ open class Adicinemax21 : TmdbProvider() {
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val adultQuery = if (settingsForProvider.enableAdult) "" else "&without_keywords=190370|13059|226161|195669"
-        val type = if (request.data.contains("/movie")) "movie" else "tv"
         val home = app.get("${request.data}$adultQuery&page=$page")
-            .parsedSafe<Results>()?.results?.mapNotNull { media ->
-                media.toSearchResponse(type)
+            .parsedSafe<Results>()?.results
+            ?.filter { media ->
+                // 🔥 FILTER KETAT: Hanya konten dengan bahasa Korea DAN negara Korea
+                media.original_language == "ko" && 
+                (media.origin_country?.contains("KR") == true || media.genre_ids?.any { it == 18 || it == 10749 || it == 10751 } == true)
+            }
+            ?.mapNotNull { media ->
+                media.toSearchResponse()
             } ?: throw ErrorLoadingException("Invalid Json reponse")
         return newHomePageResponse(request.name, home)
     }
@@ -121,7 +117,7 @@ open class Adicinemax21 : TmdbProvider() {
         return newMovieSearchResponse(
             title ?: name ?: originalTitle ?: return null,
             Data(id = id, type = mediaType ?: type).toJson(),
-            TvType.Movie,
+            if (mediaType == "movie" || type == "movie") TvType.Movie else TvType.TvSeries,
         ) {
             this.posterUrl = getImageUrl(posterPath)
             this.score = Score.from10(voteAverage)
@@ -130,14 +126,16 @@ open class Adicinemax21 : TmdbProvider() {
 
     override suspend fun quickSearch(query: String): List<SearchResponse>? = search(query)
 
-    // 🔥 SEARCH HANYA MENAMPILKAN KONTEN KOREA
+    // 🔥 SEARCH HANYA MENAMPILKAN KONTEN KOREA - FILTER LEBIH KETAT
     override suspend fun search(query: String): List<SearchResponse>? {
         return app.get("$tmdbAPI/search/multi?api_key=$apiKey&language=en-US&query=$query&page=1&include_adult=${settingsForProvider.enableAdult}")
             .parsedSafe<Results>()?.results
             ?.filter { media ->
-                media.original_language == "ko" || 
-                media.title?.contains(Regex("(?i)korean|drakor|korea")) == true ||
-                media.name?.contains(Regex("(?i)korean|drakor|korea")) == true
+                // 🔥 FILTER KETAT: Hanya bahasa Korea dan negara Korea
+                media.original_language == "ko" && 
+                (media.origin_country?.contains("KR") == true || 
+                 media.title?.contains(Regex("(?i)korean|drakor|korea|korean drama")) == true ||
+                 media.name?.contains(Regex("(?i)korean|drakor|korea|korean drama")) == true)
             }
             ?.mapNotNull { media ->
                 media.toSearchResponse()
@@ -172,6 +170,15 @@ open class Adicinemax21 : TmdbProvider() {
         val res = app.get(resUrl).parsedSafe<MediaDetail>()
             ?: throw ErrorLoadingException("Invalid Json Response")
 
+        // 🔥 VALIDASI KETAT: Pastikan ini benar-benar konten Korea
+        val isKorean = res.original_language == "ko" || 
+                       res.production_countries?.any { it.name == "South Korea" } == true ||
+                       res.genres?.any { it.name == "Korean" } == true
+
+        if (!isKorean) {
+            throw ErrorLoadingException("Hanya konten Korea yang didukung di DrakorMax21")
+        }
+
         val title = res.title ?: res.name ?: return null
         val poster = getOriImageUrl(res.posterPath)
         val bgPoster = getOriImageUrl(res.backdropPath)
@@ -179,11 +186,6 @@ open class Adicinemax21 : TmdbProvider() {
         val releaseDate = res.releaseDate ?: res.firstAirDate
         val year = releaseDate?.split("-")?.first()?.toIntOrNull()
         val genres = res.genres?.mapNotNull { it.name }
-
-        val isCartoon = genres?.contains("Animation") ?: false
-        val isAnime = isCartoon && (res.original_language == "zh" || res.original_language == "ja")
-        val isKorean = res.original_language == "ko" || res.production_countries?.any { it.name == "South Korea" } == true
-        val isBollywood = res.production_countries?.any { it.name == "India" } ?: false
 
         val keywords = res.keywords?.results?.mapNotNull { it.name }.orEmpty()
             .ifEmpty { res.keywords?.keywords?.mapNotNull { it.name } }
@@ -217,21 +219,14 @@ open class Adicinemax21 : TmdbProvider() {
                                 title = title,
                                 year = season.airDate?.split("-")?.first()?.toIntOrNull(),
                                 orgTitle = orgTitle,
-                                isAnime = isAnime,
                                 airedYear = year,
                                 lastSeason = lastSeason,
                                 epsTitle = eps.name,
-                                jpTitle = res.alternative_titles?.results?.find { it.iso_3166_1 == "JP" }?.title,
                                 date = season.airDate,
-                                airedDate = res.releaseDate
-                                    ?: res.firstAirDate,
-                                isAsian = isKorean,
-                                isBollywood = isBollywood,
-                                isCartoon = isCartoon
+                                airedDate = res.releaseDate ?: res.firstAirDate,
                             ).toJson()
                         ) {
-                            this.name =
-                                eps.name + if (isUpcoming(eps.airDate)) " • [UPCOMING]" else ""
+                            this.name = eps.name + if (isUpcoming(eps.airDate)) " • [UPCOMING]" else ""
                             this.season = eps.seasonNumber
                             this.episode = eps.episodeNumber
                             this.posterUrl = getImageUrl(eps.stillPath)
@@ -242,12 +237,7 @@ open class Adicinemax21 : TmdbProvider() {
                         }
                     }
             }?.flatten() ?: listOf()
-            newTvSeriesLoadResponse(
-                title,
-                url,
-                if (isAnime) TvType.Anime else TvType.TvSeries,
-                episodes
-            ) {
+            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                 this.posterUrl = poster
                 this.backgroundPosterUrl = bgPoster
                 this.year = year
@@ -275,12 +265,7 @@ open class Adicinemax21 : TmdbProvider() {
                     title = title,
                     year = year,
                     orgTitle = orgTitle,
-                    isAnime = isAnime,
-                    jpTitle = res.alternative_titles?.results?.find { it.iso_3166_1 == "JP" }?.title,
-                    airedDate = res.releaseDate
-                        ?: res.firstAirDate,
-                    isAsian = isKorean,
-                    isBollywood = isBollywood
+                    airedDate = res.releaseDate ?: res.firstAirDate,
                 ).toJson(),
             ) {
                 this.posterUrl = poster
@@ -396,28 +381,19 @@ open class Adicinemax21 : TmdbProvider() {
         val type: String? = null,
         val season: Int? = null,
         val episode: Int? = null,
-        val aniId: String? = null,
-        val animeId: String? = null,
         val title: String? = null,
         val year: Int? = null,
         val orgTitle: String? = null,
-        val isAnime: Boolean = false,
         val airedYear: Int? = null,
         val lastSeason: Int? = null,
         val epsTitle: String? = null,
-        val jpTitle: String? = null,
         val date: String? = null,
         val airedDate: String? = null,
-        val isAsian: Boolean = false,
-        val isBollywood: Boolean = false,
-        val isCartoon: Boolean = false,
     )
 
     data class Data(
         val id: Int? = null,
         val type: String? = null,
-        val aniId: String? = null,
-        val malId: Int? = null,
     )
 
     data class Results(
@@ -433,8 +409,11 @@ open class Adicinemax21 : TmdbProvider() {
         @JsonProperty("poster_path") val posterPath: String? = null,
         @JsonProperty("vote_average") val voteAverage: Double? = null,
         @JsonProperty("original_language") val original_language: String? = null,
+        @JsonProperty("origin_country") val origin_country: List<String>? = null,
+        @JsonProperty("genre_ids") val genre_ids: List<Int>? = null,
     )
 
+    // ... (data class lainnya tetap sama)
     data class Genres(
         @JsonProperty("id") val id: Int? = null,
         @JsonProperty("name") val name: String? = null,
@@ -548,5 +527,4 @@ open class Adicinemax21 : TmdbProvider() {
         @JsonProperty("alternative_titles") val alternative_titles: ResultsAltTitles? = null,
         @JsonProperty("production_countries") val production_countries: ArrayList<ProductionCountries>? = arrayListOf(),
     )
-
 }
