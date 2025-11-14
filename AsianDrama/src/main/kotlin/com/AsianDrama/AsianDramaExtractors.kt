@@ -53,7 +53,6 @@ object AsianDramaExtractors {
                 
                 matches.forEach { match ->
                     val url = match.value
-                    // Use non-suspend version of callback
                     callback.invoke(
                         newExtractorLink(
                             name,
