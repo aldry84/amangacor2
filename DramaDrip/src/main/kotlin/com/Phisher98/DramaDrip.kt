@@ -319,7 +319,6 @@ class DramaDrip : MainAPI() {
             else -> null
         }
         
-        // Perbaikan: Ubah MutableList menjadi fungsi suspend
         val actions = mutableListOf<suspend () -> Unit>() 
 
         // 1. Tugas untuk memproses tautan DRAMADRIP yang ada (menggunakan logic lama)
@@ -355,7 +354,7 @@ class DramaDrip : MainAPI() {
             }
         }
 
-        // PERBAIKAN: Gunakan spread operator (*) dengan toTypedArray() untuk runAllAsync
+        // PERBAIKAN: Menggunakan spread operator (*) dengan toTypedArray()
         runAllAsync(*actions.toTypedArray())
 
         return true
