@@ -276,7 +276,7 @@ object Adicinemax21Extractor : Adicinemax21() {
 
                     sources.subtitles?.map {
                         subtitleCallback.invoke(
-                            newSubtitleFile( // Diperbaiki: Menggunakan newSubtitleFile
+                            newSubtitleFile(
                                 it.label ?: return@map,
                                 it.file ?: return@map
                             )
@@ -325,7 +325,6 @@ object Adicinemax21Extractor : Adicinemax21() {
                 }
             }
         }
-
 
     }
 
@@ -436,7 +435,7 @@ object Adicinemax21Extractor : Adicinemax21() {
 
                 sources?.subtitles?.map { subtitle ->
                     subtitleCallback.invoke(
-                        newSubtitleFile( // Diperbaiki: Menggunakan newSubtitleFile
+                        newSubtitleFile(
                             subtitle.label ?: "",
                             subtitle.file ?: return@map
                         )
@@ -480,13 +479,12 @@ object Adicinemax21Extractor : Adicinemax21() {
 
         app.get(subUrl).parsedSafe<WatchsomuchSubResponses>()?.subtitles?.map { sub ->
             subtitleCallback.invoke(
-                newSubtitleFile( // Diperbaiki: Menggunakan newSubtitleFile
+                newSubtitleFile(
                     sub.label?.substringBefore("&nbsp")?.trim() ?: "",
                     fixUrl(sub.url ?: return@map null, watchSomuchAPI)
                 )
             )
         }
-
 
     }
 
@@ -542,7 +540,7 @@ object Adicinemax21Extractor : Adicinemax21() {
         ).text
         tryParseJson<ArrayList<MappleSubtitle>>(subRes)?.map { subtitle ->
             subtitleCallback.invoke(
-                newSubtitleFile( // Diperbaiki: Menggunakan newSubtitleFile
+                newSubtitleFile(
                     subtitle.display ?: "",
                     fixUrl(subtitle.url ?: return@map, mappleAPI)
                 )
@@ -623,7 +621,7 @@ object Adicinemax21Extractor : Adicinemax21() {
                 if (index == 1) {
                     source.tracks?.map { subtitle ->
                         subtitleCallback.invoke(
-                            newSubtitleFile( // Diperbaiki: Menggunakan newSubtitleFile
+                            newSubtitleFile(
                                 subtitle.label ?: return@map,
                                 subtitle.file ?: return@map
                             )
@@ -632,7 +630,6 @@ object Adicinemax21Extractor : Adicinemax21() {
                 }
 
             }
-
 
     }
 
@@ -652,7 +649,7 @@ object Adicinemax21Extractor : Adicinemax21() {
 
         tryParseJson<ArrayList<WyzieSubtitle>>(res)?.map { subtitle ->
             subtitleCallback.invoke(
-                newSubtitleFile( // Diperbaiki: Menggunakan newSubtitleFile
+                newSubtitleFile(
                     subtitle.display ?: return@map,
                     subtitle.url ?: return@map,
                 )
@@ -690,8 +687,8 @@ object Adicinemax21Extractor : Adicinemax21() {
             "$proxy/p/${base64Encode("$proxy/api/proxy/m3u8?url=${encode(video1)}&source=sakura|ananananananananaBatman!".toByteArray())}"
 
         listOf(
-            VixsrcSource("Vixsrc [Alpha]",video1,url),
-            VixsrcSource("Vixsrc [Beta]",video2, "$mappleAPI/"),
+            VixsrcSource("Vixsrc [Alpha]", video1, url),
+            VixsrcSource("Vixsrc [Beta]", video2, "$mappleAPI/"),
         ).map {
             callback.invoke(
                 newExtractorLink(
@@ -750,8 +747,8 @@ object Adicinemax21Extractor : Adicinemax21() {
     ) {
         val path = if (season == null) "" else "&s=$season&e=$episode"
         val token = app.get("$superembedAPI/directstream.php?video_id=$tmdbId&tmdb=1$path").url.substringAfter(
-                "?play="
-            )
+            "?play="
+        )
 
         val (server, id) = app.post(
             "$api/response.php", data = mapOf(
@@ -788,13 +785,12 @@ object Adicinemax21Extractor : Adicinemax21() {
             val (subLang, subUrl) = Regex("""\[(\w+)](http\S+)""").find(it)?.destructured
                 ?: return@map
             subtitleCallback.invoke(
-                newSubtitleFile( // Diperbaiki: Menggunakan newSubtitleFile
+                newSubtitleFile(
                     subLang.trim(),
                     subUrl.trim()
                 )
             )
         }
-
 
     }
 
@@ -808,14 +804,14 @@ object Adicinemax21Extractor : Adicinemax21() {
     ) {
 
         val type = if (season == null) "movie" else "tv"
-        val url = "$vidrockAPI/$type/$tmdbId${if(type == "movie") "" else "/$season/$episode"}"
+        val url = "$vidrockAPI/$type/$tmdbId${if (type == "movie") "" else "/$season/$episode"}"
         val encryptData = VidrockHelper.encrypt(tmdbId, type, season, episode)
 
-        app.get("$vidrockAPI/api/$type/$encryptData", referer = url).parsedSafe<LinkedHashMap<String,HashMap<String,String>>>()
+        app.get("$vidrockAPI/api/$type/$encryptData", referer = url).parsedSafe<LinkedHashMap<String, HashMap<String, String>>>()
             ?.map { source ->
-                if(source.key == "source2") {
+                if (source.key == "source2") {
                     val json = app.get(source.value["url"] ?: return@map, referer = "${vidrockAPI}/").text
-                    tryParseJson<ArrayList<VidrockSource>>(json)?.reversed()?.map mirror@{
+                    tryParseJson<ArrayList<VidrockSource>>(json)?.reversed()?.map mirror@{ it ->
                         callback.invoke(
                             newExtractorLink(
                                 "Vidrock",
@@ -848,12 +844,13 @@ object Adicinemax21Extractor : Adicinemax21() {
                 }
             }
 
-        val subUrl = "$subAPI/$type/$tmdbId${if(type == "movie") "" else "/$season/$episode"}"
+        val subUrl = "$subAPI/$type/$tmdbId${if (type == "movie") "" else "/$season/$episode"}"
         val res = app.get(subUrl).text
         tryParseJson<ArrayList<VidrockSubtitle>>(res)?.map { subtitle ->
             subtitleCallback.invoke(
-                newSubtitleFile( // Diperbaiki: Menggunakan newSubtitleFile
-                    subtitle.label?.replace(Regex("\\d"), "")?.replace(Regex("\\s+Hi"), "")?.trim() ?: return@map,
+                newSubtitleFile(
+                    subtitle.label?.replace(Regex("\\d"), "")?.replace(Regex("\\s+Hi"), "")?.trim()
+                        ?: return@map,
                     subtitle.file ?: return@map,
                 )
             )
