@@ -11,6 +11,7 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.SubtitleFile
 import kotlinx.coroutines.runBlocking
 import org.jsoup.nodes.Element
+import com.lagradost.api.Log
 
 class DramaDrip : MainAPI() {
     override var mainUrl: String = runBlocking {
@@ -48,12 +49,13 @@ class DramaDrip : MainAPI() {
     }
 
     private fun Element.toSearchResult(): SearchResponse? {
-        val title = this.selectFirst("h2.entry-title")?.text()?.substringAfter("Download") ?: return null
-        val href = fixUrl(this.selectFirst("h2.entry-title > a")?.attr("href") ?: return null, mainUrl)
-        val posterUrl = this.selectFirst("img")?.attr("src")?.let { fixUrl(it, mainUrl) }
+        val titleElement = this.selectFirst("h2.entry-title") ?: return null
+        val title = titleElement.text().substringAfter("Download").trim()
+        val href = titleElement.selectFirst("a")?.attr("href") ?: return null
+        val posterUrl = this.selectFirst("img")?.attr("src")
 
-        return newMovieSearchResponse(title, href, TvType.Movie) {
-            this.posterUrl = posterUrl
+        return newMovieSearchResponse(title, fixUrl(href, mainUrl), TvType.Movie) {
+            this.posterUrl = fixUrl(posterUrl ?: "", mainUrl)
         }
     }
 
@@ -63,13 +65,13 @@ class DramaDrip : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
+        Log.d("DramaDrip", "Loading URL: $url")
         val document = app.get(url).document
 
         // Extract basic metadata
-        val title = document.selectFirst("div.wp-block-column > h2.wp-block-heading")?.text()
-            ?.substringBefore("(")?.trim() ?: "Unknown Title"
-        val year = document.selectFirst("div.wp-block-column > h2.wp-block-heading")?.text()
-            ?.substringAfter("(")?.substringBefore(")")?.toIntOrNull()
+        val titleElement = document.selectFirst("div.wp-block-column > h2.wp-block-heading")
+        val title = titleElement?.text()?.substringBefore("(")?.trim() ?: "Unknown Title"
+        val year = titleElement?.text()?.substringAfter("(")?.substringBefore(")")?.toIntOrNull()
         val description = document.selectFirst("div.content-section p.mt-4")?.text()?.trim()
         val posterUrl = document.selectFirst("meta[property=og:image]")?.attr("content") ?: ""
         val tags = document.select("div.mt-2 span.badge").map { it.text() }
@@ -92,27 +94,33 @@ class DramaDrip : MainAPI() {
             }
         }
 
+        Log.d("DramaDrip", "Extracted IDs - IMDb: $imdbId, TMDb: $tmdbId, Type: $tmdbType")
+
         // Try to get enhanced metadata from TMDb
         val tmdbData = if (!tmdbId.isNullOrEmpty() && !tmdbType.isNullOrEmpty()) {
             fetchTMDbData(tmdbId!!, tmdbType!!)
         } else null
 
         val finalTitle = tmdbData?.title ?: tmdbData?.name ?: title
-        val finalDescription = tmdbData?.overview ?: description
+        val finalDescription = tmdbData?.overview ?: description ?: "No description available"
         val finalYear = tmdbData?.release_date?.substringBefore("-")?.toIntOrNull() 
             ?: tmdbData?.first_air_date?.substringBefore("-")?.toIntOrNull() 
             ?: year
 
-        val finalPosterUrl = getTMDbImageUrl(tmdbData?.poster_path) ?: posterUrl
-        val backgroundUrl = getTMDbImageUrl(tmdbData?.backdrop_path, "w1280") ?: posterUrl
+        val finalPosterUrl = getTMDbImageUrl(tmdbData?.poster_path) ?: fixUrl(posterUrl, mainUrl)
+        val backgroundUrl = getTMDbImageUrl(tmdbData?.backdrop_path, "w1280") ?: finalPosterUrl
+
+        Log.d("DramaDrip", "Final metadata - Title: $finalTitle, Year: $finalYear")
 
         // Extract all streaming links
         val allLinks = extractAllLinks(document, url)
+        Log.d("DramaDrip", "Extracted ${allLinks.size} links")
 
         // Determine content type
         val isMovie = allLinks.isNotEmpty() && !url.contains("/series/") && !url.contains("/drama/")
         
         if (isMovie) {
+            Log.d("DramaDrip", "Creating movie response")
             return newMovieLoadResponse(finalTitle, url, TvType.Movie, allLinks.toJson()) {
                 this.posterUrl = finalPosterUrl
                 this.backgroundPosterUrl = backgroundUrl
@@ -123,6 +131,7 @@ class DramaDrip : MainAPI() {
                 addTMDbId(tmdbId)
             }
         } else {
+            Log.d("DramaDrip", "Creating TV series response")
             // For TV series, create episodes from links
             val episodes = allLinks.mapIndexed { index, link ->
                 newEpisode(link) {
@@ -162,28 +171,42 @@ class DramaDrip : MainAPI() {
             }
         }
 
+        Log.d("DramaDrip", "Found ${links.size} raw links")
+
         // Process safelinks and get direct streaming URLs
         val processedLinks = mutableListOf<String>()
         links.forEach { link ->
             try {
+                Log.d("DramaDrip", "Processing link: $link")
                 val processedLink = when {
-                    link.contains("safelink=") -> cinematickitloadBypass(link)
-                    link.contains("unblockedgames") || link.contains("examzculture") -> bypassHrefli(link)
+                    link.contains("safelink=") -> {
+                        Log.d("DramaDrip", "Bypassing safelink: $link")
+                        cinematickitloadBypass(link)
+                    }
+                    link.contains("unblockedgames") || link.contains("examzculture") -> {
+                        Log.d("DramaDrip", "Bypassing hrefli: $link")
+                        bypassHrefli(link)
+                    }
                     else -> link
                 }
 
                 if (!processedLink.isNullOrBlank()) {
+                    Log.d("DramaDrip", "Processed link: $processedLink")
                     // If it's a page with multiple links, extract them
                     if (processedLink.contains("modpro") || processedLink.contains("/series/") || processedLink.contains("/movie/")) {
                         try {
+                            Log.d("DramaDrip", "Extracting inner links from: $processedLink")
                             val linkDoc = app.get(processedLink).document
                             linkDoc.select("a[href*='jeniusplay'], a[href*='stream'], div.wp-block-button a").forEach { innerLink ->
                                 val innerHref = innerLink.attr("href")
                                 if (innerHref.isNotBlank() && !innerHref.contains("#")) {
-                                    processedLinks.add(fixUrl(innerHref, mainUrl))
+                                    val finalHref = fixUrl(innerHref, mainUrl)
+                                    processedLinks.add(finalHref)
+                                    Log.d("DramaDrip", "Added inner link: $finalHref")
                                 }
                             }
                         } catch (e: Exception) {
+                            Log.e("DramaDrip", "Error extracting inner links: ${e.message}")
                             processedLinks.add(processedLink)
                         }
                     } else {
@@ -191,11 +214,13 @@ class DramaDrip : MainAPI() {
                     }
                 }
             } catch (e: Exception) {
-                // Continue with next link if one fails
+                Log.e("DramaDrip", "Error processing link $link: ${e.message}")
             }
         }
 
-        return processedLinks.distinct().filter { it.isNotBlank() }
+        val distinctLinks = processedLinks.distinct().filter { it.isNotBlank() }
+        Log.d("DramaDrip", "Final distinct links: ${distinctLinks.size}")
+        return distinctLinks
     }
 
     override suspend fun loadLinks(
@@ -204,30 +229,37 @@ class DramaDrip : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
+        Log.d("DramaDrip", "loadLinks called with data: ${data.take(100)}...")
         val links = tryParseJson<List<String>>(data).orEmpty()
-        if (links.isEmpty()) return false
+        if (links.isEmpty()) {
+            Log.e("DramaDrip", "No links found in loadLinks")
+            return false
+        }
 
+        Log.d("DramaDrip", "Processing ${links.size} links in loadLinks")
         var foundLinks = false
 
         links.forEach { link ->
             try {
+                Log.d("DramaDrip", "Processing link: $link")
                 when {
                     link.contains("jeniusplay.com") -> {
-                        // Use Jeniusplay2 extractor for jeniusplay links
+                        Log.d("DramaDrip", "Using Jeniusplay extractor")
                         loadExtractor(link, "$mainUrl/", subtitleCallback, callback)
                         foundLinks = true
                     }
                     else -> {
-                        // Use default extractor for other links
+                        Log.d("DramaDrip", "Using default extractor")
                         loadExtractor(link, "$mainUrl/", subtitleCallback, callback)
                         foundLinks = true
                     }
                 }
             } catch (e: Exception) {
-                // Continue with next link
+                Log.e("DramaDrip", "Error in loadLinks for $link: ${e.message}")
             }
         }
 
+        Log.d("DramaDrip", "loadLinks completed. Found links: $foundLinks")
         return foundLinks
     }
 }
