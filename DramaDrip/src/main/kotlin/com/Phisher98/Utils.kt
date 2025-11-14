@@ -178,7 +178,7 @@ suspend fun fetchTMDbData(tmdbId: String, type: String): TMDbResponse? {
     if (tmdbId.isEmpty()) return null
     
     val cacheKey = "tmdb_${type}_$tmdbId"
-    return CacheManager.get<TMDbResponse>(cacheKey) ?: withRetry {
+    return CacheManager.get<TMDbResponse>(cacheKey) ?: withRetry<TMDbResponse?> {
         try {
             val url = when (type.lowercase()) {
                 "movie" -> "${DramaDripProvider.TMDB_BASE_URL}/movie/$tmdbId?api_key=${DramaDripProvider.TMDB_API_KEY}&append_to_response=credits,videos"
@@ -199,7 +199,7 @@ suspend fun fetchTMDbEpisode(tmdbId: String, season: Int, episode: Int): TMDbEpi
     if (tmdbId.isEmpty()) return null
     
     val cacheKey = "tmdb_episode_${tmdbId}_${season}_${episode}"
-    return CacheManager.get<TMDbEpisode>(cacheKey) ?: withRetry {
+    return CacheManager.get<TMDbEpisode>(cacheKey) ?: withRetry<TMDbEpisode?> {
         try {
             val url = "${DramaDripProvider.TMDB_BASE_URL}/tv/$tmdbId/season/$season/episode/$episode?api_key=${DramaDripProvider.TMDB_API_KEY}"
             val response = app.get(url).parsedSafe<TMDbEpisode>()
@@ -222,7 +222,7 @@ fun getTMDbImageUrl(path: String?, size: String = "w500"): String? {
 
 // ========== ENHANCED BYPASS FUNCTIONS ==========
 suspend fun bypassHrefli(url: String): String? {
-    return withRetry {
+    return withRetry<String?> {
         try {
             fun Document.getFormUrl(): String {
                 return this.select("form#landing").attr("action")
@@ -297,7 +297,7 @@ fun fixUrl(url: String, domain: String): String {
 
 @RequiresApi(Build.VERSION_CODES.O)
 suspend fun cinematickitBypass(url: String): String? {
-    return withRetry {
+    return withRetry<String?> {
         try {
             val cleanedUrl = url.replace("&#038;", "&")
             val encodedLink = cleanedUrl.substringAfter("safelink=").substringBefore("-")
@@ -322,7 +322,7 @@ suspend fun cinematickitBypass(url: String): String? {
 
 @RequiresApi(Build.VERSION_CODES.O)
 suspend fun cinematickitloadBypass(url: String): String? {
-    return withRetry {
+    return withRetry<String?> {
         try {
             val cleanedUrl = url.replace("&#038;", "&")
             val encodedLink = cleanedUrl.substringAfter("safelink=").substringBefore("-")
