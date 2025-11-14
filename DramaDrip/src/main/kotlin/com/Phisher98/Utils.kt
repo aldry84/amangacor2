@@ -5,52 +5,14 @@ import androidx.annotation.RequiresApi
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.api.Log
 import com.lagradost.cloudstream3.app
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.jsoup.nodes.Document
 import java.net.URI
+import java.net.URLEncoder
 import java.util.Base64
-import java.util.concurrent.TimeUnit
 
-// ========== CACHE CONFIGURATION ==========
-private object CacheConfig {
-    const val TMDB_CACHE_DURATION_MINUTES = 60L
-}
-
-// ========== SIMPLE CACHE MANAGEMENT ==========
-private data class CacheEntry<T>(
-    val data: T,
-    val timestamp: Long,
-    val expiresIn: Long = TimeUnit.MINUTES.toMillis(CacheConfig.TMDB_CACHE_DURATION_MINUTES)
-) {
-    fun isExpired(): Boolean = System.currentTimeMillis() - timestamp > expiresIn
-}
-
-private object CacheManager {
-    private val tmdbCache = mutableMapOf<String, CacheEntry<Any>>()
-    
-    @Synchronized
-    fun <T> get(key: String): T? {
-        val entry = tmdbCache[key] as? CacheEntry<T> ?: return null
-        return if (entry.isExpired()) {
-            tmdbCache.remove(key)
-            null
-        } else {
-            entry.data
-        }
-    }
-    
-    @Synchronized
-    fun <T> put(key: String, data: T) {
-        tmdbCache[key] = CacheEntry(data as Any, System.currentTimeMillis())
-    }
-    
-    @Synchronized
-    fun clearExpired() {
-        tmdbCache.entries.removeAll { it.value.isExpired() }
-    }
-}
-
-// Existing data classes remain the same
+// Existing DomainsParser and other data classes remain the same
 data class DomainsParser(
     @JsonProperty("dramadrip")
     val dramadrip: String,
@@ -98,17 +60,17 @@ data class ResponseData(
 // ========== TMDb DATA CLASSES ==========
 data class TMDbResponse(
     val id: Int?,
-    val title: String?,
-    val name: String?,
+    val title: String?, // for movies
+    val name: String?, // for TV shows
     val overview: String?,
     val poster_path: String?,
     val backdrop_path: String?,
-    val release_date: String?,
-    val first_air_date: String?,
+    val release_date: String?, // for movies
+    val first_air_date: String?, // for TV shows
     val genres: List<TMDbGenre>?,
     val vote_average: Float?,
-    val runtime: Int?,
-    val episode_run_time: List<Int>?,
+    val runtime: Int?, // for movies
+    val episode_run_time: List<Int>?, // for TV shows
     val number_of_seasons: Int?,
     val number_of_episodes: Int?,
     val status: String?,
@@ -153,13 +115,9 @@ data class TMDbEpisode(
     val air_date: String?
 )
 
-// ========== SIMPLIFIED TMDb FUNCTIONS ==========
+// ========== TMDb FUNCTIONS ==========
 suspend fun fetchTMDbData(tmdbId: String, type: String): TMDbResponse? {
     if (tmdbId.isEmpty()) return null
-    
-    val cacheKey = "tmdb_${type}_$tmdbId"
-    val cached = CacheManager.get<TMDbResponse>(cacheKey)
-    if (cached != null) return cached
     
     return try {
         val url = when (type.lowercase()) {
@@ -167,9 +125,7 @@ suspend fun fetchTMDbData(tmdbId: String, type: String): TMDbResponse? {
             "tv" -> "${DramaDripProvider.TMDB_BASE_URL}/tv/$tmdbId?api_key=${DramaDripProvider.TMDB_API_KEY}&append_to_response=credits,videos"
             else -> return null
         }
-        val response = app.get(url).parsedSafe<TMDbResponse>()
-        response?.let { CacheManager.put(cacheKey, it) }
-        response
+        app.get(url).parsedSafe()
     } catch (e: Exception) {
         Log.e("TMDb", "Failed to fetch TMDb data for $type ID $tmdbId: ${e.message}")
         null
@@ -177,17 +133,9 @@ suspend fun fetchTMDbData(tmdbId: String, type: String): TMDbResponse? {
 }
 
 suspend fun fetchTMDbEpisode(tmdbId: String, season: Int, episode: Int): TMDbEpisode? {
-    if (tmdbId.isEmpty()) return null
-    
-    val cacheKey = "tmdb_episode_${tmdbId}_${season}_${episode}"
-    val cached = CacheManager.get<TMDbEpisode>(cacheKey)
-    if (cached != null) return cached
-    
     return try {
         val url = "${DramaDripProvider.TMDB_BASE_URL}/tv/$tmdbId/season/$season/episode/$episode?api_key=${DramaDripProvider.TMDB_API_KEY}"
-        val response = app.get(url).parsedSafe<TMDbEpisode>()
-        response?.let { CacheManager.put(cacheKey, it) }
-        response
+        app.get(url).parsedSafe()
     } catch (e: Exception) {
         Log.e("TMDb", "Failed to fetch episode data: ${e.message}")
         null
@@ -202,42 +150,37 @@ fun getTMDbImageUrl(path: String?, size: String = "w500"): String? {
     }
 }
 
-// ========== SIMPLIFIED BYPASS FUNCTIONS ==========
+// ========== EXISTING UTILITY FUNCTIONS ==========
 suspend fun bypassHrefli(url: String): String? {
-    return try {
-        fun Document.getFormUrl(): String {
-            return this.select("form#landing").attr("action")
-        }
-
-        fun Document.getFormData(): Map<String, String> {
-            return this.select("form#landing input").associate { it.attr("name") to it.attr("value") }
-        }
-
-        val host = getBaseUrl(url)
-        var res = app.get(url).document
-        var formUrl = res.getFormUrl()
-        var formData = res.getFormData()
-
-        res = app.post(formUrl, data = formData).document
-        formUrl = res.getFormUrl()
-        formData = res.getFormData()
-
-        res = app.post(formUrl, data = formData).document
-        val skToken = res.selectFirst("script:containsData(?go=)")?.data()?.substringAfter("?go=")
-            ?.substringBefore("\"") ?: return null
-        val driveUrl = app.get(
-            "$host?go=$skToken", cookies = mapOf(
-                skToken to "${formData["_wp_http2"]}"
-            )
-        ).document.selectFirst("meta[http-equiv=refresh]")?.attr("content")?.substringAfter("url=")
-        val path = app.get(driveUrl ?: return null).text.substringAfter("replace(\"")
-            .substringBefore("\")")
-        if (path == "/404") return null
-        fixUrl(path, getBaseUrl(driveUrl))
-    } catch (e: Exception) {
-        Log.e("Bypass", "Hrefli bypass failed: ${e.message}")
-        null
+    fun Document.getFormUrl(): String {
+        return this.select("form#landing").attr("action")
     }
+
+    fun Document.getFormData(): Map<String, String> {
+        return this.select("form#landing input").associate { it.attr("name") to it.attr("value") }
+    }
+
+    val host = getBaseUrl(url)
+    var res = app.get(url).document
+    var formUrl = res.getFormUrl()
+    var formData = res.getFormData()
+
+    res = app.post(formUrl, data = formData).document
+    formUrl = res.getFormUrl()
+    formData = res.getFormData()
+
+    res = app.post(formUrl, data = formData).document
+    val skToken = res.selectFirst("script:containsData(?go=)")?.data()?.substringAfter("?go=")
+        ?.substringBefore("\"") ?: return null
+    val driveUrl = app.get(
+        "$host?go=$skToken", cookies = mapOf(
+            skToken to "${formData["_wp_http2"]}"
+        )
+    ).document.selectFirst("meta[http-equiv=refresh]")?.attr("content")?.substringAfter("url=")
+    val path = app.get(driveUrl ?: return null).text.substringAfter("replace(\"")
+        .substringBefore("\")")
+    if (path == "/404") return null
+    return fixUrl(path, getBaseUrl(driveUrl))
 }
 
 fun getBaseUrl(url: String): String {
@@ -246,32 +189,26 @@ fun getBaseUrl(url: String): String {
             "${it.scheme}://${it.host}"
         }
     } catch (e: Exception) {
-        Log.e("URL", "Failed to parse base URL: ${e.message}")
         ""
     }
 }
 
 fun fixUrl(url: String, domain: String): String {
-    return try {
-        if (url.startsWith("http")) {
-            url
-        } else if (url.isEmpty()) {
-            ""
-        } else {
-            val startsWithNoHttp = url.startsWith("//")
-            if (startsWithNoHttp) {
-                "https:$url"
-            } else {
-                if (url.startsWith('/')) {
-                    domain + url
-                } else {
-                    "$domain/$url"
-                }
-            }
+    if (url.startsWith("http")) {
+        return url
+    }
+    if (url.isEmpty()) {
+        return ""
+    }
+
+    val startsWithNoHttp = url.startsWith("//")
+    if (startsWithNoHttp) {
+        return "https:$url"
+    } else {
+        if (url.startsWith('/')) {
+            return domain + url
         }
-    } catch (e: Exception) {
-        Log.e("URL", "Failed to fix URL: ${e.message}")
-        ""
+        return "$domain/$url"
     }
 }
 
@@ -291,9 +228,9 @@ suspend fun cinematickitBypass(url: String): String? {
         val regex = Regex("""window\.location\.replace\s*\(\s*["'](.+?)["']\s*\)\s*;?""")
         val match = regex.find(script) ?: return null
         val redirectPath = match.groupValues[1]
-        if (redirectPath.startsWith("http")) redirectPath else URI(decodedGoUrl).let { "${it.scheme}://${it.host}$redirectPath" }
+        return if (redirectPath.startsWith("http")) redirectPath else URI(decodedGoUrl).let { "${it.scheme}://${it.host}$redirectPath" }
     } catch (e: Exception) {
-        Log.e("Bypass", "Cinematickit bypass failed: ${e.message}")
+        e.printStackTrace()
         null
     }
 }
@@ -307,28 +244,23 @@ suspend fun cinematickitloadBypass(url: String): String? {
         val decodedUrl = base64Decode(encodedLink)
         val doc = app.get(decodedUrl).document
         val goValue = doc.select("form#landing input[name=go]").attr("value")
-        Log.d("Phisher", goValue)
+        Log.d("Phisher",goValue)
         base64Decode(goValue)
     } catch (e: Exception) {
-        Log.e("Bypass", "Cinematickit load bypass failed: ${e.message}")
+        e.printStackTrace()
         null
     }
 }
 
 @RequiresApi(Build.VERSION_CODES.O)
 fun base64Decode(string: String): String {
+    val clean = string.trim().replace("\n", "").replace("\r", "")
+    val padded = clean.padEnd((clean.length + 3) / 4 * 4, '=')
     return try {
-        val clean = string.trim().replace("\n", "").replace("\r", "")
-        val padded = clean.padEnd((clean.length + 3) / 4 * 4, '=')
         val decodedBytes = Base64.getDecoder().decode(padded)
         String(decodedBytes, Charsets.UTF_8)
     } catch (e: Exception) {
-        Log.e("Base64", "Failed to decode base64 string: ${e.message}")
+        e.printStackTrace()
         ""
     }
-}
-
-// Cache cleanup function
-fun clearExpiredCache() {
-    CacheManager.clearExpired()
 }
