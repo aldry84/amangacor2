@@ -13,6 +13,7 @@ import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import kotlinx.coroutines.runBlocking
 import org.jsoup.nodes.Element
+import java.net.URLEncoder
 
 class DramaDrip : MainAPI() {
     override var mainUrl: String = runBlocking {
@@ -69,7 +70,7 @@ class DramaDrip : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val document = app.get("$mainUrl/?s=${encode(query)}").document
+        val document = app.get("$mainUrl/?s=${URLEncoder.encode(query, "UTF-8")}").document
         return document.select("article").mapNotNull { it.toSearchResult() }
     }
 
@@ -274,16 +275,4 @@ fun cleanTitle(title: String): String {
         .replace("(?i)season\\s*\\d+".toRegex(), "")
         .replace("\\s+".toRegex(), " ")
         .trim()
-}
-
-// Helper function to fix URLs
-fun fixUrl(url: String, domain: String = ""): String {
-    if (url.startsWith("http")) return url
-    if (url.isEmpty()) return ""
-    
-    return when {
-        url.startsWith("//") -> "https:$url"
-        url.startsWith("/") -> "${domain.removeSuffix("/")}$url"
-        else -> "${domain.removeSuffix("/")}/$url"
-    }
 }
