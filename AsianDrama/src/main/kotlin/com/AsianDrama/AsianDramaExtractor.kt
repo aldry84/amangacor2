@@ -168,7 +168,7 @@ object AsianDramaExtractor {
         }
     }
 
-    private fun extractFromScript(
+    private suspend fun extractFromScript(
         scriptContent: String,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
