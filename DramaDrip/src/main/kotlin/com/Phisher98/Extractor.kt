@@ -3,17 +3,17 @@ package com.Phisher98
 import com.lagradost.api.Log
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
-// --- Perbaikan Impor ---
-import com.lagradost.cloudstream3.utils.APIHolder.capitalize
+// --- Impor yang Diperlukan untuk Memperbaiki Kesalahan ---
+import com.lagradost.cloudstream3.utils.APIHolder.capitalize // Perbaikan 'APIHolder'
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.INFER_TYPE
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
-import com.lagradost.cloudstream3.utils.runAllAsync
+import com.lagradost.cloudstream3.utils.runAllAsync // Perbaikan 'runAllAsync'
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
-// -----------------------
+// --------------------------------------------------------
 import okhttp3.FormBody
 import org.json.JSONObject
 import org.jsoup.nodes.Element
@@ -21,6 +21,7 @@ import java.net.URI
 import kotlin.text.Regex
 
 class Driveseed : ExtractorApi() {
+// ... (Logika Driveseed tetap sama) ...
     override val name: String = "Driveseed"
     override val mainUrl: String = "https://driveseed.org"
     override val requiresReferer = false
