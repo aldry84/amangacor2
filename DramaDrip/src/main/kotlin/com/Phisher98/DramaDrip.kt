@@ -303,6 +303,7 @@ class DramaDrip : MainAPI() {
             Log.e("LoadLinks", "No links found in data: $data")
             return false
         }
+        
         for (link in links) {
             try {
                 val finalLink = when {
@@ -312,16 +313,83 @@ class DramaDrip : MainAPI() {
                     else -> link
                 }
 
-                if (finalLink != null) {
-                    loadExtractor(finalLink, subtitleCallback, callback)
-                } else {
-                    Log.w("LoadLinks", "Bypass returned null for link: $link")
+                when {
+                    finalLink?.contains("jeniusplay.com") == true -> {
+                        // Handle Jeniusplay links specifically
+                        invokeJeniusplay(finalLink, subtitleCallback, callback)
+                    }
+                    finalLink != null -> {
+                        // For other links, use the standard extractor loading
+                        loadExtractor(finalLink, subtitleCallback, callback)
+                    }
+                    else -> {
+                        Log.w("LoadLinks", "Bypass returned null for link: $link")
+                    }
                 }
-            } catch (_: Exception) {
-                Log.e("LoadLinks", "Failed to load link: $link")
+            } catch (e: Exception) {
+                Log.e("LoadLinks", "Failed to load link: $link, error: ${e.message}")
             }
         }
 
         return true
+    }
+
+    /**
+     * Function to handle Jeniusplay extraction specifically
+     */
+    private suspend fun invokeJeniusplay(
+        url: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        try {
+            Log.d("Jeniusplay", "Extracting from Jeniusplay: $url")
+            Jeniusplay2().getUrl(url, "$mainUrl/", subtitleCallback, callback)
+        } catch (e: Exception) {
+            Log.e("Jeniusplay", "Failed to extract from Jeniusplay: ${e.message}")
+            // Fallback to standard extractor if Jeniusplay fails
+            loadExtractor(url, subtitleCallback, callback)
+        }
+    }
+}
+
+// Extension function untuk membersihkan title
+fun cleanTitle(title: String): String {
+    val parts = title.split(".", "-", "_")
+
+    val qualityTags = listOf(
+        "WEBRip", "WEB-DL", "WEB", "BluRay", "HDRip", "DVDRip", "HDTV",
+        "CAM", "TS", "R5", "DVDScr", "BRRip", "BDRip", "DVD", "PDTV",
+        "HD"
+    )
+
+    val audioTags = listOf(
+        "AAC", "AC3", "DTS", "MP3", "FLAC", "DD5", "EAC3", "Atmos"
+    )
+
+    val subTags = listOf(
+        "ESub", "ESubs", "Subs", "MultiSub", "NoSub", "EnglishSub", "HindiSub"
+    )
+
+    val codecTags = listOf(
+        "x264", "x265", "H264", "HEVC", "AVC"
+    )
+
+    val startIndex = parts.indexOfFirst { part ->
+        qualityTags.any { tag -> part.contains(tag, ignoreCase = true) }
+    }
+
+    val endIndex = parts.indexOfLast { part ->
+        subTags.any { tag -> part.contains(tag, ignoreCase = true) } ||
+                audioTags.any { tag -> part.contains(tag, ignoreCase = true) } ||
+                codecTags.any { tag -> part.contains(tag, ignoreCase = true) }
+    }
+
+    return if (startIndex != -1 && endIndex != -1 && endIndex >= startIndex) {
+        parts.subList(startIndex, endIndex + 1).joinToString(".")
+    } else if (startIndex != -1) {
+        parts.subList(startIndex, parts.size).joinToString(".")
+    } else {
+        parts.takeLast(3).joinToString(".")
     }
 }
