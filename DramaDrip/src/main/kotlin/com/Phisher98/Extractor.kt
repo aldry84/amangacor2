@@ -3,17 +3,16 @@ package com.Phisher98
 import com.lagradost.api.Log
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
-// --- Impor yang Diperlukan untuk Memperbaiki Kesalahan ---
-import com.lagradost.cloudstream3.utils.APIHolder.capitalize // Perbaikan 'APIHolder'
+// Menggunakan import umum untuk utilitas dan memastikan capitalize ditarik dari utils
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.INFER_TYPE
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.newExtractorLink
-import com.lagradost.cloudstream3.utils.ExtractorLinkType
-import com.lagradost.cloudstream3.utils.runAllAsync // Perbaikan 'runAllAsync'
+import com.lagradost.cloudstream3.utils.* // Impor semua utils, termasuk runAllAsync dan APIHolder.capitalize
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
-// --------------------------------------------------------
+// Import eksplisit yang dibutuhkan
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import okhttp3.FormBody
 import org.json.JSONObject
 import org.jsoup.nodes.Element
@@ -21,7 +20,6 @@ import java.net.URI
 import kotlin.text.Regex
 
 class Driveseed : ExtractorApi() {
-// ... (Logika Driveseed tetap sama) ...
     override val name: String = "Driveseed"
     override val mainUrl: String = "https://driveseed.org"
     override val requiresReferer = false
@@ -273,7 +271,7 @@ object DramaDripExtractor {
                     callback.invoke(
                         newExtractorLink(
                             "Vidrock",
-                            "Vidrock [${sourceKey.capitalize()}]",
+                            "Vidrock [${sourceKey.capitalize()}]", // capitalize() sekarang diimpor dari utils
                             link,
                             ExtractorLinkType.M3U8
                         ) {
