@@ -1,7 +1,6 @@
 package com.Adicinemax21
 
 import android.util.Base64
-import com.Adicinemax21.Adicinemax21.Companion.anilistAPI
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.APIHolder.unixTimeMS
 import com.lagradost.cloudstream3.mvvm.logError
@@ -18,7 +17,10 @@ import java.util.*
 import javax.crypto.Cipher
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
-import kotlin.text.isLowerCase // Diperlukan untuk replaceFirstChar
+import kotlin.text.isLowerCase
+
+// 🔥 PINDAHKAN anilistAPI ke sini karena digunakan di fungsi tmdbToAnimeId
+const val anilistAPI = "https://graphql.anilist.co"
 
 var gomoviesCookies: Map<String, String>? = null
 
@@ -96,12 +98,13 @@ suspend fun tmdbToAnimeId(title: String?, year: Int?, season: String?, type: TvT
         "variables" to variables
     ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
 
+    // 🔥 Sekarang anilistAPI sudah terdefinisi di file ini
     val res = app.post(anilistAPI, requestBody = data)
         .parsedSafe<AniSearch>()?.data?.Page?.media?.firstOrNull()
     return AniIds(res?.id, res?.idMal)
-
 }
 
+// ... (fungsi-fungsi lainnya tetap sama)
 fun generateWpKey(r: String, m: String): String {
     val rList = r.split("\\x").toTypedArray()
     var n = ""
@@ -322,19 +325,15 @@ fun getFDoviesQuality(str: String): String {
 
 /**
  * Fungsi pembantu untuk mengkonversi kode bahasa dua huruf ke nama bahasa.
- * Menggantikan SubtitleHelper.fromTwoLettersToLanguage yang sudah deprecated
- * dan menggunakan replaceFirstChar untuk menghindari String.capitalize() yang deprecated.
  */
 fun getLanguageNameFromCode(code: String?): String? {
-    // Ambil hanya kode dua huruf pertama sebelum "_"
     return code?.split("_")?.first()?.let { langCode ->
         try {
-            // Gunakan Locale untuk mendapatkan nama bahasa yang dilokalkan
             Locale(langCode).displayLanguage.replaceFirstChar {
                 if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString()
             }
         } catch (e: Exception) {
-            langCode // Fallback ke kode jika terjadi kesalahan
+            langCode
         }
     }
 }
@@ -343,7 +342,6 @@ fun getVipLanguage(str: String): String {
     return when (str) {
         "in_ID" -> "Indonesian"
         "pt" -> "Portuguese"
-        // Memperbaiki peringatan deprecation SubtitleHelper
         else -> str.split("_").first().let { code ->
             getLanguageNameFromCode(code) ?: code
         }
@@ -351,7 +349,6 @@ fun getVipLanguage(str: String): String {
 }
 
 fun fixCrunchyrollLang(language: String?): String? {
-    // Memperbaiki peringatan deprecation SubtitleHelper
     val langCode = language?.split("_")?.first()
     return getLanguageNameFromCode(langCode)
         ?: getLanguageNameFromCode(langCode?.substringBefore("-"))
