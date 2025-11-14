@@ -2,7 +2,6 @@ package com.Phisher98
 
 import android.os.Build
 import androidx.annotation.RequiresApi
-import com.google.gson.Gson
 import com.lagradost.api.Log
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
@@ -25,7 +24,6 @@ class DramaDrip : MainAPI() {
     override val hasDownloadSupport = true
     override val hasQuickSearch = true
     override val supportedTypes = setOf(TvType.Movie, TvType.AsianDrama, TvType.TvSeries)
-    private val cinemeta_url = "https://v3-cinemeta.strem.io/meta"
 
     override val mainPage = mainPageOf(
         "drama/ongoing" to "Ongoing Dramas",
