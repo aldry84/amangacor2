@@ -102,10 +102,25 @@ class AsianDramaProvider : MainAPI() {
     }
 
     private fun Element.toAsianDramaSearchResult(): SearchResponse? {
+        // Mengikuti pola dari DramaDrip.kt - lebih sederhana
         val title = this.selectFirst("h2.entry-title")?.text()?.substringAfter("Download") ?: return null
-        val href = this.selectFirst("h2.entry-title > a")?.attr("href") ?: return null
-        val posterUrl = this.selectFirst("img")?.attr("src")
+        val href = this.select("h2.entry-title > a").attr("href")
+        val imgElement = this.selectFirst("img")
+        val srcset = imgElement?.attr("srcset")
 
+        // Mengambil highest resolution image seperti di DramaDrip.kt
+        val highestResUrl = srcset
+            ?.split(",")
+            ?.map { it.trim() }
+            ?.mapNotNull {
+                val parts = it.split(" ")
+                if (parts.size == 2) parts[0] to parts[1].removeSuffix("w").toIntOrNull() else null
+            }
+            ?.maxByOrNull { it.second ?: 0 }
+            ?.first
+
+        val posterUrl = highestResUrl ?: imgElement?.attr("src")
+        
         return newMovieSearchResponse(title, href, TvType.AsianDrama) {
             this.posterUrl = posterUrl
         }
@@ -123,57 +138,98 @@ class AsianDramaProvider : MainAPI() {
         mainUrl = getCurrentDomain()
         val document = app.get(url).document
 
-        // Extract basic info from DramaDrip
-        val title = document.selectFirst("div.wp-block-column > h2.wp-block-heading")?.text()
-            ?.substringBefore("(")?.trim() ?: throw ErrorLoadingException("No title found")
-        
-        val year = document.selectFirst("div.wp-block-column > h2.wp-block-heading")?.text()
-            ?.substringAfter("(")?.substringBefore(")")?.toIntOrNull()
-        
-        val poster = document.selectFirst("meta[property=og:image]")?.attr("content")
-        val description = document.selectFirst("div.content-section p.mt-4")?.text()?.trim()
-        val tags = document.select("div.mt-2 span.badge").map { it.text() }
+        // Extract IDs seperti di DramaDrip.kt
+        var imdbId: String? = null
+        var tmdbId: Int? = null
+        var tmdbType: String? = null
 
-        // Extract TMDB/IMDB IDs for Cinemeta
-        val (tmdbId, imdbId) = extractIdsFromDocument(document)
+        document.select("div.su-spoiler-content ul.wp-block-list > li").forEach { li ->
+            val text = li.text()
+            if (imdbId == null && "imdb.com/title/tt" in text) {
+                imdbId = Regex("tt\\d+").find(text)?.value
+            }
 
-        // Get enhanced metadata from Cinemeta
-        val cinemetaData = getCinemetaMetadata(tmdbId, if (url.contains("/movie")) "movie" else "series")
-
-        // Check if it's a series by looking for episodes
-        val isSeries = document.select("div.su-accordion h2").any { 
-            it.text().contains("Season", ignoreCase = true) && !it.text().contains("ZIP", ignoreCase = true) 
+            if (tmdbId == null && tmdbType == null && "themoviedb.org" in text) {
+                Regex("/(movie|tv)/(\\d+)").find(text)?.let { match ->
+                    tmdbType = match.groupValues[1]
+                    tmdbId = match.groupValues[2].toIntOrNull()
+                }
+            }
         }
 
-        if (isSeries) {
-            // TV Series - Extract episodes
+        val tvType = when {
+            (tmdbType?.contains("Movie", ignoreCase = true) == true) -> TvType.Movie
+            else -> TvType.TvSeries
+        }
+
+        // Extract basic info seperti di DramaDrip.kt
+        val image = document.select("meta[property=og:image]").attr("content")
+        val title = document.selectFirst("div.wp-block-column > h2.wp-block-heading")?.text()
+            ?.substringBefore("(")?.trim() ?: "Unknown Title"
+        val tags = document.select("div.mt-2 span.badge").map { it.text() }
+        val year = document.selectFirst("div.wp-block-column > h2.wp-block-heading")?.text()
+            ?.substringAfter("(")?.substringBefore(")")?.toIntOrNull()
+        val descriptions = document.selectFirst("div.content-section p.mt-4")?.text()?.trim()
+
+        val typeset = if (tvType == TvType.TvSeries) "series" else "movie"
+        val responseData = if (tmdbId != null) {
+            getCinemetaMetadata(tmdbId, typeset)
+        } else null
+
+        var cast: List<String> = emptyList()
+        var background: String = image
+        var description: String? = descriptions
+        
+        if (responseData != null) {
+            description = responseData.description ?: descriptions
+            cast = responseData.cast ?: emptyList()
+            background = responseData.background ?: image
+        }
+
+        // Extract streaming links seperti di DramaDrip.kt
+        val hrefs = document.select("div.wp-block-button > a")
+            .mapNotNull { linkElement ->
+                val link = linkElement.attr("href")
+                // Di DramaDrip.kt ada cinematickitloadBypass, kita skip dulu
+                link // Untuk sekarang langsung return link tanpa bypass
+            }
+
+        val trailer = document.selectFirst("div.wp-block-embed__wrapper > iframe")?.attr("src")
+
+        // Extract recommendations
+        val recommendations = document.select("div.entry-related-inner-content article").mapNotNull {
+            val recName = it.select("h3").text().substringAfter("Download")
+            val recHref = it.select("h3 a").attr("href")
+            val recPosterUrl = it.select("img").attr("src")
+            newTvSeriesSearchResponse(recName, recHref, TvType.TvSeries) {
+                this.posterUrl = recPosterUrl
+            }
+        }
+
+        return if (tvType == TvType.TvSeries) {
+            // TV Series - Extract episodes seperti di DramaDrip.kt
             val episodes = extractEpisodesFromDocument(document)
             
-            return newTvSeriesLoadResponse(
-                cinemetaData?.name ?: title,
-                url, 
-                TvType.AsianDrama, 
+            newTvSeriesLoadResponse(
+                title,
+                url,
+                TvType.AsianDrama,
                 episodes
             ) {
-                this.posterUrl = cinemetaData?.poster ?: poster
-                this.backgroundPosterUrl = cinemetaData?.background
+                this.backgroundPosterUrl = background
                 this.year = year
-                this.plot = cinemetaData?.description ?: description
+                this.plot = description ?: "No description available"
                 this.tags = tags
-                this.score = cinemetaData?.rating?.toFloatOrNull()?.let { Score.from10(it) }
-                // Convert cast list to List<Actor>
-                val actors = cinemetaData?.cast?.map { Actor(it) } 
-                addActors(actors)
-                addTrailer(cinemetaData?.trailer)
-                addTMDbId(tmdbId?.toString())
+                this.recommendations = recommendations
+                addTrailer(trailer)
+                addActors(cast.map { Actor(it) })
                 addImdbId(imdbId)
+                addTMDbId(tmdbId?.toString())
             }
         } else {
-            // Movie - Extract streaming links
-            val streamingLinks = extractStreamingLinksFromDocument(document)
-            
-            return newMovieLoadResponse(
-                cinemetaData?.name ?: title,
+            // Movie
+            newMovieLoadResponse(
+                title,
                 url,
                 TvType.Movie,
                 AsianDramaLinkData(
@@ -181,20 +237,18 @@ class AsianDramaProvider : MainAPI() {
                     year = year,
                     tmdbId = tmdbId,
                     imdbId = imdbId,
-                    rawLinks = streamingLinks
+                    rawLinks = hrefs
                 ).toJson()
             ) {
-                this.posterUrl = cinemetaData?.poster ?: poster
-                this.backgroundPosterUrl = cinemetaData?.background
+                this.backgroundPosterUrl = background
                 this.year = year
-                this.plot = cinemetaData?.description ?: description
+                this.plot = description ?: "No description available"
                 this.tags = tags
-                this.score = cinemetaData?.rating?.toFloatOrNull()?.let { Score.from10(it) }
-                val actors = cinemetaData?.cast?.map { Actor(it) }
-                addActors(actors)
-                addTrailer(cinemetaData?.trailer)
-                addTMDbId(tmdbId?.toString())
+                this.recommendations = recommendations
+                addTrailer(trailer)
+                addActors(cast.map { Actor(it) })
                 addImdbId(imdbId)
+                addTMDbId(tmdbId?.toString())
             }
         }
     }
@@ -207,7 +261,7 @@ class AsianDramaProvider : MainAPI() {
     ): Boolean {
         val linkData = tryParseJson<AsianDramaLinkData>(data) ?: return false
         
-        // Process all Asian-optimized extractors
+        // Process links dengan extractor yang sudah diregistrasi
         linkData.rawLinks.forEach { link ->
             loadExtractor(link, mainUrl, subtitleCallback, callback)
         }
@@ -228,66 +282,64 @@ class AsianDramaProvider : MainAPI() {
         return null
     }
 
-    private fun extractIdsFromDocument(document: Document): Pair<Int?, String?> {
-        var tmdbId: Int? = null
-        var imdbId: String? = null
-
-        document.select("div.su-spoiler-content ul.wp-block-list > li").forEach { li ->
-            val text = li.text()
-            if (imdbId == null && "imdb.com/title/tt" in text) {
-                imdbId = Regex("tt\\d+").find(text)?.value
-            }
-            if (tmdbId == null && "themoviedb.org" in text) {
-                tmdbId = Regex("/(movie|tv)/(\\d+)").find(text)?.groupValues?.get(2)?.toIntOrNull()
-            }
-        }
-
-        return Pair(tmdbId, imdbId)
-    }
-
-    private fun extractStreamingLinksFromDocument(document: Document): List<String> {
-        val links = mutableListOf<String>()
-        
-        document.select("div.wp-block-button > a").forEach { link ->
-            val href = link.attr("href")
-            if (href.isNotBlank() && !href.contains("javascript")) {
-                links.add(href)
-            }
-        }
-        
-        return links
-    }
-
     private fun extractEpisodesFromDocument(document: Document): List<Episode> {
         val episodes = mutableListOf<Episode>()
-        
-        document.select("div.su-accordion h2").forEach { seasonHeader ->
+        val seasonBlocks = document.select("div.su-accordion h2")
+
+        for (seasonHeader in seasonBlocks) {
             val seasonText = seasonHeader.text()
-            if (!seasonText.contains("ZIP", ignoreCase = true)) {
+            if (seasonText.contains("ZIP", ignoreCase = true)) {
+                continue // Skip ZIP seasons
+            } else {
                 val seasonMatch = Regex("""S?e?a?s?o?n?\s*([0-9]+)""", RegexOption.IGNORE_CASE)
                     .find(seasonText)
                 val season = seasonMatch?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 1
 
-                // Extract episode links from this season
-                val episodeElements = seasonHeader.nextElementSibling()
-                    ?.select("div.wp-block-button a")
-                    ?: emptyList()
+                // Try to get the links block
+                var linksBlock = seasonHeader.nextElementSibling()
+                if (linksBlock == null || linksBlock.select("div.wp-block-button").isEmpty()) {
+                    linksBlock = seasonHeader.parent()?.selectFirst("div.wp-block-button") ?: linksBlock
+                }
 
-                episodeElements.forEachIndexed { epIndex, episodeLink ->
-                    val href = episodeLink.attr("href")
-                    if (href.isNotBlank()) {
-                        episodes.add(
-                            newEpisode(href) {
-                                this.name = "Episode ${epIndex + 1}"
-                                this.season = season
-                                this.episode = epIndex + 1
+                val qualityLinks = linksBlock?.select("div.wp-block-button a")
+                    ?.mapNotNull { it.attr("href").takeIf { href -> href.isNotBlank() } }
+                    ?.distinct() ?: emptyList()
+
+                for (qualityPageLink in qualityLinks) {
+                    try {
+                        // Untuk sekarang langsung proses tanpa bypass
+                        val episodeDoc = app.get(qualityPageLink).document
+                        val episodeButtons = episodeDoc.select("a").filter { element ->
+                            element.text().matches(Regex("""(?i)(Episode|Ep|E)?\s*0*\d+"""))
+                        }
+
+                        for (btn in episodeButtons) {
+                            val ephref = btn.attr("href")
+                            val epText = btn.text()
+
+                            if (ephref.isNotBlank()) {
+                                val epNo = Regex("""(?:Episode|Ep|E)?\s*0*([0-9]+)""", RegexOption.IGNORE_CASE)
+                                    .find(epText)?.groupValues?.getOrNull(1)?.toIntOrNull()
+
+                                if (epNo != null) {
+                                    episodes.add(
+                                        newEpisode(ephref) {
+                                            this.name = "Episode $epNo"
+                                            this.season = season
+                                            this.episode = epNo
+                                        }
+                                    )
+                                }
                             }
-                        )
+                        }
+                    } catch (e: Exception) {
+                        // Continue dengan episode berikutnya jika ada error
+                        continue
                     }
                 }
             }
         }
-        
+
         return episodes
     }
 }
