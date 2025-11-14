@@ -11,8 +11,68 @@ import org.jsoup.nodes.Document
 import java.net.URI
 import java.net.URLEncoder
 import java.util.Base64
+import java.util.concurrent.TimeUnit
 
-// Existing DomainsParser and other data classes remain the same
+// ========== CACHE CONFIGURATION ==========
+private object CacheConfig {
+    const val TMDB_CACHE_DURATION_MINUTES = 60L // 1 hour cache
+    const val MAX_RETRY_ATTEMPTS = 3
+    const val RETRY_DELAY_MS = 1000L
+}
+
+// ========== CACHE MANAGEMENT ==========
+private data class CacheEntry<T>(
+    val data: T,
+    val timestamp: Long,
+    val expiresIn: Long = TimeUnit.MINUTES.toMillis(CacheConfig.TMDB_CACHE_DURATION_MINUTES)
+) {
+    fun isExpired(): Boolean = System.currentTimeMillis() - timestamp > expiresIn
+}
+
+private object CacheManager {
+    private val tmdbCache = mutableMapOf<String, CacheEntry<Any>>()
+    
+    @Synchronized
+    fun <T> get(key: String): T? {
+        val entry = tmdbCache[key] as? CacheEntry<T> ?: return null
+        return if (entry.isExpired()) {
+            tmdbCache.remove(key)
+            null
+        } else {
+            entry.data
+        }
+    }
+    
+    @Synchronized
+    fun <T> put(key: String, data: T) {
+        tmdbCache[key] = CacheEntry(data as Any, System.currentTimeMillis())
+    }
+    
+    @Synchronized
+    fun clearExpired() {
+        tmdbCache.entries.removeAll { it.value.isExpired() }
+    }
+}
+
+// ========== RETRY MECHANISM ==========
+suspend fun <T> withRetry(
+    attempts: Int = CacheConfig.MAX_RETRY_ATTEMPTS,
+    delayMs: Long = CacheConfig.RETRY_DELAY_MS,
+    operation: suspend () -> T?
+): T? {
+    repeat(attempts) { attempt ->
+        try {
+            return operation()
+        } catch (e: Exception) {
+            Log.w("Retry", "Attempt ${attempt + 1}/$attempts failed: ${e.message}")
+            if (attempt == attempts - 1) throw e
+            kotlinx.coroutines.delay(delayMs * (attempt + 1))
+        }
+    }
+    return null
+}
+
+// Existing data classes remain the same
 data class DomainsParser(
     @JsonProperty("dramadrip")
     val dramadrip: String,
@@ -115,30 +175,42 @@ data class TMDbEpisode(
     val air_date: String?
 )
 
-// ========== TMDb FUNCTIONS ==========
+// ========== ENHANCED TMDb FUNCTIONS ==========
 suspend fun fetchTMDbData(tmdbId: String, type: String): TMDbResponse? {
     if (tmdbId.isEmpty()) return null
     
-    return try {
-        val url = when (type.lowercase()) {
-            "movie" -> "${DramaDripProvider.TMDB_BASE_URL}/movie/$tmdbId?api_key=${DramaDripProvider.TMDB_API_KEY}&append_to_response=credits,videos"
-            "tv" -> "${DramaDripProvider.TMDB_BASE_URL}/tv/$tmdbId?api_key=${DramaDripProvider.TMDB_API_KEY}&append_to_response=credits,videos"
-            else -> return null
+    val cacheKey = "tmdb_${type}_$tmdbId"
+    return CacheManager.get(cacheKey) ?: withRetry {
+        try {
+            val url = when (type.lowercase()) {
+                "movie" -> "${DramaDripProvider.TMDB_BASE_URL}/movie/$tmdbId?api_key=${DramaDripProvider.TMDB_API_KEY}&append_to_response=credits,videos"
+                "tv" -> "${DramaDripProvider.TMDB_BASE_URL}/tv/$tmdbId?api_key=${DramaDripProvider.TMDB_API_KEY}&append_to_response=credits,videos"
+                else -> return@withRetry null
+            }
+            val response = app.get(url).parsedSafe<TMDbResponse>()
+            response?.let { CacheManager.put(cacheKey, it) }
+            response
+        } catch (e: Exception) {
+            Log.e("TMDb", "Failed to fetch TMDb data for $type ID $tmdbId: ${e.message}")
+            null
         }
-        app.get(url).parsedSafe()
-    } catch (e: Exception) {
-        Log.e("TMDb", "Failed to fetch TMDb data for $type ID $tmdbId: ${e.message}")
-        null
     }
 }
 
 suspend fun fetchTMDbEpisode(tmdbId: String, season: Int, episode: Int): TMDbEpisode? {
-    return try {
-        val url = "${DramaDripProvider.TMDB_BASE_URL}/tv/$tmdbId/season/$season/episode/$episode?api_key=${DramaDripProvider.TMDB_API_KEY}"
-        app.get(url).parsedSafe()
-    } catch (e: Exception) {
-        Log.e("TMDb", "Failed to fetch episode data: ${e.message}")
-        null
+    if (tmdbId.isEmpty()) return null
+    
+    val cacheKey = "tmdb_episode_${tmdbId}_${season}_${episode}"
+    return CacheManager.get(cacheKey) ?: withRetry {
+        try {
+            val url = "${DramaDripProvider.TMDB_BASE_URL}/tv/$tmdbId/season/$season/episode/$episode?api_key=${DramaDripProvider.TMDB_API_KEY}"
+            val response = app.get(url).parsedSafe<TMDbEpisode>()
+            response?.let { CacheManager.put(cacheKey, it) }
+            response
+        } catch (e: Exception) {
+            Log.e("TMDb", "Failed to fetch episode data: ${e.message}")
+            null
+        }
     }
 }
 
@@ -150,37 +222,44 @@ fun getTMDbImageUrl(path: String?, size: String = "w500"): String? {
     }
 }
 
-// ========== EXISTING UTILITY FUNCTIONS ==========
+// ========== ENHANCED BYPASS FUNCTIONS ==========
 suspend fun bypassHrefli(url: String): String? {
-    fun Document.getFormUrl(): String {
-        return this.select("form#landing").attr("action")
+    return withRetry {
+        try {
+            fun Document.getFormUrl(): String {
+                return this.select("form#landing").attr("action")
+            }
+
+            fun Document.getFormData(): Map<String, String> {
+                return this.select("form#landing input").associate { it.attr("name") to it.attr("value") }
+            }
+
+            val host = getBaseUrl(url)
+            var res = app.get(url).document
+            var formUrl = res.getFormUrl()
+            var formData = res.getFormData()
+
+            res = app.post(formUrl, data = formData).document
+            formUrl = res.getFormUrl()
+            formData = res.getFormData()
+
+            res = app.post(formUrl, data = formData).document
+            val skToken = res.selectFirst("script:containsData(?go=)")?.data()?.substringAfter("?go=")
+                ?.substringBefore("\"") ?: return@withRetry null
+            val driveUrl = app.get(
+                "$host?go=$skToken", cookies = mapOf(
+                    skToken to "${formData["_wp_http2"]}"
+                )
+            ).document.selectFirst("meta[http-equiv=refresh]")?.attr("content")?.substringAfter("url=")
+            val path = app.get(driveUrl ?: return@withRetry null).text.substringAfter("replace(\"")
+                .substringBefore("\")")
+            if (path == "/404") return@withRetry null
+            fixUrl(path, getBaseUrl(driveUrl))
+        } catch (e: Exception) {
+            Log.e("Bypass", "Hrefli bypass failed: ${e.message}")
+            null
+        }
     }
-
-    fun Document.getFormData(): Map<String, String> {
-        return this.select("form#landing input").associate { it.attr("name") to it.attr("value") }
-    }
-
-    val host = getBaseUrl(url)
-    var res = app.get(url).document
-    var formUrl = res.getFormUrl()
-    var formData = res.getFormData()
-
-    res = app.post(formUrl, data = formData).document
-    formUrl = res.getFormUrl()
-    formData = res.getFormData()
-
-    res = app.post(formUrl, data = formData).document
-    val skToken = res.selectFirst("script:containsData(?go=)")?.data()?.substringAfter("?go=")
-        ?.substringBefore("\"") ?: return null
-    val driveUrl = app.get(
-        "$host?go=$skToken", cookies = mapOf(
-            skToken to "${formData["_wp_http2"]}"
-        )
-    ).document.selectFirst("meta[http-equiv=refresh]")?.attr("content")?.substringAfter("url=")
-    val path = app.get(driveUrl ?: return null).text.substringAfter("replace(\"")
-        .substringBefore("\")")
-    if (path == "/404") return null
-    return fixUrl(path, getBaseUrl(driveUrl))
 }
 
 fun getBaseUrl(url: String): String {
@@ -189,78 +268,93 @@ fun getBaseUrl(url: String): String {
             "${it.scheme}://${it.host}"
         }
     } catch (e: Exception) {
+        Log.e("URL", "Failed to parse base URL: ${e.message}")
         ""
     }
 }
 
 fun fixUrl(url: String, domain: String): String {
-    if (url.startsWith("http")) {
-        return url
-    }
-    if (url.isEmpty()) {
-        return ""
-    }
-
-    val startsWithNoHttp = url.startsWith("//")
-    if (startsWithNoHttp) {
-        return "https:$url"
-    } else {
-        if (url.startsWith('/')) {
-            return domain + url
+    return try {
+        if (url.startsWith("http")) {
+            url
+        } else if (url.isEmpty()) {
+            ""
+        } else {
+            val startsWithNoHttp = url.startsWith("//")
+            if (startsWithNoHttp) {
+                "https:$url"
+            } else {
+                if (url.startsWith('/')) {
+                    domain + url
+                } else {
+                    "$domain/$url"
+                }
+            }
         }
-        return "$domain/$url"
+    } catch (e: Exception) {
+        Log.e("URL", "Failed to fix URL: ${e.message}")
+        ""
     }
 }
 
 @RequiresApi(Build.VERSION_CODES.O)
 suspend fun cinematickitBypass(url: String): String? {
-    return try {
-        val cleanedUrl = url.replace("&#038;", "&")
-        val encodedLink = cleanedUrl.substringAfter("safelink=").substringBefore("-")
-        if (encodedLink.isEmpty()) return null
-        val decodedUrl = base64Decode(encodedLink)
-        val doc = app.get(decodedUrl).document
-        val goValue = doc.select("form#landing input[name=go]").attr("value")
-        if (goValue.isBlank()) return null
-        val decodedGoUrl = base64Decode(goValue).replace("&#038;", "&")
-        val responseDoc = app.get(decodedGoUrl).document
-        val script = responseDoc.select("script").firstOrNull { it.data().contains("window.location.replace") }?.data() ?: return null
-        val regex = Regex("""window\.location\.replace\s*\(\s*["'](.+?)["']\s*\)\s*;?""")
-        val match = regex.find(script) ?: return null
-        val redirectPath = match.groupValues[1]
-        return if (redirectPath.startsWith("http")) redirectPath else URI(decodedGoUrl).let { "${it.scheme}://${it.host}$redirectPath" }
-    } catch (e: Exception) {
-        e.printStackTrace()
-        null
+    return withRetry {
+        try {
+            val cleanedUrl = url.replace("&#038;", "&")
+            val encodedLink = cleanedUrl.substringAfter("safelink=").substringBefore("-")
+            if (encodedLink.isEmpty()) return@withRetry null
+            val decodedUrl = base64Decode(encodedLink)
+            val doc = app.get(decodedUrl).document
+            val goValue = doc.select("form#landing input[name=go]").attr("value")
+            if (goValue.isBlank()) return@withRetry null
+            val decodedGoUrl = base64Decode(goValue).replace("&#038;", "&")
+            val responseDoc = app.get(decodedGoUrl).document
+            val script = responseDoc.select("script").firstOrNull { it.data().contains("window.location.replace") }?.data() ?: return@withRetry null
+            val regex = Regex("""window\.location\.replace\s*\(\s*["'](.+?)["']\s*\)\s*;?""")
+            val match = regex.find(script) ?: return@withRetry null
+            val redirectPath = match.groupValues[1]
+            if (redirectPath.startsWith("http")) redirectPath else URI(decodedGoUrl).let { "${it.scheme}://${it.host}$redirectPath" }
+        } catch (e: Exception) {
+            Log.e("Bypass", "Cinematickit bypass failed: ${e.message}")
+            null
+        }
     }
 }
 
 @RequiresApi(Build.VERSION_CODES.O)
 suspend fun cinematickitloadBypass(url: String): String? {
-    return try {
-        val cleanedUrl = url.replace("&#038;", "&")
-        val encodedLink = cleanedUrl.substringAfter("safelink=").substringBefore("-")
-        if (encodedLink.isEmpty()) return null
-        val decodedUrl = base64Decode(encodedLink)
-        val doc = app.get(decodedUrl).document
-        val goValue = doc.select("form#landing input[name=go]").attr("value")
-        Log.d("Phisher",goValue)
-        base64Decode(goValue)
-    } catch (e: Exception) {
-        e.printStackTrace()
-        null
+    return withRetry {
+        try {
+            val cleanedUrl = url.replace("&#038;", "&")
+            val encodedLink = cleanedUrl.substringAfter("safelink=").substringBefore("-")
+            if (encodedLink.isEmpty()) return@withRetry null
+            val decodedUrl = base64Decode(encodedLink)
+            val doc = app.get(decodedUrl).document
+            val goValue = doc.select("form#landing input[name=go]").attr("value")
+            Log.d("Phisher", goValue)
+            base64Decode(goValue)
+        } catch (e: Exception) {
+            Log.e("Bypass", "Cinematickit load bypass failed: ${e.message}")
+            null
+        }
     }
 }
 
 @RequiresApi(Build.VERSION_CODES.O)
 fun base64Decode(string: String): String {
-    val clean = string.trim().replace("\n", "").replace("\r", "")
-    val padded = clean.padEnd((clean.length + 3) / 4 * 4, '=')
     return try {
+        val clean = string.trim().replace("\n", "").replace("\r", "")
+        val padded = clean.padEnd((clean.length + 3) / 4 * 4, '=')
         val decodedBytes = Base64.getDecoder().decode(padded)
         String(decodedBytes, Charsets.UTF_8)
     } catch (e: Exception) {
-        e.printStackTrace()
+        Log.e("Base64", "Failed to decode base64 string: ${e.message}")
         ""
     }
+}
+
+// Cache cleanup function
+fun clearExpiredCache() {
+    CacheManager.clearExpired()
 }
