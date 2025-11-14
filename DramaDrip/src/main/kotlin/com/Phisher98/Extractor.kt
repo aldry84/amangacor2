@@ -18,37 +18,52 @@ class Driveseed : ExtractorApi() {
     override val mainUrl: String = "https://driveseed.org"
     override val requiresReferer = false
 
+    // Enhanced error handling with retry
+    private suspend fun <T> executeWithRetry(
+        operation: String,
+        maxRetries: Int = 3,
+        block: suspend () -> T?
+    ): T? {
+        repeat(maxRetries) { attempt ->
+            try {
+                return block()
+            } catch (e: Exception) {
+                Log.e("Driveseed", "$operation attempt ${attempt + 1} failed: ${e.message}")
+                if (attempt == maxRetries - 1) throw e
+                kotlinx.coroutines.delay(1000 * (attempt + 1)) // Exponential backoff
+            }
+        }
+        return null
+    }
+
     private fun getIndexQuality(str: String?): Int {
-        return Regex("(\\d{3,4})[pP]").find(str ?: "")?.groupValues?.getOrNull(1)?.toIntOrNull()
-            ?: Qualities.Unknown.value
+        return try {
+            Regex("(\\d{3,4})[pP]").find(str ?: "")?.groupValues?.getOrNull(1)?.toIntOrNull()
+                ?: Qualities.Unknown.value
+        } catch (e: Exception) {
+            Log.e("Quality", "Failed to parse quality from: $str")
+            Qualities.Unknown.value
+        }
     }
 
     private suspend fun CFType1(url: String): List<String> {
-        return runCatching {
+        return executeWithRetry("CFType1") {
             app.get("$url?type=1").document
                 .select("a.btn-success")
                 .mapNotNull { it.attr("href").takeIf { href -> href.startsWith("http") } }
-        }.getOrElse {
-            Log.e("Driveseed", "CFType1 error: ${it.message}")
-            emptyList()
-        }
+        } ?: emptyList()
     }
 
     private suspend fun resumeCloudLink(baseUrl: String, path: String): String? {
-        return runCatching {
+        return executeWithRetry("ResumeCloud") {
             app.get(baseUrl + path).document
                 .selectFirst("a.btn-success")?.attr("href")
                 ?.takeIf { it.startsWith("http") }
-        }.getOrElse {
-            Log.e("Driveseed", "ResumeCloud error: ${it.message}")
-            null
         }
     }
 
-
-
     private suspend fun resumeBot(url: String): String? {
-        return runCatching {
+        return executeWithRetry("ResumeBot") {
             val response = app.get(url)
             val docString = response.document.toString()
             val ssid = response.cookies["PHPSESSID"].orEmpty()
@@ -56,7 +71,10 @@ class Driveseed : ExtractorApi() {
             val path = Regex("fetch\\('/download\\?id=([a-zA-Z0-9/+]+)'").find(docString)?.groupValues?.getOrNull(1).orEmpty()
             val baseUrl = url.substringBefore("/download")
 
-            if (token.isEmpty() || path.isEmpty()) return@runCatching null
+            if (token.isEmpty() || path.isEmpty()) {
+                Log.e("ResumeBot", "Missing token or path")
+                return@executeWithRetry null
+            }
 
             val json = app.post(
                 "$baseUrl/download?id=$path",
@@ -67,14 +85,11 @@ class Driveseed : ExtractorApi() {
             ).text
 
             JSONObject(json).getString("url").takeIf { it.startsWith("http") }
-        }.getOrElse {
-            Log.e("Driveseed", "ResumeBot error: ${it.message}")
-            null
         }
     }
 
     private suspend fun instantLink(finallink: String): String? {
-        return runCatching {
+        return executeWithRetry("InstantLink") {
             val uri = URI(finallink)
             val host = uri.host ?: if (finallink.contains("video-leech")) "video-leech.pro" else "video-seed.pro"
 
@@ -90,12 +105,8 @@ class Driveseed : ExtractorApi() {
                 .substringBefore("\",\"name")
                 .replace("\\/", "/")
                 .takeIf { it.startsWith("http") }
-        }.getOrElse {
-            Log.e("Driveseed", "InstantLink error: ${it.message}")
-            null
         }
     }
-
 
     override suspend fun getUrl(
         url: String,
@@ -106,18 +117,25 @@ class Driveseed : ExtractorApi() {
         val Basedomain = getBaseUrl(url)
 
         val document = try {
-            if (url.contains("r?key=")) {
-                val temp = app.get(url).document.selectFirst("script")
-                    ?.data()
-                    ?.substringAfter("replace(\"")
-                    ?.substringBefore("\")")
-                    .orEmpty()
-                app.get(mainUrl + temp).document
-            } else {
-                app.get(url).document
+            executeWithRetry("PageLoad") {
+                if (url.contains("r?key=")) {
+                    val temp = app.get(url).document.selectFirst("script")
+                        ?.data()
+                        ?.substringAfter("replace(\"")
+                        ?.substringBefore("\")")
+                        .orEmpty()
+                    app.get(mainUrl + temp).document
+                } else {
+                    app.get(url).document
+                }
             }
         } catch (e: Exception) {
-            Log.e("Driveseed", "getUrl page load error: ${e.message}")
+            Log.e("Driveseed", "getUrl page load failed after retries: ${e.message}")
+            return
+        }
+
+        if (document == null) {
+            Log.e("Driveseed", "Failed to load document")
             return
         }
 
@@ -131,7 +149,13 @@ class Driveseed : ExtractorApi() {
             if (size.isNotEmpty()) append("[$size]")
         }
 
-        document.select("div.text-center > a").forEach { element ->
+        val links = document.select("div.text-center > a")
+        if (links.isEmpty()) {
+            Log.w("Driveseed", "No download links found on page")
+            return
+        }
+
+        links.forEach { element ->
             val text = element.text()
             val href = element.attr("href")
 
@@ -149,7 +173,7 @@ class Driveseed : ExtractorApi() {
                                     this.quality = getIndexQuality(qualityText)
                                 }
                             )
-                        }
+                        } ?: Log.w("Driveseed", "Instant download link extraction failed")
                     }
 
                     text.contains("Resume Worker Bot", ignoreCase = true) -> {
@@ -163,20 +187,25 @@ class Driveseed : ExtractorApi() {
                                     this.quality = getIndexQuality(qualityText)
                                 }
                             )
-                        }
+                        } ?: Log.w("Driveseed", "Resume bot link extraction failed")
                     }
 
                     text.contains("Direct Links", ignoreCase = true) -> {
-                        CFType1(Basedomain + href).forEach { link ->
-                            callback(
-                                newExtractorLink(
-                                    "$name CF Type1 $labelExtras",
-                                    "$name CF Type1 $labelExtras",
-                                    url = link
-                                ) {
-                                    this.quality = getIndexQuality(qualityText)
-                                }
-                            )
+                        val directLinks = CFType1(Basedomain + href)
+                        if (directLinks.isNotEmpty()) {
+                            directLinks.forEach { link ->
+                                callback(
+                                    newExtractorLink(
+                                        "$name CF Type1 $labelExtras",
+                                        "$name CF Type1 $labelExtras",
+                                        url = link
+                                    ) {
+                                        this.quality = getIndexQuality(qualityText)
+                                    }
+                                )
+                            }
+                        } else {
+                            Log.w("Driveseed", "No direct links found")
                         }
                     }
 
@@ -191,7 +220,7 @@ class Driveseed : ExtractorApi() {
                                     this.quality = getIndexQuality(qualityText)
                                 }
                             )
-                        }
+                        } ?: Log.w("Driveseed", "Resume cloud link extraction failed")
                     }
 
                     text.contains("Cloud Download", ignoreCase = true) -> {
@@ -211,43 +240,49 @@ class Driveseed : ExtractorApi() {
     }
 }
 
-
+// Enhanced title cleaning with better error handling
 fun cleanTitle(title: String): String {
-    val parts = title.split(".", "-", "_")
+    return try {
+        if (title.isBlank()) return ""
 
-    val qualityTags = listOf(
-        "WEBRip", "WEB-DL", "WEB", "BluRay", "HDRip", "DVDRip", "HDTV",
-        "CAM", "TS", "R5", "DVDScr", "BRRip", "BDRip", "DVD", "PDTV",
-        "HD"
-    )
+        val parts = title.split(".", "-", "_")
 
-    val audioTags = listOf(
-        "AAC", "AC3", "DTS", "MP3", "FLAC", "DD5", "EAC3", "Atmos"
-    )
+        val qualityTags = listOf(
+            "WEBRip", "WEB-DL", "WEB", "BluRay", "HDRip", "DVDRip", "HDTV",
+            "CAM", "TS", "R5", "DVDScr", "BRRip", "BDRip", "DVD", "PDTV", "HD"
+        )
 
-    val subTags = listOf(
-        "ESub", "ESubs", "Subs", "MultiSub", "NoSub", "EnglishSub", "HindiSub"
-    )
+        val audioTags = listOf(
+            "AAC", "AC3", "DTS", "MP3", "FLAC", "DD5", "EAC3", "Atmos"
+        )
 
-    val codecTags = listOf(
-        "x264", "x265", "H264", "HEVC", "AVC"
-    )
+        val subTags = listOf(
+            "ESub", "ESubs", "Subs", "MultiSub", "NoSub", "EnglishSub", "HindiSub"
+        )
 
-    val startIndex = parts.indexOfFirst { part ->
-        qualityTags.any { tag -> part.contains(tag, ignoreCase = true) }
-    }
+        val codecTags = listOf(
+            "x264", "x265", "H264", "HEVC", "AVC"
+        )
 
-    val endIndex = parts.indexOfLast { part ->
-        subTags.any { tag -> part.contains(tag, ignoreCase = true) } ||
-                audioTags.any { tag -> part.contains(tag, ignoreCase = true) } ||
-                codecTags.any { tag -> part.contains(tag, ignoreCase = true) }
-    }
+        val startIndex = parts.indexOfFirst { part ->
+            qualityTags.any { tag -> part.contains(tag, ignoreCase = true) }
+        }
 
-    return if (startIndex != -1 && endIndex != -1 && endIndex >= startIndex) {
-        parts.subList(startIndex, endIndex + 1).joinToString(".")
-    } else if (startIndex != -1) {
-        parts.subList(startIndex, parts.size).joinToString(".")
-    } else {
-        parts.takeLast(3).joinToString(".")
+        val endIndex = parts.indexOfLast { part ->
+            subTags.any { tag -> part.contains(tag, ignoreCase = true) } ||
+                    audioTags.any { tag -> part.contains(tag, ignoreCase = true) } ||
+                    codecTags.any { tag -> part.contains(tag, ignoreCase = true) }
+        }
+
+        if (startIndex != -1 && endIndex != -1 && endIndex >= startIndex) {
+            parts.subList(startIndex, endIndex + 1).joinToString(".")
+        } else if (startIndex != -1) {
+            parts.subList(startIndex, parts.size).joinToString(".")
+        } else {
+            parts.takeLast(3).joinToString(".")
+        }
+    } catch (e: Exception) {
+        Log.e("TitleClean", "Failed to clean title: '$title' - ${e.message}")
+        title
     }
 }
