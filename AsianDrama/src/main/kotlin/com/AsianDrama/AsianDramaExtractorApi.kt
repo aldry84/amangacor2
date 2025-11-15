@@ -9,14 +9,14 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.getAndUnpack
 import com.lagradost.cloudstream3.utils.newExtractorLink
-// FIX: Pastikan import ini ada dan benar
-import com.lagradost.cloudstream3.utils.newSubtitleFile 
+// Hapus 'import com.lagradost.cloudstream3.utils.newSubtitleFile' karena tidak ditemukan
 
 open class Jeniusplay2 : ExtractorApi() {
     override val name = "Jeniusplay"
     override val mainUrl = "https://jeniusplay.com"
     override val requiresReferer = true
 
+    @Suppress("DEPRECATION") // FIX: Menekan peringatan deprecated
     override suspend fun getUrl(
         url: String,
         referer: String?,
@@ -51,8 +51,8 @@ open class Jeniusplay2 : ExtractorApi() {
                     getAndUnpack(script.data()).substringAfter("\"tracks\":[").substringBefore("],")
                 tryParseJson<List<Tracks>>("[$subData]")?.map { subtitle ->
                     subtitleCallback.invoke(
-                        // FIX: Menggunakan newSubtitleFile
-                        newSubtitleFile(
+                        // FIX: Kembali menggunakan constructor lama yang deprecated
+                        SubtitleFile(
                             getLanguage(subtitle.label ?: ""),
                             subtitle.file
                         )
