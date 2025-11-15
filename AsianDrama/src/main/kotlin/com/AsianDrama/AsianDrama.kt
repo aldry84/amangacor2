@@ -15,12 +15,6 @@ import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import kotlinx.coroutines.runBlocking
 import org.jsoup.nodes.Element
 
-// --- HAPUS SEMUA KONSTANTA API DARI SINI ---
-// const val gomoviesAPI = ... (HAPUS)
-// const val idlixAPI = ... (HAPUS)
-// ... dan seterusnya ...
-// --- JANGAN MENDEKLARASIKAN OBJEK AsianDramaExtractor DI SINI ---
-
 class AsianDrama : MainAPI() {
     override var mainUrl: String = runBlocking {
         AsianDramaProvider.getDomains()?.dramadrip ?: "https://dramadrip.com"
@@ -121,8 +115,12 @@ class AsianDrama : MainAPI() {
         val tags = document.select("div.mt-2 span.badge").map { it.text() }
         val year = document.selectFirst("div.wp-block-column > h2.wp-block-heading")?.text()
             ?.substringAfter("(")?.substringBefore(")")?.toIntOrNull()
+        
+        // Deskripsi lokal dari situs
         val descriptions = document.selectFirst("div.content-section p.mt-4")?.text()?.trim()
         val typeset = if (tvType == TvType.TvSeries) "series" else "movie"
+        
+        // Panggilan API eksternal
         val responseData = if (tmdbId?.isNotEmpty() == true) {
             val jsonResponse = app.get("$cinemeta_url/$typeset/$imdbId.json").text
             if (jsonResponse.isNotEmpty() && jsonResponse.startsWith("{")) {
@@ -130,11 +128,15 @@ class AsianDrama : MainAPI() {
                 gson.fromJson(jsonResponse, ResponseData::class.java)
             } else null
         } else null
+        
         var cast: List<String> = emptyList()
-
         var background: String = image
-        var description: String? = null
+
+        // FIX: Inisialisasi 'description' dengan plot lokal (descriptions) sebagai fallback
+        var description: String? = descriptions
+
         if (responseData != null) {
+            // Jika API eksternal berhasil, timpa 'description' dengan yang lebih baik
             description = responseData.meta?.description ?: descriptions
             cast = responseData.meta?.cast ?: emptyList()
             background = responseData.meta?.background ?: image
@@ -263,7 +265,7 @@ class AsianDrama : MainAPI() {
             return newTvSeriesLoadResponse(title, url, TvType.TvSeries, finalEpisodes) {
                 this.backgroundPosterUrl = background
                 this.year = year
-                this.plot = description
+                this.plot = description // 'description' sekarang memiliki fallback
                 this.tags = tags
                 this.recommendations = recommendations
                 addTrailer(trailer)
@@ -281,7 +283,7 @@ class AsianDrama : MainAPI() {
             ).toJson()) {
                 this.backgroundPosterUrl = background
                 this.year = year
-                this.plot = description
+                this.plot = description // 'description' sekarang memiliki fallback
                 this.tags = tags
                 this.recommendations = recommendations
                 addTrailer(trailer)
