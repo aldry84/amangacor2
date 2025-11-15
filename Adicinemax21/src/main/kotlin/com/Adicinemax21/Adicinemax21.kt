@@ -327,70 +327,70 @@ open class Adicinemax21 : TmdbProvider() {
                     subtitleCallback,
                     callback
                 )
-            },
-            {
-                invokeVidsrccc(
-                    res.id,
-                    res.imdbId,
-                    res.season,
-                    res.episode,
-                    subtitleCallback,
-                    callback
-                )
-            },
-            {
-                invokeVidsrc(
-                    res.imdbId,
-                    res.season,
-                    res.episode,
-                    subtitleCallback,
-                    callback
-                )
-            },
-            {
-                invokeWatchsomuch(
-                    res.imdbId,
-                    res.season,
-                    res.episode,
-                    subtitleCallback
-                )
-            },
-            {
-                invokeVixsrc(res.id, res.season, res.episode, callback)
-            },
-            {
-                invokeVidlink(res.id, res.season, res.episode, callback)
-            },
-            {
-                invokeVidfast(res.id, res.season, res.episode, subtitleCallback, callback)
-            },
-            {
-                invokeMapple(res.id, res.season, res.episode, subtitleCallback, callback)
-            },
-            {
-                invokeWyzie(res.id, res.season, res.episode, subtitleCallback)
-            },
-            {
-                invokeVidsrccx(res.id, res.season, res.episode, callback)
-            },
-            {
-                invokeSuperembed(
-                    res.id,
-                    res.season,
-                    res.episode,
-                    subtitleCallback,
-                    callback
-                )
-            },
-            {
-                invokeVidrock(
-                    res.id,
-                    res.season,
-                    res.episode,
-                    subtitleCallback,
-                    callback
-                )
             }
+            // {
+            //     invokeVidsrccc(
+            //         res.id,
+            //         res.imdbId,
+            //         res.season,
+            //         res.episode,
+            //         subtitleCallback,
+            //         callback
+            //     )
+            // },
+            // {
+            //     invokeVidsrc(
+            //         res.imdbId,
+            //         res.season,
+            //         res.episode,
+            //         subtitleCallback,
+            //         callback
+            //     )
+            // },
+            // {
+            //     invokeWatchsomuch(
+            //         res.imdbId,
+            //         res.season,
+            //         res.episode,
+            //         subtitleCallback
+            //     )
+            // },
+            // {
+            //     invokeVixsrc(res.id, res.season, res.episode, callback)
+            // },
+            // {
+            //     invokeVidlink(res.id, res.season, res.episode, callback)
+            // },
+            // {
+            //     invokeVidfast(res.id, res.season, res.episode, subtitleCallback, callback)
+            // },
+            // {
+            //     invokeMapple(res.id, res.season, res.episode, subtitleCallback, callback)
+            // },
+            // {
+            //     invokeWyzie(res.id, res.season, res.episode, subtitleCallback)
+            // },
+            // {
+            //     invokeVidsrccx(res.id, res.season, res.episode, callback)
+            // },
+            // {
+            //     invokeSuperembed(
+            //         res.id,
+            //         res.season,
+            //         res.episode,
+            //         subtitleCallback,
+            //         callback
+            //     )
+            // },
+            // {
+            //     invokeVidrock(
+            //         res.id,
+            //         res.season,
+            //         res.episode,
+            //         subtitleCallback,
+            //         callback
+            //     )
+            // }
         )
 
         return true
