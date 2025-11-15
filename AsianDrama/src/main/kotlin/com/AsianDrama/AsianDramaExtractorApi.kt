@@ -9,7 +9,8 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.getAndUnpack
 import com.lagradost.cloudstream3.utils.newExtractorLink
-import com.lagradost.cloudstream3.utils.newSubtitleFile // <-- Tambahkan import ini jika belum ada
+// FIX: Tambahkan import ini
+import com.lagradost.cloudstream3.utils.newSubtitleFile 
 
 open class Jeniusplay2 : ExtractorApi() {
     override val name = "Jeniusplay"
@@ -50,7 +51,7 @@ open class Jeniusplay2 : ExtractorApi() {
                     getAndUnpack(script.data()).substringAfter("\"tracks\":[").substringBefore("],")
                 tryParseJson<List<Tracks>>("[$subData]")?.map { subtitle ->
                     subtitleCallback.invoke(
-                        // FIX: Menggunakan newSubtitleFile menggantikan constructor SubtitleFile
+                        // FIX: Sekarang newSubtitleFile akan terdeteksi
                         newSubtitleFile(
                             getLanguage(subtitle.label ?: ""),
                             subtitle.file
