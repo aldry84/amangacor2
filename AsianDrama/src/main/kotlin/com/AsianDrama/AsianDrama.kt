@@ -16,7 +16,7 @@ import com.AsianDrama.AsianDramaExtractor.invokeWatchsomuch
 import com.AsianDrama.AsianDramaExtractor.invokeWyzie
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
-import com.lagradost.cloudstream3.metaproviders.TmdbProvider // <-- Kunci Perubahan
+import com.lagradost.cloudstream3.metaproviders.TmdbProvider 
 import com.lagradost.cloudstream3.LoadResponse.Companion.addImdbId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTMDbId
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
@@ -24,9 +24,7 @@ import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import kotlin.math.roundToInt
 
-// FIX: Mengganti MainAPI() dengan TmdbProvider()
 open class AsianDrama : TmdbProvider() {
-    // Mengganti nama dari SoraStream menjadi AsianDrama
     override var name = "AsianDrama" 
     override val hasMainPage = true
     override val instantLinkLoading = true
@@ -36,7 +34,7 @@ open class AsianDrama : TmdbProvider() {
         TvType.Movie,
         TvType.TvSeries,
         TvType.Anime,
-        TvType.AsianDrama // Tambahkan Tipe AsianDrama
+        TvType.AsianDrama 
     )
 
     /** Diadaptasi dari SoraStream */
@@ -60,22 +58,20 @@ open class AsianDrama : TmdbProvider() {
 
     }
 
-    // FIX: Mengganti kategori mainPage agar fokus ke Drama Asia (NON-ANIME)
+    // FIX: Menambahkan &without_genres=16 (ID Genre Animasi) untuk memfilter semua anime/donghua
     override val mainPage = mainPageOf(
-        // Menambahkan &without_keywords=210024 (ID TMDB untuk "anime")
-        
         // Mirip "drama/ongoing" + "latest"
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko|ja|zh|th&sort_by=first_air_date.desc&first_air_date.lte=${getDate().today}&without_keywords=210024" to "Rilisan Drama Asia Terbaru",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko|ja|zh|th&sort_by=first_air_date.desc&first_air_date.lte=${getDate().today}&without_keywords=210024&without_genres=16" to "Rilisan Drama Asia Terbaru",
         // Mirip "drama/korean-drama"
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&sort_by=popularity.desc&without_keywords=210024" to "Drama Korea Populer",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&sort_by=popularity.desc&without_keywords=210024&without_genres=16" to "Drama Korea Populer",
         // Mirip "drama/chinese-drama"
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=zh&sort_by=popularity.desc&without_keywords=210024" to "Drama China Populer",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=zh&sort_by=popularity.desc&without_keywords=210024&without_genres=16" to "Drama China Populer",
         // Mirip "drama/japanese-drama"
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ja&sort_by=popularity.desc&without_keywords=210024" to "Drama Jepang Populer",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ja&sort_by=popularity.desc&without_keywords=210024&without_genres=16" to "Drama Jepang Populer",
         // Bonus: Thai
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=th&sort_by=popularity.desc&without_keywords=210024" to "Drama Thailand Populer",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=th&sort_by=popularity.desc&without_keywords=210024&without_genres=16" to "Drama Thailand Populer",
         // Mirip "movies" (versi Asia)
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko|ja|zh|th&sort_by=popularity.desc&without_keywords=210024" to "Film Asia Populer"
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko|ja|zh|th&sort_by=popularity.desc&without_keywords=210024&without_genres=16" to "Film Asia Populer"
     )
 
     private fun getImageUrl(link: String?): String? {
@@ -92,7 +88,8 @@ open class AsianDrama : TmdbProvider() {
         val adultQuery =
             if (settingsForProvider.enableAdult) "" else "&without_keywords=190370|13059|226161|195669"
         val type = if (request.data.contains("/movie")) "movie" else "tv"
-        val home = app.get("${request.data}$adultQuery&page=$page")
+        // Menambahkan filter &without_genres=16 ke URL request juga
+        val home = app.get("${request.data}$adultQuery&without_genres=16&page=$page")
             .parsedSafe<Results>()?.results?.mapNotNull { media ->
                 media.toSearchResponse(type)
             } ?: throw ErrorLoadingException("Invalid Json reponse")
@@ -113,6 +110,7 @@ open class AsianDrama : TmdbProvider() {
     override suspend fun quickSearch(query: String): List<SearchResponse>? = search(query)
 
     override suspend fun search(query: String): List<SearchResponse>? {
+        // Filter anime/animasi dari pencarian juga
         return app.get("$tmdbAPI/search/multi?api_key=$apiKey&language=en-US&query=$query&page=1&include_adult=${settingsForProvider.enableAdult}")
             .parsedSafe<Results>()?.results?.mapNotNull { media ->
                 media.toSearchResponse()
@@ -387,7 +385,7 @@ open class AsianDrama : TmdbProvider() {
 
     data class KeywordResults(
         @JsonProperty("results") val results: ArrayList<Keywords>? = arrayListOf(),
-        @JsonProperty("keywords") val keywords: ArrayList<Keywords>? = arrayListOf(),
+        @JsonProperty("keywords") val keywords: ArrayList<Keywords>? = arrayLof(),
     )
 
     data class Seasons(
