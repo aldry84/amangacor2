@@ -29,8 +29,8 @@ class AsianDramaProvider: BasePlugin() {
         }
 
         data class Domains(
-            @JsonProperty("asiandrama")
-            val asiandrama: String,
+            @JsonProperty("dramadrip")
+            val dramadrip: String,
         )
     }
 }
