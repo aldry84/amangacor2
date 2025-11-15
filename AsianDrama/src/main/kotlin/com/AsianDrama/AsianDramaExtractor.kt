@@ -31,10 +31,10 @@ const val superembedAPI = "https://multiembed.mov"
 const val vidrockAPI = "https://vidrock.net"
 // --- Akhir Konstanta API ---
 
-// Ganti inheritance ke ExtractorApi agar bisa menggunakan fungsi helper
 object AsianDramaExtractor : ExtractorApi() {
-    // FIX: Implementasi properti 'name' yang abstrak
     override val name = "AsianDramaExtractor"
+    // FIX: Menambahkan implementasi mainUrl
+    override val mainUrl: String = vidsrcccAPI // URL apa pun bisa, ini hanya untuk memenuhi abstract class
 
     suspend fun invokeGomovies(
         title: String? = null,
@@ -71,7 +71,7 @@ object AsianDramaExtractor : ExtractorApi() {
             return tryParseJson<List<GpressSources>>(base64Decode(this).xorDecrypt(key))
         }
 
-        val slug = getEpisodeSlug(season, episode) // FIX: getEpisodeSlug
+        val slug = getEpisodeSlug(season, episode)
         val query = if (season == null) {
             title
         } else {
@@ -109,7 +109,7 @@ object AsianDramaExtractor : ExtractorApi() {
             media.third
         } else {
             app.get(
-                fixUrl( // FIX: Menggunakan fixUrl(url, domain) dari Utils.kt
+                fixUrl(
                     media.third,
                     api
                 )
@@ -117,7 +117,7 @@ object AsianDramaExtractor : ExtractorApi() {
                 ?.attr("href")
         } ?: return
 
-        res = app.get(fixUrl(iframe, api), cookies = cookies) // FIX: Menggunakan fixUrl(url, domain)
+        res = app.get(fixUrl(iframe, api), cookies = cookies)
         val url = res.document.select("meta[property=og:url]").attr("content")
         val headers = mapOf("X-Requested-With" to "XMLHttpRequest")
         val qualities = intArrayOf(2160, 1440, 1080, 720, 480, 360)
@@ -192,7 +192,7 @@ object AsianDramaExtractor : ExtractorApi() {
     ) {
 
         val res = app.get(url ?: return, interceptor = if (hasCloudflare) interceptor else null)
-        val referer = getBaseUrl(res.url) // FIX: getBaseUrl
+        val referer = getBaseUrl(res.url)
         val document = res.document
         document.select("ul#playeroptionsul > li").map {
             Triple(
@@ -220,7 +220,7 @@ object AsianDramaExtractor : ExtractorApi() {
                             it.embed_url,
                             key.toByteArray(),
                             false
-                        )?.fixUrlBloat() // FIX: fixUrlBloat
+                        )?.fixUrlBloat()
                     }
 
                     fixIframe -> Jsoup.parse(it.embed_url).select("IFRAME").attr("SRC")
@@ -229,7 +229,6 @@ object AsianDramaExtractor : ExtractorApi() {
             } ?: return@amap
             when {
                 source.startsWith("https://jeniusplay.com") -> {
-                    // Gunakan Jeniusplay2 dari package AsianDrama
                     Jeniusplay2().getUrl(source, "$referer/", subtitleCallback, callback)
                 }
 
@@ -310,16 +309,16 @@ object AsianDramaExtractor : ExtractorApi() {
                     ).document.selectFirst("script:containsData(source =)")?.data()
                     val iframe = Regex("source\\s*=\\s*\"([^\"]+)").find(
                         scriptData ?: return@amap
-                    )?.groupValues?.get(1)?.fixUrlBloat() // FIX: fixUrlBloat
+                    )?.groupValues?.get(1)?.fixUrlBloat()
 
                     val iframeRes =
                         app.get(iframe ?: return@amap, referer = "https://lucky.vidbox.site/").text
 
-                    val id = iframe?.substringAfterLast("/")?.substringBefore("?") // FIX: substringAfterLast
+                    val id = iframe?.substringAfterLast("/")?.substringBefore("?")
                     val key = Regex("\\w{48}").find(iframeRes)?.groupValues?.get(0) ?: return@amap
 
                     app.get(
-                        "${iframe?.substringBeforeLast("/")}/getSources?id=$id&_k=$key", // FIX: substringBeforeLast
+                        "${iframe?.substringBeforeLast("/")}/getSources?id=$id&_k=$key",
                         headers = mapOf(
                             "X-Requested-With" to "XMLHttpRequest",
                         ),
@@ -329,7 +328,7 @@ object AsianDramaExtractor : ExtractorApi() {
                             newExtractorLink(
                                 "UpCloud",
                                 "UpCloud",
-                                source.file ?: return@file, // FIX: Tipe data String?
+                                source.file ?: return@file,
                                 ExtractorLinkType.M3U8
                             ) {
                                 this.referer = "$vidsrcccAPI/"
@@ -489,7 +488,7 @@ object AsianDramaExtractor : ExtractorApi() {
             }
         } ?: return
 
-        val (seasonSlug, episodeSlug) = getEpisodeSlug(season, episode) // FIX: getEpisodeSlug
+        val (seasonSlug, episodeSlug) = getEpisodeSlug(season, episode)
 
         val subUrl = if (season == null) {
             "${watchSomuchAPI}/Watch/ajMovieSubtitles.aspx?mid=$id&tid=$epsId&part="
@@ -501,7 +500,7 @@ object AsianDramaExtractor : ExtractorApi() {
             subtitleCallback.invoke(
                 newSubtitleFile(
                     sub.label?.substringBefore("&nbsp")?.trim() ?: "",
-                    fixUrl(sub.url ?: return@map null, watchSomuchAPI) // FIX: Menggunakan fixUrl(url, domain)
+                    fixUrl(sub.url ?: return@map null, watchSomuchAPI)
                 )
             )
         }
@@ -563,7 +562,7 @@ object AsianDramaExtractor : ExtractorApi() {
             subtitleCallback.invoke(
                 newSubtitleFile(
                     subtitle.display ?: "",
-                    fixUrl(subtitle.url ?: return@map, mappleAPI) // FIX: Menggunakan fixUrl(url, domain)
+                    fixUrl(subtitle.url ?: return@map, mappleAPI)
                 )
             )
         }
@@ -804,7 +803,7 @@ object AsianDramaExtractor : ExtractorApi() {
         )
 
         """subtitle:"([^"]+)""".toRegex().find(json)?.groupValues?.get(1)?.split(",")?.map {
-            val (subLang, subUrl) = Regex("""\[(\w+)](http\S+)""").find(it)?.destructured
+            val (subLang, subUrl) = Regex("""\[(\w+)](http*:\/\/\S+)""").find(it)?.destructured // Sedikit penyesuaian regex
                 ?: return@map
             subtitleCallback.invoke(
                 newSubtitleFile(
@@ -880,14 +879,12 @@ object AsianDramaExtractor : ExtractorApi() {
 
     }
 
-    // FIX: Tambahkan override function getUrl untuk memenuhi ExtractorApi
     override suspend fun getUrl(
         url: String,
         referer: String?,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        // Fungsi ini tidak akan dipanggil karena kita menggunakan AsianDrama.kt -> loadLinks -> runAllAsync
-        // Biarkan kosong untuk memenuhi implementasi abstract
+        // Biarkan kosong
     }
 }
