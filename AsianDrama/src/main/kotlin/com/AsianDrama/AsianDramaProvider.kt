@@ -9,9 +9,7 @@ import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 class AsianDramaProvider: BasePlugin() {
     override fun load() {
         registerMainAPI(AsianDrama())
-        // Jeniusplay2 dipindahkan ke file Extractor baru, tetapi karena
-        // Anda tidak meminta file itu, kita asumsikan pendaftarannya dilakukan di tempat lain
-        // atau kita tambahkan ekstensi Jeniusplay2 di bawah.
+        registerExtractorAPI(Jeniusplay2()) // MENAMBAHKAN PENDAFTARAN JENIUSPLAY2
     }
     companion object {
         private const val DOMAINS_URL =
