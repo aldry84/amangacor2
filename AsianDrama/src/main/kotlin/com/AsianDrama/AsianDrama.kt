@@ -238,7 +238,15 @@ class AsianDrama : MainAPI() {
                 val info =
                     responseData?.meta?.videos?.find { it.season == season && it.episode == epNo }
 
-                newEpisode(links.distinct().toJson()) {
+                newEpisode(LinkData(
+                    id = tmdbId?.toIntOrNull(),
+                    imdbId = imdbId,
+                    type = "tv", // Set media type
+                    season = season,
+                    episode = epNo,
+                    title = title,
+                    year = year,
+                ).toJson()) { // Bungkus metadata ke LinkData
                     this.name = info?.name ?: "Episode $epNo"
                     this.posterUrl = info?.thumbnail
                     this.season = season
@@ -259,7 +267,13 @@ class AsianDrama : MainAPI() {
                 addTMDbId(tmdbId)
             }
         } else {
-            return newMovieLoadResponse(title, url, TvType.Movie, hrefs) {
+            return newMovieLoadResponse(title, url, TvType.Movie, LinkData(
+                id = tmdbId?.toIntOrNull(),
+                imdbId = imdbId,
+                type = "movie", // Set media type
+                title = title,
+                year = year,
+            ).toJson()) { // Bungkus metadata ke LinkData
                 this.backgroundPosterUrl = background
                 this.year = year
                 this.plot = description
@@ -280,30 +294,125 @@ class AsianDrama : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val links = tryParseJson<List<String>>(data).orEmpty()
-        if (links.isEmpty()) {
-            Log.e("LoadLinks", "No links found in data: $data")
-            return false
-        }
-        for (link in links) {
-            try {
-                val finalLink = when {
-                    "safelink=" in link -> cinematickitBypass(link)
-                    "unblockedgames" in link -> bypassHrefli(link)
-                    "examzculture" in link -> bypassHrefli(link)
-                    else -> link
-                }
+        // Ambil data metadata dari LinkData
+        val res = tryParseJson<LinkData>(data) ?: return false
 
-                if (finalLink != null) {
-                    loadExtractor(finalLink, subtitleCallback, callback)
-                } else {
-                    Log.w("LoadLinks", "Bypass returned null for link: $link")
-                }
-            } catch (_: Exception) {
-                Log.e("LoadLinks", "Failed to load link: $link")
+        // Jika data mengandung tautan lama (seperti dari scraper lama)
+        if (res.title.isNullOrEmpty()) {
+            val links = tryParseJson<List<String>>(data).orEmpty()
+            if (links.isEmpty()) {
+                Log.e("LoadLinks", "No links found in data: $data")
+                return false
             }
+            for (link in links) {
+                try {
+                    val finalLink = when {
+                        "safelink=" in link -> cinematickitBypass(link)
+                        "unblockedgames" in link -> bypassHrefli(link)
+                        "examzculture" in link -> bypassHrefli(link)
+                        else -> link
+                    }
+
+                    if (finalLink != null) {
+                        loadExtractor(finalLink, subtitleCallback, callback)
+                    } else {
+                        Log.w("LoadLinks", "Bypass returned null for link: $link")
+                    }
+                } catch (_: Exception) {
+                    Log.e("LoadLinks", "Failed to load link: $link")
+                }
+            }
+        } else {
+            // Jika data adalah LinkData (menggunakan TMDB/IMDB ID)
+            runAllAsync(
+                {
+                    AsianDramaExtractor.invokeIdlix(
+                        res.title,
+                        res.year,
+                        res.season,
+                        res.episode,
+                        subtitleCallback,
+                        callback
+                    )
+                },
+                {
+                    AsianDramaExtractor.invokeVidsrccc(
+                        res.id,
+                        res.imdbId,
+                        res.season,
+                        res.episode,
+                        subtitleCallback,
+                        callback
+                    )
+                },
+                {
+                    AsianDramaExtractor.invokeVidsrc(
+                        res.imdbId,
+                        res.season,
+                        res.episode,
+                        subtitleCallback,
+                        callback
+                    )
+                },
+                {
+                    AsianDramaExtractor.invokeWatchsomuch(
+                        res.imdbId,
+                        res.season,
+                        res.episode,
+                        subtitleCallback
+                    )
+                },
+                {
+                    AsianDramaExtractor.invokeVixsrc(res.id, res.season, res.episode, callback)
+                },
+                {
+                    AsianDramaExtractor.invokeVidlink(res.id, res.season, res.episode, callback)
+                },
+                {
+                    AsianDramaExtractor.invokeVidfast(res.id, res.season, res.episode, subtitleCallback, callback)
+                },
+                {
+                    AsianDramaExtractor.invokeMapple(res.id, res.season, res.episode, subtitleCallback, callback)
+                },
+                {
+                    AsianDramaExtractor.invokeWyzie(res.id, res.season, res.episode, subtitleCallback)
+                },
+                {
+                    AsianDramaExtractor.invokeVidsrccx(res.id, res.season, res.episode, callback)
+                },
+                {
+                    AsianDramaExtractor.invokeSuperembed(
+                        res.id,
+                        res.season,
+                        res.episode,
+                        subtitleCallback,
+                        callback
+                    )
+                },
+                {
+                    AsianDramaExtractor.invokeVidrock(
+                        res.id,
+                        res.season,
+                        res.episode,
+                        subtitleCallback,
+                        callback
+                    )
+                }
+            )
         }
 
         return true
     }
+
+    // Class LinkData baru untuk menggantikan JSON string lama
+    data class LinkData(
+        val id: Int? = null,
+        val imdbId: String? = null,
+        val type: String? = null,
+        val season: Int? = null,
+        val episode: Int? = null,
+        val title: String? = null,
+        val year: Int? = null,
+    )
+
 }
