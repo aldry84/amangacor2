@@ -60,20 +60,22 @@ open class AsianDrama : TmdbProvider() {
 
     }
 
-    // FIX: Mengganti kategori mainPage agar fokus ke Drama Asia
+    // FIX: Mengganti kategori mainPage agar fokus ke Drama Asia (NON-ANIME)
     override val mainPage = mainPageOf(
+        // Menambahkan &without_keywords=210024 (ID TMDB untuk "anime")
+        
         // Mirip "drama/ongoing" + "latest"
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko|ja|zh|th&sort_by=first_air_date.desc&first_air_date.lte=${getDate().today}" to "Rilisan Drama Asia Terbaru",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko|ja|zh|th&sort_by=first_air_date.desc&first_air_date.lte=${getDate().today}&without_keywords=210024" to "Rilisan Drama Asia Terbaru",
         // Mirip "drama/korean-drama"
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&sort_by=popularity.desc" to "Drama Korea Populer",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&sort_by=popularity.desc&without_keywords=210024" to "Drama Korea Populer",
         // Mirip "drama/chinese-drama"
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=zh&sort_by=popularity.desc" to "Drama China Populer",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=zh&sort_by=popularity.desc&without_keywords=210024" to "Drama China Populer",
         // Mirip "drama/japanese-drama"
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ja&sort_by=popularity.desc" to "Drama Jepang Populer",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ja&sort_by=popularity.desc&without_keywords=210024" to "Drama Jepang Populer",
         // Bonus: Thai
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=th&sort_by=popularity.desc" to "Drama Thailand Populer",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=th&sort_by=popularity.desc&without_keywords=210024" to "Drama Thailand Populer",
         // Mirip "movies" (versi Asia)
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko|ja|zh|th&sort_by=popularity.desc" to "Film Asia Populer"
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko|ja|zh|th&sort_by=popularity.desc&without_keywords=210024" to "Film Asia Populer"
     )
 
     private fun getImageUrl(link: String?): String? {
