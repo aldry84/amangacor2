@@ -59,17 +59,11 @@ open class AsianDrama : TmdbProvider() {
     }
 
     override val mainPage = mainPageOf(
-        // Mirip "drama/ongoing" + "latest"
         "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko|ja|zh|th&sort_by=first_air_date.desc&first_air_date.lte=${getDate().today}&without_keywords=210024&without_genres=16" to "Rilisan Drama Asia Terbaru",
-        // Mirip "drama/korean-drama"
         "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&sort_by=popularity.desc&without_keywords=210024&without_genres=16" to "Drama Korea Populer",
-        // Mirip "drama/chinese-drama"
         "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=zh&sort_by=popularity.desc&without_keywords=210024&without_genres=16" to "Drama China Populer",
-        // Mirip "drama/japanese-drama"
         "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ja&sort_by=popularity.desc&without_keywords=210024&without_genres=16" to "Drama Jepang Populer",
-        // Bonus: Thai
         "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=th&sort_by=popularity.desc&without_keywords=210024&without_genres=16" to "Drama Thailand Populer",
-        // Mirip "movies" (versi Asia)
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko|ja|zh|th&sort_by=popularity.desc&without_keywords=210024&without_genres=16" to "Film Asia Populer"
     )
 
@@ -84,8 +78,10 @@ open class AsianDrama : TmdbProvider() {
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val adultQuery =
-            if (settingsForProvider.enableAdult) "" else "&without_keywords=190370|13059|226161|195669"
+        // FIX: Menggunakan parameter TMDB resmi "&include_adult="
+        // Ini akan mengikuti pengaturan di aplikasi Cloudstream
+        val adultQuery = "&include_adult=${settingsForProvider.enableAdult}"
+        
         val type = if (request.data.contains("/movie")) "movie" else "tv"
         // Menambahkan filter &without_genres=16 ke URL request juga
         val home = app.get("${request.data}$adultQuery&without_genres=16&page=$page")
@@ -109,7 +105,7 @@ open class AsianDrama : TmdbProvider() {
     override suspend fun quickSearch(query: String): List<SearchResponse>? = search(query)
 
     override suspend fun search(query: String): List<SearchResponse>? {
-        // Filter anime/animasi dari pencarian juga
+        // Filter &include_adult= di pencarian sudah benar
         return app.get("$tmdbAPI/search/multi?api_key=$apiKey&language=en-US&query=$query&page=1&include_adult=${settingsForProvider.enableAdult}")
             .parsedSafe<Results>()?.results?.mapNotNull { media ->
                 media.toSearchResponse()
@@ -158,11 +154,10 @@ open class AsianDrama : TmdbProvider() {
         val isAsianDrama = genres?.contains("Drama") == true && (res.original_language == "ko" || res.original_language == "zh" || res.original_language == "ja" || res.original_language == "th")
         val isAnime = genres?.contains("Animation") == true && (res.original_language == "ja" || res.original_language == "zh")
         
-        // FIX: Definisi 'keywords' yang salah diperbaiki
         val keywords: List<String> = (
             res.keywords?.results?.mapNotNull { it.name }?.ifEmpty { null }
             ?: res.keywords?.keywords?.mapNotNull { it.name }
-        ).orEmpty() // .orEmpty() memastikan 'keywords' adalah List<String> (non-null)
+        ).orEmpty() 
 
         val actors = res.credits?.cast?.mapNotNull { cast ->
             ActorData(
@@ -219,7 +214,6 @@ open class AsianDrama : TmdbProvider() {
                 this.backgroundPosterUrl = bgPoster
                 this.year = year
                 this.plot = res.overview 
-                // FIX: 'keywords' sekarang non-null, .isNotEmpty() aman
                 this.tags = keywords.takeIf { it.isNotEmpty() } ?: genres
                 this.score = Score.from10(res.vote_average?.toString())
                 this.showStatus = getStatus(res.status)
@@ -248,7 +242,6 @@ open class AsianDrama : TmdbProvider() {
                 this.year = year
                 this.plot = res.overview
                 this.duration = res.runtime
-                // FIX: 'keywords' sekarang non-null, .isNotEmpty() aman
                 this.tags = keywords.takeIf { it.isNotEmpty() } ?: genres
                 this.score = Score.from10(res.vote_average?.toString())
                 this.recommendations = recommendations
