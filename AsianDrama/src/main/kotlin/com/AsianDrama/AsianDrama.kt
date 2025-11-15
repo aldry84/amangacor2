@@ -16,10 +16,31 @@ import kotlinx.coroutines.runBlocking
 import org.jsoup.nodes.Element
 
 class AsianDrama : MainAPI() {
-    // ... (kode mainUrl, name, dll. tidak berubah) ...
+    override var mainUrl: String = runBlocking {
+        AsianDramaProvider.getDomains()?.dramadrip ?: "https://dramadrip.com"
+    }
+    override var name = "AsianDrama"
+    override val hasMainPage = true
+    override var lang = "en"
+    override val hasDownloadSupport = true
+    override val hasQuickSearch = true
+    override val supportedTypes = setOf(TvType.Movie, TvType.AsianDrama, TvType.TvSeries)
+    // FIX: Menambahkan kembali variabel yang hilang
+    private val cinemeta_url = "https://v3-cinemeta.strem.io/meta"
+
+    override val mainPage = mainPageOf(
+        "drama/ongoing" to "Ongoing Dramas",
+        "latest" to "Latest Releases",
+        "drama/chinese-drama" to "Chinese Dramas",
+        "drama/japanese-drama" to "Japanese Dramas",
+        "drama/korean-drama" to "Korean Dramas",
+        "movies" to "Movies",
+        "web-series" to "Web Series",
+    )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val document = app.get("$mainUrl/${request.data}/page/$page").document
+        // FIX: Menggunakan 'toSearchResult' yang sudah ditambahkan kembali
         val home = document.select("article").mapNotNull { it.toSearchResult() }
 
         return newHomePageResponse(
@@ -32,7 +53,38 @@ class AsianDrama : MainAPI() {
         )
     }
 
-    // ... (kode toSearchResult, search tidak berubah) ...
+    // FIX: Menambahkan kembali fungsi private 'toSearchResult'
+    private fun Element.toSearchResult(): SearchResponse? {
+        val title =
+            this.selectFirst("h2.entry-title")?.text()?.substringAfter("Download") ?: return null
+        val href = this.select("h2.entry-title > a").attr("href")
+        val imgElement = this.selectFirst("img")
+        val srcset = imgElement?.attr("srcset")
+
+        val highestResUrl = srcset
+            ?.split(",")
+            ?.map { it.trim() }
+            ?.mapNotNull {
+                val parts = it.split(" ")
+                if (parts.size == 2) parts[0] to parts[1].removeSuffix("w").toIntOrNull() else null
+            }
+            ?.maxByOrNull { it.second ?: 0 }
+            ?.first
+
+        val posterUrl = highestResUrl ?: imgElement?.attr("src")
+        return newMovieSearchResponse(title, href, TvType.Movie) {
+            this.posterUrl = posterUrl
+        }
+
+    }
+
+    override suspend fun search(query: String): List<SearchResponse> {
+        val document = app.get("$mainUrl/?s=$query").document
+        val results = document.select("article").mapNotNull {
+            it.toSearchResult()
+        }
+        return results
+    }
 
     @RequiresApi(Build.VERSION_CODES.O)
     override suspend fun load(url: String): LoadResponse {
@@ -69,10 +121,11 @@ class AsianDrama : MainAPI() {
         val descriptions = document.selectFirst("div.content-section p.mt-4")?.text()?.trim()
         val typeset = if (tvType == TvType.TvSeries) "series" else "movie"
         val responseData = if (tmdbId?.isNotEmpty() == true) {
+            // FIX: Menggunakan 'cinemeta_url' yang sudah ditambahkan kembali
             val jsonResponse = app.get("$cinemeta_url/$typeset/$imdbId.json").text
             if (jsonResponse.isNotEmpty() && jsonResponse.startsWith("{")) {
                 val gson = Gson()
-                gson.fromJson(jsonResponse, ResponseData::class.java) // FIX: ResponseData
+                gson.fromJson(jsonResponse, ResponseData::class.java)
             } else null
         } else null
         var cast: List<String> = emptyList()
@@ -80,16 +133,16 @@ class AsianDrama : MainAPI() {
         var background: String = image
         var description: String? = null
         if (responseData != null) {
-            description = responseData.meta?.description ?: descriptions // FIX: responseData.meta
-            cast = responseData.meta?.cast ?: emptyList() // FIX: responseData.meta
-            background = responseData.meta?.background ?: image // FIX: responseData.meta
+            description = responseData.meta?.description ?: descriptions
+            cast = responseData.meta?.cast ?: emptyList()
+            background = responseData.meta?.background ?: image
         }
 
 
         val hrefs: List<String> = document.select("div.wp-block-button > a")
             .mapNotNull { linkElement ->
                 val link = linkElement.attr("href")
-                // FIX: cinematickitloadBypass
+                // FIX: Memanggil 'cinematickitloadBypass' dari Utils.kt
                 val actual=cinematickitloadBypass(link) ?: return@mapNotNull null
                 val page = app.get(actual).document
                 page.select("div.wp-block-button.movie_btn a")
@@ -123,12 +176,10 @@ class AsianDrama : MainAPI() {
                     val season = seasonMatch?.groupValues?.getOrNull(1)?.toIntOrNull()
 
                     if (season != null) {
-                        // Try to get the links block; if next sibling doesn't have buttons, try alternative selection
                         var linksBlock = seasonHeader.nextElementSibling()
                         if (linksBlock == null || linksBlock.select("div.wp-block-button")
                                 .isEmpty()
                         ) {
-                            // Sometimes buttons could be inside a child or sibling div
                             linksBlock = seasonHeader.parent()?.selectFirst("div.wp-block-button")
                                 ?: linksBlock
                         }
@@ -139,7 +190,7 @@ class AsianDrama : MainAPI() {
 
                         for (qualityPageLink in qualityLinks) {
                             try {
-                                // FIX: cinematickitloadBypass
+                                // FIX: Memanggil 'cinematickitloadBypass' dari Utils.kt
                                 val rawqualityPageLink=if (qualityPageLink.contains("modpro")) qualityPageLink else cinematickitloadBypass(qualityPageLink) ?: ""
                                 val response = app.get(rawqualityPageLink)
                                 val episodeDoc = response.document
@@ -188,25 +239,24 @@ class AsianDrama : MainAPI() {
 
             val finalEpisodes = tvSeriesEpisodes.map { (seasonEpisode, links) ->
                 val (season, epNo) = seasonEpisode
-                // FIX: responseData.meta?.videos?.find { it.season... }
-                val info = responseData?.meta?.videos?.find { 
-                    it.season == season && it.episode == epNo 
+                val info = responseData?.meta?.videos?.find {
+                    it.season == season && it.episode == epNo
                 }
 
                 newEpisode(LinkData(
                     id = tmdbId?.toIntOrNull(),
                     imdbId = imdbId,
-                    type = "tv", // Set media type
+                    type = "tv",
                     season = season,
                     episode = epNo,
                     title = title,
                     year = year,
-                ).toJson()) { // Bungkus metadata ke LinkData
-                    this.name = info?.name ?: "Episode $epNo" // FIX: info?.name
-                    this.posterUrl = info?.thumbnail // FIX: info?.thumbnail
+                ).toJson()) {
+                    this.name = info?.name ?: "Episode $epNo"
+                    this.posterUrl = info?.thumbnail
                     this.season = season
                     this.episode = epNo
-                    this.description = info?.overview // FIX: info?.overview
+                    this.description = info?.overview
                 }
             }
 
@@ -225,10 +275,10 @@ class AsianDrama : MainAPI() {
             return newMovieLoadResponse(title, url, TvType.Movie, LinkData(
                 id = tmdbId?.toIntOrNull(),
                 imdbId = imdbId,
-                type = "movie", // Set media type
+                type = "movie",
                 title = title,
                 year = year,
-            ).toJson()) { // Bungkus metadata ke LinkData
+            ).toJson()) {
                 this.backgroundPosterUrl = background
                 this.year = year
                 this.plot = description
@@ -249,10 +299,8 @@ class AsianDrama : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // Ambil data metadata dari LinkData
         val res = tryParseJson<LinkData>(data) ?: return false
 
-        // Jika data mengandung tautan lama (seperti dari scraper lama)
         if (res.title.isNullOrEmpty()) {
             val links = tryParseJson<List<String>>(data).orEmpty()
             if (links.isEmpty()) {
@@ -262,9 +310,9 @@ class AsianDrama : MainAPI() {
             for (link in links) {
                 try {
                     val finalLink = when {
-                        "safelink=" in link -> cinematickitBypass(link) // FIX: cinematickitBypass
-                        "unblockedgames" in link -> bypassHrefli(link) // FIX: bypassHrefli
-                        "examzculture" in link -> bypassHrefli(link) // FIX: bypassHrefli
+                        "safelink=" in link -> cinematickitBypass(link) // FIX: Memanggil dari Utils.kt
+                        "unblockedgames" in link -> bypassHrefli(link) // FIX: Memanggil dari Utils.kt
+                        "examzculture" in link -> bypassHrefli(link) // FIX: Memanggil dari Utils.kt
                         else -> link
                     }
 
@@ -278,7 +326,6 @@ class AsianDrama : MainAPI() {
                 }
             }
         } else {
-            // Jika data adalah LinkData (menggunakan TMDB/IMDB ID)
             runAllAsync(
                 {
                     AsianDramaExtractor.invokeIdlix(
@@ -359,7 +406,6 @@ class AsianDrama : MainAPI() {
         return true
     }
 
-    // Class LinkData baru untuk menggantikan JSON string lama
     data class LinkData(
         val id: Int? = null,
         val imdbId: String? = null,
