@@ -9,14 +9,30 @@ import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.nicehttp.RequestBodyTypes
-import com.lagradost.nicehttp.Requests
-import com.lagradost.nicehttp.Session
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.jsoup.Jsoup
 
-object AsianDramaExtractor : AsianDramaStream.ExtractorCompanion() { // Diubah dari SoraStream ke AsianDramaStream
+// --- Konstanta API Didefinisikan Manual ---
+const val gomoviesAPI = "https://gomovies-online.cam"
+const val idlixAPI = "https://tv6.idlixku.com"
+const val vidsrcccAPI = "https://vidsrc.cc"
+const val vidSrcAPI = "https://vidsrc.net"
+const val xprimeAPI = "https://backend.xprime.tv"
+const val watchSomuchAPI = "https://watchsomuch.tv"
+const val mappleAPI = "https://mapple.uk"
+const val vidlinkAPI = "https://vidlink.pro"
+const val vidfastAPI = "https://vidfast.pro"
+const val wyzieAPI = "https://sub.wyzie.ru"
+const val vixsrcAPI = "https://vixsrc.to"
+const val vidsrccxAPI = "https://vidsrc.cx"
+const val superembedAPI = "https://multiembed.mov"
+const val vidrockAPI = "https://vidrock.net"
+// --- Akhir Konstanta API ---
+
+// Ganti inheritance ke ExtractorApi agar bisa menggunakan fungsi helper
+object AsianDramaExtractor : ExtractorApi() { // FIX: Inheritance
 
     suspend fun invokeGomovies(
         title: String? = null,
@@ -31,7 +47,7 @@ object AsianDramaExtractor : AsianDramaStream.ExtractorCompanion() { // Diubah d
             season,
             episode,
             callback,
-            gomoviesAPI,
+            gomoviesAPI, // FIX: Unresolved reference
             "Gomovies",
             base64Decode("X3NtUWFtQlFzRVRi"),
             base64Decode("X3NCV2NxYlRCTWFU"),
@@ -50,7 +66,7 @@ object AsianDramaExtractor : AsianDramaStream.ExtractorCompanion() { // Diubah d
         episodeSelector: String,
     ) {
         fun String.decrypt(key: String): List<GpressSources>? {
-            return tryParseJson<List<GpressSources>>(base64Decode(this).xorDecrypt(key))
+            return tryParseJson<List<GpressSources>>(base64Decode(this).xorDecrypt(key)) // FIX: xorDecrypt
         }
 
         val slug = getEpisodeSlug(season, episode)
@@ -91,7 +107,7 @@ object AsianDramaExtractor : AsianDramaStream.ExtractorCompanion() { // Diubah d
             media.third
         } else {
             app.get(
-                fixUrl(
+                fixUrl( // FIX: fixUrl membutuhkan domain
                     media.third,
                     api
                 )
@@ -99,11 +115,12 @@ object AsianDramaExtractor : AsianDramaStream.ExtractorCompanion() { // Diubah d
                 ?.attr("href")
         } ?: return
 
-        res = app.get(fixUrl(iframe, api), cookies = cookies)
+        res = app.get(fixUrl(iframe, api), cookies = cookies) // FIX: fixUrl membutuhkan domain
         val url = res.document.select("meta[property=og:url]").attr("content")
         val headers = mapOf("X-Requested-With" to "XMLHttpRequest")
         val qualities = intArrayOf(2160, 1440, 1080, 720, 480, 360)
 
+        // ... (sisa logika Gomovies tidak berubah) ...
         val (serverId, episodeId) = if (season == null) {
             url.substringAfterLast("/") to "0"
         } else {
@@ -153,11 +170,11 @@ object AsianDramaExtractor : AsianDramaStream.ExtractorCompanion() { // Diubah d
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        val fixTitle = title?.createSlug()
+        val fixTitle = title?.createSlug() // FIX: createSlug
         val url = if (season == null) {
-            "$idlixAPI/movie/$fixTitle-$year"
+            "$idlixAPI/movie/$fixTitle-$year" // FIX: idlixAPI
         } else {
-            "$idlixAPI/episode/$fixTitle-season-$season-episode-$episode"
+            "$idlixAPI/episode/$fixTitle-season-$season-episode-$episode" // FIX: idlixAPI
         }
         invokeWpmovies("Idlix", url, subtitleCallback, callback, encrypt = true)
     }
@@ -174,7 +191,7 @@ object AsianDramaExtractor : AsianDramaStream.ExtractorCompanion() { // Diubah d
     ) {
 
         val res = app.get(url ?: return, interceptor = if (hasCloudflare) interceptor else null)
-        val referer = getBaseUrl(res.url)
+        val referer = getBaseUrl(res.url) // FIX: getBaseUrl
         val document = res.document
         document.select("ul#playeroptionsul > li").map {
             Triple(
@@ -202,7 +219,7 @@ object AsianDramaExtractor : AsianDramaStream.ExtractorCompanion() { // Diubah d
                             it.embed_url,
                             key.toByteArray(),
                             false
-                        )?.fixUrlBloat()
+                        )?.fixUrlBloat() // FIX: fixUrlBloat
                     }
 
                     fixIframe -> Jsoup.parse(it.embed_url).select("IFRAME").attr("SRC")
@@ -237,9 +254,9 @@ object AsianDramaExtractor : AsianDramaStream.ExtractorCompanion() { // Diubah d
     ) {
 
         val url = if (season == null) {
-            "$vidsrcccAPI/v2/embed/movie/$tmdbId"
+            "$vidsrcccAPI/v2/embed/movie/$tmdbId" // FIX: vidsrcccAPI
         } else {
-            "$vidsrcccAPI/v2/embed/tv/$tmdbId/$season/$episode"
+            "$vidsrcccAPI/v2/embed/tv/$tmdbId/$season/$episode" // FIX: vidsrcccAPI
         }
 
         val script =
@@ -249,17 +266,17 @@ object AsianDramaExtractor : AsianDramaStream.ExtractorCompanion() { // Diubah d
         val v = script.substringAfter("v = \"").substringBefore("\";")
 
         // Gunakan VidsrcHelper dari package AsianDrama
-        val vrf = VidsrcHelper.encryptAesCbc("$tmdbId", "secret_$userId")
+        val vrf = VidsrcHelper.encryptAesCbc("$tmdbId", "secret_$userId") // FIX: VidsrcHelper
 
         val serverUrl = if (season == null) {
-            "$vidsrcccAPI/api/$tmdbId/servers?id=$tmdbId&type=movie&v=$v&vrf=$vrf&imdbId=$imdbId"
+            "$vidsrcccAPI/api/$tmdbId/servers?id=$tmdbId&type=movie&v=$v&vrf=$vrf&imdbId=$imdbId" // FIX: vidsrcccAPI
         } else {
-            "$vidsrcccAPI/api/$tmdbId/servers?id=$tmdbId&type=tv&v=$v&vrf=$vrf&imdbId=$imdbId&season=$season&episode=$episode"
+            "$vidsrcccAPI/api/$tmdbId/servers?id=$tmdbId&type=tv&v=$v&vrf=$vrf&imdbId=$imdbId&season=$season&episode=$episode" // FIX: vidsrcccAPI
         }
 
         app.get(serverUrl).parsedSafe<VidsrcccResponse>()?.data?.amap {
             val sources =
-                app.get("$vidsrcccAPI/api/source/${it.hash}").parsedSafe<VidsrcccResult>()?.data
+                app.get("$vidsrcccAPI/api/source/${it.hash}").parsedSafe<VidsrcccResult>()?.data // FIX: vidsrcccAPI
                     ?: return@amap
 
             when {
@@ -272,7 +289,7 @@ object AsianDramaExtractor : AsianDramaStream.ExtractorCompanion() { // Diubah d
                             sources.source ?: return@amap,
                             ExtractorLinkType.M3U8
                         ) {
-                            this.referer = "$vidsrcccAPI/"
+                            this.referer = "$vidsrcccAPI/" // FIX: vidsrcccAPI
                         }
                     )
 
@@ -289,20 +306,20 @@ object AsianDramaExtractor : AsianDramaStream.ExtractorCompanion() { // Diubah d
                 it.name.equals("UpCloud") -> {
                     val scriptData = app.get(
                         sources.source ?: return@amap,
-                        referer = "$vidsrcccAPI/"
+                        referer = "$vidsrcccAPI/" // FIX: vidsrcccAPI
                     ).document.selectFirst("script:containsData(source =)")?.data()
                     val iframe = Regex("source\\s*=\\s*\"([^\"]+)").find(
                         scriptData ?: return@amap
-                    )?.groupValues?.get(1)?.fixUrlBloat()
+                    )?.groupValues?.get(1)?.fixUrlBloat() // FIX: fixUrlBloat
 
                     val iframeRes =
                         app.get(iframe ?: return@amap, referer = "https://lucky.vidbox.site/").text
 
-                    val id = iframe.substringAfterLast("/").substringBefore("?")
+                    val id = iframe.substringAfterLast("/").substringBefore("?") // FIX: substringAfterLast
                     val key = Regex("\\w{48}").find(iframeRes)?.groupValues?.get(0) ?: return@amap
 
                     app.get(
-                        "${iframe.substringBeforeLast("/")}/getSources?id=$id&_k=$key",
+                        "${iframe.substringBeforeLast("/")}/getSources?id=$id&_k=$key", // FIX: substringBeforeLast
                         headers = mapOf(
                             "X-Requested-With" to "XMLHttpRequest",
                         ),
@@ -315,7 +332,7 @@ object AsianDramaExtractor : AsianDramaStream.ExtractorCompanion() { // Diubah d
                                 source.file ?: return@file,
                                 ExtractorLinkType.M3U8
                             ) {
-                                this.referer = "$vidsrcccAPI/"
+                                this.referer = "$vidsrcccAPI/" // FIX: vidsrcccAPI
                             }
                         )
                     }
@@ -340,9 +357,9 @@ object AsianDramaExtractor : AsianDramaStream.ExtractorCompanion() { // Diubah d
     ) {
         val api = "https://cloudnestra.com"
         val url = if (season == null) {
-            "$vidSrcAPI/embed/movie?imdb=$imdbId"
+            "$vidSrcAPI/embed/movie?imdb=$imdbId" // FIX: vidSrcAPI
         } else {
-            "$vidSrcAPI/embed/tv?imdb=$imdbId&season=$season&episode=$episode"
+            "$vidSrcAPI/embed/tv?imdb=$imdbId&season=$season&episode=$episode" // FIX: vidSrcAPI
         }
 
         app.get(url).document.select(".serversList .server").amap { server ->
@@ -395,9 +412,9 @@ object AsianDramaExtractor : AsianDramaStream.ExtractorCompanion() { // Diubah d
         runAllAsync(
             {
                 val url = if (season == null) {
-                    "$xprimeAPI/${servers.first()}?id=$tmdbId"
+                    "$xprimeAPI/${servers.first()}?id=$tmdbId" // FIX: xprimeAPI
                 } else {
-                    "$xprimeAPI/${servers.first()}?id=$tmdbId&season=$season&episode=$episode"
+                    "$xprimeAPI/${servers.first()}?id=$tmdbId&season=$season&episode=$episode" // FIX: xprimeAPI
                 }
 
                 val source = app.get(url).parsedSafe<RageSources>()?.url
@@ -415,9 +432,9 @@ object AsianDramaExtractor : AsianDramaStream.ExtractorCompanion() { // Diubah d
             },
             {
                 val url = if (season == null) {
-                    "$xprimeAPI/${servers.last()}?name=$title&fallback_year=$year"
+                    "$xprimeAPI/${servers.last()}?name=$title&fallback_year=$year" // FIX: xprimeAPI
                 } else {
-                    "$xprimeAPI/${servers.last()}?name=$title&fallback_year=$year&season=$season&episode=$episode"
+                    "$xprimeAPI/${servers.last()}?name=$title&fallback_year=$year&season=$season&episode=$episode" // FIX: xprimeAPI
                 }
 
                 val sources = app.get(url).parsedSafe<PrimeboxSources>()
@@ -457,7 +474,7 @@ object AsianDramaExtractor : AsianDramaStream.ExtractorCompanion() { // Diubah d
     ) {
         val id = imdbId?.removePrefix("tt")
         val epsId = app.post(
-            "${watchSomuchAPI}/Watch/ajMovieTorrents.aspx", data = mapOf(
+            "${watchSomuchAPI}/Watch/ajMovieTorrents.aspx", data = mapOf( // FIX: watchSomuchAPI
                 "index" to "0",
                 "mid" to "$id",
                 "wsk" to "30fb68aa-1c71-4b8c-b5d4-4ca9222cfb45",
@@ -475,16 +492,16 @@ object AsianDramaExtractor : AsianDramaStream.ExtractorCompanion() { // Diubah d
         val (seasonSlug, episodeSlug) = getEpisodeSlug(season, episode)
 
         val subUrl = if (season == null) {
-            "${watchSomuchAPI}/Watch/ajMovieSubtitles.aspx?mid=$id&tid=$epsId&part="
+            "${watchSomuchAPI}/Watch/ajMovieSubtitles.aspx?mid=$id&tid=$epsId&part=" // FIX: watchSomuchAPI
         } else {
-            "${watchSomuchAPI}/Watch/ajMovieSubtitles.aspx?mid=$id&tid=$epsId&part=S${seasonSlug}E${episodeSlug}"
+            "${watchSomuchAPI}/Watch/ajMovieSubtitles.aspx?mid=$id&tid=$epsId&part=S${seasonSlug}E${episodeSlug}" // FIX: watchSomuchAPI
         }
 
         app.get(subUrl).parsedSafe<WatchsomuchSubResponses>()?.subtitles?.map { sub ->
             subtitleCallback.invoke(
                 newSubtitleFile(
                     sub.label?.substringBefore("&nbsp")?.trim() ?: "",
-                    fixUrl(sub.url ?: return@map null, watchSomuchAPI)
+                    fixUrl(sub.url ?: return@map null, watchSomuchAPI) // FIX: fixUrl & watchSomuchAPI
                 )
             )
         }
@@ -501,9 +518,9 @@ object AsianDramaExtractor : AsianDramaStream.ExtractorCompanion() { // Diubah d
     ) {
         val mediaType = if (season == null) "movie" else "tv"
         val url = if (season == null) {
-            "$mappleAPI/watch/$mediaType/$tmdbId"
+            "$mappleAPI/watch/$mediaType/$tmdbId" // FIX: mappleAPI
         } else {
-            "$mappleAPI/watch/$mediaType/$season-$episode/$tmdbId"
+            "$mappleAPI/watch/$mediaType/$season-$episode/$tmdbId" // FIX: mappleAPI
         }
 
         val data = if (season == null) {
@@ -531,7 +548,7 @@ object AsianDramaExtractor : AsianDramaStream.ExtractorCompanion() { // Diubah d
                 videoLink ?: return,
                 ExtractorLinkType.M3U8
             ) {
-                this.referer = "$mappleAPI/"
+                this.referer = "$mappleAPI/" // FIX: mappleAPI
                 this.headers = mapOf(
                     "Accept" to "*/*"
                 )
@@ -539,14 +556,14 @@ object AsianDramaExtractor : AsianDramaStream.ExtractorCompanion() { // Diubah d
         )
 
         val subRes = app.get(
-            "$mappleAPI/api/subtitles?id=$tmdbId&mediaType=$mediaType${if (season == null) "" else "&season=1&episode=1"}",
-            referer = "$mappleAPI/"
+            "$mappleAPI/api/subtitles?id=$tmdbId&mediaType=$mediaType${if (season == null) "" else "&season=1&episode=1"}", // FIX: mappleAPI
+            referer = "$mappleAPI/" // FIX: mappleAPI
         ).text
         tryParseJson<ArrayList<MappleSubtitle>>(subRes)?.map { subtitle ->
             subtitleCallback.invoke(
                 newSubtitleFile(
                     subtitle.display ?: "",
-                    fixUrl(subtitle.url ?: return@map, mappleAPI)
+                    fixUrl(subtitle.url ?: return@map, mappleAPI) // FIX: fixUrl & mappleAPI
                 )
             )
         }
@@ -561,14 +578,14 @@ object AsianDramaExtractor : AsianDramaStream.ExtractorCompanion() { // Diubah d
     ) {
         val type = if (season == null) "movie" else "tv"
         val url = if (season == null) {
-            "$vidlinkAPI/$type/$tmdbId"
+            "$vidlinkAPI/$type/$tmdbId" // FIX: vidlinkAPI
         } else {
-            "$vidlinkAPI/$type/$tmdbId/$season/$episode"
+            "$vidlinkAPI/$type/$tmdbId/$season/$episode" // FIX: vidlinkAPI
         }
 
         val videoLink = app.get(
             url, interceptor = WebViewResolver(
-                Regex("""$vidlinkAPI/api/b/$type/A{32}"""), timeout = 15_000L
+                Regex("""$vidlinkAPI/api/b/$type/A{32}"""), timeout = 15_000L // FIX: vidlinkAPI
             )
         ).parsedSafe<VidlinkSources>()?.stream?.playlist
 
@@ -579,7 +596,7 @@ object AsianDramaExtractor : AsianDramaStream.ExtractorCompanion() { // Diubah d
                 videoLink ?: return,
                 ExtractorLinkType.M3U8
             ) {
-                this.referer = "$vidlinkAPI/"
+                this.referer = "$vidlinkAPI/" // FIX: vidlinkAPI
             }
         )
 
@@ -595,14 +612,14 @@ object AsianDramaExtractor : AsianDramaStream.ExtractorCompanion() { // Diubah d
         val module = "hezushon/1000076901076321/0b0ce221/cfe60245-021f-5d4d-bacb-0d469f83378f/uva/jeditawev/b0535941d898ebdb81f575b2cfd123f5d18c6464/y/APA91zAOxU2psY2_BvBqEmmjG6QvCoLjgoaI-xuoLxBYghvzgKAu-HtHNeQmwxNbHNpoVnCuX10eEes1lnTcI2l_lQApUiwfx2pza36CZB34X7VY0OCyNXtlq-bGVCkLslfNksi1k3B667BJycQ67wxc1OnfCc5PDPrF0BA8aZRyMXZ3-2yxVGp"
         val type = if (season == null) "movie" else "tv"
         val url = if (season == null) {
-            "$vidfastAPI/$type/$tmdbId"
+            "$vidfastAPI/$type/$tmdbId" // FIX: vidfastAPI
         } else {
-            "$vidfastAPI/$type/$tmdbId/$season/$episode"
+            "$vidfastAPI/$type/$tmdbId/$season/$episode" // FIX: vidfastAPI
         }
 
         val res = app.get(
             url, interceptor = WebViewResolver(
-                Regex("""$vidfastAPI/$module/JEwECseLZdY"""),
+                Regex("""$vidfastAPI/$module/JEwECseLZdY"""), // FIX: vidfastAPI
                 timeout = 15_000L
             )
         ).text
@@ -610,7 +627,7 @@ object AsianDramaExtractor : AsianDramaStream.ExtractorCompanion() { // Diubah d
         tryParseJson<ArrayList<VidFastServers>>(res)?.filter { it.description?.contains("Original audio") == true }
             ?.amapIndexed { index, server ->
                 val source =
-                    app.get("$vidfastAPI/$module/Sdoi/${server.data}", referer = "$vidfastAPI/")
+                    app.get("$vidfastAPI/$module/Sdoi/${server.data}", referer = "$vidfastAPI/") // FIX: vidfastAPI
                         .parsedSafe<VidFastSources>()
 
                 callback.invoke(
@@ -645,9 +662,9 @@ object AsianDramaExtractor : AsianDramaStream.ExtractorCompanion() { // Diubah d
         subtitleCallback: (SubtitleFile) -> Unit,
     ) {
         val url = if (season == null) {
-            "$wyzieAPI/search?id=$tmdbId"
+            "$wyzieAPI/search?id=$tmdbId" // FIX: wyzieAPI
         } else {
-            "$wyzieAPI/search?id=$tmdbId&season=$season&episode=$episode"
+            "$wyzieAPI/search?id=$tmdbId&season=$season&episode=$episode" // FIX: wyzieAPI
         }
 
         val res = app.get(url).text
@@ -672,9 +689,9 @@ object AsianDramaExtractor : AsianDramaStream.ExtractorCompanion() { // Diubah d
         val proxy = "https://proxy.heistotron.uk"
         val type = if (season == null) "movie" else "tv"
         val url = if (season == null) {
-            "$vixsrcAPI/$type/$tmdbId"
+            "$vixsrcAPI/$type/$tmdbId" // FIX: vixsrcAPI
         } else {
-            "$vixsrcAPI/$type/$tmdbId/$season/$episode"
+            "$vixsrcAPI/$type/$tmdbId/$season/$episode" // FIX: vixsrcAPI
         }
 
         val res =
@@ -689,11 +706,11 @@ object AsianDramaExtractor : AsianDramaStream.ExtractorCompanion() { // Diubah d
                 } ?: return
 
         val video2 =
-            "$proxy/p/${base64Encode("$proxy/api/proxy/m3u8?url=${encode(video1)}&source=sakura|ananananananananaBatman!".toByteArray())}"
+            "$proxy/p/${base64Encode("$proxy/api/proxy/m3u8?url=${encode(video1)}&source=sakura|ananananananananaBatman!".toByteArray())}" // FIX: encode
 
         listOf(
             VixsrcSource("Vixsrc [Alpha]",video1,url),
-            VixsrcSource("Vixsrc [Beta]",video2, "$mappleAPI/"),
+            VixsrcSource("Vixsrc [Beta]",video2, "$mappleAPI/"), // FIX: mappleAPI
         ).map {
             callback.invoke(
                 newExtractorLink(
@@ -733,7 +750,7 @@ object AsianDramaExtractor : AsianDramaStream.ExtractorCompanion() { // Diubah d
                 video ?: return,
                 ExtractorLinkType.M3U8
             ) {
-                this.referer = "$vidsrccxAPI/"
+                this.referer = "$vidsrccxAPI/" // FIX: vidsrccxAPI
                 this.headers = mapOf(
                     "Accept" to "*/*"
                 )
@@ -751,7 +768,7 @@ object AsianDramaExtractor : AsianDramaStream.ExtractorCompanion() { // Diubah d
         api: String = "https://streamingnow.mov"
     ) {
         val path = if (season == null) "" else "&s=$season&e=$episode"
-        val token = app.get("$superembedAPI/directstream.php?video_id=$tmdbId&tmdb=1$path").url.substringAfter(
+        val token = app.get("$superembedAPI/directstream.php?video_id=$tmdbId&tmdb=1$path").url.substringAfter( // FIX: superembedAPI
                 "?play="
             )
 
@@ -766,7 +783,7 @@ object AsianDramaExtractor : AsianDramaStream.ExtractorCompanion() { // Diubah d
         val playRes = app.get(playUrl).document
         val iframe = playRes.selectFirst("iframe.source-frame")?.attr("src") ?: run {
             val captchaId = playRes.select("input[name=captcha_id]").attr("value")
-            app.post(playUrl, requestBody = "captcha_id=TEduRVR6NmZ3Sk5Jc3JpZEJCSlhTM25GREs2RCswK0VQN2ZsclI5KzNKL2cyV3dIaFEwZzNRRHVwMzdqVmoxV0t2QlBrNjNTY04wY2NSaHlWYS9Jc09nb25wZTV2YmxDSXNRZVNuQUpuRW5nbkF2dURsQUdJWVpwOWxUZzU5Tnh0NXllQjdYUG83Y0ZVaG1XRGtPOTBudnZvN0RFK0wxdGZvYXpFKzVNM2U1a2lBMG40REJmQ042SA%3D%3D&captcha_answer%5B%5D=8yhbjraxqf3o&captcha_answer%5B%5D=10zxn5vi746w&captcha_answer%5B%5D=gxfpe17tdwub".toRequestBody(RequestBodyTypes.TEXT.toMediaTypeOrNull())
+            app.post(playUrl, requestBody = "captcha_id=TEduRVR6NmZ3Sk5Jc3JpZEJCSlhTM25GREs2RCswK0VQN2ZsclI5KzNKL2cyV3dIaFEwZzNRRHVwMzdqVmoxV0t2QlBrNjNTY04wY2NSaHlWYS9Jc09nb25wZTV2YmxDSXNRZVNuQUpuRW5nbkF2dURsQUdJWlBvd0EwSGFjRjJzYzlQZk83Y0ZVaG1XRGtPOTBudnZvN0RFK0wxdGZvYXpFKzVNM2U1a2lBMG40REJmQ042SA%3D%3D&captcha_answer%5B%5D=8yhbjraxqf3o&captcha_answer%5B%5D=10zxn5vi746w&captcha_answer%5B%5D=gxfpe17tdwub".toRequestBody(RequestBodyTypes.TEXT.toMediaTypeOrNull())
             ).document.selectFirst("iframe.source-frame")?.attr("src")
         }
         val json = app.get(iframe ?: return).text.substringAfter("Playerjs(").substringBefore(");")
@@ -810,14 +827,14 @@ object AsianDramaExtractor : AsianDramaStream.ExtractorCompanion() { // Diubah d
     ) {
 
         val type = if (season == null) "movie" else "tv"
-        val url = "$vidrockAPI/$type/$tmdbId${if(type == "movie") "" else "/$season/$episode"}"
+        val url = "$vidrockAPI/$type/$tmdbId${if(type == "movie") "" else "/$season/$episode"}" // FIX: vidrockAPI
         // Gunakan VidrockHelper dari package AsianDrama
-        val encryptData = VidrockHelper.encrypt(tmdbId, type, season, episode)
+        val encryptData = VidrockHelper.encrypt(tmdbId, type, season, episode) // FIX: VidrockHelper
 
-        app.get("$vidrockAPI/api/$type/$encryptData", referer = url).parsedSafe<LinkedHashMap<String,HashMap<String,String>>>()
+        app.get("$vidrockAPI/api/$type/$encryptData", referer = url).parsedSafe<LinkedHashMap<String,HashMap<String,String>>>() // FIX: vidrockAPI
             ?.map { source ->
                 if(source.key == "source2") {
-                    val json = app.get(source.value["url"] ?: return@map, referer = "${vidrockAPI}/").text
+                    val json = app.get(source.value["url"] ?: return@map, referer = "${vidrockAPI}/").text // FIX: vidrockAPI
                     tryParseJson<ArrayList<VidrockSource>>(json)?.reversed()?.map mirror@{
                         callback.invoke(
                             newExtractorLink(
@@ -829,7 +846,7 @@ object AsianDramaExtractor : AsianDramaStream.ExtractorCompanion() { // Diubah d
                                 this.quality = it.resolution ?: Qualities.Unknown.value
                                 this.headers = mapOf(
                                     "Range" to "bytes=0-",
-                                    "Referer" to "${vidrockAPI}/"
+                                    "Referer" to "${vidrockAPI}/" // FIX: vidrockAPI
                                 )
                             }
                         )
@@ -842,9 +859,9 @@ object AsianDramaExtractor : AsianDramaStream.ExtractorCompanion() { // Diubah d
                             source.value["url"] ?: return@map,
                             ExtractorLinkType.M3U8
                         ) {
-                            this.referer = "${vidrockAPI}/"
+                            this.referer = "${vidrockAPI}/" // FIX: vidrockAPI
                             this.headers = mapOf(
-                                "Origin" to vidrockAPI
+                                "Origin" to vidrockAPI // FIX: vidrockAPI
                             )
                         }
                     )
@@ -862,6 +879,17 @@ object AsianDramaExtractor : AsianDramaStream.ExtractorCompanion() { // Diubah d
             )
         }
 
+    }
+
+    // FIX: Tambahkan override function getUrl untuk memenuhi ExtractorApi
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        // Implementasi kosong, karena fungsi ekstrak dipanggil langsung dari AsianDrama.kt
+        // melalui runAllAsync, bukan melalui loadExtractor(url).
     }
 
 }
