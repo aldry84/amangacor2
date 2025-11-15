@@ -9,7 +9,7 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.getAndUnpack
 import com.lagradost.cloudstream3.utils.newExtractorLink
-// FIX: Tambahkan import ini
+// FIX: Pastikan import ini ada dan benar
 import com.lagradost.cloudstream3.utils.newSubtitleFile 
 
 open class Jeniusplay2 : ExtractorApi() {
@@ -51,7 +51,7 @@ open class Jeniusplay2 : ExtractorApi() {
                     getAndUnpack(script.data()).substringAfter("\"tracks\":[").substringBefore("],")
                 tryParseJson<List<Tracks>>("[$subData]")?.map { subtitle ->
                     subtitleCallback.invoke(
-                        // FIX: Sekarang newSubtitleFile akan terdeteksi
+                        // FIX: Menggunakan newSubtitleFile
                         newSubtitleFile(
                             getLanguage(subtitle.label ?: ""),
                             subtitle.file
