@@ -143,25 +143,26 @@ open class AsianDrama : TmdbProvider() {
             "$tmdbAPI/tv/${data.id}?api_key=$apiKey&append_to_response=$append"
         }
         
-        // FIX: Memastikan 'res' di-parse sebagai 'MediaDetail'
         val res = app.get(resUrl).parsedSafe<MediaDetail>()
             ?: throw ErrorLoadingException("Invalid Json Response")
 
-        // FIX: Semua referensi 'res.title', 'res.name', dll. sekarang valid
         val title = res.title ?: res.name ?: return null
         val poster = getOriImageUrl(res.posterPath)
         val bgPoster = getOriImageUrl(res.backdropPath)
         val orgTitle = res.originalTitle ?: res.originalName ?: return null
         val releaseDate = res.releaseDate ?: res.firstAirDate
         val year = releaseDate?.split("-")?.first()?.toIntOrNull()
-        val genres = res.genres?.mapNotNull { it.name }
+        val genres = res.genres?.mapNotNull { it.name } // Ini List<String>?
 
         // Logika untuk menentukan tipe (AsianDrama, Anime, dll.)
         val isAsianDrama = genres?.contains("Drama") == true && (res.original_language == "ko" || res.original_language == "zh" || res.original_language == "ja" || res.original_language == "th")
         val isAnime = genres?.contains("Animation") == true && (res.original_language == "ja" || res.original_language == "zh")
         
-        val keywords = res.keywords?.results?.mapNotNull { it.name }.orEmpty()
-            .ifEmpty { res.keywords?.keywords?.mapNotNull { it.name } }
+        // FIX: Definisi 'keywords' yang salah diperbaiki
+        val keywords: List<String> = (
+            res.keywords?.results?.mapNotNull { it.name }?.ifEmpty { null }
+            ?: res.keywords?.keywords?.mapNotNull { it.name }
+        ).orEmpty() // .orEmpty() memastikan 'keywords' adalah List<String> (non-null)
 
         val actors = res.credits?.cast?.mapNotNull { cast ->
             ActorData(
@@ -183,12 +184,10 @@ open class AsianDrama : TmdbProvider() {
 
         return if (type == TvType.TvSeries) {
             val episodes = res.seasons?.mapNotNull { season ->
-                // FIX: Panggilan app.get adalah 'suspension function', harus di dalam coroutine
-                // (mapNotNull sudah menanganinya, tapi error sebelumnya membingungkan compiler)
                 app.get("$tmdbAPI/${data.type}/${data.id}/season/${season.seasonNumber}?api_key=$apiKey")
                     .parsedSafe<MediaDetailEpisodes>()?.episodes?.map { eps ->
                         newEpisode(
-                            data = LinkData( // Menggunakan LinkData dari file ini
+                            data = LinkData( 
                                 data.id,
                                 res.external_ids?.imdb_id,
                                 data.type,
@@ -213,14 +212,14 @@ open class AsianDrama : TmdbProvider() {
             newTvSeriesLoadResponse(
                 title,
                 url,
-                finalTvType, // Menggunakan finalTvType
+                finalTvType, 
                 episodes
             ) {
                 this.posterUrl = poster
                 this.backgroundPosterUrl = bgPoster
                 this.year = year
-                this.plot = res.overview // <-- PLOT PASTI DIAMBIL DARI TMDB
-                // FIX: 'tags' harus List<String>?, 'keywords' adalah List<String>
+                this.plot = res.overview 
+                // FIX: 'keywords' sekarang non-null, .isNotEmpty() aman
                 this.tags = keywords.takeIf { it.isNotEmpty() } ?: genres
                 this.score = Score.from10(res.vote_average?.toString())
                 this.showStatus = getStatus(res.status)
@@ -234,8 +233,8 @@ open class AsianDrama : TmdbProvider() {
             newMovieLoadResponse(
                 title,
                 url,
-                finalTvType, // Menggunakan finalTvType
-                LinkData( // Menggunakan LinkData dari file ini
+                finalTvType, 
+                LinkData( 
                     data.id,
                     res.external_ids?.imdb_id,
                     data.type,
@@ -247,9 +246,9 @@ open class AsianDrama : TmdbProvider() {
                 this.backgroundPosterUrl = bgPoster
                 this.comingSoon = isUpcoming(releaseDate)
                 this.year = year
-                this.plot = res.overview // <-- PLOT PASTI DIAMBIL DARI TMDB
+                this.plot = res.overview
                 this.duration = res.runtime
-                // FIX: 'tags' harus List<String>?, 'keywords' adalah List<String>
+                // FIX: 'keywords' sekarang non-null, .isNotEmpty() aman
                 this.tags = keywords.takeIf { it.isNotEmpty() } ?: genres
                 this.score = Score.from10(res.vote_average?.toString())
                 this.recommendations = recommendations
@@ -350,10 +349,9 @@ open class AsianDrama : TmdbProvider() {
     }
 
     //
-    // FIX: SEMUA DATA CLASS YANG HILANG DI-PASTE DI SINI
+    // DATA CLASS DEFINITIONS
     //
 
-    // Mendefinisikan LinkData yang relevan untuk TMDB Provider ini
     data class LinkData(
         val id: Int? = null,
         val imdbId: String? = null,
@@ -472,4 +470,4 @@ open class AsianDrama : TmdbProvider() {
         @JsonProperty("credits") val credits: Credits? = null,
         @JsonProperty("recommendations") val recommendations: ResultsRecommendations? = null,
     )
-} // <-- TUTUP KURUNG kurawal untuk kelas AsianDrama
+}
