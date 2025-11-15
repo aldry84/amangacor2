@@ -13,8 +13,8 @@ import java.net.URLEncoder
 import java.util.Base64
 
 data class DomainsParser(
-    @JsonProperty("asiandrama")
-    val asiandrama: String,
+    @JsonProperty("dramadrip")
+    val dramadrip: String,
 )
 
 
