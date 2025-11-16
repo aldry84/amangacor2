@@ -11,10 +11,11 @@ import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.runAllAsync
-import com.phisher98.StreamPlayExtractor // Menggunakan StreamPlayExtractor untuk subtitle
+// HAPUS: import com.phisher98.StreamPlayExtractor // Menggunakan StreamPlayExtractor untuk subtitle
 import android.os.Build
 import androidx.annotation.RequiresApi
 import com.phisher98.StreamPlay.LinkData
+import com.phisher98.getDate // Tambahkan ini untuk memperbaiki getDate()
 
 open class Adicinemax21 : TmdbProvider() {
     override var name = "Adicinemax21"
@@ -317,10 +318,10 @@ open class Adicinemax21 : TmdbProvider() {
 
         runAllAsync(
             {
-                StreamPlayExtractor.invokeSubtitleAPI(res.imdbId, res.season, res.episode, subtitleCallback)
+                StreamPlayExtractorBridge.instance.invokeSubtitleAPI(res.imdbId, res.season, res.episode, subtitleCallback)
             },
             {
-                StreamPlayExtractor.invokeWyZIESUBAPI(res.imdbId, res.season, res.episode, subtitleCallback)
+                StreamPlayExtractorBridge.instance.invokeWyZIESUBAPI(res.imdbId, res.season, res.episode, subtitleCallback)
             },
             *providersList.map { provider ->
                 suspend {
