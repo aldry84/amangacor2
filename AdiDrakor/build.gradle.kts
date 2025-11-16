@@ -3,6 +3,14 @@ import org.jetbrains.kotlin.konan.properties.Properties
 version = 16
 
 android {
+    //
+    // ▼▼▼ TAMBAHKAN BARIS INI ▼▼▼
+    //
+    namespace = "com.AdiDrakor"
+    //
+    // ▲▲▲ BARIS YANG DIPERLUKAN ▲▲▲
+    //
+
     defaultConfig {
         val properties = Properties()
         properties.load(project.rootProject.file("local.properties").inputStream())
