@@ -4,17 +4,21 @@ import android.os.Build
 import androidx.annotation.RequiresApi
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.phisher98.Provider
-// HAPUS: import com.phisher98.StreamPlayExtractor
-import com.phisher98.StreamPlay.LinkData
-import com.phisher98.buildProviders // Import fungsi buildProviders dari com.phisher98
+
+// --- IMPORT DARI PACKAGE ASAL (com.phisher98) ---
+// Import LinkData untuk tipe data input
+import com.phisher98.StreamPlay.LinkData 
+// Import kelas Provider
+import com.phisher98.Provider 
+// Import fungsi buildProviders
+import com.phisher98.buildProviders 
 
 // Menggunakan alias LinkData dari StreamPlay untuk kompatibilitas
 typealias StreamPlayLinkData = LinkData
 
 @RequiresApi(Build.VERSION_CODES.O)
 fun buildAdicinemax21Providers(): List<Provider> {
-    // Memanggil buildProviders secara eksplisit dari package com.phisher98
+    // Memanggil buildProviders yang diimpor dari com.phisher98
     val allProviders = com.phisher98.buildProviders()
     
     // Filter Provider: Hapus sumber Anime, dan sumber yang hanya relevan untuk torrent (uhdmovies)
@@ -23,10 +27,10 @@ fun buildAdicinemax21Providers(): List<Provider> {
         !provider.id.equals("anime", ignoreCase = true) && 
         // Exclude sources often used as torrent index/large files that we want to avoid
         !provider.id.equals("uhdmovies", ignoreCase = true) &&
-        !provider.id.equals("4khdhub", ignoreCase = true) && // Juga cenderung ke large file/torrent
-        !provider.id.equals("hdhub4u", ignoreCase = true) && // Juga cenderung ke large file/torrent
-        !provider.id.equals("rogmovies", ignoreCase = true) && // Juga cenderung ke large file/torrent
-        !provider.id.equals("dotmovies", ignoreCase = true) // Juga cenderung ke large file/torrent
+        !provider.id.equals("4khdhub", ignoreCase = true) && 
+        !provider.id.equals("hdhub4u", ignoreCase = true) && 
+        !provider.id.equals("rogmovies", ignoreCase = true) && 
+        !provider.id.equals("dotmovies", ignoreCase = true) 
     }
 
     return filteredProviders.map { originalProvider ->
