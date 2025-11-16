@@ -7,8 +7,13 @@ import android.content.Context
 @CloudstreamPlugin
 class Adicinemax21Plugin : Plugin() {
     override fun load(context: Context) {
-        // All providers should be added in this manner. Please don't edit the providers list directly.
+        // Semua fungsionalitas Extractor Jeniusplay2 telah dihapus.
+        // File ini hanya mendaftarkan API utama Adicinemax21.
         registerMainAPI(Adicinemax21())
-        registerExtractorAPI(Jeniusplay2())
+        
+        // PENTING: Jika Anda memindahkan Extractor StreamPlay yang asli ke dalam
+        // proyek ini, pastikan semua Extractor API yang mereka andalkan (misalnya
+        // HubCloud, MixDrop) juga sudah terdaftar, atau Extractor-nya
+        // sudah ada di dalam Extractor API yang terpisah.
     }
 }
