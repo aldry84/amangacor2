@@ -1,6 +1,20 @@
 package com.Adicinemax21
 
 import com.fasterxml.jackson.annotation.JsonProperty
+import com.Adicinemax21.Adicinemax21Extractor.invokeGomovies
+import com.Adicinemax21.Adicinemax21Extractor.invokeIdlix
+import com.Adicinemax21.Adicinemax21Extractor.invokeMapple
+import com.Adicinemax21.Adicinemax21Extractor.invokeSuperembed
+import com.Adicinemax21.Adicinemax21Extractor.invokeVidfast
+import com.Adicinemax21.Adicinemax21Extractor.invokeVidlink
+import com.Adicinemax21.Adicinemax21Extractor.invokeVidrock
+import com.Adicinemax21.Adicinemax21Extractor.invokeVidsrc
+import com.Adicinemax21.Adicinemax21Extractor.invokeVidsrccc
+import com.Adicinemax21.Adicinemax21Extractor.invokeVidsrccx
+import com.Adicinemax21.Adicinemax21Extractor.invokeVixsrc
+import com.Adicinemax21.Adicinemax21Extractor.invokeWatchsomuch
+import com.Adicinemax21.Adicinemax21Extractor.invokeWyzie
+import com.Adicinemax21.Adicinemax21Extractor.invokeXprime
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.metaproviders.TmdbProvider
@@ -10,15 +24,7 @@ import com.lagradost.cloudstream3.network.CloudflareKiller
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.runAllAsync
-import android.os.Build
-import androidx.annotation.RequiresApi
-
-// Import kelas LinkData dari package asal
-import com.phisher98.StreamPlay.LinkData 
-// Import utilitas yang kini akan kita definisikan ulang atau akses melalui QN
-import com.phisher98.getDate
-import com.phisher98.isUpcoming
+import kotlin.math.roundToInt
 
 open class Adicinemax21 : TmdbProvider() {
     override var name = "Adicinemax21"
@@ -34,7 +40,7 @@ open class Adicinemax21 : TmdbProvider() {
 
     val wpRedisInterceptor by lazy { CloudflareKiller() }
 
-    /** AUTHOR : Hexated & Adicinemax21 & Phisher */
+    /** AUTHOR : Hexated & Adicinemax21 */
     companion object {
         /** TOOLS */
         private const val tmdbAPI = "https://api.themoviedb.org/3"
@@ -45,24 +51,22 @@ open class Adicinemax21 : TmdbProvider() {
 
         private const val apiKey = "b030404650f279792a8d3287232358e3"
 
-        /** ALL SOURCES (Menggunakan QN ke com.phisher98.StreamPlay.Companion) */
-        // AKSES LANGSUNG KE COMPANION OBJECT StreamPlay
-        const val gomoviesAPI = com.phisher98.StreamPlay.Companion.gomoviesAPI
-        const val idlixAPI = com.phisher98.StreamPlay.Companion.idlixAPI
-        const val vidsrcccAPI = com.phisher98.StreamPlay.Companion.vidsrcccAPI
-        const val vidSrcAPI = com.phisher98.StreamPlay.Companion.vidSrcAPI
-        const val xprimeAPI = com.phisher98.StreamPlay.Companion.Xprime
-        const val watchSomuchAPI = com.phisher98.StreamPlay.Companion.watchSomuchAPI
-        const val mappleAPI = com.phisher98.StreamPlay.Companion.mappleTvApi
-        const val vidlinkAPI = com.phisher98.StreamPlay.Companion.vidlink
-        const val vidfastAPI = com.phisher98.StreamPlay.Companion.vidfastProApi
-        const val wyzieAPI = com.phisher98.StreamPlay.Companion.WyZIESUBAPI
-        const val vixsrcAPI = com.phisher98.StreamPlay.Companion.vidsrcccAPI 
-        const val vidsrccxAPI = com.phisher98.StreamPlay.Companion.vidsrcccAPI 
-        const val superembedAPI = com.phisher98.StreamPlay.Companion.MultiEmbedAPI
-        const val vidrockAPI = com.phisher98.StreamPlay.Companion.vidrock
-        const val dahmerMoviesAPI = com.phisher98.StreamPlay.Companion.dahmerMoviesAPI
-        
+        /** ALL SOURCES */
+        const val gomoviesAPI = "https://gomovies-online.cam"
+        const val idlixAPI = "https://tv6.idlixku.com"
+        const val vidsrcccAPI = "https://vidsrc.cc"
+        const val vidSrcAPI = "https://vidsrc.net"
+        const val xprimeAPI = "https://backend.xprime.tv"
+        const val watchSomuchAPI = "https://watchsomuch.tv"
+        const val mappleAPI = "https://mapple.uk"
+        const val vidlinkAPI = "https://vidlink.pro"
+        const val vidfastAPI = "https://vidfast.pro"
+        const val wyzieAPI = "https://sub.wyzie.ru"
+        const val vixsrcAPI = "https://vixsrc.to"
+        const val vidsrccxAPI = "https://vidsrc.cx"
+        const val superembedAPI = "https://multiembed.mov"
+        const val vidrockAPI = "https://vidrock.net"
+
         fun getType(t: String?): TvType {
             return when (t) {
                 "movie" -> TvType.Movie
@@ -79,7 +83,6 @@ open class Adicinemax21 : TmdbProvider() {
 
     }
 
-    // Mengganti semua pemanggilan utilitas dengan QN
     override val mainPage = mainPageOf(
         "$tmdbAPI/trending/all/day?api_key=$apiKey&region=US" to "Trending",
         "$tmdbAPI/movie/popular?api_key=$apiKey&region=US" to "Popular Movies",
@@ -97,27 +100,56 @@ open class Adicinemax21 : TmdbProvider() {
         "$tmdbAPI/tv/top_rated?api_key=$apiKey&region=US" to "Top Rated TV Shows",
         "$tmdbAPI/movie/upcoming?api_key=$apiKey&region=US" to "Upcoming Movies",
         "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko" to "Korean Shows",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_keywords=210024|222243&sort_by=popularity.desc&air_date.lte=${com.phisher98.getDate().today}&air_date.gte=${com.phisher98.getDate().today}" to "Airing Today Anime",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_keywords=210024|222243&sort_by=popularity.desc&air_date.lte=${com.phisher98.getDate().nextWeek}&air_date.gte=${com.phisher98.getDate().today}" to "On The Air Anime",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_keywords=210024|222243&sort_by=popularity.desc&air_date.lte=${getDate().today}&air_date.gte=${getDate().today}" to "Airing Today Anime",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_keywords=210024|222243&sort_by=popularity.desc&air_date.lte=${getDate().nextWeek}&air_date.gte=${getDate().today}" to "On The Air Anime",
         "$tmdbAPI/discover/tv?api_key=$apiKey&with_keywords=210024|222243" to "Anime",
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=210024|222243" to "Anime Movies",
     )
-    
-    // ... (Fungsi getImageUrl, getOriImageUrl, getMainPage, quickSearch, search TIDAK BERUBAH)
 
-    override fun getImageUrl(link: String?): String? {
+    private fun getImageUrl(link: String?): String? {
         if (link == null) return null
         return if (link.startsWith("/")) "https://image.tmdb.org/t/p/w500/$link" else link
     }
 
-    override fun getOriImageUrl(link: String?): String? {
+    private fun getOriImageUrl(link: String?): String? {
         if (link == null) return null
         return if (link.startsWith("/")) "https://image.tmdb.org/t/p/original/$link" else link
     }
 
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+        val adultQuery =
+            if (settingsForProvider.enableAdult) "" else "&without_keywords=190370|13059|226161|195669"
+        val type = if (request.data.contains("/movie")) "movie" else "tv"
+        val home = app.get("${request.data}$adultQuery&page=$page")
+            .parsedSafe<Results>()?.results?.mapNotNull { media ->
+                media.toSearchResponse(type)
+            } ?: throw ErrorLoadingException("Invalid Json reponse")
+        return newHomePageResponse(request.name, home)
+    }
+
+    private fun Media.toSearchResponse(type: String? = null): SearchResponse? {
+        return newMovieSearchResponse(
+            title ?: name ?: originalTitle ?: return null,
+            Data(id = id, type = mediaType ?: type).toJson(),
+            TvType.Movie,
+        ) {
+            this.posterUrl = getImageUrl(posterPath)
+            this.score = Score.from10(voteAverage)
+        }
+    }
+
+    override suspend fun quickSearch(query: String): List<SearchResponse>? = search(query)
+
+    override suspend fun search(query: String): List<SearchResponse>? {
+        return app.get("$tmdbAPI/search/multi?api_key=$apiKey&language=en-US&query=$query&page=1&include_adult=${settingsForProvider.enableAdult}")
+            .parsedSafe<Results>()?.results?.mapNotNull { media ->
+                media.toSearchResponse()
+            }
+    }
+
     override suspend fun load(url: String): LoadResponse? {
         val data = try {
-            // ... (logika parsing URL ke data.id/type TIDAK BERUBAH)
+            // Handle case where url is a direct TMDB URL
             if (url.startsWith("https://www.themoviedb.org/")) {
                 // Extract ID and type from TMDB URL
                 val segments = url.removeSuffix("/").split("/")
@@ -146,14 +178,13 @@ open class Adicinemax21 : TmdbProvider() {
         val res = app.get(resUrl).parsedSafe<MediaDetail>()
             ?: throw ErrorLoadingException("Invalid Json Response")
 
-        // ... (logika pengisian metadata TIDAK BERUBAH)
-
         val title = res.title ?: res.name ?: return null
         val poster = getOriImageUrl(res.posterPath)
         val bgPoster = getOriImageUrl(res.backdropPath)
         val orgTitle = res.originalTitle ?: res.originalName ?: return null
         val releaseDate = res.releaseDate ?: res.firstAirDate
         val year = releaseDate?.split("-")?.first()?.toIntOrNull()
+        // Hapus variabel lokal 'rating' yang tidak diperlukan lagi
         val genres = res.genres?.mapNotNull { it.name }
 
         val isCartoon = genres?.contains("Animation") ?: false
@@ -171,7 +202,7 @@ open class Adicinemax21 : TmdbProvider() {
                     ?: return@mapNotNull null, getImageUrl(cast.profilePath)
                 ), roleString = cast.character
             )
-        } ?: emptyList() 
+        } ?: return null
         val recommendations =
             res.recommendations?.results?.mapNotNull { media -> media.toSearchResponse() }
 
@@ -207,11 +238,11 @@ open class Adicinemax21 : TmdbProvider() {
                             ).toJson()
                         ) {
                             this.name =
-                                eps.name + if (com.phisher98.isUpcoming(eps.airDate)) " • [UPCOMING]" else "" 
+                                eps.name + if (isUpcoming(eps.airDate)) " • [UPCOMING]" else ""
                             this.season = eps.seasonNumber
                             this.episode = eps.episodeNumber
                             this.posterUrl = getImageUrl(eps.stillPath)
-                            this.score = Score.from10(eps.voteAverage) 
+                            this.score = Score.from10(eps.voteAverage) // Diganti dari 'rating'
                             this.description = eps.overview
                         }.apply {
                             this.addDate(eps.airDate)
@@ -229,7 +260,7 @@ open class Adicinemax21 : TmdbProvider() {
                 this.year = year
                 this.plot = res.overview
                 this.tags = keywords.takeIf { !it.isNullOrEmpty() } ?: genres
-                this.score = Score.from10(res.vote_average?.toString()) 
+                this.score = Score.from10(res.vote_average?.toString()) // Diganti dari 'rating'
                 this.showStatus = getStatus(res.status)
                 this.recommendations = recommendations
                 this.actors = actors
@@ -261,12 +292,12 @@ open class Adicinemax21 : TmdbProvider() {
             ) {
                 this.posterUrl = poster
                 this.backgroundPosterUrl = bgPoster
-                this.comingSoon = com.phisher98.isUpcoming(releaseDate)
+                this.comingSoon = isUpcoming(releaseDate)
                 this.year = year
                 this.plot = res.overview
                 this.duration = res.runtime
                 this.tags = keywords.takeIf { !it.isNullOrEmpty() } ?: genres
-                this.score = Score.from10(res.vote_average?.toString()) 
+                this.score = Score.from10(res.vote_average?.toString()) // Diganti dari 'rating'
                 this.recommendations = recommendations
                 this.actors = actors
                 this.contentRating = fetchContentRating(data.id, "US")
@@ -277,7 +308,6 @@ open class Adicinemax21 : TmdbProvider() {
         }
     }
 
-    @RequiresApi(Build.VERSION_CODES.O)
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -286,32 +316,85 @@ open class Adicinemax21 : TmdbProvider() {
     ): Boolean {
 
         val res = parseJson<LinkData>(data)
-        
-        // Simulasikan token (jika diperlukan oleh beberapa extractor)
-        val token: String? = null 
-
-        val providersList = buildAdicinemax21Providers()
 
         runAllAsync(
             {
-                // Menggunakan bridge untuk memanggil fungsi dari package com.phisher98
-                StreamPlayExtractorBridge.instance.invokeSubtitleAPI(res.imdbId, res.season, res.episode, subtitleCallback)
+                invokeIdlix(
+                    res.title,
+                    res.year,
+                    res.season,
+                    res.episode,
+                    subtitleCallback,
+                    callback
+                )
             },
             {
-                // Menggunakan bridge untuk memanggil fungsi dari package com.phisher98
-                StreamPlayExtractorBridge.instance.invokeWyZIESUBAPI(res.imdbId, res.season, res.episode, subtitleCallback)
+                invokeVidsrccc(
+                    res.id,
+                    res.imdbId,
+                    res.season,
+                    res.episode,
+                    subtitleCallback,
+                    callback
+                )
             },
-            *providersList.map { provider ->
-                suspend {
-                    provider.invoke(res, subtitleCallback, callback, token ?: "", dahmerMoviesAPI)
-                }
-            }.toTypedArray()
+            {
+                invokeVidsrc(
+                    res.imdbId,
+                    res.season,
+                    res.episode,
+                    subtitleCallback,
+                    callback
+                )
+            },
+            {
+                invokeWatchsomuch(
+                    res.imdbId,
+                    res.season,
+                    res.episode,
+                    subtitleCallback
+                )
+            },
+            {
+                invokeVixsrc(res.id, res.season, res.episode, callback)
+            },
+            {
+                invokeVidlink(res.id, res.season, res.episode, callback)
+            },
+            {
+                invokeVidfast(res.id, res.season, res.episode, subtitleCallback, callback)
+            },
+            {
+                invokeMapple(res.id, res.season, res.episode, subtitleCallback, callback)
+            },
+            {
+                invokeWyzie(res.id, res.season, res.episode, subtitleCallback)
+            },
+            {
+                invokeVidsrccx(res.id, res.season, res.episode, callback)
+            },
+            {
+                invokeSuperembed(
+                    res.id,
+                    res.season,
+                    res.episode,
+                    subtitleCallback,
+                    callback
+                )
+            },
+            {
+                invokeVidrock(
+                    res.id,
+                    res.season,
+                    res.episode,
+                    subtitleCallback,
+                    callback
+                )
+            }
         )
 
         return true
     }
-
-    // [MODEL DATA TMDB TIDAK BERUBAH]
 
     data class LinkData(
         val id: Int? = null,
@@ -466,9 +549,10 @@ open class Adicinemax21 : TmdbProvider() {
         @JsonProperty("seasons") val seasons: ArrayList<Seasons>? = arrayListOf(),
         @JsonProperty("videos") val videos: ResultsTrailer? = null,
         @JsonProperty("external_ids") val external_ids: ExternalIds? = null,
-        @JsonProperty("credits") val credits: Credits? = arrayListOf(),
+        @JsonProperty("credits") val credits: Credits? = null,
         @JsonProperty("recommendations") val recommendations: ResultsRecommendations? = null,
-        @JsonProperty("alternative_titles") val alternative_titles: ResultsAltTitles? = arrayListOf(),
+        @JsonProperty("alternative_titles") val alternative_titles: ResultsAltTitles? = null,
         @JsonProperty("production_countries") val production_countries: ArrayList<ProductionCountries>? = arrayListOf(),
     )
+
 }
