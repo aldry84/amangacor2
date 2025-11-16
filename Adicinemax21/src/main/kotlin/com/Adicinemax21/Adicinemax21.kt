@@ -14,7 +14,11 @@ import com.lagradost.cloudstream3.runAllAsync
 import android.os.Build
 import androidx.annotation.RequiresApi
 
-// --- MENGHAPUS SEMUA IMPORT YANG GAGAL DAN MENGGUNAKAN QN LENGKAP ---
+// Import kelas LinkData dari package asal
+import com.phisher98.StreamPlay.LinkData 
+// Import utilitas yang kini akan kita definisikan ulang atau akses melalui QN
+import com.phisher98.getDate
+import com.phisher98.isUpcoming
 
 open class Adicinemax21 : TmdbProvider() {
     override var name = "Adicinemax21"
@@ -42,6 +46,7 @@ open class Adicinemax21 : TmdbProvider() {
         private const val apiKey = "b030404650f279792a8d3287232358e3"
 
         /** ALL SOURCES (Menggunakan QN ke com.phisher98.StreamPlay.Companion) */
+        // AKSES LANGSUNG KE COMPANION OBJECT StreamPlay
         const val gomoviesAPI = com.phisher98.StreamPlay.Companion.gomoviesAPI
         const val idlixAPI = com.phisher98.StreamPlay.Companion.idlixAPI
         const val vidsrcccAPI = com.phisher98.StreamPlay.Companion.vidsrcccAPI
@@ -99,6 +104,16 @@ open class Adicinemax21 : TmdbProvider() {
     )
     
     // ... (Fungsi getImageUrl, getOriImageUrl, getMainPage, quickSearch, search TIDAK BERUBAH)
+
+    override fun getImageUrl(link: String?): String? {
+        if (link == null) return null
+        return if (link.startsWith("/")) "https://image.tmdb.org/t/p/w500/$link" else link
+    }
+
+    override fun getOriImageUrl(link: String?): String? {
+        if (link == null) return null
+        return if (link.startsWith("/")) "https://image.tmdb.org/t/p/original/$link" else link
+    }
 
     override suspend fun load(url: String): LoadResponse? {
         val data = try {
@@ -192,7 +207,7 @@ open class Adicinemax21 : TmdbProvider() {
                             ).toJson()
                         ) {
                             this.name =
-                                eps.name + if (com.phisher98.isUpcoming(eps.airDate)) " • [UPCOMING]" else "" // FIX: isUpcoming
+                                eps.name + if (com.phisher98.isUpcoming(eps.airDate)) " • [UPCOMING]" else "" 
                             this.season = eps.seasonNumber
                             this.episode = eps.episodeNumber
                             this.posterUrl = getImageUrl(eps.stillPath)
@@ -246,7 +261,7 @@ open class Adicinemax21 : TmdbProvider() {
             ) {
                 this.posterUrl = poster
                 this.backgroundPosterUrl = bgPoster
-                this.comingSoon = com.phisher98.isUpcoming(releaseDate) // FIX: isUpcoming
+                this.comingSoon = com.phisher98.isUpcoming(releaseDate)
                 this.year = year
                 this.plot = res.overview
                 this.duration = res.runtime
@@ -296,7 +311,7 @@ open class Adicinemax21 : TmdbProvider() {
         return true
     }
 
-    // [MODEL DATA TMDB TIDAK BERUBAH, Credential fixes already applied by previous step]
+    // [MODEL DATA TMDB TIDAK BERUBAH]
 
     data class LinkData(
         val id: Int? = null,
