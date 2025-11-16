@@ -5,14 +5,16 @@ import androidx.annotation.RequiresApi
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.phisher98.Provider
-import com.phisher98.StreamPlayExtractor
+// HAPUS: import com.phisher98.StreamPlayExtractor
 import com.phisher98.StreamPlay.LinkData
+import com.phisher98.buildProviders // Import fungsi buildProviders dari com.phisher98
 
 // Menggunakan alias LinkData dari StreamPlay untuk kompatibilitas
 typealias StreamPlayLinkData = LinkData
 
 @RequiresApi(Build.VERSION_CODES.O)
 fun buildAdicinemax21Providers(): List<Provider> {
+    // Memanggil buildProviders secara eksplisit dari package com.phisher98
     val allProviders = com.phisher98.buildProviders()
     
     // Filter Provider: Hapus sumber Anime, dan sumber yang hanya relevan untuk torrent (uhdmovies)
