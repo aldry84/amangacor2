@@ -9,9 +9,10 @@ import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 
-// --- MENGGUNAKAN QUALIFIED NAME UNTUK SEMUA MODEL/UTILITAS ASAL ---
+// --- IMPORT SEMUA DARI PACKAGE com.phisher98 ---
 import com.phisher98.*
 import com.phisher98.StreamPlay.LinkData
+import com.phisher98.StreamPlayExtractor // Diperlukan untuk mengakses inner object/function
 
 // Menjamin API baru dapat mem-parse semua model data dari StreamPlay dan mengakses utilitas penting.
 
@@ -30,7 +31,6 @@ data class Provider(
 )
 
 // Menggunakan typealias ke kelas phisher98 yang sudah di-import di atas.
-// Jika terjadi error, pastikan semua file com.phisher98.StreamPlay... ada dalam lingkungan kompilasi.
 typealias StreamPlayIndexMedia = IndexMedia
 typealias StreamPlayAniIds = AniIds
 typealias StreamPlayAniSearch = AniSearch
@@ -96,10 +96,7 @@ typealias StreamPlayCinemaOSReponseData = CinemaOSReponseData
 
 // Fungsi umum
 val String?.createSlug: String?
-    get() = this?.filter { it.isWhitespace() || it.isLetterOrDigit() }
-        ?.trim()
-        ?.replace("\\s+".toRegex(), "-")
-        ?.lowercase()
+    get() = com.phisher98.createSlug(this)
 
 // Fungsi-fungsi yang harus ada (disalin dari StreamPlayUtils.kt)
 val mimeTypeCopy = arrayOf(
