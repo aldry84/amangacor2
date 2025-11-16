@@ -16,8 +16,10 @@ import androidx.annotation.RequiresApi
 
 // --- IMPORT DARI PACKAGE ASAL (com.phisher98) ---
 import com.phisher98.StreamPlay.LinkData
+// Import fungsi utilitas secara eksplisit dari package com.phisher98
 import com.phisher98.getDate
 import com.phisher98.isUpcoming
+import com.phisher98.StreamPlay.Companion as SPCompanion
 
 open class Adicinemax21 : TmdbProvider() {
     override var name = "Adicinemax21"
@@ -45,21 +47,22 @@ open class Adicinemax21 : TmdbProvider() {
         private const val apiKey = "b030404650f279792a8d3287232358e3"
 
         /** ALL SOURCES (Constants dari StreamPlayExtractor) */
-        const val gomoviesAPI = com.phisher98.StreamPlay.Companion.gomoviesAPI // Tidak digunakan lagi, tapi biarkan saja
-        const val idlixAPI = com.phisher98.StreamPlay.Companion.idlixAPI // Tidak digunakan lagi, tapi biarkan saja
-        const val vidsrcccAPI = com.phisher98.StreamPlay.Companion.vidsrcccAPI // Tidak digunakan lagi, tapi biarkan saja
-        const val vidSrcAPI = com.phisher98.StreamPlay.Companion.vidSrcAPI // Tidak digunakan lagi, tapi biarkan saja
-        const val xprimeAPI = com.phisher98.StreamPlay.Companion.Xprime // Tidak digunakan lagi, tapi biarkan saja
-        const val watchSomuchAPI = com.phisher98.StreamPlay.Companion.watchSomuchAPI // Tidak digunakan lagi, tapi biarkan saja
-        const val mappleAPI = com.phisher98.StreamPlay.Companion.mappleTvApi // Tidak digunakan lagi, tapi biarkan saja
-        const val vidlinkAPI = com.phisher98.StreamPlay.Companion.vidlink // Tidak digunakan lagi, tapi biarkan saja
-        const val vidfastAPI = com.phisher98.StreamPlay.Companion.vidfastProApi // Tidak digunakan lagi, tapi biarkan saja
-        const val wyzieAPI = com.phisher98.StreamPlay.Companion.WyZIESUBAPI // Tidak digunakan lagi, tapi biarkan saja
-        const val vixsrcAPI = com.phisher98.StreamPlay.Companion.vidsrcccAPI // Ganti ke yang umum
-        const val vidsrccxAPI = com.phisher98.StreamPlay.Companion.vidsrcccAPI // Ganti ke yang umum
-        const val superembedAPI = com.phisher98.StreamPlay.Companion.MultiEmbedAPI // Ganti ke yang umum
-        const val vidrockAPI = com.phisher98.StreamPlay.Companion.vidrock // Ganti ke yang umum
-        const val dahmerMoviesAPI = com.phisher98.StreamPlay.Companion.dahmerMoviesAPI // Diperlukan untuk provider invoke
+        // Menggunakan alias SPCompanion
+        const val gomoviesAPI = SPCompanion.gomoviesAPI
+        const val idlixAPI = SPCompanion.idlixAPI
+        const val vidsrcccAPI = SPCompanion.vidsrcccAPI
+        const val vidSrcAPI = SPCompanion.vidSrcAPI
+        const val xprimeAPI = SPCompanion.Xprime
+        const val watchSomuchAPI = SPCompanion.watchSomuchAPI
+        const val mappleAPI = SPCompanion.mappleTvApi
+        const val vidlinkAPI = SPCompanion.vidlink
+        const val vidfastAPI = SPCompanion.vidfastProApi
+        const val wyzieAPI = SPCompanion.WyZIESUBAPI
+        const val vixsrcAPI = SPCompanion.vidsrcccAPI 
+        const val vidsrccxAPI = SPCompanion.vidsrcccAPI 
+        const val superembedAPI = SPCompanion.MultiEmbedAPI
+        const val vidrockAPI = SPCompanion.vidrock
+        const val dahmerMoviesAPI = SPCompanion.dahmerMoviesAPI
         
         fun getType(t: String?): TvType {
             return when (t) {
@@ -77,7 +80,7 @@ open class Adicinemax21 : TmdbProvider() {
 
     }
 
-    // [BAGIAN MAIN PAGE DAN SEARCH TIDAK BERUBAH]
+    // ... (Fungsi-fungsi lain yang menggunakan getDate dan isUpcoming sudah diperbaiki di atas)
 
     override val mainPage = mainPageOf(
         "$tmdbAPI/trending/all/day?api_key=$apiKey&region=US" to "Trending",
@@ -197,7 +200,7 @@ open class Adicinemax21 : TmdbProvider() {
                     ?: return@mapNotNull null, getImageUrl(cast.profilePath)
                 ), roleString = cast.character
             )
-        } ?: return null
+        } ?: emptyList() // Mengganti 'return null' dengan 'emptyList()'
         val recommendations =
             res.recommendations?.results?.mapNotNull { media -> media.toSearchResponse() }
 
@@ -494,7 +497,7 @@ open class Adicinemax21 : TmdbProvider() {
         @JsonProperty("external_ids") val external_ids: ExternalIds? = null,
         @JsonProperty("credits") val credits: Credits? = arrayListOf(),
         @JsonProperty("recommendations") val recommendations: ResultsRecommendations? = null,
-        @JsonProperty("alternative_titles") val alternative_titles: ResultsAltTitles? = null,
+        @JsonProperty("alternative_titles") val alternative_titles: ResultsAltTitles? = arrayListOf(),
         @JsonProperty("production_countries") val production_countries: ArrayList<ProductionCountries>? = arrayListOf(),
     )
 }
