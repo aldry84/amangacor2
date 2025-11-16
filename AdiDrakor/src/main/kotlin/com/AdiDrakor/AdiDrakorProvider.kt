@@ -19,7 +19,7 @@ import okhttp3.ResponseBody.Companion.toResponseBody
 import java.util.ArrayList
 
 class AdiDrakorProvider : MainAPI() {
-    override var mainUrl = "https://adidrakor.ovh"
+    override var mainUrl = "https://kisskh.ovh"
     override var name = "AdiDrakor"
     override val hasMainPage = true
     override val hasDownloadSupport = true
