@@ -11,11 +11,13 @@ import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.runAllAsync
-// HAPUS: import com.phisher98.StreamPlayExtractor // Menggunakan StreamPlayExtractor untuk subtitle
 import android.os.Build
 import androidx.annotation.RequiresApi
+
+// --- IMPORT DARI PACKAGE ASAL (com.phisher98) ---
 import com.phisher98.StreamPlay.LinkData
-import com.phisher98.getDate // Tambahkan ini untuk memperbaiki getDate()
+import com.phisher98.getDate
+import com.phisher98.isUpcoming
 
 open class Adicinemax21 : TmdbProvider() {
     override var name = "Adicinemax21"
@@ -94,8 +96,8 @@ open class Adicinemax21 : TmdbProvider() {
         "$tmdbAPI/tv/top_rated?api_key=$apiKey&region=US" to "Top Rated TV Shows",
         "$tmdbAPI/movie/upcoming?api_key=$apiKey&region=US" to "Upcoming Movies",
         "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko" to "Korean Shows",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_keywords=210024|222243&sort_by=popularity.desc&air_date.lte=${com.phisher98.getDate().today}&air_date.gte=${com.phisher98.getDate().today}" to "Airing Today Anime",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_keywords=210024|222243&sort_by=popularity.desc&air_date.lte=${com.phisher98.getDate().nextWeek}&air_date.gte=${com.phisher98.getDate().today}" to "On The Air Anime",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_keywords=210024|222243&sort_by=popularity.desc&air_date.lte=${getDate().today}&air_date.gte=${getDate().today}" to "Airing Today Anime",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_keywords=210024|222243&sort_by=popularity.desc&air_date.lte=${getDate().nextWeek}&air_date.gte=${getDate().today}" to "On The Air Anime",
         "$tmdbAPI/discover/tv?api_key=$apiKey&with_keywords=210024|222243" to "Anime",
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=210024|222243" to "Anime Movies",
     )
@@ -318,9 +320,11 @@ open class Adicinemax21 : TmdbProvider() {
 
         runAllAsync(
             {
+                // Menggunakan bridge untuk memanggil fungsi dari package com.phisher98
                 StreamPlayExtractorBridge.instance.invokeSubtitleAPI(res.imdbId, res.season, res.episode, subtitleCallback)
             },
             {
+                // Menggunakan bridge untuk memanggil fungsi dari package com.phisher98
                 StreamPlayExtractorBridge.instance.invokeWyZIESUBAPI(res.imdbId, res.season, res.episode, subtitleCallback)
             },
             *providersList.map { provider ->
