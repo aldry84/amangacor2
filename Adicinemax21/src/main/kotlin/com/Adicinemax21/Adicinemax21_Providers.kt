@@ -6,18 +6,16 @@ import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.utils.ExtractorLink
 
 // --- IMPORT DARI PACKAGE ASAL (com.phisher98) ---
-// Import LinkData untuk tipe data input
-import com.phisher98.StreamPlay.LinkData 
-// Import kelas Provider
-import com.phisher98.Provider 
-// Import fungsi buildProviders
-import com.phisher98.buildProviders 
+// Menggunakan QN untuk semua kelas dan fungsi
+import com.phisher98.Provider
+import com.phisher98.StreamPlay.LinkData
+import com.phisher98.buildProviders
 
 // Menggunakan alias LinkData dari StreamPlay untuk kompatibilitas
-typealias StreamPlayLinkData = LinkData
+typealias StreamPlayLinkData = com.phisher98.StreamPlay.LinkData
 
 @RequiresApi(Build.VERSION_CODES.O)
-fun buildAdicinemax21Providers(): List<Provider> {
+fun buildAdicinemax21Providers(): List<com.phisher98.Provider> {
     // Memanggil buildProviders yang diimpor dari com.phisher98
     val allProviders = com.phisher98.buildProviders()
     
@@ -35,7 +33,7 @@ fun buildAdicinemax21Providers(): List<Provider> {
 
     return filteredProviders.map { originalProvider ->
         // Memastikan fungsi invoke menggunakan tipe data LinkData dari StreamPlay
-        Provider(
+        com.phisher98.Provider(
             id = originalProvider.id,
             name = originalProvider.name,
             invoke = { res: StreamPlayLinkData, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit, token: String, dahmerMoviesAPI: String ->
