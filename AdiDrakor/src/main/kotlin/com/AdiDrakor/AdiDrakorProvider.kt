@@ -3,7 +3,6 @@ package com.AdiDrakor
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.mvvm.safeApiCall
-import com.AdiDrakor.BuildConfig // <-- PERBAIKAN: Import yang ditambahkan
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
@@ -146,10 +145,10 @@ class AdiDrakorProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val AdiDrakorAPI = BuildConfig.AdiDrakor
-        val AdiDrakorSub = BuildConfig.AdiDrakorSub
+        val KisskhAPI = BuildConfig.KissKh
+        val KisskhSub = BuildConfig.KisskhSub
         val loadData = parseJson<Data>(data)
-        val kkey = app.get("$AdiDrakorAPI${loadData.epsId}&version=2.8.10", timeout = 10000).parsedSafe<Key>()?.key ?:""
+        val kkey = app.get("$KisskhAPI${loadData.epsId}&version=2.8.10", timeout = 10000).parsedSafe<Key>()?.key ?:""
         app.get(
             "$mainUrl/api/DramaList/Episode/${loadData.epsId}.png?err=false&ts=&time=&kkey=$kkey",
             referer = "$mainUrl/Drama/${getTitle("${loadData.title}")}/Episode-${loadData.eps}?id=${loadData.id}&ep=${loadData.epsId}&page=0&pageSize=100"
@@ -188,7 +187,7 @@ class AdiDrakorProvider : MainAPI() {
             }
         }
 
-        val kkey1=app.get("$AdiDrakorSub${loadData.epsId}&version=2.8.10", timeout = 10000).parsedSafe<Key>()?.key ?:""
+        val kkey1=app.get("$KisskhSub${loadData.epsId}&version=2.8.10", timeout = 10000).parsedSafe<Key>()?.key ?:""
         app.get("$mainUrl/api/Sub/${loadData.epsId}?kkey=$kkey1").text.let { res ->
             tryParseJson<List<Subtitle>>(res)?.map { sub ->
                 if (sub.src!!.contains(".txt")) {
@@ -212,7 +211,7 @@ class AdiDrakorProvider : MainAPI() {
         return true
 
     }
-    // SubDecryptor Code from Thanks to https://github.com/Kohi-den/extensions-source/blob/515590ecfec6af2b915d23508266536f7f5a3ab8/src/en/adidrakor/src/eu/kanade/tachiyomi/animeextension/en/adidrakor/SubDecryptor.kt
+    // SubDecryptor Code from Thanks to https://github.com/Kohi-den/extensions-source/blob/515590ecfec6af2b915d23508266536f7f5a3ab8/src/en/kisskh/src/eu/kanade/tachiyomi/animeextension/en/kisskh/SubDecryptor.kt
 
 
     //OLD Method
