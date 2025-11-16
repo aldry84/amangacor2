@@ -132,7 +132,7 @@ fun Document.getMirrorServer(server: Int): String {
 
 suspend fun extractMovieAPIlinks(serverid: String, movieid: String, MOVIE_API: String): String {
     val link =
-        app.get("$MOVIE_API/ajax/get_stream_link?id=$serverid&movie=$movieid").document.toString()
+        app.get("$MOVIE_API/ajax/get_stream_link?id=$serverid&movie=$movieid").documentLarge.toString()
             .substringAfter("link\":\"").substringBefore("\",")
     return link
 }
@@ -153,7 +153,7 @@ suspend fun getDirectGdrive(url: String): String {
         }&export=download"
     }
 
-    val doc = app.get(fixUrl).document
+    val doc = app.get(fixUrl).documentLarge
     val form = doc.select("form#download-form").attr("action")
     val uc = doc.select("input#uc-download-link").attr("value")
     return app.post(
@@ -170,12 +170,12 @@ suspend fun bypassBqrecipes(url: String): String? {
     var cookies = res.cookies
     res = app.get(location, cookies = cookies)
     cookies = cookies + res.cookies
-    val document = res.document
+    val document = res.documentLarge
     location = document.select("form#recaptcha").attr("action")
     val data =
         document.select("form#recaptcha input").associate { it.attr("name") to it.attr("value") }
     res = app.post(location, data = data, cookies = cookies)
-    location = res.document.selectFirst("a#messagedown")?.attr("href") ?: return null
+    location = res.documentLarge.selectFirst("a#messagedown")?.attr("href") ?: return null
     cookies = (cookies + res.cookies).minus("var")
     return app.get(location, cookies = cookies, allowRedirects = false).headers["location"]
 }
@@ -185,7 +185,7 @@ suspend fun bypassOuo(url: String?): String? {
     run lit@{
         (1..2).forEach { _ ->
             if (res.headers["location"] != null) return@lit
-            val document = res.document
+            val document = res.documentLarge
             val nextUrl = document.select("form").attr("action")
             val data = document.select("form input").mapNotNull {
                 it.attr("name") to it.attr("value")
@@ -217,22 +217,22 @@ suspend fun bypassHrefli(url: String): String? {
     }
 
     val host = getBaseUrl(url)
-    var res = app.get(url).document
+    var res = app.get(url).documentLarge
     var formUrl = res.getFormUrl()
     var formData = res.getFormData()
 
-    res = app.post(formUrl, data = formData).document
+    res = app.post(formUrl, data = formData).documentLarge
     formUrl = res.getFormUrl()
     formData = res.getFormData()
 
-    res = app.post(formUrl, data = formData).document
+    res = app.post(formUrl, data = formData).documentLarge
     val skToken = res.selectFirst("script:containsData(?go=)")?.data()?.substringAfter("?go=")
         ?.substringBefore("\"") ?: return null
     val driveUrl = app.get(
         "$host?go=$skToken", cookies = mapOf(
             skToken to "${formData["_wp_http2"]}"
         )
-    ).document.selectFirst("meta[http-equiv=refresh]")?.attr("content")?.substringAfter("url=")
+    ).documentLarge.selectFirst("meta[http-equiv=refresh]")?.attr("content")?.substringAfter("url=")
     val path = app.get(driveUrl ?: return null).text.substringAfter("replace(\"")
         .substringBefore("\")")
     if (path == "/404") return null
@@ -245,11 +245,11 @@ suspend fun cinematickitBypass(url: String): String? {
         val encodedLink = cleanedUrl.substringAfter("safelink=").substringBefore("-")
         if (encodedLink.isEmpty()) return null
         val decodedUrl = base64Decode(encodedLink)
-        val doc = app.get(decodedUrl).document
+        val doc = app.get(decodedUrl).documentLarge
         val goValue = doc.select("form#landing input[name=go]").attr("value")
         if (goValue.isBlank()) return null
         val decodedGoUrl = base64Decode(goValue).replace("&#038;", "&")
-        val responseDoc = app.get(decodedGoUrl).document
+        val responseDoc = app.get(decodedGoUrl).documentLarge
         val script = responseDoc.select("script").firstOrNull { it.data().contains("window.location.replace") }?.data() ?: return null
         val regex = Regex("""window\.location\.replace\s*\(\s*["'](.+?)["']\s*\)\s*;?""")
         val match = regex.find(script) ?: return null
@@ -269,7 +269,7 @@ suspend fun cinematickitloadBypass(url: String): String? {
         val encodedLink = cleanedUrl.substringAfter("safelink=").substringBefore("-")
         if (encodedLink.isEmpty()) return null
         val decodedUrl = base64Decode(encodedLink)
-        val doc = app.get(decodedUrl).document
+        val doc = app.get(decodedUrl).documentLarge
         val goValue = doc.select("form#landing input[name=go]").attr("value")
         return base64Decode(goValue)
     } catch (e: Exception) {
@@ -587,7 +587,7 @@ suspend fun extractMdrive(url: String): List<String> {
     val regex = Regex("hubcloud|gdflix|gdlink", RegexOption.IGNORE_CASE)
 
     return try {
-        app.get(url).document
+        app.get(url).documentLarge
             .select("a[href]")
             .mapNotNull { element ->
                 val href = element.attr("href")
@@ -1402,7 +1402,7 @@ suspend fun getPlayer4uUrl(
 ) {
     val response = app.get(url, referer = referer)
     var script = getAndUnpack(response.text).takeIf { it.isNotEmpty() }
-        ?: response.document.selectFirst("script:containsData(sources:)")?.data()
+        ?: response.documentLarge.selectFirst("script:containsData(sources:)")?.data()
     if (script == null) {
         val iframeUrl =
             Regex("""<iframe src="(.*?)"""").find(response.text)?.groupValues?.getOrNull(1)
@@ -1459,35 +1459,19 @@ fun getAnidbEid(jsonString: String, episodeNumber: Int?): Int? {
     }
 }
 
-fun generateVrfRC4(text: String, key: String): String {
-    fun rc4(input: ByteArray, key: ByteArray): ByteArray {
-        val s = IntArray(256) { it }
-        var j = 0
-
-        // Key Scheduling Algorithm (KSA)
-        for (i in 0 until 256) {
-            j = (j + s[i] + key[i % key.size]) % 256
-            s[i] = s[j].also { s[j] = s[i] }
-        }
-
-        // PRGA
-        val out = ByteArray(input.size)
-        var i = 0
-        j = 0
-        for (n in input.indices) {
-            i = (i + 1) % 256
-            j = (j + s[i]) % 256
-            s[i] = s[j].also { s[j] = s[i] }
-            val k = s[(s[i] + s[j]) % 256]
-            out[n] = (input[n].toInt() xor k).toByte()
-        }
-        return out
-    }
-
-    val cipher = rc4(text.toByteArray(Charsets.UTF_8), key.toByteArray(Charsets.UTF_8))
-
-    // URL-safe Base64 without padding
-    return base64Encode(cipher)
+@RequiresApi(Build.VERSION_CODES.O)
+fun generateVrfAES(movieId: String, userId: String): String {
+    // Step 1: Derive key = SHA-256("secret_" + userId)
+    val keyData = "secret_$userId".toByteArray(Charsets.UTF_8)
+    val keyBytes = MessageDigest.getInstance("SHA-256").digest(keyData)
+    val keySpec = SecretKeySpec(keyBytes, "AES")
+    val ivSpec = IvParameterSpec(ByteArray(16))
+    val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+    cipher.init(Cipher.ENCRYPT_MODE, keySpec, ivSpec)
+    val encrypted = cipher.doFinal(movieId.toByteArray(Charsets.UTF_8))
+    return Base64.getUrlEncoder()
+        .withoutPadding()
+        .encodeToString(encrypted)
 }
 
 
@@ -1771,7 +1755,7 @@ suspend fun hdhubgetRedirectLinks(url: String): String {
         val data = hdhubencode(jsonObject.optString("data", "")).trim()
         val wphttp1 = jsonObject.optString("blog_url", "").trim()
         val directlink = runCatching {
-            app.get("$wphttp1?re=$data".trim()).document.select("body").text().trim()
+            app.get("$wphttp1?re=$data".trim()).documentLarge.select("body").text().trim()
         }.getOrDefault("").trim()
 
         encodedurl.ifEmpty { directlink }
@@ -1931,7 +1915,7 @@ fun vidrockEncode(tmdb: String, type: String, season: Int? = null, episode: Int?
 }
 
 fun generateHashedString(): String {
-    val s = "a8f7e9c2d4b6a1f3e8c9d2b4a7f6e9c2d4b6a1f3e8c9d2b4a7f6e9c2d4b6a1f3"
+    val s = "a8f7e9c2d4b6a1f3e8c9d2t4a7f6e9c2d4z6a1f3e8c9d2b4a7f5e9c2d4b6a1f3"
     val a = "2"
     val algorithm = "HmacSHA512"
     val keySpec = SecretKeySpec(s.toByteArray(StandardCharsets.UTF_8), algorithm)
@@ -1985,7 +1969,7 @@ fun cinemaOSDecryptResponse(e: CinemaOSReponseData?): Any {
     val mao = e?.mao
     val salt = e?.salt
 
-    val keyBytes =  "a1b2c3d4e4f6588658455678901477567890abcdef1234567890abcdef123456".toByteArray()
+    val keyBytes =  "a1b2c3d4e4f6477658455678901477567890abcdef1234567890abcdef123456".toByteArray()
     val ivBytes = hexStringToByteArray(cin.toString())
     val authTagBytes = hexStringToByteArray(mao.toString())
     val encryptedBytes = hexStringToByteArray(encrypted.toString())
@@ -2134,7 +2118,7 @@ fun padData(data: ByteArray, blockSize: Int): ByteArray {
 
 fun customEncode(input: ByteArray): String {
     val sourceChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"
-    val targetChars = "qKSV9YJhF-WvABcOTH6P1ewt8NrfkREg3LZjU2b_GnmyaDI5piX7xz0CoMuQdl4s"
+    val targetChars = "4stjqN6BT05-L8rQe_HxWmAVv9icYKaCDzIP1fZ7kwXRyFhd2GEng3SMJlUubOop"
 
     val translationMap = sourceChars.zip(targetChars).toMap()
     val encoded = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

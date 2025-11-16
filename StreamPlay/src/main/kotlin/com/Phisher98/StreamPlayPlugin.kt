@@ -35,7 +35,7 @@ class StreamPlayPlugin: Plugin() {
         val sharedPref = context.getSharedPreferences("StreamPlay", Context.MODE_PRIVATE)
         val mainApis = listOf(
             StreamPlay(sharedPref), StreamPlayLite(),
-            StreamPlayTorrent()
+            StreamPlayTorrent(), StreamPlayAnime(), StreamplayTorrentAnime()
         )
         val savedSet = sharedPref.getStringSet("enabled_plugins_saved", null)
         val defaultEnabled = mainApis.map { it.name }.toSet()
@@ -162,7 +162,8 @@ class StreamPlayPlugin: Plugin() {
         registerExtractorAPI(Streameeeeee())
         registerExtractorAPI(Vidora())
         registerExtractorAPI(Fourspromax())
-
+        registerExtractorAPI(XdMoviesExtractor())
+        registerExtractorAPI(HubdriveSpace())
         openSettings = { ctx ->
             val act = ctx as AppCompatActivity
             if (!act.isFinishing && !act.isDestroyed) {

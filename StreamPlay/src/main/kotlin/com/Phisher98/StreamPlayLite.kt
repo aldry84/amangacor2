@@ -9,7 +9,6 @@ import com.phisher98.StreamPlayExtractor.invokeAllMovieland
 import com.phisher98.StreamPlayExtractor.invokeAnimes
 import com.phisher98.StreamPlayExtractor.invokeDramadrip
 import com.phisher98.StreamPlayExtractor.invokeElevenmovies
-import com.phisher98.StreamPlayExtractor.invokeEmbedlc
 import com.phisher98.StreamPlayExtractor.invokeEmovies
 import com.phisher98.StreamPlayExtractor.invokeKisskh
 import com.phisher98.StreamPlayExtractor.invokeKisskhAsia
@@ -39,7 +38,7 @@ import com.phisher98.StreamPlayExtractor.invokevidrock
 import com.phisher98.StreamPlayExtractor.sharedPref
 
 class StreamPlayLite() : StreamPlay(sharedPref) {
-    override var name = "AmanGacorPlay-Ringan"
+    override var name = "StreamPlay-Lite"
 
     override suspend fun loadLinks(
         data: String,
@@ -256,9 +255,6 @@ class StreamPlayLite() : StreamPlay(sharedPref) {
             },
             {
                 if (!res.isAnime) invokeDramadrip(res.imdbId, res.season, res.episode, subtitleCallback, callback)
-            },
-            {
-                if (!res.isAnime)  invokeEmbedlc(res.imdbId, res.season, res.episode,subtitleCallback, callback)
             },
             {
                 if (!res.isAnime) invokeMovieBox(res.title, res.season, res.episode, subtitleCallback, callback)

@@ -13,8 +13,6 @@ import com.phisher98.StreamPlayExtractor.invokeCinemaOS
 import com.phisher98.StreamPlayExtractor.invokeDahmerMovies
 import com.phisher98.StreamPlayExtractor.invokeDotmovies
 import com.phisher98.StreamPlayExtractor.invokeDramadrip
-import com.phisher98.StreamPlayExtractor.invokeElevenmovies
-import com.phisher98.StreamPlayExtractor.invokeEmbedlc
 import com.phisher98.StreamPlayExtractor.invokeEmovies
 import com.phisher98.StreamPlayExtractor.invokeExtramovies
 import com.phisher98.StreamPlayExtractor.invokeFilm1k
@@ -48,12 +46,14 @@ import com.phisher98.StreamPlayExtractor.invokeVegamovies
 import com.phisher98.StreamPlayExtractor.invokeVidFast
 import com.phisher98.StreamPlayExtractor.invokeVidPlus
 import com.phisher98.StreamPlayExtractor.invokeVidSrcXyz
+import com.phisher98.StreamPlayExtractor.invokeVideasy
 import com.phisher98.StreamPlayExtractor.invokeVidlink
 import com.phisher98.StreamPlayExtractor.invokeVidnest
 import com.phisher98.StreamPlayExtractor.invokeVidsrccc
 import com.phisher98.StreamPlayExtractor.invokeVidzee
 import com.phisher98.StreamPlayExtractor.invokeWatch32APIHQ
 import com.phisher98.StreamPlayExtractor.invokeWatchsomuch
+import com.phisher98.StreamPlayExtractor.invokeXDmovies
 import com.phisher98.StreamPlayExtractor.invokeXPrimeAPI
 import com.phisher98.StreamPlayExtractor.invokeZoechip
 import com.phisher98.StreamPlayExtractor.invokeZshow
@@ -178,9 +178,6 @@ fun buildProviders(): List<Provider> {
         Provider("4khdhub", "4kHdhub (Multi)") { res, subtitleCallback, callback, token, dahmerMoviesAPI ->
             invoke4khdhub(res.title, res.year, res.season, res.episode, subtitleCallback, callback)
         },
-        Provider("elevenmovies", "ElevenMovies") { res, subtitleCallback, callback, token, dahmerMoviesAPI ->
-            if (!res.isAnime) invokeElevenmovies(res.id, res.season, res.episode, subtitleCallback, callback)
-        },
         Provider("hdhub4u", "Hdhub4u (Multi)") { res, subtitleCallback, callback, token, dahmerMoviesAPI ->
             if (!res.isAnime) invokehdhub4u(res.imdbId, res.title, res.year, res.season, res.episode, subtitleCallback, callback)
         },
@@ -189,9 +186,6 @@ fun buildProviders(): List<Provider> {
         },
         Provider("dramadrip", "Dramadrip (Asian Drama)") { res, subtitleCallback, callback, token, dahmerMoviesAPI ->
             if (!res.isAnime)invokeDramadrip(res.imdbId, res.season, res.episode, subtitleCallback, callback)
-        },
-        Provider("embedlc", "EmbedLC") { res, subtitleCallback, callback, token, dahmerMoviesAPI ->
-            if (!res.isAnime) invokeEmbedlc(res.imdbId, res.season, res.episode, subtitleCallback, callback)
         },
         Provider("rivestream", "RiveStream") { res, subtitleCallback, callback, token, dahmerMoviesAPI ->
             if (!res.isAnime) invokeRiveStream(res.id, res.season, res.episode, callback)
@@ -249,6 +243,12 @@ fun buildProviders(): List<Provider> {
         },
         Provider("NuvioStreams", "NuvioStreams") { res, subtitleCallback, callback, token, dahmerMoviesAPI ->
             invokeNuvioStreams(res.imdbId, res.season,res.episode,  callback)
+        },
+        Provider("VidEasy", "VidEasy") { res, subtitleCallback, callback, _, _ ->
+            invokeVideasy(res.id, res.imdbId, res.title, res.year, res.season,res.episode,  callback, subtitleCallback)
+        },
+        Provider("XDMovies", "XDMovies") { res, subtitleCallback, callback, _, _ ->
+            invokeXDmovies(res.id, res.season, res.episode,  callback, subtitleCallback)
         },
     )
 }
