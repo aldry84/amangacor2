@@ -3,7 +3,7 @@ version = 3
 cloudstream {
     authors     = listOf("PappyGacor")
     language    = "en"
-    description = "PappyGacorBangat"
+    description = "PappyWattiGacorBangat"
 
     /**
      * Status int as the following:
