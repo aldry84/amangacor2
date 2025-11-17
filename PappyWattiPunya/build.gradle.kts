@@ -14,5 +14,5 @@ cloudstream {
     **/
     status  = 1 // will be 3 if unspecified
     tvTypes = listOf("NSFW")
-    iconUrl = "https://github.com/aldry84/amangacor2/blob/master/PappyWattiPunya/1763378720770.png"
+    iconUrl = "https://drive.google.com/file/d/1O58xT-4aNN4NUMMbPM8lqG5qLpja01eS/view?usp=sharing"
 }
