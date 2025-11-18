@@ -38,7 +38,7 @@ jobs:
         uses: actions/setup-java@v5
         with:
           java-version: 17
-          distribution: temurin # <-- PERBAIKAN 1 (Mengganti 'adopt')
+          distribution: adopt
           cache: gradle
 
       - name: Setup Android SDK
@@ -161,7 +161,5 @@ jobs:
           git config --local user.email "actions@github.com"
           git config --local user.name "GitHub Actions"
           git add .
-          git commit --amend -m "Build $GITHUB_SHA" || true # <-- PERBAIKAN 2 (Mengganti '|| exit 0')
+          git commit --amend -m "Build $GITHUB_SHA" || exit 0   # do not error if nothing to commit
           git push --force
-
-# PERBAIKAN 3: Menghapus '}' yang tidak valid dari akhir file
