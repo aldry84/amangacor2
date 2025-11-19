@@ -3,13 +3,8 @@ package com.AdiDrakor
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
-import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.extractors.helper.AesHelper
-import com.lagradost.cloudstream3.network.WebViewResolver
 import com.lagradost.nicehttp.RequestBodyTypes
-import okhttp3.Interceptor
-import okhttp3.MediaType.Companion.toMediaTypeOrNull
-import okhttp3.RequestBody.Companion.toRequestBody
 import org.jsoup.Jsoup
 import com.AdiDrakor.AdiDrakor.LinkData
 
@@ -20,9 +15,6 @@ object AdiDrakorExtractor {
     private const val idlixAPI = "https://tv6.idlixku.com"
     private const val vidsrcccAPI = "https://vidsrc.cc"
     private const val vidSrcAPI = "https://vidsrc.net"
-    private const val xprimeAPI = "https://backend.xprime.tv"
-    private const val watchSomuchAPI = "https://watchsomuch.tv"
-    private const val mappleAPI = "https://mapple.uk"
     private const val vidlinkAPI = "https://vidlink.pro"
     private const val vidfastAPI = "https://vidfast.pro"
     private const val wyzieAPI = "https://sub.wyzie.ru"
@@ -30,60 +22,85 @@ object AdiDrakorExtractor {
     private const val vidsrccxAPI = "https://vidsrc.cx"
     private const val superembedAPI = "https://multiembed.mov"
     private const val vidrockAPI = "https://vidrock.net"
+    private const val mappleAPI = "https://mapple.uk"
     private const val jeniusMainUrl = "https://jeniusplay.com"
 
-    // --- FUNGSI UTAMA PEMANGGIL SEMUA EXTRACTOR ---
+    // --- FUNGSI UTAMA (PARALLEL & PRIORITIZED) ---
     suspend fun invokeAllExtractors(
         res: LinkData,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        // PERBAIKAN DISINI: Mengubah toJson(res) menjadi res.toJson()
-        com.lagradost.cloudstream3.utils.AppUtils.parseJson<LinkData>(res.toJson()) 
-        
-        suspendSafe { invokeIdlix(res.title, res.year, res.season, res.episode, subtitleCallback, callback) }
-        suspendSafe { invokeVidsrccc(res.id, res.imdbId, res.season, res.episode, subtitleCallback, callback) }
-        suspendSafe { invokeVidsrc(res.imdbId, res.season, res.episode, subtitleCallback, callback) }
-        suspendSafe { invokeWatchsomuch(res.imdbId, res.season, res.episode, subtitleCallback) }
-        suspendSafe { invokeVixsrc(res.id, res.season, res.episode, callback) }
-        suspendSafe { invokeVidlink(res.id, res.season, res.episode, callback) }
-        suspendSafe { invokeVidfast(res.id, res.season, res.episode, subtitleCallback, callback) }
-        suspendSafe { invokeMapple(res.id, res.season, res.episode, subtitleCallback, callback) }
-        suspendSafe { invokeWyzie(res.id, res.season, res.episode, subtitleCallback) }
-        suspendSafe { invokeVidsrccx(res.id, res.season, res.episode, callback) }
-        suspendSafe { invokeSuperembed(res.id, res.season, res.episode, subtitleCallback, callback) }
-        suspendSafe { invokeVidrock(res.id, res.season, res.episode, subtitleCallback, callback) }
-    }
-    
-    private suspend fun suspendSafe(block: suspend () -> Unit) {
-        try { block() } catch (e: Exception) { e.printStackTrace() }
-    }
+        // Fix error toJson: Gunakan extension function res.toJson()
+        // Parsing dummy untuk memastikan data valid (opsional)
+        try { AppUtils.parseJson<LinkData>(res.toJson()) } catch (e: Exception) { }
 
-    // --- INDIVIDUAL EXTRACTORS ---
+        // DAFTAR TUGAS EXTRACTOR
+        // PENTING: invokeIdlix (sumber Jeniusplay) ditaruh PALING ATAS
+        val tasks = listOf(
+            // [PRIORITAS 1] IDLIX -> JENIUSPLAY
+            suspend { invokeIdlix(res.title, res.year, res.season, res.episode, subtitleCallback, callback) },
+            
+            // [PRIORITAS 2] VIDSRCCC & VIDSRC (Stabil)
+            suspend { invokeVidsrccc(res.id, res.imdbId, res.season, res.episode, subtitleCallback, callback) },
+            suspend { invokeVidsrc(res.imdbId, res.season, res.episode, subtitleCallback, callback) },
+            
+            // [PRIORITAS 3] SUMBER LAINNYA
+            suspend { invokeVidrock(res.id, res.season, res.episode, subtitleCallback, callback) },
+            suspend { invokeVidlink(res.id, res.season, res.episode, callback) },
+            suspend { invokeVixsrc(res.id, res.season, res.episode, callback) },
+            suspend { invokeSuperembed(res.id, res.season, res.episode, subtitleCallback, callback) },
+            suspend { invokeWyzie(res.id, res.season, res.episode, subtitleCallback) },
+            suspend { invokeVidsrccx(res.id, res.season, res.episode, callback) },
+            suspend { invokeWatchsomuch(res.imdbId, res.season, res.episode, subtitleCallback) },
+            suspend { invokeMapple(res.id, res.season, res.episode, subtitleCallback, callback) },
+            suspend { invokeVidfast(res.id, res.season, res.episode, subtitleCallback, callback) }
+        )
 
-    // 1. JENIUSPLAY
-    suspend fun invokeJeniusplay(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
-        val hash = url.split("/").last().substringAfter("data=")
-        val m3uLink = app.post(
-            url = "$jeniusMainUrl/player/index.php?data=$hash&do=getVideo",
-            data = mapOf("hash" to hash, "r" to "$referer"),
-            referer = url,
-            headers = mapOf("X-Requested-With" to "XMLHttpRequest")
-        ).parsed<ResponseSource>().videoSource
-
-        callback.invoke(newExtractorLink("Jeniusplay", "Jeniusplay", m3uLink, ExtractorLinkType.M3U8) { this.referer = url })
-
-        app.get(url, referer = "$jeniusMainUrl/").document.select("script").map { script ->
-            if (script.data().contains("eval(function(p,a,c,k,e,d)")) {
-                val subData = getAndUnpack(script.data()).substringAfter("\"tracks\":[").substringBefore("],")
-                tryParseJson<List<JeniusTracks>>("[$subData]")?.map { subtitle ->
-                    subtitleCallback.invoke(SubtitleFile(subtitle.label ?: "Unknown", subtitle.file))
-                }
-            }
+        // JALANKAN SECARA PARALEL (CEPAT)
+        // Menggunakan amap agar semua jalan berbarengan, tapi Idlix dimulai duluan
+        tasks.amap { 
+            try { it.invoke() } catch (e: Exception) { e.printStackTrace() } 
         }
     }
 
-    // 2. IDLIX
+    // --- 1. JENIUSPLAY EXTRACTOR (Target Utama) ---
+    //
+    suspend fun invokeJeniusplay(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
+        try {
+            val hash = url.split("/").last().substringAfter("data=")
+            val m3uLink = app.post(
+                url = "$jeniusMainUrl/player/index.php?data=$hash&do=getVideo",
+                data = mapOf("hash" to hash, "r" to "$referer"),
+                referer = url,
+                headers = mapOf("X-Requested-With" to "XMLHttpRequest")
+            ).parsed<ResponseSource>().videoSource
+
+            // Kita beri nama "⭐️ Jeniusplay" agar terlihat spesial/diatas
+            callback.invoke(newExtractorLink("Jeniusplay", "⭐️ Jeniusplay", m3uLink, ExtractorLinkType.M3U8) { 
+                this.referer = url 
+                this.quality = Qualities.P1080.value // Prioritaskan kualitas tinggi
+            })
+
+            // Subtitle Jeniusplay
+            val scriptData = app.get(url, referer = "$jeniusMainUrl/").document.select("script").firstOrNull { 
+                it.data().contains("eval(function(p,a,c,k,e,d)") 
+            }?.data()
+
+            if (scriptData != null) {
+                val unpacked = getAndUnpack(scriptData)
+                val subData = unpacked.substringAfter("\"tracks\":[").substringBefore("],")
+                tryParseJson<List<JeniusTracks>>("[$subData]")?.forEach { subtitle ->
+                    subtitleCallback.invoke(SubtitleFile(subtitle.label ?: "Indonesian", subtitle.file))
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    // --- 2. IDLIX (Parent dari Jeniusplay) ---
+    //
     suspend fun invokeIdlix(title: String? = null, year: Int? = null, season: Int? = null, episode: Int? = null, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
         val fixTitle = title?.createSlug()
         val url = if (season == null) "$idlixAPI/movie/$fixTitle-$year" else "$idlixAPI/episode/$fixTitle-season-$season-episode-$episode"
@@ -93,6 +110,7 @@ object AdiDrakorExtractor {
     private suspend fun invokeWpmovies(name: String? = null, url: String? = null, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit, fixIframe: Boolean = false, encrypt: Boolean = false) {
         val res = app.get(url ?: return)
         val referer = AdiDrakorUtils.getBaseUrl(res.url)
+        
         res.document.select("ul#playeroptionsul > li").forEach { li ->
             val id = li.attr("data-post")
             val nume = li.attr("data-nume")
@@ -113,6 +131,7 @@ object AdiDrakorExtractor {
                 } else it.embed_url
             } ?: return@forEach
 
+            // LOGIKA PRIORITAS JENIUSPLAY
             if (source.startsWith("https://jeniusplay.com")) {
                 invokeJeniusplay(source, "$referer/", subtitleCallback, callback)
             } else if (!source.contains("youtube")) {
@@ -121,7 +140,7 @@ object AdiDrakorExtractor {
         }
     }
 
-    // 3. VIDSRCCC
+    // --- 3. VIDSRCCC ---
     suspend fun invokeVidsrccc(tmdbId: Int?, imdbId: String?, season: Int?, episode: Int?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
         val url = if (season == null) "$vidsrcccAPI/v2/embed/movie/$tmdbId" else "$vidsrcccAPI/v2/embed/tv/$tmdbId/$season/$episode"
         val script = app.get(url).document.selectFirst("script:containsData(userId)")?.data() ?: return
@@ -140,7 +159,7 @@ object AdiDrakorExtractor {
         }
     }
 
-    // 4. VIDSRC
+    // --- 4. VIDSRC ---
     suspend fun invokeVidsrc(imdbId: String?, season: Int?, episode: Int?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
         val url = if (season == null) "$vidSrcAPI/embed/movie?imdb=$imdbId" else "$vidSrcAPI/embed/tv?imdb=$imdbId&season=$season&episode=$episode"
         app.get(url).document.select(".serversList .server").forEach { 
@@ -152,7 +171,7 @@ object AdiDrakorExtractor {
         }
     }
 
-    // 5. VIDROCK
+    // --- 5. VIDROCK ---
     suspend fun invokeVidrock(tmdbId: Int?, season: Int?, episode: Int?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
         val type = if (season == null) "movie" else "tv"
         val url = "$vidrockAPI/$type/$tmdbId${if (type == "movie") "" else "/$season/$episode"}"
@@ -170,7 +189,7 @@ object AdiDrakorExtractor {
         }
     }
     
-    // 6. OTHER EXTRACTORS
+    // --- 6. OTHER EXTRACTORS ---
     suspend fun invokeVidlink(tmdbId: Int?, season: Int?, episode: Int?, callback: (ExtractorLink) -> Unit) {
         val type = if (season == null) "movie" else "tv"
         val url = if (season == null) "$vidlinkAPI/$type/$tmdbId" else "$vidlinkAPI/$type/$tmdbId/$season/$episode"
