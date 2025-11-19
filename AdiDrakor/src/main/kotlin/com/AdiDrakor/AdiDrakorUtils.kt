@@ -34,16 +34,18 @@ object AdiDrakorUtils {
             return base64UrlEncode(cipher.doFinal(s.toByteArray(Charsets.UTF_8)))
         }
     }
+    
+    fun generateWpKey(r: String, m: String): String {
+        val rList = r.split("\\x").toTypedArray()
+        var n = ""
+        val decodedM = base64Decode(m.reversed() + "=".repeat((4 - m.length % 4) % 4))
+        for (s in decodedM.split("|")) { n += "\\x" + rList[Integer.parseInt(s) + 1] }
+        return n
+    }
+
+    fun getBaseUrl(url: String): String = URI(url).let { "${it.scheme}://${it.host}" }
 }
 
 fun base64Decode(input: String): String = String(android.util.Base64.decode(input, android.util.Base64.DEFAULT))
 fun base64UrlEncode(input: ByteArray): String = android.util.Base64.encodeToString(input, android.util.Base64.DEFAULT).trim().replace("+", "-").replace("/", "_").replace("=", "")
-fun getBaseUrl(url: String): String = URI(url).let { "${it.scheme}://${it.host}" }
-fun String.fixUrlBloat(): String = this.replace("\"", "").replace("\\", "")
-fun generateWpKey(r: String, m: String): String {
-    val rList = r.split("\\x").toTypedArray()
-    var n = ""
-    val decodedM = base64Decode(m.reversed() + "=".repeat((4 - m.length % 4) % 4))
-    for (s in decodedM.split("|")) { n += "\\x" + rList[Integer.parseInt(s) + 1] }
-    return n
-}
+fun String.createSlug(): String = this.filter { it.isLetterOrDigit() || it.isWhitespace() }.trim().replace("\\s+".toRegex(), "-").lowercase()
