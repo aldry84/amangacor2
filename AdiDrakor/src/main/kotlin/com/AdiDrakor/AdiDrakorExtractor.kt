@@ -2,6 +2,7 @@ package com.AdiDrakor
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
+import com.lagradost.cloudstream3.utils.AppUtils
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.extractors.helper.AesHelper
 import com.lagradost.nicehttp.RequestBodyTypes
@@ -31,12 +32,12 @@ object AdiDrakorExtractor {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        // Fix error toJson: Gunakan extension function res.toJson()
-        // Parsing dummy untuk memastikan data valid (opsional)
-        try { AppUtils.parseJson<LinkData>(res.toJson()) } catch (e: Exception) { }
+        // PERBAIKAN DISINI: Menggunakan AppUtils.toJson(res)
+        try { 
+            AppUtils.parseJson<LinkData>(AppUtils.toJson(res)) 
+        } catch (e: Exception) { }
 
-        // DAFTAR TUGAS EXTRACTOR
-        // PENTING: invokeIdlix (sumber Jeniusplay) ditaruh PALING ATAS
+        // DAFTAR TUGAS EXTRACTOR (Idlix/Jeniusplay Prioritas Utama)
         val tasks = listOf(
             // [PRIORITAS 1] IDLIX -> JENIUSPLAY
             suspend { invokeIdlix(res.title, res.year, res.season, res.episode, subtitleCallback, callback) },
@@ -58,14 +59,12 @@ object AdiDrakorExtractor {
         )
 
         // JALANKAN SECARA PARALEL (CEPAT)
-        // Menggunakan amap agar semua jalan berbarengan, tapi Idlix dimulai duluan
         tasks.amap { 
             try { it.invoke() } catch (e: Exception) { e.printStackTrace() } 
         }
     }
 
     // --- 1. JENIUSPLAY EXTRACTOR (Target Utama) ---
-    //
     suspend fun invokeJeniusplay(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
         try {
             val hash = url.split("/").last().substringAfter("data=")
@@ -100,7 +99,6 @@ object AdiDrakorExtractor {
     }
 
     // --- 2. IDLIX (Parent dari Jeniusplay) ---
-    //
     suspend fun invokeIdlix(title: String? = null, year: Int? = null, season: Int? = null, episode: Int? = null, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
         val fixTitle = title?.createSlug()
         val url = if (season == null) "$idlixAPI/movie/$fixTitle-$year" else "$idlixAPI/episode/$fixTitle-season-$season-episode-$episode"
