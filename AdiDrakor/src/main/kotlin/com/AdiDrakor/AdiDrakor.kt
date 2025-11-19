@@ -1,132 +1,295 @@
 package com.AdiDrakor
 
-import com.AdiDrakor.AdiDrakorUtils.decrypt
-import com.AdiDrakor.AdiDrakorUtils.fixUrl
-import com.AdiDrakor.AdiDrakorUtils.getLanguage
-import com.AdiDrakor.AdiDrakorUtils.getTitle
+import com.fasterxml.jackson.annotation.JsonProperty
+import com.AdiDrakor.AdiDrakorExtractor.invokeGomovies
+import com.AdiDrakor.AdiDrakorExtractor.invokeIdlix
+import com.AdiDrakor.AdiDrakorExtractor.invokeMapple
+import com.AdiDrakor.AdiDrakorExtractor.invokeSuperembed
+import com.AdiDrakor.AdiDrakorExtractor.invokeVidfast
+import com.AdiDrakor.AdiDrakorExtractor.invokeVidlink
+import com.AdiDrakor.AdiDrakorExtractor.invokeVidrock
+import com.AdiDrakor.AdiDrakorExtractor.invokeVidsrc
+import com.AdiDrakor.AdiDrakorExtractor.invokeVidsrccc
+import com.AdiDrakor.AdiDrakorExtractor.invokeVidsrccx
+import com.AdiDrakor.AdiDrakorExtractor.invokeVixsrc
+import com.AdiDrakor.AdiDrakorExtractor.invokeWatchsomuch
+import com.AdiDrakor.AdiDrakorExtractor.invokeWyzie
+import com.AdiDrakor.AdiDrakorExtractor.invokeXprime
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.mvvm.safeApiCall
+import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
+import com.lagradost.cloudstream3.metaproviders.TmdbProvider
+import com.lagradost.cloudstream3.LoadResponse.Companion.addImdbId
+import com.lagradost.cloudstream3.LoadResponse.Companion.addTMDbId
+import com.lagradost.cloudstream3.network.CloudflareKiller
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
-import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.INFER_TYPE
-import com.lagradost.cloudstream3.utils.M3u8Helper
-import com.lagradost.cloudstream3.utils.Qualities
-import com.lagradost.cloudstream3.utils.loadExtractor
-import com.lagradost.cloudstream3.utils.newExtractorLink
-import okhttp3.Interceptor
-import okhttp3.Response
-import okhttp3.ResponseBody.Companion.toResponseBody
-import java.util.ArrayList
+import kotlin.math.roundToInt
 
-class AdiDrakor : MainAPI() {
-    override var mainUrl = "https://kisskh.ovh"
+open class AdiDrakor : TmdbProvider() {
     override var name = "AdiDrakor"
     override val hasMainPage = true
-    override val hasDownloadSupport = true
+    override val instantLinkLoading = true
+    override val useMetaLoadResponse = true
+    override val hasQuickSearch = true
     override val supportedTypes = setOf(
-        TvType.AsianDrama,
         TvType.Movie,
-        TvType.TvSeries
+        TvType.TvSeries,
+        TvType.AsianDrama,
     )
 
-    // 8 Kategori Khusus Korea (country=2)
+    val wpRedisInterceptor by lazy { CloudflareKiller() }
+
+    /** AUTHOR : Hexated & AdiDrakor */
+    companion object {
+        /** TOOLS */
+        private const val tmdbAPI = "https://api.themoviedb.org/3"
+        const val gdbot = "https://gdtot.pro"
+        const val anilistAPI = "https://graphql.anilist.co"
+        const val malsyncAPI = "https://api.malsync.moe"
+        const val jikanAPI = "https://api.jikan.moe/v4"
+
+        private const val apiKey = "b030404650f279792a8d3287232358e3"
+
+        /** ALL SOURCES */
+        const val gomoviesAPI = "https://gomovies-online.cam"
+        const val idlixAPI = "https://tv6.idlixku.com"
+        const val vidsrcccAPI = "https://vidsrc.cc"
+        const val vidSrcAPI = "https://vidsrc.net"
+        const val xprimeAPI = "https://backend.xprime.tv"
+        const val watchSomuchAPI = "https://watchsomuch.tv"
+        const val mappleAPI = "https://mapple.uk"
+        const val vidlinkAPI = "https://vidlink.pro"
+        const val vidfastAPI = "https://vidfast.pro"
+        const val wyzieAPI = "https://sub.wyzie.ru"
+        const val vixsrcAPI = "https://vixsrc.to"
+        const val vidsrccxAPI = "https://vidsrc.cx"
+        const val superembedAPI = "https://multiembed.mov"
+        const val vidrockAPI = "https://vidrock.net"
+
+        fun getType(t: String?): TvType {
+            return when (t) {
+                "movie" -> TvType.Movie
+                else -> TvType.TvSeries
+            }
+        }
+
+        fun getStatus(t: String?): ShowStatus {
+            return when (t) {
+                "Returning Series" -> ShowStatus.Ongoing
+                else -> ShowStatus.Completed
+            }
+        }
+
+    }
+
+    // Menggunakan filter with_original_language=ko untuk konten Korea
     override val mainPage = mainPageOf(
-        "&type=0&sub=0&country=2&status=0&order=2" to "Latest Korean Uploads",
-        "&type=1&sub=0&country=2&status=0&order=1" to "Popular K-Drama",
-        "&type=2&sub=0&country=2&status=0&order=1" to "Popular K-Movies",
-        "&type=2&sub=0&country=2&status=0&order=2" to "Latest K-Movies",
-        "&type=1&sub=0&country=2&status=0&order=2" to "Latest K-Series",
-        "&type=0&sub=0&country=2&status=1&order=1" to "Ongoing K-Drama",
-        "&type=0&sub=0&country=2&status=2&order=1" to "Completed K-Drama",
-        "&type=0&sub=0&country=2&status=3&order=1" to "Upcoming Korean"
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&sort_by=popularity.desc" to "Popular K-Dramas",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&sort_by=popularity.desc" to "Popular Korean Movies",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&sort_by=vote_average.desc&vote_count.gte=100" to "Top Rated K-Dramas",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&sort_by=vote_average.desc&vote_count.gte=100" to "Top Rated Korean Movies",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&air_date.lte=${getDate().today}&air_date.gte=${getDate().today}" to "Airing Today K-Dramas",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&primary_release_date.gte=${getDate().today}" to "Upcoming Korean Movies",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&with_genres=10749" to "Romance K-Dramas",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&with_genres=28" to "Action Korean Movies"
     )
 
-    override suspend fun getMainPage(
-        page: Int,
-        request: MainPageRequest
-    ): HomePageResponse {
-        val home = app.get("$mainUrl/api/DramaList/List?page=$page${request.data}")
-            .parsedSafe<Responses>()?.data
-            ?.mapNotNull { media ->
-                media.toSearchResponse()
-            } ?: throw ErrorLoadingException("Invalid Json reponse")
-        return newHomePageResponse(
-            list = HomePageList(
-                name = request.name,
-                list = home,
-                isHorizontalImages = true
-            ),
-            hasNext = true
-        )
+    private fun getImageUrl(link: String?): String? {
+        if (link == null) return null
+        return if (link.startsWith("/")) "https://image.tmdb.org/t/p/w500/$link" else link
     }
 
-    private fun Media.toSearchResponse(): SearchResponse? {
-        if (!settingsForProvider.enableAdult && this.label?.contains("RAW") == true) {
-            // Skip RAW entries when adult is disabled
-            return null
-        }
+    private fun getOriImageUrl(link: String?): String? {
+        if (link == null) return null
+        return if (link.startsWith("/")) "https://image.tmdb.org/t/p/original/$link" else link
+    }
 
-        return newAnimeSearchResponse(
-            title ?: return null,
-            "$title/$id",
-            TvType.AsianDrama,
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+        val adultQuery =
+            if (settingsForProvider.enableAdult) "" else "&without_keywords=190370|13059|226161|195669"
+        val type = if (request.data.contains("/movie")) "movie" else "tv"
+        val home = app.get("${request.data}$adultQuery&page=$page")
+            .parsedSafe<Results>()?.results?.mapNotNull { media ->
+                media.toSearchResponse(type)
+            } ?: throw ErrorLoadingException("Invalid Json reponse")
+        return newHomePageResponse(request.name, home)
+    }
+
+    private fun Media.toSearchResponse(type: String? = null): SearchResponse? {
+        return newMovieSearchResponse(
+            title ?: name ?: originalTitle ?: return null,
+            Data(id = id, type = mediaType ?: type).toJson(),
+            TvType.Movie,
         ) {
-            this.posterUrl = thumbnail
-            addSub(episodesCount)
+            this.posterUrl = getImageUrl(posterPath)
+            this.score = Score.from10(voteAverage)
         }
     }
 
-    override suspend fun search(query: String): List<SearchResponse> {
-        // Mencari khusus konten Korea (country=2) jika memungkinkan, namun API search biasanya global
-        // Kita filter manual atau biarkan global
-        val searchResponse =
-            app.get("$mainUrl/api/DramaList/Search?q=$query&type=0", referer = "$mainUrl/").text
-        
-        return tryParseJson<ArrayList<Media>>(searchResponse)
-            ?.filter { it.title != null } // Filter dasar
-            ?.mapNotNull { media ->
+    override suspend fun quickSearch(query: String): List<SearchResponse>? = search(query)
+
+    override suspend fun search(query: String): List<SearchResponse>? {
+        // Mencari dengan TMDB Multi Search
+        return app.get("$tmdbAPI/search/multi?api_key=$apiKey&language=en-US&query=$query&page=1&include_adult=${settingsForProvider.enableAdult}")
+            .parsedSafe<Results>()?.results?.mapNotNull { media ->
                 media.toSearchResponse()
-            } ?: throw ErrorLoadingException("Invalid Json reponse")
+            }
     }
 
     override suspend fun load(url: String): LoadResponse? {
-        val split = url.split("/")
-        val idStr = split.last()
-        val titleStr = split.first() // Hati-hati jika struktur URL berubah
-
-        val res = app.get(
-            "$mainUrl/api/DramaList/Drama/$idStr?isq=false",
-            referer = "$mainUrl/Drama/${getTitle(titleStr)}?id=$idStr"
-        ).parsedSafe<MediaDetail>()
-            ?: throw ErrorLoadingException("Invalid Json reponse")
-
-        val episodes = res.episodes?.map { eps ->
-            val displayNumber = eps.number?.let { num ->
-                if (num % 1.0 == 0.0) num.toInt().toString() else num.toString()
-            } ?: ""
-
-            newEpisode(Data(res.title, eps.number?.toInt(), res.id, eps.id).toJson()) {
-                this.name = "Episode $displayNumber"
-                this.episode = eps.number?.toInt()
+        val data = try {
+            if (url.startsWith("https://www.themoviedb.org/")) {
+                val segments = url.removeSuffix("/").split("/")
+                val id = segments.lastOrNull()?.toIntOrNull()
+                val type = when {
+                    url.contains("/movie/") -> "movie"
+                    url.contains("/tv/") -> "tv"
+                    else -> null
+                }
+                Data(id = id, type = type)
+            } else {
+                parseJson<Data>(url)
             }
-        } ?: throw ErrorLoadingException("No Episode")
+        } catch (e: Exception) {
+            throw ErrorLoadingException("Invalid URL or JSON data: ${e.message}")
+        } ?: throw ErrorLoadingException("Invalid data format")
 
-        return newTvSeriesLoadResponse(
-            res.title ?: return null,
-            url,
-            if (res.type == "Movie" || episodes.size == 1) TvType.Movie else TvType.AsianDrama,
-            episodes.reversed()
-        ) {
-            this.posterUrl = res.thumbnail
-            this.year = res.releaseDate?.split("-")?.first()?.toIntOrNull()
-            this.plot = res.description
-            this.tags = listOfNotNull(res.country, res.status, res.type)
-            this.showStatus = when (res.status) {
-                "Completed" -> ShowStatus.Completed
-                "Ongoing" -> ShowStatus.Ongoing
-                else -> null
+        val type = getType(data.type)
+        val append = "alternative_titles,credits,external_ids,keywords,videos,recommendations"
+        val resUrl = if (type == TvType.Movie) {
+            "$tmdbAPI/movie/${data.id}?api_key=$apiKey&append_to_response=$append"
+        } else {
+            "$tmdbAPI/tv/${data.id}?api_key=$apiKey&append_to_response=$append"
+        }
+        val res = app.get(resUrl).parsedSafe<MediaDetail>()
+            ?: throw ErrorLoadingException("Invalid Json Response")
+
+        val title = res.title ?: res.name ?: return null
+        val poster = getOriImageUrl(res.posterPath)
+        val bgPoster = getOriImageUrl(res.backdropPath)
+        val orgTitle = res.originalTitle ?: res.originalName ?: return null
+        val releaseDate = res.releaseDate ?: res.firstAirDate
+        val year = releaseDate?.split("-")?.first()?.toIntOrNull()
+        val genres = res.genres?.mapNotNull { it.name }
+
+        val isCartoon = genres?.contains("Animation") ?: false
+        val isAnime = isCartoon && (res.original_language == "zh" || res.original_language == "ja")
+        val isAsian = !isAnime && (res.original_language == "zh" || res.original_language == "ko")
+        val isBollywood = res.production_countries?.any { it.name == "India" } ?: false
+
+        val keywords = res.keywords?.results?.mapNotNull { it.name }.orEmpty()
+            .ifEmpty { res.keywords?.keywords?.mapNotNull { it.name } }
+
+        val actors = res.credits?.cast?.mapNotNull { cast ->
+            ActorData(
+                Actor(
+                    cast.name ?: cast.originalName
+                    ?: return@mapNotNull null, getImageUrl(cast.profilePath)
+                ), roleString = cast.character
+            )
+        } ?: return null
+        val recommendations =
+            res.recommendations?.results?.mapNotNull { media -> media.toSearchResponse() }
+
+        val trailer = res.videos?.results?.map { "https://www.youtube.com/watch?v=${it.key}" }
+
+        return if (type == TvType.TvSeries) {
+            val lastSeason = res.last_episode_to_air?.season_number
+            val episodes = res.seasons?.mapNotNull { season ->
+                app.get("$tmdbAPI/${data.type}/${data.id}/season/${season.seasonNumber}?api_key=$apiKey")
+                    .parsedSafe<MediaDetailEpisodes>()?.episodes?.map { eps ->
+                        newEpisode(
+                            data = LinkData(
+                                data.id,
+                                res.external_ids?.imdb_id,
+                                res.external_ids?.tvdb_id,
+                                data.type,
+                                eps.seasonNumber,
+                                eps.episodeNumber,
+                                title = title,
+                                year = season.airDate?.split("-")?.first()?.toIntOrNull(),
+                                orgTitle = orgTitle,
+                                isAnime = isAnime,
+                                airedYear = year,
+                                lastSeason = lastSeason,
+                                epsTitle = eps.name,
+                                jpTitle = res.alternative_titles?.results?.find { it.iso_3166_1 == "JP" }?.title,
+                                date = season.airDate,
+                                airedDate = res.releaseDate
+                                    ?: res.firstAirDate,
+                                isAsian = isAsian,
+                                isBollywood = isBollywood,
+                                isCartoon = isCartoon
+                            ).toJson()
+                        ) {
+                            this.name =
+                                eps.name + if (isUpcoming(eps.airDate)) " • [UPCOMING]" else ""
+                            this.season = eps.seasonNumber
+                            this.episode = eps.episodeNumber
+                            this.posterUrl = getImageUrl(eps.stillPath)
+                            this.score = Score.from10(eps.voteAverage)
+                            this.description = eps.overview
+                        }.apply {
+                            this.addDate(eps.airDate)
+                        }
+                    }
+            }?.flatten() ?: listOf()
+            newTvSeriesLoadResponse(
+                title,
+                url,
+                if (isAnime) TvType.Anime else TvType.TvSeries,
+                episodes
+            ) {
+                this.posterUrl = poster
+                this.backgroundPosterUrl = bgPoster
+                this.year = year
+                this.plot = res.overview
+                this.tags = keywords.takeIf { !it.isNullOrEmpty() } ?: genres
+                this.score = Score.from10(res.vote_average?.toString())
+                this.showStatus = getStatus(res.status)
+                this.recommendations = recommendations
+                this.actors = actors
+                this.contentRating = fetchContentRating(data.id, "US")
+                addTrailer(trailer)
+                addTMDbId(data.id.toString())
+                addImdbId(res.external_ids?.imdb_id)
+            }
+        } else {
+            newMovieLoadResponse(
+                title,
+                url,
+                TvType.Movie,
+                LinkData(
+                    data.id,
+                    res.external_ids?.imdb_id,
+                    res.external_ids?.tvdb_id,
+                    data.type,
+                    title = title,
+                    year = year,
+                    orgTitle = orgTitle,
+                    isAnime = isAnime,
+                    jpTitle = res.alternative_titles?.results?.find { it.iso_3166_1 == "JP" }?.title,
+                    airedDate = res.releaseDate
+                        ?: res.firstAirDate,
+                    isAsian = isAsian,
+                    isBollywood = isBollywood
+                ).toJson(),
+            ) {
+                this.posterUrl = poster
+                this.backgroundPosterUrl = bgPoster
+                this.comingSoon = isUpcoming(releaseDate)
+                this.year = year
+                this.plot = res.overview
+                this.duration = res.runtime
+                this.tags = keywords.takeIf { !it.isNullOrEmpty() } ?: genres
+                this.score = Score.from10(res.vote_average?.toString())
+                this.recommendations = recommendations
+                this.actors = actors
+                this.contentRating = fetchContentRating(data.id, "US")
+                addTrailer(trailer)
+                addTMDbId(data.id.toString())
+                addImdbId(res.external_ids?.imdb_id)
             }
         }
     }
@@ -137,112 +300,245 @@ class AdiDrakor : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // Menggunakan hardcoded value jika BuildConfig tidak tersedia, atau Anda bisa membuatnya di file Utils
-        val kisskhAPI = "https://kisskh.ovh/api/DramaList/Episode/" 
-        val kisskhSub = "https://kisskh.ovh/api/Sub/"
-        
-        val loadData = parseJson<Data>(data)
-        
-        // Mendapatkan key (mocking logic jika key dinamis berubah, sesuaikan dengan logic terbaru)
-        // Di sini kita gunakan parameter dummy jika endpoint version berubah
-        val kkey = try {
-            app.get("$kisskhAPI${loadData.epsId}&version=2.8.10", timeout = 10000).parsedSafe<Key>()?.key ?: ""
-        } catch (e: Exception) { "" }
 
-        app.get(
-            "$mainUrl/api/DramaList/Episode/${loadData.epsId}.png?err=false&ts=&time=&kkey=$kkey",
-            referer = "$mainUrl/Drama/${getTitle(loadData.title ?: "")}/Episode-${loadData.eps}?id=${loadData.id}&ep=${loadData.epsId}&page=0&pageSize=100"
-        ).parsedSafe<Sources>()?.let { source ->
-            listOf(source.video, source.thirdParty).amap { link ->
-                safeApiCall {
-                    val fixedLink = fixUrl(link ?: return@safeApiCall, mainUrl)
-                    if (fixedLink.contains(".m3u8")) {
-                        M3u8Helper.generateM3u8(
-                            this.name,
-                            fixedLink,
-                            referer = "$mainUrl/",
-                            headers = mapOf("Origin" to mainUrl)
-                        ).forEach(callback)
-                    } else if (fixedLink.contains("mp4")) {
-                        callback.invoke(
-                            newExtractorLink(
-                                this.name,
-                                this.name,
-                                url = fixedLink,
-                                INFER_TYPE
-                            ) {
-                                this.referer = mainUrl
-                                this.quality = Qualities.P720.value
-                            }
-                        )
-                    } else {
-                        loadExtractor(
-                            fixedLink.substringBefore("=http"),
-                            "$mainUrl/",
-                            subtitleCallback,
-                            callback
-                        )
-                    }
-                }
-            }
-        }
+        val res = parseJson<LinkData>(data)
 
-        val kkey1 = try {
-            app.get("$kisskhSub${loadData.epsId}&version=2.8.10", timeout = 10000).parsedSafe<Key>()?.key ?: ""
-        } catch (e: Exception) { "" }
-
-        app.get("$mainUrl/api/Sub/${loadData.epsId}?kkey=$kkey1").text.let { res ->
-            tryParseJson<List<Subtitle>>(res)?.map { sub ->
-                val label = getLanguage(sub.label ?: return@map)
-                subtitleCallback.invoke(
-                    newSubtitleFile(label, sub.src ?: "")
+        runAllAsync(
+            {
+                invokeIdlix(
+                    res.title,
+                    res.year,
+                    res.season,
+                    res.episode,
+                    subtitleCallback,
+                    callback
+                )
+            },
+            {
+                invokeVidsrccc(
+                    res.id,
+                    res.imdbId,
+                    res.season,
+                    res.episode,
+                    subtitleCallback,
+                    callback
+                )
+            },
+            {
+                invokeVidsrc(
+                    res.imdbId,
+                    res.season,
+                    res.episode,
+                    subtitleCallback,
+                    callback
+                )
+            },
+            {
+                invokeWatchsomuch(
+                    res.imdbId,
+                    res.season,
+                    res.episode,
+                    subtitleCallback
+                )
+            },
+            {
+                invokeVixsrc(res.id, res.season, res.episode, callback)
+            },
+            {
+                invokeVidlink(res.id, res.season, res.episode, callback)
+            },
+            {
+                invokeVidfast(res.id, res.season, res.episode, subtitleCallback, callback)
+            },
+            {
+                invokeMapple(res.id, res.season, res.episode, subtitleCallback, callback)
+            },
+            {
+                invokeWyzie(res.id, res.season, res.episode, subtitleCallback)
+            },
+            {
+                invokeVidsrccx(res.id, res.season, res.episode, callback)
+            },
+            {
+                invokeSuperembed(
+                    res.id,
+                    res.season,
+                    res.episode,
+                    subtitleCallback,
+                    callback
+                )
+            },
+            {
+                invokeVidrock(
+                    res.id,
+                    res.season,
+                    res.episode,
+                    subtitleCallback,
+                    callback
                 )
             }
-        }
+        )
 
         return true
     }
 
-    private val CHUNK_REGEX1 by lazy { Regex("^\\d+$", RegexOption.MULTILINE) }
+    data class LinkData(
+        val id: Int? = null,
+        val imdbId: String? = null,
+        val tvdbId: Int? = null,
+        val type: String? = null,
+        val season: Int? = null,
+        val episode: Int? = null,
+        val aniId: String? = null,
+        val animeId: String? = null,
+        val title: String? = null,
+        val year: Int? = null,
+        val orgTitle: String? = null,
+        val isAnime: Boolean = false,
+        val airedYear: Int? = null,
+        val lastSeason: Int? = null,
+        val epsTitle: String? = null,
+        val jpTitle: String? = null,
+        val date: String? = null,
+        val airedDate: String? = null,
+        val isAsian: Boolean = false,
+        val isBollywood: Boolean = false,
+        val isCartoon: Boolean = false,
+    )
 
-    override fun getVideoInterceptor(extractorLink: ExtractorLink): Interceptor {
-        return object : Interceptor {
-            override fun intercept(chain: Interceptor.Chain): Response {
-                val request = chain.request()
-                    .newBuilder()
-                    .build()
-                val response = chain.proceed(request)
-                if (response.request.url.toString().contains(".txt")) {
-                    val responseBody = response.body.string()
-                    val chunks = responseBody.split(CHUNK_REGEX1)
-                        .filter(String::isNotBlank)
-                        .map(String::trim)
-                    
-                    val decrypted = chunks.mapIndexed { index, chunk ->
-                        if (chunk.isBlank()) return@mapIndexed ""
-                        val parts = chunk.split("\n")
-                        if (parts.isEmpty()) return@mapIndexed ""
+    data class Data(
+        val id: Int? = null,
+        val type: String? = null,
+        val aniId: String? = null,
+        val malId: Int? = null,
+    )
 
-                        val header = parts.first()
-                        val text = parts.drop(1)
-                        val d = text.joinToString("\n") { line ->
-                            try {
-                                decrypt(line) // Menggunakan fungsi decrypt dari AdiDrakorUtils
-                            } catch (e: Exception) {
-                                "DECRYPT_ERROR:${e.message}"
-                            }
-                        }
-                        listOf(index + 1, header, d).joinToString("\n")
-                    }.filter { it.isNotEmpty() }
-                        .joinToString("\n\n")
-                    
-                    val newBody = decrypted.toResponseBody(response.body.contentType())
-                    return response.newBuilder()
-                        .body(newBody)
-                        .build()
-                }
-                return response
-            }
-        }
-    }
+    data class Results(
+        @JsonProperty("results") val results: ArrayList<Media>? = arrayListOf(),
+    )
+
+    data class Media(
+        @JsonProperty("id") val id: Int? = null,
+        @JsonProperty("name") val name: String? = null,
+        @JsonProperty("title") val title: String? = null,
+        @JsonProperty("original_title") val originalTitle: String? = null,
+        @JsonProperty("media_type") val mediaType: String? = null,
+        @JsonProperty("poster_path") val posterPath: String? = null,
+        @JsonProperty("vote_average") val voteAverage: Double? = null,
+    )
+
+    data class Genres(
+        @JsonProperty("id") val id: Int? = null,
+        @JsonProperty("name") val name: String? = null,
+    )
+
+    data class Keywords(
+        @JsonProperty("id") val id: Int? = null,
+        @JsonProperty("name") val name: String? = null,
+    )
+
+    data class KeywordResults(
+        @JsonProperty("results") val results: ArrayList<Keywords>? = arrayListOf(),
+        @JsonProperty("keywords") val keywords: ArrayList<Keywords>? = arrayListOf(),
+    )
+
+    data class Seasons(
+        @JsonProperty("id") val id: Int? = null,
+        @JsonProperty("name") val name: String? = null,
+        @JsonProperty("season_number") val seasonNumber: Int? = null,
+        @JsonProperty("air_date") val airDate: String? = null,
+    )
+
+    data class Cast(
+        @JsonProperty("id") val id: Int? = null,
+        @JsonProperty("name") val name: String? = null,
+        @JsonProperty("original_name") val originalName: String? = null,
+        @JsonProperty("character") val character: String? = null,
+        @JsonProperty("known_for_department") val knownForDepartment: String? = null,
+        @JsonProperty("profile_path") val profilePath: String? = null,
+    )
+
+    data class Episodes(
+        @JsonProperty("id") val id: Int? = null,
+        @JsonProperty("name") val name: String? = null,
+        @JsonProperty("overview") val overview: String? = null,
+        @JsonProperty("air_date") val airDate: String? = null,
+        @JsonProperty("still_path") val stillPath: String? = null,
+        @JsonProperty("vote_average") val voteAverage: Double? = null,
+        @JsonProperty("episode_number") val episodeNumber: Int? = null,
+        @JsonProperty("season_number") val seasonNumber: Int? = null,
+    )
+
+    data class MediaDetailEpisodes(
+        @JsonProperty("episodes") val episodes: ArrayList<Episodes>? = arrayListOf(),
+    )
+
+    data class Trailers(
+        @JsonProperty("key") val key: String? = null,
+    )
+
+    data class ResultsTrailer(
+        @JsonProperty("results") val results: ArrayList<Trailers>? = arrayListOf(),
+    )
+
+    data class AltTitles(
+        @JsonProperty("iso_3166_1") val iso_3166_1: String? = null,
+        @JsonProperty("title") val title: String? = null,
+        @JsonProperty("type") val type: String? = null,
+    )
+
+    data class ResultsAltTitles(
+        @JsonProperty("results") val results: ArrayList<AltTitles>? = arrayListOf(),
+    )
+
+    data class ExternalIds(
+        @JsonProperty("imdb_id") val imdb_id: String? = null,
+        @JsonProperty("tvdb_id") val tvdb_id: Int? = null,
+    )
+
+    data class Credits(
+        @JsonProperty("cast") val cast: ArrayList<Cast>? = arrayListOf(),
+    )
+
+    data class ResultsRecommendations(
+        @JsonProperty("results") val results: ArrayList<Media>? = arrayListOf(),
+    )
+
+    data class LastEpisodeToAir(
+        @JsonProperty("episode_number") val episode_number: Int? = null,
+        @JsonProperty("season_number") val season_number: Int? = null,
+    )
+
+    data class ProductionCountries(
+        @JsonProperty("name") val name: String? = null,
+    )
+
+    data class MediaDetail(
+        @JsonProperty("id") val id: Int? = null,
+        @JsonProperty("imdb_id") val imdbId: String? = null,
+        @JsonProperty("title") val title: String? = null,
+        @JsonProperty("name") val name: String? = null,
+        @JsonProperty("original_title") val originalTitle: String? = null,
+        @JsonProperty("original_name") val originalName: String? = null,
+        @JsonProperty("poster_path") val posterPath: String? = null,
+        @JsonProperty("backdrop_path") val backdropPath: String? = null,
+        @JsonProperty("release_date") val releaseDate: String? = null,
+        @JsonProperty("first_air_date") val firstAirDate: String? = null,
+        @JsonProperty("overview") val overview: String? = null,
+        @JsonProperty("runtime") val runtime: Int? = null,
+        @JsonProperty("vote_average") val vote_average: Any? = null,
+        @JsonProperty("original_language") val original_language: String? = null,
+        @JsonProperty("status") val status: String? = null,
+        @JsonProperty("genres") val genres: ArrayList<Genres>? = arrayListOf(),
+        @JsonProperty("keywords") val keywords: KeywordResults? = null,
+        @JsonProperty("last_episode_to_air") val last_episode_to_air: LastEpisodeToAir? = null,
+        @JsonProperty("seasons") val seasons: ArrayList<Seasons>? = arrayListOf(),
+        @JsonProperty("videos") val videos: ResultsTrailer? = null,
+        @JsonProperty("external_ids") val external_ids: ExternalIds? = null,
+        @JsonProperty("credits") val credits: Credits? = null,
+        @JsonProperty("recommendations") val recommendations: ResultsRecommendations? = null,
+        @JsonProperty("alternative_titles") val alternative_titles: ResultsAltTitles? = null,
+        @JsonProperty("production_countries") val production_countries: ArrayList<ProductionCountries>? = arrayListOf(),
+    )
+
 }
