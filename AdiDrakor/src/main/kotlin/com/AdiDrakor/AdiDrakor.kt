@@ -301,13 +301,15 @@ open class AdiDrakor : TmdbProvider() {
 
         val res = parseJson<LinkData>(data)
 
-        // SAYA TELAH MENYEDERHANAKAN BAGIAN INI
-        // Menonaktifkan sumber yang berat/menggunakan WebView (Vidlink, Vidfast, Superembed)
-        // Hanya menjalankan sumber yang cepat dan relevan (API Based & Idlix)
+        // PENGATURAN URUTAN SUMBER (PRIORITAS):
+        // 1. invokeIdlix (Di dalamnya terdapat Jeniusplay) <- UTAMA & PERTAMA
+        // 2. invokeVidsrccc (Alternatif cepat)
+        // 3. invokeVidrock (Alternatif)
+        // ... sisanya dimatikan/ditaruh bawah
 
         runAllAsync(
             {
-                // Idlix biasanya bagus untuk server Indonesia/Drakor
+                // PRIORITAS 1: Idlix (Sumber utama untuk Jeniusplay)
                 invokeIdlix(
                     res.title,
                     res.year,
@@ -318,7 +320,6 @@ open class AdiDrakor : TmdbProvider() {
                 )
             },
             {
-                // Vidsrccc berbasis API, biasanya stabil
                 invokeVidsrccc(
                     res.id,
                     res.imdbId,
@@ -329,7 +330,15 @@ open class AdiDrakor : TmdbProvider() {
                 )
             },
             {
-                // Vidsrc.net cepat tapi sering broken, kita biarkan dulu sebagai backup
+                invokeVidrock(
+                    res.id,
+                    res.season,
+                    res.episode,
+                    subtitleCallback,
+                    callback
+                )
+            },
+            {
                 invokeVidsrc(
                     res.imdbId,
                     res.season,
@@ -338,45 +347,11 @@ open class AdiDrakor : TmdbProvider() {
                     callback
                 )
             },
-            /* SUMBER BERAT DIMATIKAN UNTUK PERFORMA
-            {
-                invokeVixsrc(res.id, res.season, res.episode, callback)
-            },
-            {
-                // Vidlink Menggunakan WebView (Sangat Lambat) -> DIMATIKAN
-                invokeVidlink(res.id, res.season, res.episode, callback)
-            },
-            {
-                // Vidfast Menggunakan WebView (Sangat Lambat) -> DIMATIKAN
-                invokeVidfast(res.id, res.season, res.episode, subtitleCallback, callback)
-            },
-            */
             {
                 invokeWyzie(res.id, res.season, res.episode, subtitleCallback)
             },
             {
                 invokeVidsrccx(res.id, res.season, res.episode, callback)
-            },
-            /*
-            {
-                // Superembed sering captcha/lambat -> DIMATIKAN
-                invokeSuperembed(
-                    res.id,
-                    res.season,
-                    res.episode,
-                    subtitleCallback,
-                    callback
-                )
-            },
-            */
-            {
-                invokeVidrock(
-                    res.id,
-                    res.season,
-                    res.episode,
-                    subtitleCallback,
-                    callback
-                )
             }
         )
 
