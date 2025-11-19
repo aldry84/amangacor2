@@ -20,9 +20,9 @@ import com.AdiDrakor.AdiDrakor.Companion.multimoviesAPI
 import com.AdiDrakor.AdiDrakor.Companion.extramoviesAPI
 import com.AdiDrakor.AdiDrakor.Companion.allmovielandAPI
 import com.AdiDrakor.AdiDrakor.Companion.mappleTvApi
-import com.AdiDrakor.AdiDrakor.Companion.kissKhAPI // Pastikan ini ada
+import com.AdiDrakor.AdiDrakor.Companion.kissKhAPI 
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.APIHolder.unixTimeMS // [PERBAIKAN 1] Import unixTimeMS ditambahkan
+import com.lagradost.cloudstream3.APIHolder.unixTimeMS 
 import com.lagradost.cloudstream3.extractors.helper.AesHelper
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
@@ -291,7 +291,6 @@ object AdiDrakorExtractor : AdiDrakor() {
          invokeWpmovies("ZShow", url, subtitleCallback, callback, encrypt = true)
     }
 
-    // [PERBAIKAN] invokeKisskhAsia DIKEMBALIKAN dengan perbaikan 'referer' di lambda
     suspend fun invokeKisskhAsia(id: Int?, season: Int?, episode: Int?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
         if (id == null) return
         val url = if (season != null && season > 1) "https://hlscdn.xyz/e/$id-$season-${episode.toString().padStart(2,'0')}" else "https://hlscdn.xyz/e/$id-${episode.toString().padStart(2,'0')}"
@@ -308,18 +307,30 @@ object AdiDrakorExtractor : AdiDrakor() {
         }
     }
     
-    // [DITAMBAHKAN] invokeKisskh Dikembalikan sebagai Backup jika user mau (Optional, bisa dihapus jika tidak ingin dipakai)
     suspend fun invokeKisskh(title: String?, season: Int?, episode: Int?, lastSeason: Int?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
         val slug = title?.createSlug() ?: return
         val type = if (season == null) "2" else "1"
         val searchResponse = app.get("$kissKhAPI/api/DramaList/Search?q=$title&type=$type", referer = "$kissKhAPI/")
         if (searchResponse.code != 200) return
         val res = tryParseJson<ArrayList<KisskhResults>>(searchResponse.text) ?: return
-        val (id, _) = if (res.size == 1) res.first().id to res.first().title else (res.find { it.title?.createSlug() == slug } ?: res.first()).let { it.id to it.title }
+        
+        // [PERBAIKAN 2] Explicit Casting & Type Check untuk menghindari ambiguitas Pair
+        val pair = if (res.size == 1) {
+            Pair(res.first().id, res.first().title)
+        } else {
+            val data = res.find {
+                val slugTitle = it.title.createSlug() ?: return@find false
+                if (season == null) slugTitle == slug else slugTitle.contains(slug) && it.title?.contains("Season $season", true) == true
+            } ?: res.find { it.title.equals(title) }
+            Pair(data?.id, data?.title)
+        }
+        
+        val id = pair.first ?: return
         
         val detailResponse = app.get("$kissKhAPI/api/DramaList/Drama/$id?isq=false", referer = "$kissKhAPI/")
         val resDetail = detailResponse.parsedSafe<KisskhDetail>() ?: return
-        val epsId = if (season == null) resDetail.episodes?.first()?.id else resDetail.episodes?.find { it.number == episode }?.id ?: return
+        val epsId = if (season == null) resDetail.episodes?.firstOrNull()?.id else resDetail.episodes?.find { it.number == episode }?.id
+        if (epsId == null) return
         
         val kkey = app.get("$kissKhAPI/api/DramaList/Episode/$epsId.png?err=false&ts=&time=", timeout = 10000).parsedSafe<KisskhKey>()?.key ?: ""
         val sourcesResponse = app.get("$kissKhAPI/api/DramaList/Episode/$epsId.png?err=false&ts=&time=&kkey=$kkey", referer = "$kissKhAPI/")
@@ -327,14 +338,15 @@ object AdiDrakorExtractor : AdiDrakor() {
             listOf(source.video, source.thirdParty).forEach { link ->
                 if (link?.contains(".m3u8") == true || link?.contains(".mp4") == true) {
                     callback.invoke(newExtractorLink("Kisskh", "Kisskh", fixUrl(link, kissKhAPI), INFER_TYPE) {
-                        referer = kissKhAPI; quality = Qualities.P720.value; headers = mapOf("Origin" to kissKhAPI)
+                        this.referer = kissKhAPI
+                        this.quality = Qualities.P720.value
+                        this.headers = mapOf("Origin" to kissKhAPI)
                     })
                 }
             }
         }
     }
 
-    // --- HELPER ---
     private suspend fun invokeWpmovies(name: String, url: String, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit, encrypt: Boolean = false) {
         val doc = app.get(url).document
         doc.select("ul#playeroptionsul > li").map { Triple(it.attr("data-post"), it.attr("data-nume"), it.attr("data-type")) }.amap { (id, nume, type) ->
