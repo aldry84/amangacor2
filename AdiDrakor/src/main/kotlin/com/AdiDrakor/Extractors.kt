@@ -7,6 +7,7 @@ import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
+import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.getAndUnpack
 import com.lagradost.cloudstream3.utils.newExtractorLink
 
@@ -34,11 +35,13 @@ open class Jeniusplay2 : ExtractorApi() {
         callback.invoke(
             newExtractorLink(
                 this.name,
-                this.name,
+                this.name, // Nama sumber
                 m3uLink,
                 ExtractorLinkType.M3U8
             ) {
                 this.referer = url
+                // TRIK: Memaksa kualitas menjadi 4K (2160p) agar selalu berada di paling atas daftar
+                this.quality = Qualities.P2160.value 
             }
         )
 
@@ -47,7 +50,6 @@ open class Jeniusplay2 : ExtractorApi() {
                 val subData =
                     getAndUnpack(script.data()).substringAfter("\"tracks\":[").substringBefore("],")
                 tryParseJson<List<Tracks>>("[$subData]")?.map { subtitle ->
-                    // Menambahkan suppress agar tidak muncul peringatan (warning) saat kompilasi
                     @Suppress("DEPRECATION")
                     subtitleCallback.invoke(
                         SubtitleFile(
