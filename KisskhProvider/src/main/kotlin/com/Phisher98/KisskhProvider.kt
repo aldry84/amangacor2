@@ -242,7 +242,7 @@ class KisskhProvider : MainAPI() {
                     val decrypted = chunks.mapIndexed { index, chunk ->
                         if (chunk.isBlank()) return@mapIndexed ""
                         val parts = chunk.split("\n")
-                        if (parts.isEmpty()) return@mapIndexed ""
+                        if (parts.isEmpty()) return@mapB ""
 
                         val header = parts.first()
                         val text = parts.drop(1)
@@ -288,13 +288,15 @@ class KisskhProvider : MainAPI() {
         @JsonProperty("data") val data: ArrayList<Media>? = arrayListOf(),
     )
 
-Data class Media(
-    @JsonProperty("episodesCount") val episodesCount: Int?,
-    @JsonProperty("thumbnail") val thumbnail: String?,
-    @JsonProperty("label") val label: String?,
-    @JsonProperty("id") val id: Int?,
-    @JsonProperty("title") val title: String?,
-)
+    // ================== KESALAHAN ADA DI BARIS INI ==================
+    // 'Data class' (D besar) diubah menjadi 'data class' (d kecil)
+    data class Media(
+        @JsonProperty("episodesCount") val episodesCount: Int?,
+        @JsonProperty("thumbnail") val thumbnail: String?,
+        @JsonProperty("label") val label: String?,
+        @JsonProperty("id") val id: Int?,
+        @JsonProperty("title") val title: String?,
+    )
 
     data class Episodes(
         @JsonProperty("id") val id: Int?,
