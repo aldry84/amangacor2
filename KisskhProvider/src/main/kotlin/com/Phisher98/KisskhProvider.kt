@@ -145,8 +145,10 @@ class KisskhProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val KisskhAPI = BuildConfig.KissKh
-        val KisskhSub = BuildConfig.KisskhSub
+        // PERBAIKAN: Mengakses BuildConfig dengan package penuh untuk mengatasi Unresolved Reference
+        val KisskhAPI = com.phisher98.BuildConfig.KissKh
+        val KisskhSub = com.phisher98.BuildConfig.KisskhSub
+        
         val loadData = parseJson<Data>(data)
         val kkey = app.get("$KisskhAPI${loadData.epsId}&version=2.8.10", timeout = 10000).parsedSafe<Key>()?.key ?:""
         app.get(
