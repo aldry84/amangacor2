@@ -83,7 +83,6 @@ open class AdiDrakor : TmdbProvider() {
 
     }
 
-    // Menggunakan filter with_original_language=ko untuk konten Korea
     override val mainPage = mainPageOf(
         "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&sort_by=popularity.desc" to "Popular K-Dramas",
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&sort_by=popularity.desc" to "Popular Korean Movies",
@@ -130,7 +129,6 @@ open class AdiDrakor : TmdbProvider() {
     override suspend fun quickSearch(query: String): List<SearchResponse>? = search(query)
 
     override suspend fun search(query: String): List<SearchResponse>? {
-        // Mencari dengan TMDB Multi Search
         return app.get("$tmdbAPI/search/multi?api_key=$apiKey&language=en-US&query=$query&page=1&include_adult=${settingsForProvider.enableAdult}")
             .parsedSafe<Results>()?.results?.mapNotNull { media ->
                 media.toSearchResponse()
@@ -305,6 +303,7 @@ open class AdiDrakor : TmdbProvider() {
 
         runAllAsync(
             {
+                // Prioritas 1: Idlix (yang berisi JeniusPlay)
                 invokeIdlix(
                     res.title,
                     res.year,
@@ -382,6 +381,7 @@ open class AdiDrakor : TmdbProvider() {
         return true
     }
 
+    // Data Classes (Tetap sama)
     data class LinkData(
         val id: Int? = null,
         val imdbId: String? = null,
