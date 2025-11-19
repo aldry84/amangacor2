@@ -5,6 +5,8 @@ import android.util.Base64
 import androidx.annotation.RequiresApi
 import com.lagradost.cloudstream3.APIHolder.unixTimeMS
 import com.lagradost.cloudstream3.app
+import com.lagradost.cloudstream3.base64Decode
+import com.lagradost.cloudstream3.base64DecodeArray
 import com.lagradost.cloudstream3.mvvm.logError
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -35,7 +37,6 @@ fun getDate(): TmdbDate {
     return TmdbDate(today, nextWeek)
 }
 
-// [DITAMBAHKAN] Fungsi ini yang sebelumnya hilang dan menyebabkan error
 fun isUpcoming(dateString: String?): Boolean {
     return try {
         val format = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
@@ -59,7 +60,11 @@ fun getKisskhTitle(str: String?): String? {
 }
 
 fun getBaseUrl(url: String): String {
-    return URI(url).let { "${it.scheme}://${it.host}" }
+    return try {
+        URI(url).let { "${it.scheme}://${it.host}" }
+    } catch (e: Exception) {
+        ""
+    }
 }
 
 fun fixUrl(url: String, domain: String): String {
@@ -94,7 +99,24 @@ fun generateVrfAES(movieId: String, userId: String): String {
     return java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(encrypted)
 }
 
-// --- BYPASS HELPERS (Untuk DramaDrip) ---
+// Helper untuk VidZee
+fun decryptVidzeeUrl(encrypted: String, key: ByteArray): String {
+    val decoded = base64Decode(encrypted)
+    val parts = decoded.split(":")
+    if (parts.size != 2) throw IllegalArgumentException("Invalid encrypted format")
+
+    val iv = base64DecodeArray(parts[0])
+    val cipherData = base64DecodeArray(parts[1])
+
+    val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+    val secretKey = SecretKeySpec(key, "AES")
+    cipher.init(Cipher.DECRYPT_MODE, secretKey, IvParameterSpec(iv))
+
+    val decryptedBytes = cipher.doFinal(cipherData)
+    return decryptedBytes.toString(Charsets.UTF_8)
+}
+
+// --- BYPASS HELPERS ---
 
 suspend fun cinematickitBypass(url: String): String? {
     return try {
@@ -113,7 +135,6 @@ suspend fun cinematickitBypass(url: String): String? {
         val redirectPath = match.groupValues[1]
         if (redirectPath.startsWith("http")) redirectPath else URI(decodedGoUrl).let { "${it.scheme}://${it.host}$redirectPath" }
     } catch (e: Exception) {
-        e.printStackTrace()
         null
     }
 }
