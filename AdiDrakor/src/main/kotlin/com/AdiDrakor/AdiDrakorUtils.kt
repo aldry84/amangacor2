@@ -3,7 +3,9 @@ package com.AdiDrakor
 import android.os.Build
 import android.util.Base64
 import androidx.annotation.RequiresApi
+import com.lagradost.cloudstream3.APIHolder.unixTimeMS
 import com.lagradost.cloudstream3.app
+import com.lagradost.cloudstream3.mvvm.logError
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -31,6 +33,18 @@ fun getDate(): TmdbDate {
     calender.add(Calendar.WEEK_OF_YEAR, 1)
     val nextWeek = formatter.format(calender.time)
     return TmdbDate(today, nextWeek)
+}
+
+// [DITAMBAHKAN] Fungsi ini yang sebelumnya hilang dan menyebabkan error
+fun isUpcoming(dateString: String?): Boolean {
+    return try {
+        val format = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val dateTime = dateString?.let { format.parse(it)?.time } ?: return false
+        unixTimeMS < dateTime
+    } catch (t: Throwable) {
+        logError(t)
+        false
+    }
 }
 
 fun String?.createSlug(): String? {
