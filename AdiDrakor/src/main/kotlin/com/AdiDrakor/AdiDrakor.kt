@@ -83,7 +83,6 @@ open class AdiDrakor : TmdbProvider() {
 
     }
 
-    // Menggunakan filter with_original_language=ko untuk konten Korea
     override val mainPage = mainPageOf(
         "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&sort_by=popularity.desc" to "Popular K-Dramas",
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&sort_by=popularity.desc" to "Popular Korean Movies",
@@ -130,7 +129,6 @@ open class AdiDrakor : TmdbProvider() {
     override suspend fun quickSearch(query: String): List<SearchResponse>? = search(query)
 
     override suspend fun search(query: String): List<SearchResponse>? {
-        // Mencari dengan TMDB Multi Search
         return app.get("$tmdbAPI/search/multi?api_key=$apiKey&language=en-US&query=$query&page=1&include_adult=${settingsForProvider.enableAdult}")
             .parsedSafe<Results>()?.results?.mapNotNull { media ->
                 media.toSearchResponse()
@@ -303,8 +301,13 @@ open class AdiDrakor : TmdbProvider() {
 
         val res = parseJson<LinkData>(data)
 
+        // SAYA TELAH MENYEDERHANAKAN BAGIAN INI
+        // Menonaktifkan sumber yang berat/menggunakan WebView (Vidlink, Vidfast, Superembed)
+        // Hanya menjalankan sumber yang cepat dan relevan (API Based & Idlix)
+
         runAllAsync(
             {
+                // Idlix biasanya bagus untuk server Indonesia/Drakor
                 invokeIdlix(
                     res.title,
                     res.year,
@@ -315,6 +318,7 @@ open class AdiDrakor : TmdbProvider() {
                 )
             },
             {
+                // Vidsrccc berbasis API, biasanya stabil
                 invokeVidsrccc(
                     res.id,
                     res.imdbId,
@@ -325,6 +329,7 @@ open class AdiDrakor : TmdbProvider() {
                 )
             },
             {
+                // Vidsrc.net cepat tapi sering broken, kita biarkan dulu sebagai backup
                 invokeVidsrc(
                     res.imdbId,
                     res.season,
@@ -333,33 +338,28 @@ open class AdiDrakor : TmdbProvider() {
                     callback
                 )
             },
-            {
-                invokeWatchsomuch(
-                    res.imdbId,
-                    res.season,
-                    res.episode,
-                    subtitleCallback
-                )
-            },
+            /* SUMBER BERAT DIMATIKAN UNTUK PERFORMA
             {
                 invokeVixsrc(res.id, res.season, res.episode, callback)
             },
             {
+                // Vidlink Menggunakan WebView (Sangat Lambat) -> DIMATIKAN
                 invokeVidlink(res.id, res.season, res.episode, callback)
             },
             {
+                // Vidfast Menggunakan WebView (Sangat Lambat) -> DIMATIKAN
                 invokeVidfast(res.id, res.season, res.episode, subtitleCallback, callback)
             },
-            {
-                invokeMapple(res.id, res.season, res.episode, subtitleCallback, callback)
-            },
+            */
             {
                 invokeWyzie(res.id, res.season, res.episode, subtitleCallback)
             },
             {
                 invokeVidsrccx(res.id, res.season, res.episode, callback)
             },
+            /*
             {
+                // Superembed sering captcha/lambat -> DIMATIKAN
                 invokeSuperembed(
                     res.id,
                     res.season,
@@ -368,6 +368,7 @@ open class AdiDrakor : TmdbProvider() {
                     callback
                 )
             },
+            */
             {
                 invokeVidrock(
                     res.id,
