@@ -20,7 +20,9 @@ import com.AdiDrakor.AdiDrakor.Companion.multimoviesAPI
 import com.AdiDrakor.AdiDrakor.Companion.extramoviesAPI
 import com.AdiDrakor.AdiDrakor.Companion.allmovielandAPI
 import com.AdiDrakor.AdiDrakor.Companion.mappleTvApi
+import com.AdiDrakor.AdiDrakor.Companion.kissKhAPI // Pastikan ini ada
 import com.lagradost.cloudstream3.*
+import com.lagradost.cloudstream3.APIHolder.unixTimeMS // [PERBAIKAN 1] Import unixTimeMS ditambahkan
 import com.lagradost.cloudstream3.extractors.helper.AesHelper
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
@@ -289,12 +291,47 @@ object AdiDrakorExtractor : AdiDrakor() {
          invokeWpmovies("ZShow", url, subtitleCallback, callback, encrypt = true)
     }
 
+    // [PERBAIKAN] invokeKisskhAsia DIKEMBALIKAN dengan perbaikan 'referer' di lambda
     suspend fun invokeKisskhAsia(id: Int?, season: Int?, episode: Int?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
         if (id == null) return
         val url = if (season != null && season > 1) "https://hlscdn.xyz/e/$id-$season-${episode.toString().padStart(2,'0')}" else "https://hlscdn.xyz/e/$id-${episode.toString().padStart(2,'0')}"
         val token = Regex("window\\.kaken=\"(.*?)\"").find(app.get(url, headers = mapOf("Referer" to "https://hlscdn.xyz/")).text)?.groupValues?.get(1) ?: return
         val json = JSONObject(app.post("https://hlscdn.xyz/api", headers = mapOf("Referer" to "https://hlscdn.xyz/"), requestBody = token.toRequestBody("text/plain".toMediaTypeOrNull())).text)
-        val sources = json.optJSONArray("sources"); if(sources!=null) for(i in 0 until sources.length()) callback.invoke(newExtractorLink("KisskhAsia", "KisskhAsia", sources.getJSONObject(i).optString("file"), referer="https://hlscdn.xyz/"))
+        val sources = json.optJSONArray("sources")
+        if (sources != null) {
+            for (i in 0 until sources.length()) {
+                val src = sources.getJSONObject(i)
+                callback.invoke(newExtractorLink("KisskhAsia", "KisskhAsia", src.optString("file"), INFER_TYPE) {
+                    this.referer = "https://hlscdn.xyz/"
+                })
+            }
+        }
+    }
+    
+    // [DITAMBAHKAN] invokeKisskh Dikembalikan sebagai Backup jika user mau (Optional, bisa dihapus jika tidak ingin dipakai)
+    suspend fun invokeKisskh(title: String?, season: Int?, episode: Int?, lastSeason: Int?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
+        val slug = title?.createSlug() ?: return
+        val type = if (season == null) "2" else "1"
+        val searchResponse = app.get("$kissKhAPI/api/DramaList/Search?q=$title&type=$type", referer = "$kissKhAPI/")
+        if (searchResponse.code != 200) return
+        val res = tryParseJson<ArrayList<KisskhResults>>(searchResponse.text) ?: return
+        val (id, _) = if (res.size == 1) res.first().id to res.first().title else (res.find { it.title?.createSlug() == slug } ?: res.first()).let { it.id to it.title }
+        
+        val detailResponse = app.get("$kissKhAPI/api/DramaList/Drama/$id?isq=false", referer = "$kissKhAPI/")
+        val resDetail = detailResponse.parsedSafe<KisskhDetail>() ?: return
+        val epsId = if (season == null) resDetail.episodes?.first()?.id else resDetail.episodes?.find { it.number == episode }?.id ?: return
+        
+        val kkey = app.get("$kissKhAPI/api/DramaList/Episode/$epsId.png?err=false&ts=&time=", timeout = 10000).parsedSafe<KisskhKey>()?.key ?: ""
+        val sourcesResponse = app.get("$kissKhAPI/api/DramaList/Episode/$epsId.png?err=false&ts=&time=&kkey=$kkey", referer = "$kissKhAPI/")
+        sourcesResponse.parsedSafe<KisskhSources>()?.let { source ->
+            listOf(source.video, source.thirdParty).forEach { link ->
+                if (link?.contains(".m3u8") == true || link?.contains(".mp4") == true) {
+                    callback.invoke(newExtractorLink("Kisskh", "Kisskh", fixUrl(link, kissKhAPI), INFER_TYPE) {
+                        referer = kissKhAPI; quality = Qualities.P720.value; headers = mapOf("Origin" to kissKhAPI)
+                    })
+                }
+            }
+        }
     }
 
     // --- HELPER ---
