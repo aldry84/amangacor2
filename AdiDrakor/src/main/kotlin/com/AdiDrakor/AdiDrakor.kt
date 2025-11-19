@@ -10,17 +10,7 @@ import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.AdiDrakor.AdiDrakorExtractor.invokeIdlix
-import com.AdiDrakor.AdiDrakorExtractor.invokeVidsrccc
-import com.AdiDrakor.AdiDrakorExtractor.invokeVidsrc
-import com.AdiDrakor.AdiDrakorExtractor.invokeVixsrc
-import com.AdiDrakor.AdiDrakorExtractor.invokeVidlink
-import com.AdiDrakor.AdiDrakorExtractor.invokeVidfast
-import com.AdiDrakor.AdiDrakorExtractor.invokeMapple
-import com.AdiDrakor.AdiDrakorExtractor.invokeWyzie
-import com.AdiDrakor.AdiDrakorExtractor.invokeVidsrccx
-import com.AdiDrakor.AdiDrakorExtractor.invokeSuperembed
-import com.AdiDrakor.AdiDrakorExtractor.invokeVidrock
+import com.AdiDrakor.AdiDrakorExtractor.invokeAllExtractors
 
 open class AdiDrakor : TmdbProvider() {
     override var name = "AdiDrakor"
@@ -50,17 +40,16 @@ open class AdiDrakor : TmdbProvider() {
         }
     }
 
-    // === 1. MAIN PAGE MENGGUNAKAN API KISSKH ===
+    // === 1. KATEGORI & TAMPILAN ALA KISSKH ===
     override val mainPage = mainPageOf(
-        "$kisskhUrl/api/DramaList/List?page=1&type=0&sub=0&country=0&status=0&order=1&pageSize=40" to "Drama Populer",
-        "$kisskhUrl/api/DramaList/List?page=1&type=0&sub=0&country=0&status=0&order=2&pageSize=40" to "Drama Terbaru",
-        "$kisskhUrl/api/DramaList/List?page=1&type=1&sub=0&country=0&status=0&order=1&pageSize=40" to "Ongoing Series",
-        "$kisskhUrl/api/DramaList/List?page=1&type=3&sub=0&country=0&status=0&order=1&pageSize=40" to "Anime Populer",
-        "$kisskhUrl/api/DramaList/List?page=1&type=4&sub=0&country=0&status=0&order=1&pageSize=40" to "Movies",
+        "$kisskhUrl/api/DramaList/List?page=1&type=0&sub=0&country=0&status=0&order=2&pageSize=40" to "Latest",
+        "$kisskhUrl/api/DramaList/List?page=1&type=0&sub=0&country=2&status=0&order=1&pageSize=40" to "Top K-Drama",
+        "$kisskhUrl/api/DramaList/List?page=1&type=0&sub=0&country=1&status=0&order=1&pageSize=40" to "Top C-Drama",
+        "$kisskhUrl/api/DramaList/List?page=1&type=3&sub=0&country=0&status=0&order=1&pageSize=40" to "Anime Popular",
+        "$kisskhUrl/api/DramaList/List?page=1&type=4&sub=0&country=0&status=0&order=1&pageSize=40" to "Hollywood Popular",
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        // Handle Pagination Kisskh
         val url = request.data.replace("page=1", "page=$page")
         val responseText = app.get(url).text
         val results = tryParseJson<KisskhResponse>(responseText)?.data ?: emptyList()
@@ -68,13 +57,11 @@ open class AdiDrakor : TmdbProvider() {
         val home = results.mapNotNull { media ->
             newMovieSearchResponse(
                 media.title ?: return@mapNotNull null,
-                // PENTING: Kita simpan Title di sini karena kita belum punya TMDB ID
+                // Menandai data ini berasal dari Kisskh agar diload via Bridge nanti
                 Data(title = media.title, year = media.id, type = "kisskh_bridge").toJson(),
                 TvType.AsianDrama,
             ) {
                 this.posterUrl = media.thumbnail
-                // Kisskh menggunakan poster vertikal, set false agar rasio gambar benar
-                this.posterHeaders = mapOf("Referer" to kisskhUrl)
             }
         }
 
@@ -82,13 +69,13 @@ open class AdiDrakor : TmdbProvider() {
             list = HomePageList(
                 name = request.name,
                 list = home,
-                isHorizontalImages = false 
+                isHorizontalImages = true // Mengikuti gaya Kisskh
             ),
             hasNext = true
         )
     }
 
-    // === 2. SEARCH TETAP VIA TMDB (Agar sinkron dengan Extractor) ===
+    // === 2. SEARCH VIA TMDB ===
     override suspend fun search(query: String): List<SearchResponse>? {
         return app.get("$tmdbAPI/search/multi?api_key=$apiKey&language=en-US&query=$query&page=1&include_adult=${settingsForProvider.enableAdult}")
             .parsedSafe<TmdbResults>()?.results?.mapNotNull { media ->
@@ -107,26 +94,23 @@ open class AdiDrakor : TmdbProvider() {
         }
     }
 
-    // === 3. LOAD: LOGIKA JEMBATAN (BRIDGE) ===
+    // === 3. LOAD: JEMBATAN (BRIDGE) KISSKH -> TMDB ===
     override suspend fun load(url: String): LoadResponse? {
         val data = try { parseJson<Data>(url) } catch (e: Exception) { null }
 
-        // [BRIDGE] Jika data datang dari Kisskh (type="kisskh_bridge"), cari ID-nya di TMDB
+        // [BRIDGE] Cari ID TMDB jika data dari Kisskh
         if (data?.type == "kisskh_bridge" && data.title != null) {
-            // Bersihkan judul dari karakter aneh agar pencarian akurat
             val cleanTitle = data.title.replace(Regex("\\(.*?\\)"), "").trim()
             val searchUrl = "$tmdbAPI/search/multi?api_key=$apiKey&query=$cleanTitle&page=1"
             val searchRes = app.get(searchUrl).parsedSafe<TmdbResults>()
             
-            // Ambil hasil pertama (paling relevan)
             val bestMatch = searchRes?.results?.firstOrNull() 
-                ?: throw ErrorLoadingException("Konten '${data.title}' tidak ditemukan di database TMDB.")
+                ?: throw ErrorLoadingException("Konten tidak ditemukan di database TMDB.")
 
-            // Panggil ulang load() dengan ID TMDB yang valid
             return load(Data(id = bestMatch.id, type = bestMatch.mediaType ?: "tv").toJson())
         }
 
-        // [NORMAL] Jika sudah punya TMDB ID, load detail seperti biasa
+        // [NORMAL] Load Metadata TMDB
         val tmdbId = data?.id ?: throw ErrorLoadingException("Invalid ID")
         val type = getType(data.type)
         val apiType = if (type == TvType.Movie) "movie" else "tv"
@@ -190,6 +174,7 @@ open class AdiDrakor : TmdbProvider() {
         }
     }
 
+    // === 4. LOAD LINKS: MEMANGGIL SEMUA EXTRACTOR ===
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -197,25 +182,11 @@ open class AdiDrakor : TmdbProvider() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val res = parseJson<LinkData>(data)
-        
-        // Memanggil Extractor (Idlix, Vidsrc, dll)
-        runAllAsync(
-            { invokeIdlix(res.title, res.year, res.season, res.episode, subtitleCallback, callback) },
-            { invokeVidsrccc(res.id, res.imdbId, res.season, res.episode, subtitleCallback, callback) },
-            { invokeVidsrc(res.imdbId, res.season, res.episode, subtitleCallback, callback) },
-            { invokeVixsrc(res.id, res.season, res.episode, callback) },
-            { invokeVidlink(res.id, res.season, res.episode, callback) },
-            { invokeVidfast(res.id, res.season, res.episode, subtitleCallback, callback) },
-            { invokeMapple(res.id, res.season, res.episode, subtitleCallback, callback) },
-            { invokeWyzie(res.id, res.season, res.episode, subtitleCallback) },
-            { invokeVidsrccx(res.id, res.season, res.episode, callback) },
-            { invokeSuperembed(res.id, res.season, res.episode, subtitleCallback, callback) },
-            { invokeVidrock(res.id, res.season, res.episode, subtitleCallback, callback) }
-        )
+        // Memanggil fungsi sentral di AdiDrakorExtractor
+        invokeAllExtractors(res, subtitleCallback, callback)
         return true
     }
     
-    // Data Class Internal
     data class Data(val id: Int? = null, val type: String? = null, val title: String? = null, val year: Int? = null)
     data class LinkData(
         val id: Int? = null, val imdbId: String? = null, val type: String? = null, 
