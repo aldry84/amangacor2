@@ -30,7 +30,7 @@ object AdiDrakorExtractor {
     private const val vidsrccxAPI = "https://vidsrc.cx"
     private const val superembedAPI = "https://multiembed.mov"
     private const val vidrockAPI = "https://vidrock.net"
-    private const val jeniusMainUrl = "https://jeniusplay.com" //
+    private const val jeniusMainUrl = "https://jeniusplay.com"
 
     // --- FUNGSI UTAMA PEMANGGIL SEMUA EXTRACTOR ---
     suspend fun invokeAllExtractors(
@@ -38,10 +38,9 @@ object AdiDrakorExtractor {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        com.lagradost.cloudstream3.utils.AppUtils.parseJson<LinkData>(toJson(res)) // Dummy parsing to ensure async safety if needed
+        // PERBAIKAN DISINI: Mengubah toJson(res) menjadi res.toJson()
+        com.lagradost.cloudstream3.utils.AppUtils.parseJson<LinkData>(res.toJson()) 
         
-        // Menjalankan semua extractor secara paralel
-        // Ditambah logika Jeniusplay yang mungkin dipanggil oleh Idlix
         suspendSafe { invokeIdlix(res.title, res.year, res.season, res.episode, subtitleCallback, callback) }
         suspendSafe { invokeVidsrccc(res.id, res.imdbId, res.season, res.episode, subtitleCallback, callback) }
         suspendSafe { invokeVidsrc(res.imdbId, res.season, res.episode, subtitleCallback, callback) }
@@ -62,7 +61,7 @@ object AdiDrakorExtractor {
 
     // --- INDIVIDUAL EXTRACTORS ---
 
-    // 1. JENIUSPLAY (Ported from Extractors.kt)
+    // 1. JENIUSPLAY
     suspend fun invokeJeniusplay(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
         val hash = url.split("/").last().substringAfter("data=")
         val m3uLink = app.post(
@@ -171,7 +170,7 @@ object AdiDrakorExtractor {
         }
     }
     
-    // 6. OTHER EXTRACTORS (Simplified for brevity but functional)
+    // 6. OTHER EXTRACTORS
     suspend fun invokeVidlink(tmdbId: Int?, season: Int?, episode: Int?, callback: (ExtractorLink) -> Unit) {
         val type = if (season == null) "movie" else "tv"
         val url = if (season == null) "$vidlinkAPI/$type/$tmdbId" else "$vidlinkAPI/$type/$tmdbId/$season/$episode"
@@ -187,7 +186,6 @@ object AdiDrakorExtractor {
         if(video!=null) callback.invoke(newExtractorLink("Vixsrc", "Vixsrc", video, ExtractorLinkType.M3U8) { this.referer = url })
     }
     
-    // Placeholder implementations for less critical ones to ensure compilation (Full logic in Adicinemax21Extractor.kt)
     suspend fun invokeWatchsomuch(imdbId: String?, season: Int?, episode: Int?, cb: (SubtitleFile) -> Unit) {}
     suspend fun invokeVidfast(tmdbId: Int?, season: Int?, episode: Int?, cb: (SubtitleFile) -> Unit, call: (ExtractorLink) -> Unit) {}
     suspend fun invokeMapple(tmdbId: Int?, season: Int?, episode: Int?, cb: (SubtitleFile) -> Unit, call: (ExtractorLink) -> Unit) {}
