@@ -11,7 +11,8 @@ import com.lagradost.cloudstream3.utils.getAndUnpack
 import com.lagradost.cloudstream3.utils.newExtractorLink
 
 open class Jeniusplay2 : ExtractorApi() {
-    override val name = "Jeniusplay"
+    // UBAH DISINI: Menambahkan "1. " agar muncul paling atas saat diurutkan berdasarkan nama
+    override val name = "1. Jeniusplay" 
     override val mainUrl = "https://jeniusplay.com"
     override val requiresReferer = true
 
@@ -39,6 +40,8 @@ open class Jeniusplay2 : ExtractorApi() {
                 ExtractorLinkType.M3U8
             ) {
                 this.referer = url
+                // Opsional: Memberikan kualitas tinggi palsu jika perlu memaksa sorting berdasarkan kualitas
+                // this.quality = Qualities.P2160.value 
             }
         )
 
@@ -47,7 +50,6 @@ open class Jeniusplay2 : ExtractorApi() {
                 val subData =
                     getAndUnpack(script.data()).substringAfter("\"tracks\":[").substringBefore("],")
                 tryParseJson<List<Tracks>>("[$subData]")?.map { subtitle ->
-                    // Menambahkan suppress agar tidak muncul peringatan (warning) saat kompilasi
                     @Suppress("DEPRECATION")
                     subtitleCallback.invoke(
                         SubtitleFile(
