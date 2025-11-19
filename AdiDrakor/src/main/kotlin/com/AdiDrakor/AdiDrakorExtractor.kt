@@ -2,8 +2,9 @@ package com.AdiDrakor
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
-import com.lagradost.cloudstream3.utils.AppUtils
+import com.lagradost.cloudstream3.utils.AppUtils.parseJson // Import parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
+import com.lagradost.cloudstream3.utils.AppUtils.toJson // Import toJson Extension
 import com.lagradost.cloudstream3.extractors.helper.AesHelper
 import com.lagradost.nicehttp.RequestBodyTypes
 import org.jsoup.Jsoup
@@ -32,9 +33,11 @@ object AdiDrakorExtractor {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        // PERBAIKAN DISINI: Menggunakan AppUtils.toJson(res)
+        // FIX ERROR DISINI: 
+        // Gunakan 'res.toJson()' (Extension) bukan 'AppUtils.toJson(res)'
+        // Gunakan 'parseJson' langsung karena sudah di-import
         try { 
-            AppUtils.parseJson<LinkData>(AppUtils.toJson(res)) 
+            parseJson<LinkData>(res.toJson()) 
         } catch (e: Exception) { }
 
         // DAFTAR TUGAS EXTRACTOR (Idlix/Jeniusplay Prioritas Utama)
@@ -75,13 +78,11 @@ object AdiDrakorExtractor {
                 headers = mapOf("X-Requested-With" to "XMLHttpRequest")
             ).parsed<ResponseSource>().videoSource
 
-            // Kita beri nama "⭐️ Jeniusplay" agar terlihat spesial/diatas
             callback.invoke(newExtractorLink("Jeniusplay", "⭐️ Jeniusplay", m3uLink, ExtractorLinkType.M3U8) { 
                 this.referer = url 
-                this.quality = Qualities.P1080.value // Prioritaskan kualitas tinggi
+                this.quality = Qualities.P1080.value
             })
 
-            // Subtitle Jeniusplay
             val scriptData = app.get(url, referer = "$jeniusMainUrl/").document.select("script").firstOrNull { 
                 it.data().contains("eval(function(p,a,c,k,e,d)") 
             }?.data()
@@ -129,7 +130,6 @@ object AdiDrakorExtractor {
                 } else it.embed_url
             } ?: return@forEach
 
-            // LOGIKA PRIORITAS JENIUSPLAY
             if (source.startsWith("https://jeniusplay.com")) {
                 invokeJeniusplay(source, "$referer/", subtitleCallback, callback)
             } else if (!source.contains("youtube")) {
