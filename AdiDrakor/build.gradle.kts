@@ -5,7 +5,7 @@ cloudstream {
     language = "en"
     // All of these properties are optional, you can safely remove them
 
-     description = "#1 best extention based on MultiAPI"
+     description = "#1 AdiManu yang buat extention based on MultiAPI"
      authors = listOf("Adicinemax21", "Sora")
 
     /**
