@@ -20,7 +20,7 @@ import com.AdiDrakor.AdiDrakor.Companion.multimoviesAPI
 import com.AdiDrakor.AdiDrakor.Companion.extramoviesAPI
 import com.AdiDrakor.AdiDrakor.Companion.allmovielandAPI
 import com.AdiDrakor.AdiDrakor.Companion.mappleTvApi
-import com.AdiDrakor.AdiDrakor.Companion.kissKhAPI 
+import com.AdiDrakor.AdiDrakor.Companion.kissKhAPI
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.APIHolder.unixTimeMS 
 import com.lagradost.cloudstream3.extractors.helper.AesHelper
@@ -45,7 +45,7 @@ object AdiDrakorExtractor : AdiDrakor() {
         invokeWpmovies("Idlix", url, subtitleCallback, callback, encrypt = true)
     }
 
-    // --- 2. MOFLIX (API Based) ---
+    // --- 2. MOFLIX ---
     suspend fun invokeMoflix(tmdbId: Int?, season: Int?, episode: Int?, callback: (ExtractorLink) -> Unit) {
         val id = (if (season == null) "tmdb|movie|$tmdbId" else "tmdb|series|$tmdbId").let { base64Encode(it.toByteArray()) }
         val loaderUrl = "$moflixAPI/api/v1/titles/$id?loader=titlePage"
@@ -65,7 +65,7 @@ object AdiDrakorExtractor : AdiDrakor() {
         }
     }
 
-    // --- 3. EMOVIES (AJAX) ---
+    // --- 3. EMOVIES ---
     suspend fun invokeEmovies(title: String?, year: Int?, season: Int?, episode: Int?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
         val slug = title?.createSlug()
         val url = if (season == null) "$emoviesAPI/watch-$slug-$year-1080p-hd-online-free/watching.html" 
@@ -91,7 +91,7 @@ object AdiDrakorExtractor : AdiDrakor() {
         }
     }
 
-    // --- 4. ZOECHIP (Filemoon) ---
+    // --- 4. ZOECHIP ---
     suspend fun invokeZoechip(title: String?, year: Int?, season: Int?, episode: Int?, callback: (ExtractorLink) -> Unit) {
         val slug = title?.createSlug()
         val url = if (season == null) "$zoechipAPI/film/${title?.createSlug()}-$year" else "$zoechipAPI/episode/$slug-season-$season-episode-$episode"
@@ -130,7 +130,7 @@ object AdiDrakorExtractor : AdiDrakor() {
         }
     }
     
-    // --- 6. VIDZEE (Encrypted) ---
+    // --- 6. VIDZEE ---
     suspend fun invokeVidzee(id: Int?, season: Int?, episode: Int?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
         val keyBytes = "6966796f75736372617065796f75617265676179000000000000000000000000".chunked(2).map { it.toInt(16).toByte() }.toByteArray()
         for (sr in 1..5) {
@@ -163,14 +163,14 @@ object AdiDrakorExtractor : AdiDrakor() {
         }
     }
 
-    // --- 8. MULTIMOVIES (WP AJAX) ---
+    // --- 8. MULTIMOVIES ---
     suspend fun invokeMultimovies(title: String?, season: Int?, episode: Int?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
         val fixTitle = title?.createSlug()
         val url = if (season == null) "$multimoviesAPI/movies/$fixTitle" else "$multimoviesAPI/episodes/$fixTitle-${season}x${episode}"
         invokeWpmovies("Multimovies", url, subtitleCallback, callback)
     }
 
-    // --- 9. EXTRAMOVIES (WP AJAX) ---
+    // --- 9. EXTRAMOVIES ---
     suspend fun invokeExtramovies(imdbId: String?, season: Int?, episode: Int?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
         app.get("$extramoviesAPI/search/$imdbId").document.select("h3 a").amap { 
             val link = it.attr("href")
@@ -243,12 +243,12 @@ object AdiDrakorExtractor : AdiDrakor() {
         }
     }
 
-    @RequiresApi(Build.VERSION_CODES.O)
     suspend fun invokeVidsrccc(id: Int?, imdbId: String?, season: Int?, episode: Int?, callback: (ExtractorLink) -> Unit) {
         val url = if (season == null) "$vidsrctoAPI/v2/embed/movie/$id" else "$vidsrctoAPI/v2/embed/tv/$id/$season/$episode"
         val doc = app.get(url).text; val v = Regex("var v = \"(.*?)\";").find(doc)?.groupValues?.get(1) ?: return
-        val vrf = generateVrfAES(id.toString(), "1") // Simple mock
-        val api = if (season == null) "$vidsrctoAPI/api/$id/servers?id=$id&type=movie&v=$v" else "$vidsrctoAPI/api/$id/servers?id=$id&type=tv&season=$season&episode=$episode&v=$v"
+        val userId = Regex("var userId = \"(.*?)\";").find(doc)?.groupValues?.get(1) ?: ""
+        val vrf = generateVrfAES(id.toString(), userId)
+        val api = if (season == null) "$vidsrctoAPI/api/$id/servers?id=$id&type=movie&v=$v&vrf=$vrf&imdbId=$imdbId" else "$vidsrctoAPI/api/$id/servers?id=$id&type=tv&season=$season&episode=$episode&v=$v&vrf=$vrf&imdbId=$imdbId"
         app.get(api).parsedSafe<Vidsrcccservers>()?.data?.forEach { 
             app.get("$vidsrctoAPI/api/source/${it.hash}").parsedSafe<Vidsrcccm3u8>()?.data?.source?.let { src ->
                  callback.invoke(newExtractorLink("Vidsrc", "Vidsrc ${it.name}", src)) 
@@ -300,6 +300,7 @@ object AdiDrakorExtractor : AdiDrakor() {
         if (sources != null) {
             for (i in 0 until sources.length()) {
                 val src = sources.getJSONObject(i)
+                // [PERBAIKAN PENTING] Referer dipindahkan ke dalam lambda newExtractorLink
                 callback.invoke(newExtractorLink("KisskhAsia", "KisskhAsia", src.optString("file"), INFER_TYPE) {
                     this.referer = "https://hlscdn.xyz/"
                 })
@@ -314,7 +315,6 @@ object AdiDrakorExtractor : AdiDrakor() {
         if (searchResponse.code != 200) return
         val res = tryParseJson<ArrayList<KisskhResults>>(searchResponse.text) ?: return
         
-        // [PERBAIKAN 2] Explicit Casting & Type Check untuk menghindari ambiguitas Pair
         val pair = if (res.size == 1) {
             Pair(res.first().id, res.first().title)
         } else {
@@ -326,7 +326,6 @@ object AdiDrakorExtractor : AdiDrakor() {
         }
         
         val id = pair.first ?: return
-        
         val detailResponse = app.get("$kissKhAPI/api/DramaList/Drama/$id?isq=false", referer = "$kissKhAPI/")
         val resDetail = detailResponse.parsedSafe<KisskhDetail>() ?: return
         val epsId = if (season == null) resDetail.episodes?.firstOrNull()?.id else resDetail.episodes?.find { it.number == episode }?.id
@@ -337,6 +336,7 @@ object AdiDrakorExtractor : AdiDrakor() {
         sourcesResponse.parsedSafe<KisskhSources>()?.let { source ->
             listOf(source.video, source.thirdParty).forEach { link ->
                 if (link?.contains(".m3u8") == true || link?.contains(".mp4") == true) {
+                    // [PERBAIKAN PENTING] Referer dipindahkan ke dalam lambda newExtractorLink
                     callback.invoke(newExtractorLink("Kisskh", "Kisskh", fixUrl(link, kissKhAPI), INFER_TYPE) {
                         this.referer = kissKhAPI
                         this.quality = Qualities.P720.value
@@ -347,14 +347,18 @@ object AdiDrakorExtractor : AdiDrakor() {
         }
     }
 
+    // --- HELPER ---
     private suspend fun invokeWpmovies(name: String, url: String, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit, encrypt: Boolean = false) {
-        val doc = app.get(url).document
+        val res = app.get(url ?: return)
+        val referer = getBaseUrl(res.url)
+        val doc = res.document
         doc.select("ul#playeroptionsul > li").map { Triple(it.attr("data-post"), it.attr("data-nume"), it.attr("data-type")) }.amap { (id, nume, type) ->
             val json = app.post(url = "${getBaseUrl(url)}/wp-admin/admin-ajax.php", data = mapOf("action" to "doo_player_ajax", "post" to id, "nume" to nume, "type" to type), referer = url, headers = mapOf("X-Requested-With" to "XMLHttpRequest")).text
             val source = tryParseJson<ResponseHash>(json)?.embed_url ?: return@amap
             val finalUrl = if(encrypt) AesHelper.cryptoAESHandler(source, generateWpKey(tryParseJson<ResponseHash>(json)?.key?:"", tryParseJson<ZShowEmbed>(source)?.meta?:"").toByteArray(), false) else source
             val fixedUrl = if (finalUrl?.contains("youtube") == false) Jsoup.parse(finalUrl).select("iframe").attr("src").ifEmpty { finalUrl } else return@amap
-            if(fixedUrl.startsWith("https://jeniusplay.com")) Jeniusplay2().getUrl(fixedUrl, "${getBaseUrl(url)}/", subtitleCallback, callback) else loadExtractor(fixedUrl, subtitleCallback, callback)
+            // Menggunakan contains agar lebih fleksibel mendeteksi jeniusplay
+            if(fixedUrl.contains("jeniusplay", ignoreCase = true)) Jeniusplay2().getUrl(fixedUrl, "${getBaseUrl(url)}/", subtitleCallback, callback) else loadExtractor(fixedUrl, subtitleCallback, callback)
         }
     }
 }
