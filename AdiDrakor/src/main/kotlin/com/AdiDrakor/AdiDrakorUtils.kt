@@ -62,9 +62,7 @@ fun getKisskhTitle(str: String?): String? {
 fun getBaseUrl(url: String): String {
     return try {
         URI(url).let { "${it.scheme}://${it.host}" }
-    } catch (e: Exception) {
-        ""
-    }
+    } catch (e: Exception) { "" }
 }
 
 fun fixUrl(url: String, domain: String): String {
@@ -80,38 +78,38 @@ fun fixUrl(url: String, domain: String): String {
 fun generateWpKey(r: String, m: String): String {
     val rList = r.split("\\x").toTypedArray()
     var n = ""
-    val decodedM = String(android.util.Base64.decode(m.reversed(), android.util.Base64.DEFAULT))
-    for (s in decodedM.split("|")) {
-        n += "\\x" + rList[Integer.parseInt(s) + 1]
-    }
+    try {
+        val decodedM = String(Base64.decode(m.reversed(), Base64.DEFAULT))
+        for (s in decodedM.split("|")) {
+            n += "\\x" + rList[Integer.parseInt(s) + 1]
+        }
+    } catch (e: Exception) { e.printStackTrace() }
     return n
 }
 
 @RequiresApi(Build.VERSION_CODES.O)
 fun generateVrfAES(movieId: String, userId: String): String {
-    val keyData = "secret_$userId".toByteArray(Charsets.UTF_8)
-    val keyBytes = MessageDigest.getInstance("SHA-256").digest(keyData)
-    val keySpec = SecretKeySpec(keyBytes, "AES")
-    val ivSpec = IvParameterSpec(ByteArray(16))
-    val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
-    cipher.init(Cipher.ENCRYPT_MODE, keySpec, ivSpec)
-    val encrypted = cipher.doFinal(movieId.toByteArray(Charsets.UTF_8))
-    return java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(encrypted)
+    return try {
+        val keyData = "secret_$userId".toByteArray(Charsets.UTF_8)
+        val keyBytes = MessageDigest.getInstance("SHA-256").digest(keyData)
+        val keySpec = SecretKeySpec(keyBytes, "AES")
+        val ivSpec = IvParameterSpec(ByteArray(16))
+        val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+        cipher.init(Cipher.ENCRYPT_MODE, keySpec, ivSpec)
+        val encrypted = cipher.doFinal(movieId.toByteArray(Charsets.UTF_8))
+        Base64.encodeToString(encrypted, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
+    } catch (e: Exception) { "" }
 }
 
-// Helper untuk VidZee
 fun decryptVidzeeUrl(encrypted: String, key: ByteArray): String {
     val decoded = base64Decode(encrypted)
     val parts = decoded.split(":")
     if (parts.size != 2) throw IllegalArgumentException("Invalid encrypted format")
-
     val iv = base64DecodeArray(parts[0])
     val cipherData = base64DecodeArray(parts[1])
-
     val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
     val secretKey = SecretKeySpec(key, "AES")
     cipher.init(Cipher.DECRYPT_MODE, secretKey, IvParameterSpec(iv))
-
     val decryptedBytes = cipher.doFinal(cipherData)
     return decryptedBytes.toString(Charsets.UTF_8)
 }
@@ -123,20 +121,18 @@ suspend fun cinematickitBypass(url: String): String? {
         val cleanedUrl = url.replace("&#038;", "&")
         val encodedLink = cleanedUrl.substringAfter("safelink=").substringBefore("-")
         if (encodedLink.isEmpty()) return null
-        val decodedUrl = String(android.util.Base64.decode(encodedLink, android.util.Base64.DEFAULT))
+        val decodedUrl = String(Base64.decode(encodedLink, Base64.DEFAULT))
         val doc = app.get(decodedUrl).document
         val goValue = doc.select("form#landing input[name=go]").attr("value")
         if (goValue.isBlank()) return null
-        val decodedGoUrl = String(android.util.Base64.decode(goValue, android.util.Base64.DEFAULT)).replace("&#038;", "&")
+        val decodedGoUrl = String(Base64.decode(goValue, Base64.DEFAULT)).replace("&#038;", "&")
         val responseDoc = app.get(decodedGoUrl).document
         val script = responseDoc.select("script").firstOrNull { it.data().contains("window.location.replace") }?.data() ?: return null
         val regex = Regex("""window\.location\.replace\s*\(\s*["'](.+?)["']\s*\)\s*;?""")
         val match = regex.find(script) ?: return null
         val redirectPath = match.groupValues[1]
         if (redirectPath.startsWith("http")) redirectPath else URI(decodedGoUrl).let { "${it.scheme}://${it.host}$redirectPath" }
-    } catch (e: Exception) {
-        null
-    }
+    } catch (e: Exception) { null }
 }
 
 suspend fun bypassHrefli(url: String): String? {
@@ -144,21 +140,13 @@ suspend fun bypassHrefli(url: String): String? {
     var res = app.get(url).document
     var formUrl = res.select("form#landing").attr("action")
     var formData = res.select("form#landing input").associate { it.attr("name") to it.attr("value") }
-
     res = app.post(formUrl, data = formData).document
     formUrl = res.select("form#landing").attr("action")
     formData = res.select("form#landing input").associate { it.attr("name") to it.attr("value") }
-
     res = app.post(formUrl, data = formData).document
-    val skToken = res.selectFirst("script:containsData(?go=)")?.data()?.substringAfter("?go=")
-        ?.substringBefore("\"") ?: return null
-    val driveUrl = app.get(
-        "$host?go=$skToken", cookies = mapOf(
-            skToken to "${formData["_wp_http2"]}"
-        )
-    ).document.selectFirst("meta[http-equiv=refresh]")?.attr("content")?.substringAfter("url=")
-    val path = app.get(driveUrl ?: return null).text.substringAfter("replace(\"")
-        .substringBefore("\")")
+    val skToken = res.selectFirst("script:containsData(?go=)")?.data()?.substringAfter("?go=")?.substringBefore("\"") ?: return null
+    val driveUrl = app.get("$host?go=$skToken", cookies = mapOf(skToken to "${formData["_wp_http2"]}")).document.selectFirst("meta[http-equiv=refresh]")?.attr("content")?.substringAfter("url=")
+    val path = app.get(driveUrl ?: return null).text.substringAfter("replace(\"").substringBefore("\")")
     if (path == "/404") return null
     return fixUrl(path, getBaseUrl(driveUrl))
 }
