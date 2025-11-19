@@ -18,8 +18,7 @@ import okhttp3.ResponseBody.Companion.toResponseBody
 import java.util.ArrayList
 
 class KisskhProvider : MainAPI() {
-    // ================== PERUBAHAN 1 DI SINI ==================
-    override var mainUrl = "https://kisskh.co"
+    override var mainUrl = "https://kisskh.ovh"
     override var name = "Kisskh"
     override val hasMainPage = true
     override val hasDownloadSupport = true
@@ -51,7 +50,7 @@ class KisskhProvider : MainAPI() {
             .parsedSafe<Responses>()?.data
             ?.mapNotNull { media ->
                 media.toSearchResponse()
-            } ?: throw ErrorLoadingException("Invalid Json response") // <-- Salah ketik diperbaiki
+            } ?: throw ErrorLoadingException("Invalid Json reponse")
         return newHomePageResponse(
             list = HomePageList(
                 name = request.name,
@@ -84,7 +83,7 @@ class KisskhProvider : MainAPI() {
             app.get("$mainUrl/api/DramaList/Search?q=$query&type=0", referer = "$mainUrl/").text
         return tryParseJson<ArrayList<Media>>(searchResponse)?.mapNotNull { media ->
             media.toSearchResponse()
-        } ?: throw ErrorLoadingException("Invalid Json response") // <-- Salah ketik diperbaiki
+        } ?: throw ErrorLoadingException("Invalid Json reponse")
     }
 
     private fun getTitle(str: String): String {
@@ -99,7 +98,7 @@ class KisskhProvider : MainAPI() {
                 getTitle(id.first())
             }?id=${id.last()}"
         ).parsedSafe<MediaDetail>()
-            ?: throw ErrorLoadingException("Invalid Json response") // <-- Salah ketik diperbaiki
+            ?: throw ErrorLoadingException("Invalid Json reponse")
 
         val episodes = res.episodes?.map { eps ->
 
@@ -242,8 +241,6 @@ class KisskhProvider : MainAPI() {
                     val decrypted = chunks.mapIndexed { index, chunk ->
                         if (chunk.isBlank()) return@mapIndexed ""
                         val parts = chunk.split("\n")
-                        // ================== PERBAIKAN DI SINI ==================
-                        // 'return@mapB' diubah menjadi 'return@mapIndexed'
                         if (parts.isEmpty()) return@mapIndexed ""
 
                         val header = parts.first()
