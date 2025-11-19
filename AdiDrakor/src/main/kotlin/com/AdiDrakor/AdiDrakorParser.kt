@@ -24,7 +24,20 @@ data class Vidsrcccm3u8(val data: VidsrcccData)
 data class VidsrcccData(val source: String)
 data class TmdbDate(val today: String, val nextWeek: String)
 
-// --- NEW PARSERS ---
+data class KisskhResults(
+    @JsonProperty("id") val id: Int?,
+    @JsonProperty("title") val title: String?
+)
+
+data class KisskhDetail(
+    @JsonProperty("episodes") val episodes: ArrayList<KisskhEpisodes>? = arrayListOf()
+)
+
+data class KisskhEpisodes(
+    @JsonProperty("id") val id: Int?,
+    @JsonProperty("number") val number: Int?
+)
+
 data class MoflixResponse(
     @JsonProperty("title") val title: Episode? = null,
     @JsonProperty("episode") val episode: Episode? = null,
@@ -45,25 +58,8 @@ data class MoflixResponse(
 data class EMovieServer(@JsonProperty("value") val value: String? = null)
 data class EMovieSources(@JsonProperty("file") val file: String? = null)
 data class EMovieTraks(@JsonProperty("file") val file: String? = null, @JsonProperty("label") val label: String? = null)
-
 data class Watch32(val link: String)
-
-data class AllMovielandPlaylist(
-    @JsonProperty("file") val file: String? = null,
-    @JsonProperty("key") val key: String? = null,
-)
-
-data class AllMovielandServer(
-    @JsonProperty("title") val title: String? = null,
-    @JsonProperty("id") val id: String? = null,
-    @JsonProperty("file") val file: String? = null,
-    @JsonProperty("folder") val folder: ArrayList<AllMovielandSeasonFolder>? = arrayListOf(),
-)
-data class AllMovielandSeasonFolder(
-    @JsonProperty("episode") val episode: String? = null,
-    @JsonProperty("folder") val folder: ArrayList<AllMovielandEpisodeFolder>? = arrayListOf(),
-)
-data class AllMovielandEpisodeFolder(
-    @JsonProperty("title") val title: String? = null,
-    @JsonProperty("file") val file: String? = null,
-)
+data class AllMovielandPlaylist(@JsonProperty("file") val file: String? = null, @JsonProperty("key") val key: String? = null)
+data class AllMovielandServer(@JsonProperty("title") val title: String? = null, @JsonProperty("id") val id: String? = null, @JsonProperty("file") val file: String? = null, @JsonProperty("folder") val folder: ArrayList<AllMovielandSeasonFolder>? = arrayListOf())
+data class AllMovielandSeasonFolder(@JsonProperty("episode") val episode: String? = null, @JsonProperty("folder") val folder: ArrayList<AllMovielandEpisodeFolder>? = arrayListOf())
+data class AllMovielandEpisodeFolder(@JsonProperty("title") val title: String? = null, @JsonProperty("file") val file: String? = null)
