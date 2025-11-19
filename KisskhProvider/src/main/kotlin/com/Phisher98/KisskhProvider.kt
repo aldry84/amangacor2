@@ -17,6 +17,9 @@ import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import java.util.ArrayList
 
+// SOLUSI: Import BuildConfig secara eksplisit untuk mengatasi Unresolved Reference
+import com.phisher98.BuildConfig
+
 class KisskhProvider : MainAPI() {
     override var mainUrl = "https://kisskh.ovh"
     override var name = "Kisskh"
@@ -145,9 +148,9 @@ class KisskhProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // PERBAIKAN: Mengakses BuildConfig dengan package penuh untuk mengatasi Unresolved Reference
-        val KisskhAPI = com.phisher98.BuildConfig.KissKh
-        val KisskhSub = com.phisher98.BuildConfig.KisskhSub
+        // MENGGUNAKAN BuildConfig yang telah di-import
+        val KisskhAPI = BuildConfig.KissKh
+        val KisskhSub = BuildConfig.KisskhSub
         
         val loadData = parseJson<Data>(data)
         val kkey = app.get("$KisskhAPI${loadData.epsId}&version=2.8.10", timeout = 10000).parsedSafe<Key>()?.key ?:""
