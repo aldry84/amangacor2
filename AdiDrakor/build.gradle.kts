@@ -5,8 +5,8 @@ cloudstream {
     language = "en"
     // All of these properties are optional, you can safely remove them
 
-     description = "#1 AdiManu yang buat extention based on MultiAPI"
-     authors = listOf("Adicinemax21", "Sora")
+     description = "#1 AdiManu extention based on MultiAPI"
+     authors = listOf("AdiDrakor", "Trinity")
 
     /**
      * Status int as the following:
