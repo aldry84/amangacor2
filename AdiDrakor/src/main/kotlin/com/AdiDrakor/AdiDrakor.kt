@@ -1,7 +1,5 @@
 package com.AdiDrakor
 
-import android.content.SharedPreferences
-import androidx.preference.PreferenceManager
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.AdiDrakor.AdiDrakorExtractor.invokeGomovies
 import com.AdiDrakor.AdiDrakorExtractor.invokeIdlix
@@ -55,21 +53,13 @@ open class AdiDrakor : TmdbProvider() {
         // ==========================================
         private val apiKeys = listOf(
             "b030404650f279792a8d3287232358e3", // Default Key
-            "5205d28372d8060955e775d4027f53c2", // Backup 1 (Contoh)
-            "dca6d606c747eb05b8b38380e5a56c37"  // Backup 2 (Contoh)
+            "5205d28372d8060955e775d4027f53c2", // Backup 1
+            "dca6d606c747eb05b8b38380e5a56c37"  // Backup 2
         )
 
         fun getApiKey(): String {
             return apiKeys.random()
         }
-
-        // ==========================================
-        // SETTINGS KEYS
-        // ==========================================
-        // Gunakan key ini jika ingin membuat menu pengaturan di Plugin
-        const val PREF_ENABLE_IDLIX = "enable_idlix"
-        const val PREF_ENABLE_VIDFAST = "enable_vidfast"
-        const val PREF_ENABLE_VIDROCK = "enable_vidrock"
 
         fun getType(t: String?): TvType {
             return when (t) {
@@ -83,16 +73,6 @@ open class AdiDrakor : TmdbProvider() {
                 "Returning Series" -> ShowStatus.Ongoing
                 else -> ShowStatus.Completed
             }
-        }
-    }
-
-    // Helper untuk mengambil preferensi user
-    // Default true artinya source aktif jika user tidak mengubah setting
-    private fun getPref(key: String): Boolean {
-        return try {
-            PreferenceManager.getDefaultSharedPreferences(app.context).getBoolean(key, true)
-        } catch (e: Exception) {
-            true
         }
     }
 
@@ -119,17 +99,10 @@ open class AdiDrakor : TmdbProvider() {
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        // Update API Key saat runtime untuk request berikutnya
-        // Note: URL di mainPageOf sudah di-construct, kita replace query paramnya jika perlu,
-        // atau cukup andalkan random saat inisialisasi.
-        // Untuk keamanan lebih, kita replace manual string "api_key=..." jika ingin full dynamic per request.
-        // Namun, implementasi sederhana di atas sudah cukup baik.
-        
         val adultQuery =
             if (settingsForProvider.enableAdult) "" else "&without_keywords=190370|13059|226161|195669"
         val type = if (request.data.contains("/movie")) "movie" else "tv"
         
-        // Menggunakan request.data (yang sudah mengandung random API key saat init)
         val home = app.get("${request.data}$adultQuery&page=$page")
             .parsedSafe<Results>()?.results?.mapNotNull { media ->
                 media.toSearchResponse(type)
@@ -151,7 +124,6 @@ open class AdiDrakor : TmdbProvider() {
     override suspend fun quickSearch(query: String): List<SearchResponse>? = search(query)
 
     override suspend fun search(query: String): List<SearchResponse>? {
-        // Menggunakan getApiKey() setiap kali search dipanggil
         return app.get("$tmdbAPI/search/multi?api_key=${getApiKey()}&language=en-US&query=$query&page=1&include_adult=${settingsForProvider.enableAdult}")
             .parsedSafe<Results>()?.results?.mapNotNull { media ->
                 media.toSearchResponse()
@@ -179,7 +151,6 @@ open class AdiDrakor : TmdbProvider() {
         val type = getType(data.type)
         val append = "alternative_titles,credits,external_ids,keywords,videos,recommendations"
         
-        // Dynamic API Key Here
         val resUrl = if (type == TvType.Movie) {
             "$tmdbAPI/movie/${data.id}?api_key=${getApiKey()}&append_to_response=$append"
         } else {
@@ -220,7 +191,6 @@ open class AdiDrakor : TmdbProvider() {
         return if (type == TvType.TvSeries) {
             val lastSeason = res.last_episode_to_air?.season_number
             val episodes = res.seasons?.mapNotNull { season ->
-                // Dynamic API Key Here
                 app.get("$tmdbAPI/${data.type}/${data.id}/season/${season.seasonNumber}?api_key=${getApiKey()}")
                     .parsedSafe<MediaDetailEpisodes>()?.episodes?.map { eps ->
                         newEpisode(
@@ -329,11 +299,12 @@ open class AdiDrakor : TmdbProvider() {
         val tasks = mutableListOf<suspend () -> Unit>()
 
         // ==========================================
-        // PERBAIKAN: CONDITIONAL & DYNAMIC LOADING
+        // PERBAIKAN: Removing PreferenceManager Dependency
+        // Defaulting all providers to TRUE to avoid build errors
         // ==========================================
 
-        // 1. IDLIX (Berat, bisa didisable user)
-        if (getPref(PREF_ENABLE_IDLIX)) {
+        // 1. IDLIX
+        if (true) { 
             tasks.add {
                 invokeIdlix(
                     res.title,
@@ -346,8 +317,8 @@ open class AdiDrakor : TmdbProvider() {
             }
         }
 
-        // 2. VIDROCK (Berat, bisa didisable user)
-        if (getPref(PREF_ENABLE_VIDROCK)) {
+        // 2. VIDROCK
+        if (true) {
             tasks.add {
                 invokeVidrock(
                     res.id,
@@ -359,8 +330,8 @@ open class AdiDrakor : TmdbProvider() {
             }
         }
 
-        // 3. VIDFAST (Menggunakan WebView, mungkin lambat)
-        if (getPref(PREF_ENABLE_VIDFAST)) {
+        // 3. VIDFAST
+        if (true) {
             tasks.add {
                 invokeVidfast(res.id, res.season, res.episode, subtitleCallback, callback)
             }
