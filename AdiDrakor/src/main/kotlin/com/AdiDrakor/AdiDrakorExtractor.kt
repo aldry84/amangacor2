@@ -1,20 +1,18 @@
 package com.AdiDrakor
 
+import android.util.Base64
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.network.WebViewResolver
-import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.M3u8Helper.Companion.generateM3u8
-import org.jsoup.Jsoup
 import org.json.JSONObject
 import java.net.URI
-import java.util.*
 
 object AdiDrakorExtractor : AdiDrakor() {
 
     // ==============================
-    // 1. VIDLINK (Powerful Extractor)
+    // 1. VIDLINK
     // ==============================
     suspend fun invokeVidlink(
         tmdbId: Int? = null,
@@ -69,7 +67,7 @@ object AdiDrakorExtractor : AdiDrakor() {
     }
 
     // ==============================
-    // 2. CINEMA OS (High Quality)
+    // 2. CINEMA OS
     // ==============================
     suspend fun invokeCinemaOS(
         imdbId: String? = null,
@@ -105,14 +103,18 @@ object AdiDrakorExtractor : AdiDrakor() {
             val sourceResponse = app.get(sourceUrl, timeout = 60L).parsedSafe<CinemaOSReponse>()
             val decryptedJson = cinemaOSDecryptResponse(sourceResponse?.data)
             
-            // Parsing Manual JSON String karena format dinamis
+            if (decryptedJson.toString().isBlank()) return
+
             val json = JSONObject(decryptedJson.toString())
+            if (!json.has("sources")) return
+
             val sourcesObject = json.getJSONObject("sources")
             
-            sourcesObject.keys().forEach { key ->
+            val keys = sourcesObject.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
                 val source = sourcesObject.getJSONObject(key)
                 val url = if (source.has("qualities")) {
-                    // Ambil kualitas tertinggi (biasanya key terakhir atau spesifik)
                     val qualities = source.getJSONObject("qualities")
                     qualities.optJSONObject("1080")?.optString("url") 
                         ?: qualities.optJSONObject("720")?.optString("url") 
@@ -168,7 +170,6 @@ object AdiDrakorExtractor : AdiDrakor() {
                 val iframeSrc = app.get("$api$subPath", referer = api).document.selectFirst("iframe")?.attr("src") ?: return@forEach
                 val finalUrl = "https://uqloads.xyz/e/$iframeSrc"
                 
-                // Resolving Uqload
                 val response = app.get(finalUrl)
                 val script = response.document.selectFirst("script:containsData(sources:)")?.data()
                 val m3u8 = Regex("\"hls2\":\\s*\"(.*?m3u8.*?)\"").find(script ?: "")?.groupValues?.getOrNull(1)
@@ -190,7 +191,7 @@ object AdiDrakorExtractor : AdiDrakor() {
     }
 
     // ==============================
-    // 4. XDMOVIES (HubCloud Based)
+    // 4. XDMOVIES (Fixed)
     // ==============================
     suspend fun invokeXDmovies(
         id: Int? = null,
@@ -202,23 +203,42 @@ object AdiDrakorExtractor : AdiDrakor() {
         val api = DomainManager.xdmoviesAPI
         val type = if (season == null) "xyz123" else "abc456"
         val url = "$api/api/$type?tmdb_id=$id"
-        val headers = mapOf("x-auth-token" to String(Base64.decode("NzI5N3Nra2loa2Fqd25zZ2FrbGFrc2h1d2Q=", 0)))
+        
+        // Decode Token Explicitly
+        val tokenBytes = Base64.decode("NzI5N3Nra2loa2Fqd25zZ2FrbGFrc2h1d2Q=", Base64.DEFAULT)
+        val token = String(tokenBytes)
+        val headers = mapOf("x-auth-token" to token)
 
         try {
-            val jsonObject = JSONObject(app.get(url, headers = headers).text)
+            val responseText = app.get(url, headers = headers).text
+            val jsonObject = JSONObject(responseText)
+            
             val downloadLinks = if (season != null) {
-                 // Logic for TV Series parsing
                  jsonObject.optJSONObject("download_data")
                     ?.optJSONArray("seasons")
                     ?.let { seasons ->
-                        (0 until seasons.length()).map { seasons.getJSONObject(it) }
-                            .firstOrNull { it.optInt("season_num") == season }
-                            ?.optJSONArray("episodes")
-                            ?.let { episodes ->
-                                (0 until episodes.length()).map { episodes.getJSONObject(it) }
-                                    .firstOrNull { it.optInt("episode_number") == episode }
-                                    ?.optJSONArray("versions")
+                        // Manual loop to find season
+                        var targetSeason: JSONObject? = null
+                        for (i in 0 until seasons.length()) {
+                            val s = seasons.getJSONObject(i)
+                            if (s.optInt("season_num") == season) {
+                                targetSeason = s
+                                break
                             }
+                        }
+                        
+                        targetSeason?.optJSONArray("episodes")?.let { episodes ->
+                            // Manual loop to find episode
+                            var targetEp: JSONObject? = null
+                            for (i in 0 until episodes.length()) {
+                                val e = episodes.getJSONObject(i)
+                                if (e.optInt("episode_number") == episode) {
+                                    targetEp = e
+                                    break
+                                }
+                            }
+                            targetEp?.optJSONArray("versions")
+                        }
                     }
             } else {
                 jsonObject.optJSONArray("download_links")
@@ -226,7 +246,8 @@ object AdiDrakorExtractor : AdiDrakor() {
 
             if (downloadLinks != null) {
                 for (i in 0 until downloadLinks.length()) {
-                    val link = downloadLinks.getJSONObject(i).optString("download_link")
+                    val item = downloadLinks.getJSONObject(i)
+                    val link = item.optString("download_link")
                     if (link.contains("hubcloud", ignoreCase = true)) {
                         HubCloud().getUrl(link, "HubCloud", subtitleCallback, callback)
                     }
@@ -247,7 +268,7 @@ object AdiDrakorExtractor : AdiDrakor() {
         callback: (ExtractorLink) -> Unit,
     ) {
         val api = DomainManager.rivestreamAPI
-        val secretKey = "rive" // Simplified, might need dynamic fetching in future
+        val secretKey = "rive"
         val sourceApiUrl = "$api/api/backendfetch?requestID=VideoProviderServices&secretKey=$secretKey"
         
         try {
@@ -262,7 +283,8 @@ object AdiDrakorExtractor : AdiDrakor() {
 
                 val response = app.get(streamUrl).text
                 val json = JSONObject(response)
-                val streams = json.optJSONObject("data")?.optJSONArray("sources")
+                val dataObj = json.optJSONObject("data")
+                val streams = dataObj?.optJSONArray("sources")
 
                 if (streams != null) {
                     for (i in 0 until streams.length()) {
@@ -286,7 +308,7 @@ object AdiDrakorExtractor : AdiDrakor() {
     }
 
     // ==============================
-    // 6. VIDSRCCC & VIDSRCXYZ
+    // 6. VIDSRCCC
     // ==============================
     suspend fun invokeVidsrccc(
         id: Int? = null,
@@ -294,19 +316,15 @@ object AdiDrakorExtractor : AdiDrakor() {
         episode: Int? = null,
         callback: (ExtractorLink) -> Unit,
     ) {
-        val api = DomainManager.vidsrcccAPI // vidsrc.cc
-        // Note: VidsrcCC logic in StreamPlay actually points to vidsrc.net logic sometimes
-        // We implement the one from StreamPlayExtractor
-        
+        val api = DomainManager.vidsrcccAPI
         val url = if (season == null) "$api/v2/embed/movie/$id" else "$api/v2/embed/tv/$id/$season/$episode"
         try {
             val doc = app.get(url).text
-            // Regex to find variables
             val userId = Regex("""var\s+userId\s*=\s*"([^"]+)"""").find(doc)?.groupValues?.get(1) ?: return
             val v = Regex("""var\s+v\s*=\s*"([^"]+)"""").find(doc)?.groupValues?.get(1) ?: return
             val movieId = Regex("""var\s+movieId\s*=\s*"([^"]+)"""").find(doc)?.groupValues?.get(1) ?: return
             
-            val vrf = generateVrfAES(movieId, userId) // From Utils
+            val vrf = generateVrfAES(movieId, userId)
             val type = if (season == null) "movie" else "tv"
             
             val serverUrl = if (season == null) {
@@ -327,13 +345,16 @@ object AdiDrakorExtractor : AdiDrakor() {
         } catch (e: Exception) { e.printStackTrace() }
     }
 
+    // ==============================
+    // 7. VIDSRCXYZ
+    // ==============================
     suspend fun invokeVidSrcXyz(
         id: String? = null,
         season: Int? = null,
         episode: Int? = null,
         callback: (ExtractorLink) -> Unit
     ) {
-        val api = DomainManager.vidsrcxyzAPI // vidsrc-embed.su
+        val api = DomainManager.vidsrcxyzAPI
         val url = if (season == null) "$api/embed/movie?imdb=$id" else "$api/embed/tv?imdb=$id&season=$season&episode=$episode"
         
         try {
@@ -350,25 +371,18 @@ object AdiDrakorExtractor : AdiDrakor() {
 
             val playerJs = app.get(rcpUrl).text
             val file = Regex("""file:"(.*?)"""").find(playerJs)?.groupValues?.get(1) 
-                ?: decryptVidSrcXyz(playerJs) // Custom decryption logic needed
 
             if (!file.isNullOrBlank()) {
                 callback.invoke(
-                    newExtractorLink("VidsrcXYZ", "VidsrcXYZ", file, ExtractorLinkType.M3U8)
+                    newExtractorLink("VidsrcXYZ", "VidsrcXYZ", file!!, ExtractorLinkType.M3U8)
                     { this.referer = rcpUrl.substringBefore("rcp") }
                 )
             }
         } catch (e: Exception) { e.printStackTrace() }
     }
-    
-    private fun decryptVidSrcXyz(content: String): String? {
-         // Basic attempt to find ID and decrypt using Utils map
-         // In real implementation, this needs to parse the ID from the response content
-         return null // Placeholder, usually 'file' regex works
-    }
 
     // ==============================
-    // 7. WATCH32
+    // 8. WATCH32
     // ==============================
     suspend fun invokeWatch32(
         title: String?,
@@ -383,7 +397,6 @@ object AdiDrakorExtractor : AdiDrakor() {
         
         try {
             val doc = app.get(searchUrl).document
-            // Simple logic: Find first result matching year/title
             val item = doc.select("div.flw-item").firstOrNull() ?: return
             val href = item.select("a").attr("href")
             
@@ -391,7 +404,6 @@ object AdiDrakorExtractor : AdiDrakor() {
             val infoId = detailUrl.substringAfterLast("-")
             
             if (season == null) {
-                // Movie Logic
                 val episodeLinks = app.get("$api/ajax/episode/list/$infoId").document.select("li.nav-item a")
                 episodeLinks.forEach { ep ->
                    val id = ep.attr("data-id")
@@ -401,12 +413,11 @@ object AdiDrakorExtractor : AdiDrakor() {
                    }
                 }
             }
-            // TV Logic omitted for brevity, follows similar ajax pattern
         } catch (e: Exception) { e.printStackTrace() }
     }
 
     // ==============================
-    // 8. SUBTITLE APIS
+    // 9. SUBTITLE APIS
     // ==============================
     suspend fun invokeSubtitleAPI(
         id: String? = null,
