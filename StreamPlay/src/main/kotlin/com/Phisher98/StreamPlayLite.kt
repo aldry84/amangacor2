@@ -41,70 +41,59 @@ import com.phisher98.StreamPlayExtractor.sharedPref
 class StreamPlayLite() : StreamPlay(sharedPref) {
     override var name = "StreamPlay-Lite"
 
-    // Variabel helper untuk query
+    // Helper Variables
     private val apiKey = BuildConfig.TMDB_API
+    
+    // Bahasa Asia: Indonesia, Mandarin (ZH/CN), Jepang, Korea, Thailand
     private val asianLangs = "id|zh|cn|ja|ko|th"
+    
+    // Filter Penting: Exclude Genre Animation (ID 16) agar tidak ada Anime
+    private val noAnime = "&without_genres=16"
 
     override val mainPage = mainPageOf(
-        // 1. Indonesia Box Office (Revenue Descending)
-        "/discover/movie?api_key=$apiKey&with_original_language=id&sort_by=revenue.desc" to "Indonesia Box Office",
+        // 1. Indonesia
+        "/discover/movie?api_key=$apiKey&with_original_language=id&sort_by=revenue.desc$noAnime" to "Indonesia Box Office",
+        "/discover/movie?api_key=$apiKey&with_original_language=id&sort_by=popularity.desc$noAnime" to "Indo Prime Picks",
         
-        // 2. Indo Prime Picks (Popularity Descending)
-        "/discover/movie?api_key=$apiKey&with_original_language=id&sort_by=popularity.desc" to "Indo Prime Picks",
+        // 2. China / Mandarin
+        "/discover/movie?api_key=$apiKey&with_original_language=zh|cn&sort_by=revenue.desc$noAnime" to "China Box Office",
+        "/discover/movie?api_key=$apiKey&with_original_language=zh|cn&sort_by=popularity.desc$noAnime" to "Mandarin Hits",
         
-        // 3. China Box Office
-        "/discover/movie?api_key=$apiKey&with_original_language=zh|cn&sort_by=revenue.desc" to "China Box Office",
+        // 3. Japan (Strictly No Anime)
+        "/discover/movie?api_key=$apiKey&with_original_language=ja&sort_by=revenue.desc$noAnime" to "Japan Box Office",
+        "/discover/movie?api_key=$apiKey&with_original_language=ja&sort_by=popularity.desc$noAnime" to "J-Movie Highlights",
         
-        // 4. Mandarin Hits
-        "/discover/movie?api_key=$apiKey&with_original_language=zh|cn&sort_by=popularity.desc" to "Mandarin Hits",
+        // 4. Thailand
+        "/discover/movie?api_key=$apiKey&with_original_language=th&sort_by=revenue.desc$noAnime" to "Thailand Box Office",
+        "/discover/movie?api_key=$apiKey&with_original_language=th&sort_by=popularity.desc$noAnime" to "Thai Movie Hits",
         
-        // 5. Japan Box Office
-        "/discover/movie?api_key=$apiKey&with_original_language=ja&sort_by=revenue.desc" to "Japan Box Office",
+        // 5. Streaming Platforms (Filtered for Asian Content & No Anime)
+        // Netflix (Provider 8)
+        "/discover/movie?api_key=$apiKey&with_watch_providers=8&watch_region=ID&with_original_language=$asianLangs&sort_by=popularity.desc$noAnime" to "Netflix Asia Films",
+        // Viu (Provider 158)
+        "/discover/movie?api_key=$apiKey&with_watch_providers=158&watch_region=ID&sort_by=popularity.desc$noAnime" to "Viu Movie Zone",
+        // WeTV (General approach using Mandarin/Thai popular)
+        "/discover/movie?api_key=$apiKey&with_original_language=zh|th&sort_by=popularity.desc&page=2$noAnime" to "WeTV Movie Hub",
+        // Disney+ (Provider 337)
+        "/discover/movie?api_key=$apiKey&with_watch_providers=337&watch_region=ID&with_original_language=$asianLangs&sort_by=popularity.desc$noAnime" to "Disney+ Asia Movies",
+        // HBO (Provider 118/119)
+        "/discover/movie?api_key=$apiKey&with_watch_providers=118|119&watch_region=ID&with_original_language=$asianLangs&sort_by=popularity.desc$noAnime" to "HBO Movie Vault",
+        // Prime Video (Provider 119)
+        "/discover/movie?api_key=$apiKey&with_watch_providers=119&watch_region=ID&with_original_language=$asianLangs&sort_by=popularity.desc$noAnime" to "Prime Video Asia",
         
-        // 6. J-Movie Highlights
-        "/discover/movie?api_key=$apiKey&with_original_language=ja&sort_by=popularity.desc" to "J-Movie Highlights",
-        
-        // 7. Thailand Box Office
-        "/discover/movie?api_key=$apiKey&with_original_language=th&sort_by=revenue.desc" to "Thailand Box Office",
-        
-        // 8. Thai Movie Hits
-        "/discover/movie?api_key=$apiKey&with_original_language=th&sort_by=popularity.desc" to "Thai Movie Hits",
-        
-        // 9. Netflix Asia Films (Provider ID 8 = Netflix, Filtered by Asian Languages)
-        "/discover/movie?api_key=$apiKey&with_watch_providers=8&watch_region=ID&with_original_language=$asianLangs&sort_by=popularity.desc" to "Netflix Asia Films",
-        
-        // 10. Viu Movie Zone (Provider ID 158 = Viu)
-        "/discover/movie?api_key=$apiKey&with_watch_providers=158&watch_region=ID&sort_by=popularity.desc" to "Viu Movie Zone",
-        
-        // 11. WeTV Movie Hub (Filter Mandarin/Thai populer sebagai pendekatan)
-        "/discover/movie?api_key=$apiKey&with_original_language=zh|th&sort_by=popularity.desc&page=2" to "WeTV Movie Hub",
-        
-        // 12. Disney+ Asia Movies (Provider 337 = Hotstar/Disney, Filtered by Asian Languages)
-        "/discover/movie?api_key=$apiKey&with_watch_providers=337|390&watch_region=ID&with_original_language=$asianLangs&sort_by=popularity.desc" to "Disney+ Asia Movies",
-        
-        // 13. HBO Movie Vault (Provider 118 = HBO GO/Max)
-        "/discover/movie?api_key=$apiKey&with_watch_providers=118|119&watch_region=ID&with_original_language=$asianLangs" to "HBO Movie Vault",
-        
-        // 14. Prime Video Asia (Provider 119 = Amazon Prime)
-        "/discover/movie?api_key=$apiKey&with_watch_providers=119&watch_region=ID&with_original_language=$asianLangs" to "Prime Video Asia",
-        
-        // 15. Asian Horror Room (Genre 27 = Horror)
-        "/discover/movie?api_key=$apiKey&with_genres=27&with_original_language=$asianLangs&sort_by=popularity.desc" to "Asian Horror Room",
-        
-        // 16. Asian Thriller Zone (Genre 53 = Thriller)
-        "/discover/movie?api_key=$apiKey&with_genres=53&with_original_language=$asianLangs&sort_by=popularity.desc" to "Asian Thriller Zone",
-        
-        // 17. Asian Comedy Club (Genre 35 = Comedy)
-        "/discover/movie?api_key=$apiKey&with_genres=35&with_original_language=$asianLangs&sort_by=popularity.desc" to "Asian Comedy Club",
-        
-        // 18. Adventure Asia (Genre 12 = Adventure)
-        "/discover/movie?api_key=$apiKey&with_genres=12&with_original_language=$asianLangs&sort_by=popularity.desc" to "Adventure Asia",
-        
-        // 19. Asian Romance Line (Genre 10749 = Romance)
-        "/discover/movie?api_key=$apiKey&with_genres=10749&with_original_language=$asianLangs&sort_by=popularity.desc" to "Asian Romance Line",
-        
-        // 20. Asian Drama (Genre 18 = Drama)
-        "/discover/movie?api_key=$apiKey&with_genres=18&with_original_language=$asianLangs&sort_by=popularity.desc" to "Asian Drama Choice"
+        // 6. Genres (Asian Content Only & No Anime)
+        // Horror (27)
+        "/discover/movie?api_key=$apiKey&with_genres=27&with_original_language=$asianLangs&sort_by=popularity.desc$noAnime" to "Asian Horror Room",
+        // Thriller (53)
+        "/discover/movie?api_key=$apiKey&with_genres=53&with_original_language=$asianLangs&sort_by=popularity.desc$noAnime" to "Asian Thriller Zone",
+        // Comedy (35)
+        "/discover/movie?api_key=$apiKey&with_genres=35&with_original_language=$asianLangs&sort_by=popularity.desc$noAnime" to "Asian Comedy Club",
+        // Adventure (12)
+        "/discover/movie?api_key=$apiKey&with_genres=12&with_original_language=$asianLangs&sort_by=popularity.desc$noAnime" to "Adventure Asia",
+        // Romance (10749)
+        "/discover/movie?api_key=$apiKey&with_genres=10749&with_original_language=$asianLangs&sort_by=popularity.desc$noAnime" to "Asian Romance Line",
+        // Drama (18)
+        "/discover/movie?api_key=$apiKey&with_genres=18&with_original_language=$asianLangs&sort_by=popularity.desc$noAnime" to "Asian Drama Choice"
     )
 
     override suspend fun loadLinks(
