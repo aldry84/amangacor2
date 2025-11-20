@@ -374,15 +374,16 @@ open class AdiDrakor : TmdbProvider() {
                     callback
                 )
             },
-            {
-                invokeVidrock(
-                    res.id,
-                    res.season,
-                    res.episode,
-                    subtitleCallback,
-                    callback
-                )
-            }
+            // 7. Vidrock DINONAKTIFKAN
+            // {
+            //     invokeVidrock(
+            //         res.id,
+            //         res.season,
+            //         res.episode,
+            //         subtitleCallback,
+            //         callback
+            //     )
+            // }
         )
 
         return true
