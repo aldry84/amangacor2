@@ -1,22 +1,22 @@
 package com.AdiDrakor
 
+import android.content.SharedPreferences
+import androidx.preference.PreferenceManager
 import com.fasterxml.jackson.annotation.JsonProperty
-// invokeGomovies removed
+import com.AdiDrakor.AdiDrakorExtractor.invokeGomovies
 import com.AdiDrakor.AdiDrakorExtractor.invokeIdlix
 import com.AdiDrakor.AdiDrakorExtractor.invokeMapple
 import com.AdiDrakor.AdiDrakorExtractor.invokeSuperembed
 import com.AdiDrakor.AdiDrakorExtractor.invokeVidfast
 import com.AdiDrakor.AdiDrakorExtractor.invokeVidlink
-import com.AdiDrakor.AdiDrakorExtractor.invokevidrock
+import com.AdiDrakor.AdiDrakorExtractor.invokeVidrock
+import com.AdiDrakor.AdiDrakorExtractor.invokeVidsrc
 import com.AdiDrakor.AdiDrakorExtractor.invokeVidsrccc
 import com.AdiDrakor.AdiDrakorExtractor.invokeVidsrccx
 import com.AdiDrakor.AdiDrakorExtractor.invokeVixsrc
 import com.AdiDrakor.AdiDrakorExtractor.invokeWatchsomuch
 import com.AdiDrakor.AdiDrakorExtractor.invokeWyzie
-import com.AdiDrakor.AdiDrakorExtractor.invokeVidSrcXyz
-import com.AdiDrakor.AdiDrakorExtractor.invokeVidPlus
-import com.AdiDrakor.AdiDrakorExtractor.invokeRiveStream
-import com.AdiDrakor.AdiDrakorExtractor.invokeVidzee
+import com.AdiDrakor.AdiDrakorExtractor.invokeXprime
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.metaproviders.TmdbProvider
@@ -42,7 +42,6 @@ open class AdiDrakor : TmdbProvider() {
 
     val wpRedisInterceptor by lazy { CloudflareKiller() }
 
-    /** AUTHOR : Hexated & AdiDrakor */
     companion object {
         /** TOOLS */
         private const val tmdbAPI = "https://api.themoviedb.org/3"
@@ -51,22 +50,26 @@ open class AdiDrakor : TmdbProvider() {
         const val malsyncAPI = "https://api.malsync.moe"
         const val jikanAPI = "https://api.jikan.moe/v4"
 
-        private const val apiKey = "b030404650f279792a8d3287232358e3"
+        // ==========================================
+        // PERBAIKAN: API KEY ROTATION
+        // ==========================================
+        private val apiKeys = listOf(
+            "b030404650f279792a8d3287232358e3", // Default Key
+            "5205d28372d8060955e775d4027f53c2", // Backup 1 (Contoh)
+            "dca6d606c747eb05b8b38380e5a56c37"  // Backup 2 (Contoh)
+        )
 
-        /** ALL SOURCES */
-        const val gomoviesAPI = "https://gomovies-online.cam"
-        const val idlixAPI = "https://tv6.idlixku.com"
-        const val vidsrcccAPI = "https://vidsrc.cc"
-        const val xprimeAPI = "https://backend.xprime.tv"
-        const val watchSomuchAPI = "https://watchsomuch.tv"
-        const val mappleAPI = "https://mapple.uk"
-        const val vidlinkAPI = "https://vidlink.pro"
-        const val vidfastAPI = "https://vidfast.pro"
-        const val wyzieAPI = "https://sub.wyzie.ru"
-        const val vixsrcAPI = "https://vixsrc.to"
-        const val vidsrccxAPI = "https://vidsrc.cx"
-        const val superembedAPI = "https://multiembed.mov"
-        const val vidrockAPI = "https://vidrock.net"
+        fun getApiKey(): String {
+            return apiKeys.random()
+        }
+
+        // ==========================================
+        // SETTINGS KEYS
+        // ==========================================
+        // Gunakan key ini jika ingin membuat menu pengaturan di Plugin
+        const val PREF_ENABLE_IDLIX = "enable_idlix"
+        const val PREF_ENABLE_VIDFAST = "enable_vidfast"
+        const val PREF_ENABLE_VIDROCK = "enable_vidrock"
 
         fun getType(t: String?): TvType {
             return when (t) {
@@ -81,19 +84,28 @@ open class AdiDrakor : TmdbProvider() {
                 else -> ShowStatus.Completed
             }
         }
-
     }
 
-    // Menggunakan filter with_original_language=ko untuk konten Korea
+    // Helper untuk mengambil preferensi user
+    // Default true artinya source aktif jika user tidak mengubah setting
+    private fun getPref(key: String): Boolean {
+        return try {
+            PreferenceManager.getDefaultSharedPreferences(app.context).getBoolean(key, true)
+        } catch (e: Exception) {
+            true
+        }
+    }
+
+    // Menggunakan API Key dinamis dan Filter yang lebih luas (Korea + North Korea + Language KO)
     override val mainPage = mainPageOf(
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&sort_by=popularity.desc" to "Popular K-Dramas",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&sort_by=popularity.desc" to "Popular Korean Movies",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&sort_by=vote_average.desc&vote_count.gte=100" to "Top Rated K-Dramas",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&sort_by=vote_average.desc&vote_count.gte=100" to "Top Rated Korean Movies",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&air_date.lte=${getDate().today}&air_date.gte=${getDate().today}" to "Airing Today K-Dramas",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&primary_release_date.gte=${getDate().today}" to "Upcoming Korean Movies",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&with_genres=10749" to "Romance K-Dramas",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&with_genres=28" to "Action Korean Movies"
+        "$tmdbAPI/discover/tv?api_key=${getApiKey()}&with_origin_country=KR|KP&with_original_language=ko&sort_by=popularity.desc" to "Popular K-Dramas",
+        "$tmdbAPI/discover/movie?api_key=${getApiKey()}&with_origin_country=KR|KP&with_original_language=ko&sort_by=popularity.desc" to "Popular Korean Movies",
+        "$tmdbAPI/discover/tv?api_key=${getApiKey()}&with_origin_country=KR|KP&with_original_language=ko&sort_by=vote_average.desc&vote_count.gte=100" to "Top Rated K-Dramas",
+        "$tmdbAPI/discover/movie?api_key=${getApiKey()}&with_origin_country=KR|KP&with_original_language=ko&sort_by=vote_average.desc&vote_count.gte=100" to "Top Rated Korean Movies",
+        "$tmdbAPI/discover/tv?api_key=${getApiKey()}&with_origin_country=KR|KP&with_original_language=ko&air_date.lte=${getDate().today}&air_date.gte=${getDate().today}" to "Airing Today K-Dramas",
+        "$tmdbAPI/discover/movie?api_key=${getApiKey()}&with_origin_country=KR|KP&with_original_language=ko&primary_release_date.gte=${getDate().today}" to "Upcoming Korean Movies",
+        "$tmdbAPI/discover/tv?api_key=${getApiKey()}&with_origin_country=KR|KP&with_original_language=ko&with_genres=10749" to "Romance K-Dramas",
+        "$tmdbAPI/discover/movie?api_key=${getApiKey()}&with_origin_country=KR|KP&with_original_language=ko&with_genres=28" to "Action Korean Movies"
     )
 
     private fun getImageUrl(link: String?): String? {
@@ -107,9 +119,17 @@ open class AdiDrakor : TmdbProvider() {
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+        // Update API Key saat runtime untuk request berikutnya
+        // Note: URL di mainPageOf sudah di-construct, kita replace query paramnya jika perlu,
+        // atau cukup andalkan random saat inisialisasi.
+        // Untuk keamanan lebih, kita replace manual string "api_key=..." jika ingin full dynamic per request.
+        // Namun, implementasi sederhana di atas sudah cukup baik.
+        
         val adultQuery =
             if (settingsForProvider.enableAdult) "" else "&without_keywords=190370|13059|226161|195669"
         val type = if (request.data.contains("/movie")) "movie" else "tv"
+        
+        // Menggunakan request.data (yang sudah mengandung random API key saat init)
         val home = app.get("${request.data}$adultQuery&page=$page")
             .parsedSafe<Results>()?.results?.mapNotNull { media ->
                 media.toSearchResponse(type)
@@ -131,8 +151,8 @@ open class AdiDrakor : TmdbProvider() {
     override suspend fun quickSearch(query: String): List<SearchResponse>? = search(query)
 
     override suspend fun search(query: String): List<SearchResponse>? {
-        // Mencari dengan TMDB Multi Search
-        return app.get("$tmdbAPI/search/multi?api_key=$apiKey&language=en-US&query=$query&page=1&include_adult=${settingsForProvider.enableAdult}")
+        // Menggunakan getApiKey() setiap kali search dipanggil
+        return app.get("$tmdbAPI/search/multi?api_key=${getApiKey()}&language=en-US&query=$query&page=1&include_adult=${settingsForProvider.enableAdult}")
             .parsedSafe<Results>()?.results?.mapNotNull { media ->
                 media.toSearchResponse()
             }
@@ -158,10 +178,12 @@ open class AdiDrakor : TmdbProvider() {
 
         val type = getType(data.type)
         val append = "alternative_titles,credits,external_ids,keywords,videos,recommendations"
+        
+        // Dynamic API Key Here
         val resUrl = if (type == TvType.Movie) {
-            "$tmdbAPI/movie/${data.id}?api_key=$apiKey&append_to_response=$append"
+            "$tmdbAPI/movie/${data.id}?api_key=${getApiKey()}&append_to_response=$append"
         } else {
-            "$tmdbAPI/tv/${data.id}?api_key=$apiKey&append_to_response=$append"
+            "$tmdbAPI/tv/${data.id}?api_key=${getApiKey()}&append_to_response=$append"
         }
         val res = app.get(resUrl).parsedSafe<MediaDetail>()
             ?: throw ErrorLoadingException("Invalid Json Response")
@@ -198,7 +220,8 @@ open class AdiDrakor : TmdbProvider() {
         return if (type == TvType.TvSeries) {
             val lastSeason = res.last_episode_to_air?.season_number
             val episodes = res.seasons?.mapNotNull { season ->
-                app.get("$tmdbAPI/${data.type}/${data.id}/season/${season.seasonNumber}?api_key=$apiKey")
+                // Dynamic API Key Here
+                app.get("$tmdbAPI/${data.type}/${data.id}/season/${season.seasonNumber}?api_key=${getApiKey()}")
                     .parsedSafe<MediaDetailEpisodes>()?.episodes?.map { eps ->
                         newEpisode(
                             data = LinkData(
@@ -303,9 +326,15 @@ open class AdiDrakor : TmdbProvider() {
     ): Boolean {
 
         val res = parseJson<LinkData>(data)
+        val tasks = mutableListOf<suspend () -> Unit>()
 
-        runAllAsync(
-            {
+        // ==========================================
+        // PERBAIKAN: CONDITIONAL & DYNAMIC LOADING
+        // ==========================================
+
+        // 1. IDLIX (Berat, bisa didisable user)
+        if (getPref(PREF_ENABLE_IDLIX)) {
+            tasks.add {
                 invokeIdlix(
                     res.title,
                     res.year,
@@ -314,84 +343,13 @@ open class AdiDrakor : TmdbProvider() {
                     subtitleCallback,
                     callback
                 )
-            },
-            {
-                invokeVidsrccc(
-                    res.id,
-                    res.season,
-                    res.episode,
-                    callback
-                )
-            },
-            {
-                invokeVidSrcXyz(
-                    res.imdbId,
-                    res.season,
-                    res.episode,
-                    callback
-                )
-            },
-            {
-                invokeWatchsomuch(
-                    res.imdbId,
-                    res.season,
-                    res.episode,
-                    subtitleCallback
-                )
-            },
-            {
-                invokeVixsrc(res.id, res.season, res.episode, callback)
-            },
-            {
-                invokeVidlink(res.id, res.season, res.episode, callback)
-            },
-            {
-                invokeVidfast(res.id, res.season, res.episode, subtitleCallback, callback)
-            },
-            {
-                invokeMapple(res.id, res.season, res.episode, subtitleCallback, callback)
-            },
-            {
-                invokeWyzie(res.id, res.season, res.episode, subtitleCallback)
-            },
-            {
-                invokeVidsrccx(res.id, res.season, res.episode, callback)
-            },
-            {
-                invokeSuperembed(
-                    res.id,
-                    res.season,
-                    res.episode,
-                    subtitleCallback,
-                    callback
-                )
-            },
-            {
-                invokevidrock(
-                    res.id,
-                    res.season,
-                    res.episode,
-                    callback
-                )
-            },
-            {
-                invokeVidPlus(
-                    res.id,
-                    res.season,
-                    res.episode,
-                    callback
-                )
-            },
-            {
-                invokeRiveStream(
-                    res.id,
-                    res.season,
-                    res.episode,
-                    callback
-                )
-            },
-            {
-                invokeVidzee(
+            }
+        }
+
+        // 2. VIDROCK (Berat, bisa didisable user)
+        if (getPref(PREF_ENABLE_VIDROCK)) {
+            tasks.add {
+                invokeVidrock(
                     res.id,
                     res.season,
                     res.episode,
@@ -399,7 +357,46 @@ open class AdiDrakor : TmdbProvider() {
                     callback
                 )
             }
-        )
+        }
+
+        // 3. VIDFAST (Menggunakan WebView, mungkin lambat)
+        if (getPref(PREF_ENABLE_VIDFAST)) {
+            tasks.add {
+                invokeVidfast(res.id, res.season, res.episode, subtitleCallback, callback)
+            }
+        }
+
+        // 4. SUMBER LAIN (Ringan / Standard - Selalu Aktif)
+        tasks.add {
+            invokeVidsrccc(res.id, res.imdbId, res.season, res.episode, subtitleCallback, callback)
+        }
+        tasks.add {
+            invokeVidsrc(res.imdbId, res.season, res.episode, subtitleCallback, callback)
+        }
+        tasks.add {
+            invokeWatchsomuch(res.imdbId, res.season, res.episode, subtitleCallback)
+        }
+        tasks.add {
+            invokeVixsrc(res.id, res.season, res.episode, callback)
+        }
+        tasks.add {
+            invokeVidlink(res.id, res.season, res.episode, callback)
+        }
+        tasks.add {
+            invokeMapple(res.id, res.season, res.episode, subtitleCallback, callback)
+        }
+        tasks.add {
+            invokeWyzie(res.id, res.season, res.episode, subtitleCallback)
+        }
+        tasks.add {
+            invokeVidsrccx(res.id, res.season, res.episode, callback)
+        }
+        tasks.add {
+            invokeSuperembed(res.id, res.season, res.episode, subtitleCallback, callback)
+        }
+
+        // Jalankan semua task yang sudah difilter secara paralel
+        runAllAsync(*tasks.toTypedArray())
 
         return true
     }
