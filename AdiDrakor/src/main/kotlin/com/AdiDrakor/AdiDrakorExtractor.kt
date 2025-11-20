@@ -858,4 +858,72 @@ object AdiDrakorExtractor : AdiDrakor() {
 
     }
 
+    suspend fun invokeAdimoviebox(
+        title: String? = null,
+        year: Int? = null,
+        season: Int? = null,
+        episode: Int? = null,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val mainUrl = "https://moviebox.ph"
+        val apiUrl = "https://fmoviesunblocked.net"
+
+        // 1. Search Content
+        val searchBody = mapOf(
+            "keyword" to title,
+            "page" to "1",
+            "perPage" to "20",
+            "subjectType" to "0"
+        ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
+
+        val searchRes = app.post(
+            "$mainUrl/wefeed-h5-bff/web/subject/search",
+            requestBody = searchBody
+        ).parsedSafe<MovieboxSearchResponse>()?.data?.items
+
+        // 2. Filter Results
+        val media = searchRes?.find { item ->
+            val itemYear = item.releaseDate?.split("-")?.firstOrNull()?.toIntOrNull()
+            item.title.equals(title, true) && (year == null || itemYear == year)
+        } ?: return
+
+        val subjectId = media.subjectId ?: return
+        val seParam = if (season == null) 0 else season
+        val epParam = if (episode == null) 0 else episode
+
+        val referer = "$apiUrl/spa/videoPlayPage/movies/detail?id=$subjectId&type=/movie/detail&lang=en"
+
+        // 3. Get Stream Data
+        val streamData = app.get(
+            "$apiUrl/wefeed-h5-bff/web/subject/play?subjectId=$subjectId&se=$seParam&ep=$epParam",
+            referer = referer
+        ).parsedSafe<MovieboxStreamResponse>()?.data
+
+        // 4. Process Streams
+        streamData?.streams?.reversed()?.distinctBy { it.url }?.forEach { source ->
+            callback.invoke(
+                newExtractorLink(
+                    "Adimoviebox",
+                    "Adimoviebox [${source.resolutions ?: "Auto"}]",
+                    source.url ?: return@forEach,
+                    INFER_TYPE
+                ) {
+                    this.referer = "$apiUrl/"
+                    this.quality = getQualityFromName(source.resolutions)
+                }
+            )
+        }
+
+        // 5. Process Subtitles
+        streamData?.captions?.forEach { subtitle ->
+            subtitleCallback.invoke(
+                newSubtitleFile(
+                    subtitle.lanName ?: "Unknown",
+                    subtitle.url ?: return@forEach
+                )
+            )
+        }
+    }
+
 }
