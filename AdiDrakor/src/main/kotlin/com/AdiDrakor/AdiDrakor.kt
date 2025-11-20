@@ -1,20 +1,16 @@
 package com.AdiDrakor
 
 import com.fasterxml.jackson.annotation.JsonProperty
-import com.AdiDrakor.AdiDrakorExtractor.invokeGomovies
-import com.AdiDrakor.AdiDrakorExtractor.invokeIdlix
-import com.AdiDrakor.AdiDrakorExtractor.invokeMapple
-import com.AdiDrakor.AdiDrakorExtractor.invokeSuperembed
-import com.AdiDrakor.AdiDrakorExtractor.invokeVidfast
+import com.AdiDrakor.AdiDrakorExtractor.invokeCinemaOS
+import com.AdiDrakor.AdiDrakorExtractor.invokePlayer4U
+import com.AdiDrakor.AdiDrakorExtractor.invokeRiveStream
+import com.AdiDrakor.AdiDrakorExtractor.invokeSubtitleAPI
+import com.AdiDrakor.AdiDrakorExtractor.invokeVidSrcXyz
 import com.AdiDrakor.AdiDrakorExtractor.invokeVidlink
-import com.AdiDrakor.AdiDrakorExtractor.invokeVidrock
-import com.AdiDrakor.AdiDrakorExtractor.invokeVidsrc
 import com.AdiDrakor.AdiDrakorExtractor.invokeVidsrccc
-import com.AdiDrakor.AdiDrakorExtractor.invokeVidsrccx
-import com.AdiDrakor.AdiDrakorExtractor.invokeVixsrc
-import com.AdiDrakor.AdiDrakorExtractor.invokeWatchsomuch
-import com.AdiDrakor.AdiDrakorExtractor.invokeWyzie
-import com.AdiDrakor.AdiDrakorExtractor.invokeXprime
+import com.AdiDrakor.AdiDrakorExtractor.invokeWatch32
+import com.AdiDrakor.AdiDrakorExtractor.invokeWyZIESUBAPI
+import com.AdiDrakor.AdiDrakorExtractor.invokeXDmovies
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.metaproviders.TmdbProvider
@@ -41,10 +37,8 @@ open class AdiDrakor : TmdbProvider() {
     val wpRedisInterceptor by lazy { CloudflareKiller() }
 
     companion object {
-        /** TOOLS */
         private const val tmdbAPI = "https://api.themoviedb.org/3"
-        
-        // HANYA SATU API KEY AGAR STABIL
+        // Single API Key agar stabil (sesuai request sebelumnya)
         private const val apiKey = "b030404650f279792a8d3287232358e3"
 
         fun getType(t: String?): TvType {
@@ -62,14 +56,13 @@ open class AdiDrakor : TmdbProvider() {
         }
     }
 
-    // Konfigurasi Halaman Utama (Disederhanakan & Filter Tanggal agar tidak muncul film belum rilis)
+    // Konfigurasi Katalog (Tetap Fokus Korea/Asia sesuai nama plugin)
     override val mainPage = mainPageOf(
         "$tmdbAPI/discover/tv?api_key=$apiKey&with_origin_country=KR|KP&with_original_language=ko&sort_by=popularity.desc" to "Popular K-Dramas",
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_origin_country=KR|KP&with_original_language=ko&sort_by=popularity.desc&primary_release_date.lte=${getDate().today}" to "Popular Korean Movies",
         "$tmdbAPI/discover/tv?api_key=$apiKey&with_origin_country=KR|KP&with_original_language=ko&sort_by=vote_average.desc&vote_count.gte=100" to "Top Rated K-Dramas",
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_origin_country=KR|KP&with_original_language=ko&sort_by=vote_average.desc&vote_count.gte=100" to "Top Rated Korean Movies",
         "$tmdbAPI/discover/tv?api_key=$apiKey&with_origin_country=KR|KP&with_original_language=ko&air_date.lte=${getDate().today}&air_date.gte=${getDate().today}" to "Airing Today K-Dramas",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_origin_country=KR|KP&with_original_language=ko&with_genres=10749" to "Romance K-Dramas",
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_origin_country=KR|KP&with_original_language=ko&with_genres=28&primary_release_date.lte=${getDate().today}" to "Action Korean Movies"
     )
 
@@ -86,8 +79,6 @@ open class AdiDrakor : TmdbProvider() {
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val adultQuery = if (settingsForProvider.enableAdult) "" else "&without_keywords=190370|13059|226161|195669"
         val type = if (request.data.contains("/movie")) "movie" else "tv"
-        
-        // Request standar tanpa injeksi key aneh-aneh
         val home = app.get("${request.data}$adultQuery&page=$page")
             .parsedSafe<Results>()?.results?.mapNotNull { media ->
                 media.toSearchResponse(type)
@@ -135,8 +126,6 @@ open class AdiDrakor : TmdbProvider() {
 
         val type = getType(data.type)
         val append = "alternative_titles,credits,external_ids,keywords,videos,recommendations"
-        
-        // Menggunakan variabel apiKey konstan
         val resUrl = if (type == TvType.Movie) {
             "$tmdbAPI/movie/${data.id}?api_key=$apiKey&append_to_response=$append"
         } else {
@@ -196,8 +185,7 @@ open class AdiDrakor : TmdbProvider() {
                                 epsTitle = eps.name,
                                 jpTitle = res.alternative_titles?.results?.find { it.iso_3166_1 == "JP" }?.title,
                                 date = season.airDate,
-                                airedDate = res.releaseDate
-                                    ?: res.firstAirDate,
+                                airedDate = res.releaseDate ?: res.firstAirDate,
                                 isAsian = isAsian,
                                 isBollywood = isBollywood,
                                 isCartoon = isCartoon
@@ -284,26 +272,44 @@ open class AdiDrakor : TmdbProvider() {
         val res = parseJson<LinkData>(data)
         val tasks = mutableListOf<suspend () -> Unit>()
 
-        // Tanpa settings yang rumit, semua extractor diaktifkan
-        tasks.add { invokeIdlix(res.title, res.year, res.season, res.episode, subtitleCallback, callback) }
-        tasks.add { invokeVidrock(res.id, res.season, res.episode, subtitleCallback, callback) }
-        tasks.add { invokeVidfast(res.id, res.season, res.episode, subtitleCallback, callback) }
-        tasks.add { invokeVidsrccc(res.id, res.imdbId, res.season, res.episode, subtitleCallback, callback) }
-        tasks.add { invokeVidsrc(res.imdbId, res.season, res.episode, subtitleCallback, callback) }
-        tasks.add { invokeWatchsomuch(res.imdbId, res.season, res.episode, subtitleCallback) }
-        tasks.add { invokeVixsrc(res.id, res.season, res.episode, callback) }
-        tasks.add { invokeVidlink(res.id, res.season, res.episode, callback) }
-        tasks.add { invokeMapple(res.id, res.season, res.episode, subtitleCallback, callback) }
-        tasks.add { invokeWyzie(res.id, res.season, res.episode, subtitleCallback) }
-        tasks.add { invokeVidsrccx(res.id, res.season, res.episode, callback) }
-        tasks.add { invokeSuperembed(res.id, res.season, res.episode, subtitleCallback, callback) }
+        // ==========================================
+        // STREAMPLAY EXTRACTORS (Ported)
+        // ==========================================
+        
+        // 1. Vidlink (Powerful)
+        tasks.add { invokeVidlink(res.id, res.season, res.episode, subtitleCallback, callback) }
+
+        // 2. CinemaOS (High Quality)
+        tasks.add { invokeCinemaOS(res.imdbId, res.id, res.title, res.season, res.episode, res.year, callback, subtitleCallback) }
+        
+        // 3. VidSrc Ecosystem
+        tasks.add { invokeVidsrccc(res.id, res.season, res.episode, callback) }
+        tasks.add { invokeVidSrcXyz(res.imdbId, res.season, res.episode, callback) }
+        
+        // 4. RiveStream
+        tasks.add { invokeRiveStream(res.id, res.season, res.episode, callback) }
+        
+        // 5. XDMovies (Multi Source)
+        tasks.add { invokeXDmovies(res.id, res.season, res.episode, callback, subtitleCallback) }
+        
+        // 6. Player4U
+        if (settingsForProvider.enableAdult) { // Optional check
+            tasks.add { invokePlayer4U(res.title, res.season, res.episode, res.year, callback) }
+        }
+        
+        // 7. Watch32
+        tasks.add { invokeWatch32(res.title, res.season, res.episode, res.year, callback) }
+
+        // ==========================================
+        // SUBTITLE APIS (From StreamPlay)
+        // ==========================================
+        tasks.add { invokeSubtitleAPI(res.imdbId, res.season, res.episode, subtitleCallback) }
+        tasks.add { invokeWyZIESUBAPI(res.imdbId, res.season, res.episode, subtitleCallback) }
 
         runAllAsync(*tasks.toTypedArray())
         return true
     }
 
-    // ================= DATA CLASS (JANGAN DIHAPUS) =================
-    
     data class LinkData(
         val id: Int? = null,
         val imdbId: String? = null,
