@@ -24,17 +24,12 @@ import com.lagradost.cloudstream3.network.CloudflareKiller
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import java.util.Collections
 import kotlin.math.roundToInt
 
 open class AdiDrakor : TmdbProvider() {
     override var name = "AdiDrakor"
     override val hasMainPage = true
-    
-    // Ubah ke false agar user menunggu sebentar sampai sorting selesai, 
-    // baru list muncul rapi.
-    override val instantLinkLoading = false 
-    
+    override val instantLinkLoading = true
     override val useMetaLoadResponse = true
     override val hasQuickSearch = true
     override val supportedTypes = setOf(
@@ -88,6 +83,7 @@ open class AdiDrakor : TmdbProvider() {
 
     }
 
+    // Menggunakan filter with_original_language=ko untuk konten Korea
     override val mainPage = mainPageOf(
         "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&sort_by=popularity.desc" to "Popular K-Dramas",
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&sort_by=popularity.desc" to "Popular Korean Movies",
@@ -134,6 +130,7 @@ open class AdiDrakor : TmdbProvider() {
     override suspend fun quickSearch(query: String): List<SearchResponse>? = search(query)
 
     override suspend fun search(query: String): List<SearchResponse>? {
+        // Mencari dengan TMDB Multi Search
         return app.get("$tmdbAPI/search/multi?api_key=$apiKey&language=en-US&query=$query&page=1&include_adult=${settingsForProvider.enableAdult}")
             .parsedSafe<Results>()?.results?.mapNotNull { media ->
                 media.toSearchResponse()
@@ -305,17 +302,9 @@ open class AdiDrakor : TmdbProvider() {
     ): Boolean {
 
         val res = parseJson<LinkData>(data)
-        
-        // 1. Buat list aman (Thread-safe) untuk menampung link sementara
-        val collectedLinks = Collections.synchronizedList(ArrayList<ExtractorLink>())
 
-        // 2. Buat callback pembungkus untuk menampung link
-        val collectingCallback: (ExtractorLink) -> Unit = { link ->
-            collectedLinks.add(link)
-        }
-
-        // 3. Jalankan semua pencarian
         runAllAsync(
+            // 1. JeniusPlay (Di dalam fungsi Idlix terdapat Jeniusplay)
             {
                 invokeIdlix(
                     res.title,
@@ -323,12 +312,14 @@ open class AdiDrakor : TmdbProvider() {
                     res.season,
                     res.episode,
                     subtitleCallback,
-                    collectingCallback
+                    callback
                 )
             },
+            // 2. Vidlink
             {
-                invokeVidlink(res.id, res.season, res.episode, collectingCallback)
+                invokeVidlink(res.id, res.season, res.episode, callback)
             },
+            // 3. Vidplay (Di dalam fungsi Vidsrccc terdapat Vidplay)
             {
                 invokeVidsrccc(
                     res.id,
@@ -336,19 +327,21 @@ open class AdiDrakor : TmdbProvider() {
                     res.season,
                     res.episode,
                     subtitleCallback,
-                    collectingCallback
+                    callback
                 )
             },
+            // 4. Vixsrc (Alpha)
             {
-                invokeVidfast(res.id, res.season, res.episode, subtitleCallback, collectingCallback)
+                invokeVixsrc(res.id, res.season, res.episode, callback)
             },
+            // 5. Sumber Lainnya (Prioritas bawah)
             {
                 invokeVidsrc(
                     res.imdbId,
                     res.season,
                     res.episode,
                     subtitleCallback,
-                    collectingCallback
+                    callback
                 )
             },
             {
@@ -360,24 +353,25 @@ open class AdiDrakor : TmdbProvider() {
                 )
             },
             {
-                invokeVixsrc(res.id, res.season, res.episode, collectingCallback)
+                invokeVidfast(res.id, res.season, res.episode, subtitleCallback, callback)
             },
             {
-                invokeMapple(res.id, res.season, res.episode, subtitleCallback, collectingCallback)
+                invokeMapple(res.id, res.season, res.episode, subtitleCallback, callback)
             },
             {
                 invokeWyzie(res.id, res.season, res.episode, subtitleCallback)
             },
-            {
-                invokeVidsrccx(res.id, res.season, res.episode, collectingCallback)
-            },
+            // 6. VidsrcCx DINONAKTIFKAN
+            // {
+            //    invokeVidsrccx(res.id, res.season, res.episode, callback)
+            // },
             {
                 invokeSuperembed(
                     res.id,
                     res.season,
                     res.episode,
                     subtitleCallback,
-                    collectingCallback
+                    callback
                 )
             },
             {
@@ -386,25 +380,10 @@ open class AdiDrakor : TmdbProvider() {
                     res.season,
                     res.episode,
                     subtitleCallback,
-                    collectingCallback
+                    callback
                 )
             }
         )
-
-        // 4. SORTING MANUAL (INILAH KUNCINYA)
-        // Urutan: Jeniusplay (0) -> Vidlink (1) -> VidPlay (2) -> Lainnya (99)
-        val sortedLinks = collectedLinks.sortedBy { link ->
-            when {
-                link.name.contains("Jeniusplay", true) -> 0
-                link.name.contains("Idlix", true) -> 0
-                link.name.contains("Vidlink", true) -> 1
-                link.name.contains("VidPlay", true) -> 2
-                else -> 99
-            }
-        }
-
-        // 5. Kirim link yang sudah urut ke aplikasi
-        sortedLinks.forEach(callback)
 
         return true
     }
