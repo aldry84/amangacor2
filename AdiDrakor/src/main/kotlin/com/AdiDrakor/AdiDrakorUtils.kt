@@ -2,6 +2,7 @@ package com.AdiDrakor
 
 import android.os.Build
 import android.util.Base64
+import com.lagradost.cloudstream3.APIHolder.unixTimeMS
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.mvvm.logError
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
@@ -25,6 +26,15 @@ import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.PBEKeySpec
 import javax.crypto.spec.SecretKeySpec
 import kotlin.math.max
+
+// ==========================================
+// DATA CLASS UTILS
+// ==========================================
+
+data class TmdbDate(
+    val today: String,
+    val nextWeek: String,
+)
 
 // ==========================================
 // DOMAIN MANAGER
@@ -58,14 +68,12 @@ object DomainManager {
 
     suspend fun updateDomains() {
         try {
-            // Menggunakan domain JSON punya Phisher agar kompatibel
             val response = app.get(CONFIG_URL).parsedSafe<Map<String, String>>()
             response?.let {
                 vidsrcccAPI = it["vidsrccc"] ?: vidsrcccAPI
-                vidsrcxyzAPI = it["vidsrcxyz"] ?: vidsrcxyzAPI // Note: mungkin perlu mapping manual jika key beda
+                vidsrcxyzAPI = it["vidsrcxyz"] ?: vidsrcxyzAPI
                 xdmoviesAPI = it["xdmovies"] ?: xdmoviesAPI
                 watch32API = it["watch32"] ?: watch32API
-                // Beberapa domain mungkin hardcoded di StreamPlay, kita set default aman
             }
         } catch (e: Exception) {
             logError(e)
@@ -76,6 +84,8 @@ object DomainManager {
 // ==========================================
 // UTILITIES UMUM
 // ==========================================
+
+const val anilistAPI = "https://graphql.anilist.co"
 
 fun getSeason(month: Int?): String? {
     val seasons = arrayOf("Winter", "Winter", "Spring", "Spring", "Spring", "Summer", "Summer", "Summer", "Fall", "Fall", "Fall", "Winter")
@@ -91,6 +101,17 @@ fun getDate(): TmdbDate {
     return TmdbDate(today, nextWeek)
 }
 
+fun isUpcoming(dateString: String?): Boolean {
+    return try {
+        val format = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val dateTime = dateString?.let { format.parse(it)?.time } ?: return false
+        unixTimeMS < dateTime
+    } catch (t: Throwable) {
+        logError(t)
+        false
+    }
+}
+
 fun getLanguage(code: String): String {
     val map = mapOf("id" to "Indonesian", "en" to "English", "ko" to "Korean")
     return map[code.lowercase()] ?: code
@@ -102,10 +123,9 @@ fun String.decodeHex(): ByteArray {
 }
 
 // ==========================================
-// CRYPTO UTILS (Required by StreamPlay Extractors)
+// CRYPTO UTILS
 // ==========================================
 
-// 1. VidsrcTo / VidsrcCC Helper
 fun generateVrfAES(movieId: String, userId: String): String {
     val keyData = "secret_$userId".toByteArray(Charsets.UTF_8)
     val keyBytes = MessageDigest.getInstance("SHA-256").digest(keyData)
@@ -121,7 +141,6 @@ fun generateVrfAES(movieId: String, userId: String): String {
     }
 }
 
-// 2. CinemaOS Helpers
 fun generateHashedString(): String {
     val s = "a8f7e9c2d4b6a1f3e8c9d2t4a7f6e9c2d4z6a1f3e8c9d2b4a7f5e9c2d4b6a1f3"
     val a = "2"
@@ -186,7 +205,6 @@ fun hexStringToByteArray(hex: String): ByteArray {
     return data
 }
 
-// 3. VidSrcXYZ Decryption Map
 val decryptMethods: Map<String, (String) -> String> = mapOf(
     "TsA2KGDGux" to { inputString ->
         inputString.reversed().replace("-", "+").replace("_", "/").let {
@@ -194,7 +212,6 @@ val decryptMethods: Map<String, (String) -> String> = mapOf(
             decoded.map { ch -> (ch.code - 7).toChar() }.joinToString("")
         }
     },
-    // Simplified for brevity, you can add more methods from StreamPlayUtils if needed
     "xTyBxQyGTA" to { inputString ->
         val filtered = inputString.reversed().filterIndexed { i, _ -> i % 2 == 0 }
         String(Base64.decode(filtered, Base64.DEFAULT))
