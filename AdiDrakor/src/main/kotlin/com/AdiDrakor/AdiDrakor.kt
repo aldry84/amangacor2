@@ -304,6 +304,7 @@ open class AdiDrakor : TmdbProvider() {
         val res = parseJson<LinkData>(data)
 
         runAllAsync(
+            // 1. PRIORITAS: Idlix (Berisi JeniusPlay)
             {
                 invokeIdlix(
                     res.title,
@@ -314,6 +315,11 @@ open class AdiDrakor : TmdbProvider() {
                     callback
                 )
             },
+            // 2. PRIORITAS: Vidlink
+            {
+                invokeVidlink(res.id, res.season, res.episode, callback)
+            },
+            // 3. PRIORITAS: Vidsrccc (Berisi VidPlay & UpCloud)
             {
                 invokeVidsrccc(
                     res.id,
@@ -323,6 +329,10 @@ open class AdiDrakor : TmdbProvider() {
                     subtitleCallback,
                     callback
                 )
+            },
+            // 4. PRIORITAS LAIN-LAIN (Sisanya)
+            {
+                invokeVidfast(res.id, res.season, res.episode, subtitleCallback, callback)
             },
             {
                 invokeVidsrc(
@@ -343,12 +353,6 @@ open class AdiDrakor : TmdbProvider() {
             },
             {
                 invokeVixsrc(res.id, res.season, res.episode, callback)
-            },
-            {
-                invokeVidlink(res.id, res.season, res.episode, callback)
-            },
-            {
-                invokeVidfast(res.id, res.season, res.episode, subtitleCallback, callback)
             },
             {
                 invokeMapple(res.id, res.season, res.episode, subtitleCallback, callback)
