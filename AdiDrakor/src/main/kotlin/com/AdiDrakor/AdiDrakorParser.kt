@@ -9,64 +9,6 @@ data class TmdbDate(
     val nextWeek: String,
 )
 
-// --- Vidrock Models (StreamPlay Version) ---
-// Vidrock tidak menggunakan parser khusus yang kompleks di StreamPlay, 
-// tapi kita pertahankan wrapper jika diperlukan nanti.
-
-// --- Vidzee Models & Helpers ---
-data class KeyIvResult(
-    val keyBytes: ByteArray,
-    val ivBytes: ByteArray,
-    val keyHex: String,
-    val ivHex: String
-)
-
-// --- VidPlus / Vidnest Models ---
-// VidPlus di StreamPlay parsing JSON manual, tapi kita siapkan struktur umum jika perlu.
-
-// --- Vidsrccc Models (StreamPlay Version) ---
-data class Vidsrcccservers(
-    val data: List<VidsrcccDaum>,
-    val success: Boolean,
-)
-
-data class VidsrcccDaum(
-    val name: String,
-    val hash: String,
-)
-
-data class Vidsrcccm3u8(
-    val data: VidsrcccData,
-    val success: Boolean,
-)
-
-data class VidsrcccData(
-    val type: String,
-    val source: String,
-)
-
-// --- RiveStream Models (StreamPlay Version) ---
-data class RiveStreamSource(
-    val data: List<String>
-)
-
-data class RiveStreamResponse(
-    val data: RiveStreamData,
-)
-
-data class RiveStreamData(
-    val sources: List<RiveStreamSourceData>,
-)
-
-data class RiveStreamSourceData(
-    val quality: String,
-    val url: String,
-    val source: String,
-    val format: String,
-)
-
-// --- Existing AdiDrakor Models (Retained to prevent errors) ---
-
 data class VixsrcSource(
     val name: String,
     val url: String,
@@ -147,8 +89,28 @@ data class RageSources(
     @JsonProperty("url") val url: String? = null,
 )
 
-// Note: Old Vidsrccc* classes from AdiDrakor might conflict with StreamPlay ones.
-// Replaced them above with the StreamPlay versions (Vidsrcccservers etc).
+data class VidsrcccServer(
+    @JsonProperty("name") val name: String? = null,
+    @JsonProperty("hash") val hash: String? = null,
+)
+
+data class VidsrcccResponse(
+    @JsonProperty("data") val data: ArrayList<VidsrcccServer>? = arrayListOf(),
+)
+
+data class VidsrcccResult(
+    @JsonProperty("data") val data: VidsrcccSources? = null,
+)
+
+data class VidsrcccSources(
+    @JsonProperty("subtitles") val subtitles: ArrayList<VidsrcccSubtitles>? = arrayListOf(),
+    @JsonProperty("source") val source: String? = null,
+)
+
+data class VidsrcccSubtitles(
+    @JsonProperty("label") val label: String? = null,
+    @JsonProperty("file") val file: String? = null,
+)
 
 data class UpcloudSources(
     @JsonProperty("file") val file: String? = null,
