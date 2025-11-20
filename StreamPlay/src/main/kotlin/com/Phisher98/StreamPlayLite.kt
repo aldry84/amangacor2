@@ -39,7 +39,7 @@ import com.phisher98.StreamPlayExtractor.invokevidrock
 import com.phisher98.StreamPlayExtractor.sharedPref
 
 class StreamPlayLite() : StreamPlay(sharedPref) {
-    override var name = "StreamPlay-Lite"
+    override var name = "StreamPlay-Asian"
 
     // Helper Variables
     private val apiKey = BuildConfig.TMDB_API
