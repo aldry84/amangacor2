@@ -55,12 +55,9 @@ class ToggleFragment(
         val root = getLayout("fragment_toggle_extensions", inflater, container)
         val extensionList = root.findView<LinearLayout>("toggle_list_container")
 
+        // MODIFIKASI: Hanya menyisakan StreamPlay utama karena yang lain sudah dihapus
         val apis = listOf(
-            StreamPlay(sharedPref),
-            StreamPlayLite(),
-            StreamPlayTorrent(),
-            StreamPlayAnime(),
-            StreamplayTorrentAnime()
+            StreamPlay(sharedPref)
         )
 
         val savedKey = "enabled_plugins_saved"
