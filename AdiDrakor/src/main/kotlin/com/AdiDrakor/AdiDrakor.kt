@@ -1,7 +1,7 @@
 package com.AdiDrakor
 
 import com.fasterxml.jackson.annotation.JsonProperty
-import com.AdiDrakor.AdiDrakorExtractor.invokeGomovies
+// invokeGomovies removed
 import com.AdiDrakor.AdiDrakorExtractor.invokeIdlix
 import com.AdiDrakor.AdiDrakorExtractor.invokeMapple
 import com.AdiDrakor.AdiDrakorExtractor.invokeSuperembed
@@ -26,6 +26,7 @@ import com.lagradost.cloudstream3.network.CloudflareKiller
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
+import kotlin.math.roundToInt
 
 open class AdiDrakor : TmdbProvider() {
     override var name = "AdiDrakor"
@@ -41,7 +42,7 @@ open class AdiDrakor : TmdbProvider() {
 
     val wpRedisInterceptor by lazy { CloudflareKiller() }
 
-    /** AUTHOR : Hexated & AdiDrakor & StreamPlay Refactor */
+    /** AUTHOR : Hexated & AdiDrakor */
     companion object {
         /** TOOLS */
         private const val tmdbAPI = "https://api.themoviedb.org/3"
@@ -56,7 +57,6 @@ open class AdiDrakor : TmdbProvider() {
         const val gomoviesAPI = "https://gomovies-online.cam"
         const val idlixAPI = "https://tv6.idlixku.com"
         const val vidsrcccAPI = "https://vidsrc.cc"
-        // const val vidSrcAPI = "https://vidsrc.net" // Deprecated/Replaced by VidsrcXyz
         const val xprimeAPI = "https://backend.xprime.tv"
         const val watchSomuchAPI = "https://watchsomuch.tv"
         const val mappleAPI = "https://mapple.uk"
@@ -81,6 +81,7 @@ open class AdiDrakor : TmdbProvider() {
                 else -> ShowStatus.Completed
             }
         }
+
     }
 
     // Menggunakan filter with_original_language=ko untuk konten Korea
@@ -130,6 +131,7 @@ open class AdiDrakor : TmdbProvider() {
     override suspend fun quickSearch(query: String): List<SearchResponse>? = search(query)
 
     override suspend fun search(query: String): List<SearchResponse>? {
+        // Mencari dengan TMDB Multi Search
         return app.get("$tmdbAPI/search/multi?api_key=$apiKey&language=en-US&query=$query&page=1&include_adult=${settingsForProvider.enableAdult}")
             .parsedSafe<Results>()?.results?.mapNotNull { media ->
                 media.toSearchResponse()
@@ -313,7 +315,6 @@ open class AdiDrakor : TmdbProvider() {
                     callback
                 )
             },
-            // REPLACED: New Vidsrccc from StreamPlay
             {
                 invokeVidsrccc(
                     res.id,
@@ -322,7 +323,6 @@ open class AdiDrakor : TmdbProvider() {
                     callback
                 )
             },
-            // REPLACED: Vidsrc (Net) with VidSrcXyz (from StreamPlay)
             {
                 invokeVidSrcXyz(
                     res.imdbId,
@@ -366,7 +366,6 @@ open class AdiDrakor : TmdbProvider() {
                     callback
                 )
             },
-            // REPLACED: New Vidrock from StreamPlay
             {
                 invokevidrock(
                     res.id,
@@ -375,7 +374,6 @@ open class AdiDrakor : TmdbProvider() {
                     callback
                 )
             },
-            // NEW: VidPlus from StreamPlay
             {
                 invokeVidPlus(
                     res.id,
@@ -384,7 +382,6 @@ open class AdiDrakor : TmdbProvider() {
                     callback
                 )
             },
-            // NEW: RiveStream from StreamPlay
             {
                 invokeRiveStream(
                     res.id,
@@ -393,7 +390,6 @@ open class AdiDrakor : TmdbProvider() {
                     callback
                 )
             },
-            // NEW: Vidzee from StreamPlay
             {
                 invokeVidzee(
                     res.id,
