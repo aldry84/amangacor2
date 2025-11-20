@@ -1,6 +1,7 @@
 package com.phisher98
 
 import com.lagradost.cloudstream3.SubtitleFile
+import com.lagradost.cloudstream3.mainPageOf
 import com.lagradost.cloudstream3.runAllAsync
 import com.lagradost.cloudstream3.utils.AppUtils
 import com.lagradost.cloudstream3.utils.ExtractorLink
@@ -39,6 +40,72 @@ import com.phisher98.StreamPlayExtractor.sharedPref
 
 class StreamPlayLite() : StreamPlay(sharedPref) {
     override var name = "StreamPlay-Lite"
+
+    // Variabel helper untuk query
+    private val apiKey = BuildConfig.TMDB_API
+    private val asianLangs = "id|zh|cn|ja|ko|th"
+
+    override val mainPage = mainPageOf(
+        // 1. Indonesia Box Office (Revenue Descending)
+        "/discover/movie?api_key=$apiKey&with_original_language=id&sort_by=revenue.desc" to "Indonesia Box Office",
+        
+        // 2. Indo Prime Picks (Popularity Descending)
+        "/discover/movie?api_key=$apiKey&with_original_language=id&sort_by=popularity.desc" to "Indo Prime Picks",
+        
+        // 3. China Box Office
+        "/discover/movie?api_key=$apiKey&with_original_language=zh|cn&sort_by=revenue.desc" to "China Box Office",
+        
+        // 4. Mandarin Hits
+        "/discover/movie?api_key=$apiKey&with_original_language=zh|cn&sort_by=popularity.desc" to "Mandarin Hits",
+        
+        // 5. Japan Box Office
+        "/discover/movie?api_key=$apiKey&with_original_language=ja&sort_by=revenue.desc" to "Japan Box Office",
+        
+        // 6. J-Movie Highlights
+        "/discover/movie?api_key=$apiKey&with_original_language=ja&sort_by=popularity.desc" to "J-Movie Highlights",
+        
+        // 7. Thailand Box Office
+        "/discover/movie?api_key=$apiKey&with_original_language=th&sort_by=revenue.desc" to "Thailand Box Office",
+        
+        // 8. Thai Movie Hits
+        "/discover/movie?api_key=$apiKey&with_original_language=th&sort_by=popularity.desc" to "Thai Movie Hits",
+        
+        // 9. Netflix Asia Films (Provider ID 8 = Netflix, Filtered by Asian Languages)
+        "/discover/movie?api_key=$apiKey&with_watch_providers=8&watch_region=ID&with_original_language=$asianLangs&sort_by=popularity.desc" to "Netflix Asia Films",
+        
+        // 10. Viu Movie Zone (Provider ID 158 = Viu)
+        "/discover/movie?api_key=$apiKey&with_watch_providers=158&watch_region=ID&sort_by=popularity.desc" to "Viu Movie Zone",
+        
+        // 11. WeTV Movie Hub (Filter Mandarin/Thai populer sebagai pendekatan)
+        "/discover/movie?api_key=$apiKey&with_original_language=zh|th&sort_by=popularity.desc&page=2" to "WeTV Movie Hub",
+        
+        // 12. Disney+ Asia Movies (Provider 337 = Hotstar/Disney, Filtered by Asian Languages)
+        "/discover/movie?api_key=$apiKey&with_watch_providers=337|390&watch_region=ID&with_original_language=$asianLangs&sort_by=popularity.desc" to "Disney+ Asia Movies",
+        
+        // 13. HBO Movie Vault (Provider 118 = HBO GO/Max)
+        "/discover/movie?api_key=$apiKey&with_watch_providers=118|119&watch_region=ID&with_original_language=$asianLangs" to "HBO Movie Vault",
+        
+        // 14. Prime Video Asia (Provider 119 = Amazon Prime)
+        "/discover/movie?api_key=$apiKey&with_watch_providers=119&watch_region=ID&with_original_language=$asianLangs" to "Prime Video Asia",
+        
+        // 15. Asian Horror Room (Genre 27 = Horror)
+        "/discover/movie?api_key=$apiKey&with_genres=27&with_original_language=$asianLangs&sort_by=popularity.desc" to "Asian Horror Room",
+        
+        // 16. Asian Thriller Zone (Genre 53 = Thriller)
+        "/discover/movie?api_key=$apiKey&with_genres=53&with_original_language=$asianLangs&sort_by=popularity.desc" to "Asian Thriller Zone",
+        
+        // 17. Asian Comedy Club (Genre 35 = Comedy)
+        "/discover/movie?api_key=$apiKey&with_genres=35&with_original_language=$asianLangs&sort_by=popularity.desc" to "Asian Comedy Club",
+        
+        // 18. Adventure Asia (Genre 12 = Adventure)
+        "/discover/movie?api_key=$apiKey&with_genres=12&with_original_language=$asianLangs&sort_by=popularity.desc" to "Adventure Asia",
+        
+        // 19. Asian Romance Line (Genre 10749 = Romance)
+        "/discover/movie?api_key=$apiKey&with_genres=10749&with_original_language=$asianLangs&sort_by=popularity.desc" to "Asian Romance Line",
+        
+        // 20. Asian Drama (Genre 18 = Drama)
+        "/discover/movie?api_key=$apiKey&with_genres=18&with_original_language=$asianLangs&sort_by=popularity.desc" to "Asian Drama Choice"
+    )
 
     override suspend fun loadLinks(
         data: String,
