@@ -2,6 +2,7 @@ package com.AdiDrakor
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.google.gson.annotations.SerializedName
+import org.json.JSONObject
 
 // ==============================
 // GENERAL & SUBTITLE APIS
