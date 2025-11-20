@@ -7,14 +7,16 @@ import com.AdiDrakor.AdiDrakorExtractor.invokeMapple
 import com.AdiDrakor.AdiDrakorExtractor.invokeSuperembed
 import com.AdiDrakor.AdiDrakorExtractor.invokeVidfast
 import com.AdiDrakor.AdiDrakorExtractor.invokeVidlink
-import com.AdiDrakor.AdiDrakorExtractor.invokeVidrock
-import com.AdiDrakor.AdiDrakorExtractor.invokeVidsrc
+import com.AdiDrakor.AdiDrakorExtractor.invokevidrock
 import com.AdiDrakor.AdiDrakorExtractor.invokeVidsrccc
 import com.AdiDrakor.AdiDrakorExtractor.invokeVidsrccx
 import com.AdiDrakor.AdiDrakorExtractor.invokeVixsrc
 import com.AdiDrakor.AdiDrakorExtractor.invokeWatchsomuch
 import com.AdiDrakor.AdiDrakorExtractor.invokeWyzie
-import com.AdiDrakor.AdiDrakorExtractor.invokeXprime
+import com.AdiDrakor.AdiDrakorExtractor.invokeVidSrcXyz
+import com.AdiDrakor.AdiDrakorExtractor.invokeVidPlus
+import com.AdiDrakor.AdiDrakorExtractor.invokeRiveStream
+import com.AdiDrakor.AdiDrakorExtractor.invokeVidzee
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.metaproviders.TmdbProvider
@@ -24,7 +26,6 @@ import com.lagradost.cloudstream3.network.CloudflareKiller
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import kotlin.math.roundToInt
 
 open class AdiDrakor : TmdbProvider() {
     override var name = "AdiDrakor"
@@ -40,7 +41,7 @@ open class AdiDrakor : TmdbProvider() {
 
     val wpRedisInterceptor by lazy { CloudflareKiller() }
 
-    /** AUTHOR : Hexated & AdiDrakor */
+    /** AUTHOR : Hexated & AdiDrakor & StreamPlay Refactor */
     companion object {
         /** TOOLS */
         private const val tmdbAPI = "https://api.themoviedb.org/3"
@@ -55,7 +56,7 @@ open class AdiDrakor : TmdbProvider() {
         const val gomoviesAPI = "https://gomovies-online.cam"
         const val idlixAPI = "https://tv6.idlixku.com"
         const val vidsrcccAPI = "https://vidsrc.cc"
-        const val vidSrcAPI = "https://vidsrc.net"
+        // const val vidSrcAPI = "https://vidsrc.net" // Deprecated/Replaced by VidsrcXyz
         const val xprimeAPI = "https://backend.xprime.tv"
         const val watchSomuchAPI = "https://watchsomuch.tv"
         const val mappleAPI = "https://mapple.uk"
@@ -80,9 +81,9 @@ open class AdiDrakor : TmdbProvider() {
                 else -> ShowStatus.Completed
             }
         }
-
     }
 
+    // Menggunakan filter with_original_language=ko untuk konten Korea
     override val mainPage = mainPageOf(
         "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&sort_by=popularity.desc" to "Popular K-Dramas",
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&sort_by=popularity.desc" to "Popular Korean Movies",
@@ -303,7 +304,6 @@ open class AdiDrakor : TmdbProvider() {
 
         runAllAsync(
             {
-                // Prioritas 1: Idlix (yang berisi JeniusPlay)
                 invokeIdlix(
                     res.title,
                     res.year,
@@ -313,22 +313,21 @@ open class AdiDrakor : TmdbProvider() {
                     callback
                 )
             },
+            // REPLACED: New Vidsrccc from StreamPlay
             {
                 invokeVidsrccc(
                     res.id,
-                    res.imdbId,
                     res.season,
                     res.episode,
-                    subtitleCallback,
                     callback
                 )
             },
+            // REPLACED: Vidsrc (Net) with VidSrcXyz (from StreamPlay)
             {
-                invokeVidsrc(
+                invokeVidSrcXyz(
                     res.imdbId,
                     res.season,
                     res.episode,
-                    subtitleCallback,
                     callback
                 )
             },
@@ -367,8 +366,36 @@ open class AdiDrakor : TmdbProvider() {
                     callback
                 )
             },
+            // REPLACED: New Vidrock from StreamPlay
             {
-                invokeVidrock(
+                invokevidrock(
+                    res.id,
+                    res.season,
+                    res.episode,
+                    callback
+                )
+            },
+            // NEW: VidPlus from StreamPlay
+            {
+                invokeVidPlus(
+                    res.id,
+                    res.season,
+                    res.episode,
+                    callback
+                )
+            },
+            // NEW: RiveStream from StreamPlay
+            {
+                invokeRiveStream(
+                    res.id,
+                    res.season,
+                    res.episode,
+                    callback
+                )
+            },
+            // NEW: Vidzee from StreamPlay
+            {
+                invokeVidzee(
                     res.id,
                     res.season,
                     res.episode,
@@ -381,7 +408,6 @@ open class AdiDrakor : TmdbProvider() {
         return true
     }
 
-    // Data Classes (Tetap sama)
     data class LinkData(
         val id: Int? = null,
         val imdbId: String? = null,
