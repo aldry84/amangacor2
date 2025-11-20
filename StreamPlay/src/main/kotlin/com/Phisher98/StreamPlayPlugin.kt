@@ -33,10 +33,12 @@ class StreamPlayPlugin: Plugin() {
     override fun load(context: Context) {
 
         val sharedPref = context.getSharedPreferences("StreamPlay", Context.MODE_PRIVATE)
+        
+        // MODIFIKASI: Hanya mendaftarkan StreamPlay utama
         val mainApis = listOf(
-            StreamPlay(sharedPref), StreamPlayLite(),
-            StreamPlayTorrent(), StreamPlayAnime(), StreamplayTorrentAnime()
+            StreamPlay(sharedPref)
         )
+        
         val savedSet = sharedPref.getStringSet("enabled_plugins_saved", null)
         val defaultEnabled = mainApis.map { it.name }.toSet()
         val enabledSet = savedSet ?: defaultEnabled
@@ -55,11 +57,9 @@ class StreamPlayPlugin: Plugin() {
         }
 
         sharedPref.edit { remove("enabled_plugins_set") }
-        //=====================MainAPI============================//
-
-        //registerMainAPI(StreamPlayTest(sharedPref))
-
+        
         //=====================Extractors=========================//
+        // Extractor tetap didaftarkan karena digunakan oleh StreamPlay utama
 
         registerExtractorAPI(Animefever())
         registerExtractorAPI(Multimovies())
