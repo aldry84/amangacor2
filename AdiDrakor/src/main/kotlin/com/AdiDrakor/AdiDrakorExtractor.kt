@@ -869,63 +869,80 @@ object AdiDrakorExtractor : AdiDrakor() {
         val mainUrl = "https://moviebox.ph"
         val apiUrl = "https://fmoviesunblocked.net"
 
-        // 1. Cari Konten
+        // --- CLEAN QUERY: Hapus (Tahun) dan simbol aneh agar search berhasil ---
+        val cleanQuery = title?.replace(Regex("\\s*\\(\\d{4}\\)"), "") // Hapus (2024)
+            ?.replace(Regex("(?i)\\s*Season\\s*\\d+"), "") // Hapus Season 1
+            ?.replace(Regex("[^a-zA-Z0-9\\s]"), " ") // Hapus simbol selain huruf/angka
+            ?.trim() ?: return
+
+        // --- HEADER: Gunakan User-Agent palsu agar tidak dikira Bot ---
+        val headers = mapOf(
+            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Origin" to mainUrl,
+            "Referer" to "$mainUrl/",
+            "Accept" to "application/json, text/plain, */*"
+        )
+
         val searchBody = mapOf(
-            "keyword" to title,
-            "page" to "1",
-            "perPage" to "20",
-            "subjectType" to "0"
+            "keyword" to cleanQuery,
+            "page" to 1,
+            "perPage" to 20,
+            "subjectType" to 0
         ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
 
+        // 1. Request Search dengan Error Handling (Try-Catch)
         val searchRes = try {
             app.post(
                 "$mainUrl/wefeed-h5-bff/web/subject/search",
-                requestBody = searchBody
+                requestBody = searchBody,
+                headers = headers
             ).parsedSafe<MovieboxSearchResponse>()?.data?.items
         } catch (e: Exception) {
-            // Jika error koneksi/blokir, berhenti di sini agar tidak crash
             return
         }
 
-        // 2. Filter Hasil (LEBIH TOLERAN)
+        // 2. Filter Hasil (LOGIKA FUZZY: Mengandung kata kunci & Toleransi Tahun +/- 2)
         val media = searchRes?.find { item ->
-            val itemYear = item.releaseDate?.split("-")?.firstOrNull()?.toIntOrNull()
+            val serverTitle = item.title?.lowercase()?.trim() ?: ""
+            val queryTitle = cleanQuery.lowercase().trim()
             
-            // Cek Judul: Cukup "mengandung" kata kunci, tidak harus sama persis
-            val titleMatches = item.title?.contains(title ?: "###", true) == true || 
-                               (title?.contains(item.title ?: "###", true) == true)
+            // Cocok jika salah satu mengandung yang lain
+            val titleMatch = serverTitle.contains(queryTitle) || queryTitle.contains(serverTitle)
+            
+            val itemYear = item.releaseDate?.split("-")?.firstOrNull()?.toIntOrNull()
+            val yearMatch = year == null || itemYear == null || 
+                            (itemYear >= (year - 2) && itemYear <= (year + 2))
 
-            // Cek Tahun: Beri toleransi +/- 1 tahun
-            val yearMatches = year == null || itemYear == null || 
-                              (itemYear == year) || 
-                              (itemYear == year + 1) || 
-                              (itemYear == year - 1)
-
-            titleMatches && yearMatches
+            titleMatch && yearMatch
         } ?: return
 
         val subjectId = media.subjectId ?: return
-        val seParam = if (season == null) 0 else season
-        val epParam = if (episode == null) 0 else episode
+        val seParam = season ?: 0
+        val epParam = episode ?: 0
 
-        val referer = "$apiUrl/spa/videoPlayPage/movies/detail?id=$subjectId&type=/movie/detail&lang=en"
+        val streamHeaders = headers + mapOf(
+             "Referer" to "$apiUrl/spa/videoPlayPage/movies/detail?id=$subjectId&type=/movie/detail&lang=en"
+        )
 
         // 3. Request Link Stream
         val streamData = try {
-             app.get(
+            app.get(
                 "$apiUrl/wefeed-h5-bff/web/subject/play?subjectId=$subjectId&se=$seParam&ep=$epParam",
-                referer = referer
+                headers = streamHeaders
             ).parsedSafe<MovieboxStreamResponse>()?.data
         } catch (e: Exception) {
             return
         }
 
-        // 4. Proses Stream Video
+        // 4. Ekstraksi Link Video
         streamData?.streams?.reversed()?.distinctBy { it.url }?.forEach { source ->
+            val resolution = source.resolutions?.trim() ?: "Auto"
+            val qualityTag = if(resolution.isNotEmpty()) " [$resolution]" else ""
+            
             callback.invoke(
                 newExtractorLink(
                     "AdiMoviebox",
-                    "AdiMoviebox [${source.resolutions ?: "Auto"}]",
+                    "AdiMoviebox$qualityTag",
                     source.url ?: return@forEach,
                     INFER_TYPE
                 ) {
@@ -935,7 +952,7 @@ object AdiDrakorExtractor : AdiDrakor() {
             )
         }
 
-        // 5. Proses Subtitle
+        // 5. Subtitle
         streamData?.captions?.forEach { subtitle ->
             subtitleCallback.invoke(
                 newSubtitleFile(
