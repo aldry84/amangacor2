@@ -38,7 +38,7 @@ open class AdiDrakor : TmdbProvider() {
 
     companion object {
         private const val tmdbAPI = "https://api.themoviedb.org/3"
-        // Single API Key agar stabil (sesuai request sebelumnya)
+        // Single API Key agar stabil (Sesuai request)
         private const val apiKey = "b030404650f279792a8d3287232358e3"
 
         fun getType(t: String?): TvType {
@@ -56,7 +56,9 @@ open class AdiDrakor : TmdbProvider() {
         }
     }
 
-    // Konfigurasi Katalog (Tetap Fokus Korea/Asia sesuai nama plugin)
+    // ==============================
+    // KATALOG (TETAP DRAMA KOREA)
+    // ==============================
     override val mainPage = mainPageOf(
         "$tmdbAPI/discover/tv?api_key=$apiKey&with_origin_country=KR|KP&with_original_language=ko&sort_by=popularity.desc" to "Popular K-Dramas",
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_origin_country=KR|KP&with_original_language=ko&sort_by=popularity.desc&primary_release_date.lte=${getDate().today}" to "Popular Korean Movies",
@@ -238,8 +240,7 @@ open class AdiDrakor : TmdbProvider() {
                     orgTitle = orgTitle,
                     isAnime = isAnime,
                     jpTitle = res.alternative_titles?.results?.find { it.iso_3166_1 == "JP" }?.title,
-                    airedDate = res.releaseDate
-                        ?: res.firstAirDate,
+                    airedDate = res.releaseDate ?: res.firstAirDate,
                     isAsian = isAsian,
                     isBollywood = isBollywood
                 ).toJson(),
@@ -262,6 +263,9 @@ open class AdiDrakor : TmdbProvider() {
         }
     }
 
+    // ==============================
+    // LOAD LINKS (MESIN BARU)
+    // ==============================
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -272,10 +276,6 @@ open class AdiDrakor : TmdbProvider() {
         val res = parseJson<LinkData>(data)
         val tasks = mutableListOf<suspend () -> Unit>()
 
-        // ==========================================
-        // STREAMPLAY EXTRACTORS (Ported)
-        // ==========================================
-        
         // 1. Vidlink (Powerful)
         tasks.add { invokeVidlink(res.id, res.season, res.episode, subtitleCallback, callback) }
 
@@ -292,23 +292,26 @@ open class AdiDrakor : TmdbProvider() {
         // 5. XDMovies (Multi Source)
         tasks.add { invokeXDmovies(res.id, res.season, res.episode, callback, subtitleCallback) }
         
-        // 6. Player4U
-        if (settingsForProvider.enableAdult) { // Optional check
+        // 6. Watch32
+        tasks.add { invokeWatch32(res.title, res.season, res.episode, res.year, callback) }
+        
+        // 7. Player4U (Optional Adult Check)
+        if (settingsForProvider.enableAdult) {
             tasks.add { invokePlayer4U(res.title, res.season, res.episode, res.year, callback) }
         }
-        
-        // 7. Watch32
-        tasks.add { invokeWatch32(res.title, res.season, res.episode, res.year, callback) }
 
-        // ==========================================
-        // SUBTITLE APIS (From StreamPlay)
-        // ==========================================
+        // 8. Subtitles
         tasks.add { invokeSubtitleAPI(res.imdbId, res.season, res.episode, subtitleCallback) }
         tasks.add { invokeWyZIESUBAPI(res.imdbId, res.season, res.episode, subtitleCallback) }
 
+        // Execute Parallel
         runAllAsync(*tasks.toTypedArray())
         return true
     }
+
+    // ==============================
+    // INTERNAL DATA CLASSES
+    // ==============================
 
     data class LinkData(
         val id: Int? = null,
@@ -468,4 +471,5 @@ open class AdiDrakor : TmdbProvider() {
         @JsonProperty("alternative_titles") val alternative_titles: ResultsAltTitles? = null,
         @JsonProperty("production_countries") val production_countries: ArrayList<ProductionCountries>? = arrayListOf(),
     )
+
 }
