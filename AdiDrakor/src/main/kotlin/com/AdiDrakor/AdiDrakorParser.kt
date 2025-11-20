@@ -435,3 +435,38 @@ data class NepuSearch(
         @JsonProperty("type") val type: String? = null,
     )
 }
+
+// --- ADDED FOR ADIMOVIEBOX ---
+
+data class MovieboxSearchResponse(
+    @JsonProperty("data") val data: Data? = null,
+) {
+    data class Data(
+        @JsonProperty("items") val items: ArrayList<Items>? = arrayListOf(),
+    )
+    data class Items(
+        @JsonProperty("subjectId") val subjectId: String? = null,
+        @JsonProperty("title") val title: String? = null,
+        @JsonProperty("releaseDate") val releaseDate: String? = null,
+        @JsonProperty("subjectType") val subjectType: Int? = null, // 1=Movie, 2=Series
+    )
+}
+
+data class MovieboxStreamResponse(
+    @JsonProperty("data") val data: Data? = null,
+) {
+    data class Data(
+        @JsonProperty("streams") val streams: ArrayList<Streams>? = arrayListOf(),
+        @JsonProperty("captions") val captions: ArrayList<Captions>? = arrayListOf(),
+    )
+    data class Streams(
+        @JsonProperty("url") val url: String? = null,
+        @JsonProperty("resolutions") val resolutions: String? = null,
+        @JsonProperty("format") val format: String? = null,
+        @JsonProperty("id") val id: String? = null,
+    )
+    data class Captions(
+        @JsonProperty("lanName") val lanName: String? = null,
+        @JsonProperty("url") val url: String? = null,
+    )
+}
