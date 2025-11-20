@@ -5,12 +5,11 @@ import com.lagradost.cloudstream3.plugins.Plugin
 import android.content.Context
 import android.app.AlertDialog
 import android.widget.Toast
-import android.content.DialogInterface
 
 @CloudstreamPlugin
 class AdiDrakorPlugin : Plugin() {
     override fun load(context: Context) {
-        // All providers should be added in this manner. Please don't edit the providers list directly.
+        // Mendaftarkan API dan Extractor
         registerMainAPI(AdiDrakor())
         registerExtractorAPI(Jeniusplay2())
     }
@@ -42,7 +41,8 @@ class AdiDrakorPlugin : Plugin() {
         }
     }
 
-    override fun openSettings(context: Context) {
+    // HAPUS KATA KUNCI 'override' DI SINI
+    fun openSettings(context: Context) {
         val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
         val sourceNames = sources.map { it.first }.toTypedArray()
         val checkedItems = sources.map { prefs.getBoolean(it.second, it.third) }.toBooleanArray()
