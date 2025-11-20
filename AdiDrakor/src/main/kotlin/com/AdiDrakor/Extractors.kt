@@ -11,8 +11,7 @@ import com.lagradost.cloudstream3.utils.getAndUnpack
 import com.lagradost.cloudstream3.utils.newExtractorLink
 
 open class Jeniusplay2 : ExtractorApi() {
-    // UBAH DISINI: Menambahkan "1. " agar muncul paling atas saat diurutkan berdasarkan nama
-    override val name = "1. Jeniusplay" 
+    override val name = "Jeniusplay"
     override val mainUrl = "https://jeniusplay.com"
     override val requiresReferer = true
 
@@ -22,43 +21,52 @@ open class Jeniusplay2 : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        val document = app.get(url, referer = "$mainUrl/").document
-        val hash = url.split("/").last().substringAfter("data=")
+        try {
+            val document = app.get(url, referer = "$mainUrl/").document
+            val hash = url.split("/").last().substringAfter("data=")
 
-        val m3uLink = app.post(
-            url = "$mainUrl/player/index.php?data=$hash&do=getVideo",
-            data = mapOf("hash" to hash, "r" to "$referer"),
-            referer = url,
-            headers = mapOf("X-Requested-With" to "XMLHttpRequest")
-        ).parsed<ResponseSource>().videoSource
+            val m3uLink = app.post(
+                url = "$mainUrl/player/index.php?data=$hash&do=getVideo",
+                data = mapOf("hash" to hash, "r" to "$referer"),
+                referer = url,
+                headers = mapOf("X-Requested-With" to "XMLHttpRequest")
+            ).parsedSafe<ResponseSource>()?.videoSource
 
-        callback.invoke(
-            newExtractorLink(
-                this.name,
-                this.name,
-                m3uLink,
-                ExtractorLinkType.M3U8
-            ) {
-                this.referer = url
-                // Opsional: Memberikan kualitas tinggi palsu jika perlu memaksa sorting berdasarkan kualitas
-                // this.quality = Qualities.P2160.value 
+            if (m3uLink != null) {
+                callback.invoke(
+                    newExtractorLink(
+                        this.name,
+                        this.name,
+                        m3uLink,
+                        ExtractorLinkType.M3U8
+                    ) {
+                        this.referer = url
+                    }
+                )
             }
-        )
 
-        document.select("script").map { script ->
-            if (script.data().contains("eval(function(p,a,c,k,e,d)")) {
-                val subData =
-                    getAndUnpack(script.data()).substringAfter("\"tracks\":[").substringBefore("],")
-                tryParseJson<List<Tracks>>("[$subData]")?.map { subtitle ->
-                    @Suppress("DEPRECATION")
-                    subtitleCallback.invoke(
-                        SubtitleFile(
-                            getLanguage(subtitle.label ?: ""),
-                            subtitle.file
-                        )
-                    )
+            document.select("script").map { script ->
+                if (script.data().contains("eval(function(p,a,c,k,e,d)")) {
+                    val unpacked = getAndUnpack(script.data())
+                    val subData = unpacked.substringAfter("\"tracks\":[").substringBefore("],")
+                    
+                    if (subData.isNotBlank()) {
+                        tryParseJson<List<Tracks>>("[$subData]")?.map { subtitle ->
+                            // Menambahkan suppress agar tidak muncul peringatan (warning) saat kompilasi
+                            @Suppress("DEPRECATION")
+                            subtitleCallback.invoke(
+                                SubtitleFile(
+                                    getLanguage(subtitle.label ?: ""),
+                                    subtitle.file
+                                )
+                            )
+                        }
+                    }
                 }
             }
+        } catch (e: Exception) {
+            // Log error jika diperlukan, atau biarkan gagal diam-diam agar provider lain bisa mencoba
+            e.printStackTrace()
         }
     }
 
@@ -71,14 +79,14 @@ open class Jeniusplay2 : ExtractorApi() {
     }
 
     data class ResponseSource(
-        @JsonProperty("hls") val hls: Boolean,
-        @JsonProperty("videoSource") val videoSource: String,
-        @JsonProperty("securedLink") val securedLink: String?,
+        @JsonProperty("hls") val hls: Boolean? = null,
+        @JsonProperty("videoSource") val videoSource: String? = null,
+        @JsonProperty("securedLink") val securedLink: String? = null,
     )
 
     data class Tracks(
-        @JsonProperty("kind") val kind: String?,
+        @JsonProperty("kind") val kind: String? = null,
         @JsonProperty("file") val file: String,
-        @JsonProperty("label") val label: String?,
+        @JsonProperty("label") val label: String? = null,
     )
 }
