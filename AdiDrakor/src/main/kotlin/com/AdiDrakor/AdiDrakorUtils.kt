@@ -1,7 +1,6 @@
 package com.AdiDrakor
 
 import android.util.Base64
-import com.AdiDrakor.AdiDrakor.Companion.anilistAPI
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.APIHolder.unixTimeMS
 import com.lagradost.cloudstream3.mvvm.logError
@@ -21,7 +20,12 @@ import javax.crypto.spec.SecretKeySpec
 import kotlin.text.isLowerCase
 
 // ==========================================
-// PERBAIKAN: DOMAIN MANAGER (Dynamic URL)
+// DEFINISI KONSTANTA LOKAL (FIX ERROR)
+// ==========================================
+const val anilistAPI = "https://graphql.anilist.co"
+
+// ==========================================
+// DOMAIN MANAGER (Dynamic URL)
 // ==========================================
 
 data class DomainConfig(
@@ -43,7 +47,6 @@ data class DomainConfig(
 
 object DomainManager {
     // PENTING: Ganti URL ini dengan URL Raw GitHub/JSON Anda sendiri yang berisi update domain
-    // Contoh isi JSON: {"idlix": "https://tv7.idlixku.com", "gomovies": "..."}
     private const val CONFIG_URL = "https://raw.githubusercontent.com/UsernameAnda/RepoConfig/main/domains.json"
 
     // Default Values (Fallback jika gagal fetch)
@@ -88,7 +91,7 @@ object DomainManager {
 }
 
 // ==========================================
-// UTILITIES ASLI (Dipertahankan)
+// UTILITIES
 // ==========================================
 
 var gomoviesCookies: Map<String, String>? = null
