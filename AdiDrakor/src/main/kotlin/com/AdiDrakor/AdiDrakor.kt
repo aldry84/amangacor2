@@ -15,7 +15,7 @@ import com.AdiDrakor.AdiDrakorExtractor.invokeVixsrc
 import com.AdiDrakor.AdiDrakorExtractor.invokeWatchsomuch
 import com.AdiDrakor.AdiDrakorExtractor.invokeWyzie
 import com.AdiDrakor.AdiDrakorExtractor.invokeXprime
-import com.AdiDrakor.AdiDrakorExtractor.invokeAdimoviebox // Added Import
+import com.AdiDrakor.AdiDrakorExtractor.invokeAdimoviebox
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.metaproviders.TmdbProvider
@@ -25,7 +25,7 @@ import com.lagradost.cloudstream3.network.CloudflareKiller
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import kotlin.math.roundToInt
+import com.lagradost.cloudstream3.AcraApplication
 
 open class AdiDrakor : TmdbProvider() {
     override var name = "AdiDrakor"
@@ -303,90 +303,132 @@ open class AdiDrakor : TmdbProvider() {
     ): Boolean {
 
         val res = parseJson<LinkData>(data)
+        val context = AcraApplication.context
+
+        fun isEnabled(key: String): Boolean {
+            return context?.let { AdiDrakorPlugin.isSourceEnabled(it, key, true) } ?: true
+        }
 
         runAllAsync(
             {
-                invokeAdimoviebox(
-                    res.title,
-                    res.year,
-                    res.season,
-                    res.episode,
-                    subtitleCallback,
-                    callback
-                )
+                if (isEnabled("enable_adimoviebox")) {
+                    invokeAdimoviebox(
+                        res.title,
+                        res.year,
+                        res.season,
+                        res.episode,
+                        subtitleCallback,
+                        callback
+                    )
+                }
             },
             {
-                invokeIdlix(
-                    res.title,
-                    res.year,
-                    res.season,
-                    res.episode,
-                    subtitleCallback,
-                    callback
-                )
+                if (isEnabled("enable_idlix")) {
+                    invokeIdlix(
+                        res.title,
+                        res.year,
+                        res.season,
+                        res.episode,
+                        subtitleCallback,
+                        callback
+                    )
+                }
             },
             {
-                invokeVidsrccc(
-                    res.id,
-                    res.imdbId,
-                    res.season,
-                    res.episode,
-                    subtitleCallback,
-                    callback
-                )
+                if (isEnabled("enable_vidsrccc")) {
+                    invokeVidsrccc(
+                        res.id,
+                        res.imdbId,
+                        res.season,
+                        res.episode,
+                        subtitleCallback,
+                        callback
+                    )
+                }
             },
             {
-                invokeVidsrc(
-                    res.imdbId,
-                    res.season,
-                    res.episode,
-                    subtitleCallback,
-                    callback
-                )
+                if (isEnabled("enable_vidsrc")) {
+                    invokeVidsrc(
+                        res.imdbId,
+                        res.season,
+                        res.episode,
+                        subtitleCallback,
+                        callback
+                    )
+                }
             },
             {
-                invokeWatchsomuch(
-                    res.imdbId,
-                    res.season,
-                    res.episode,
-                    subtitleCallback
-                )
+                if (isEnabled("enable_watchsomuch")) {
+                    invokeWatchsomuch(
+                        res.imdbId,
+                        res.season,
+                        res.episode,
+                        subtitleCallback
+                    )
+                }
             },
             {
-                invokeVixsrc(res.id, res.season, res.episode, callback)
+                if (isEnabled("enable_vixsrc")) {
+                    invokeVixsrc(res.id, res.season, res.episode, callback)
+                }
             },
             {
-                invokeVidlink(res.id, res.season, res.episode, callback)
+                if (isEnabled("enable_vidlink")) {
+                    invokeVidlink(res.id, res.season, res.episode, callback)
+                }
             },
             {
-                invokeVidfast(res.id, res.season, res.episode, subtitleCallback, callback)
+                if (isEnabled("enable_vidfast")) {
+                    invokeVidfast(res.id, res.season, res.episode, subtitleCallback, callback)
+                }
             },
             {
-                invokeMapple(res.id, res.season, res.episode, subtitleCallback, callback)
+                if (isEnabled("enable_mapple")) {
+                    invokeMapple(res.id, res.season, res.episode, subtitleCallback, callback)
+                }
             },
             {
-                invokeWyzie(res.id, res.season, res.episode, subtitleCallback)
+                if (isEnabled("enable_wyzie")) {
+                    invokeWyzie(res.id, res.season, res.episode, subtitleCallback)
+                }
             },
             {
-                invokeVidsrccx(res.id, res.season, res.episode, callback)
+                if (isEnabled("enable_vidsrccx")) {
+                    invokeVidsrccx(res.id, res.season, res.episode, callback)
+                }
             },
             {
-                invokeSuperembed(
-                    res.id,
-                    res.season,
-                    res.episode,
-                    subtitleCallback,
-                    callback
-                )
+                if (isEnabled("enable_superembed")) {
+                    invokeSuperembed(
+                        res.id,
+                        res.season,
+                        res.episode,
+                        subtitleCallback,
+                        callback
+                    )
+                }
             },
             {
-                invokeVidrock(
-                    res.id,
-                    res.season,
-                    res.episode,
-                    subtitleCallback,
-                    callback
-                )
+                if (isEnabled("enable_vidrock")) {
+                    invokeVidrock(
+                        res.id,
+                        res.season,
+                        res.episode,
+                        subtitleCallback,
+                        callback
+                    )
+                }
+            },
+            {
+                if (isEnabled("enable_gomovies")) {
+                    invokeGomovies(
+                        res.title,
+                        res.year,
+                        res.season,
+                        res.episode,
+                        callback
+                    )
+                }
             }
         )
 
