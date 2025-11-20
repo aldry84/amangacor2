@@ -1,6 +1,7 @@
 package com.AdiDrakor
 
-import android.util.Base64
+import android.os.Build
+import androidx.annotation.RequiresApi
 import com.AdiDrakor.AdiDrakor.Companion.anilistAPI
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.APIHolder.unixTimeMS
@@ -13,12 +14,16 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.net.*
 import java.security.MessageDigest
+import java.security.SecureRandom
+import java.security.spec.KeySpec
 import java.text.SimpleDateFormat
 import java.util.*
 import javax.crypto.Cipher
+import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.IvParameterSpec
+import javax.crypto.spec.PBEKeySpec
 import javax.crypto.spec.SecretKeySpec
-import kotlin.text.isLowerCase
+import kotlin.math.min
 
 var gomoviesCookies: Map<String, String>? = null
 
@@ -27,6 +32,197 @@ val mimeType = arrayOf(
     "video/mp4",
     "video/x-msvideo"
 )
+
+// --- StreamPlay Utils Port Start ---
+
+object CryptoAES {
+    private const val KEY_SIZE = 32 // 256 bits
+    private const val IV_SIZE = 16 // 128 bits
+    private const val SALT_SIZE = 8 // 64 bits
+    private const val HASH_CIPHER = "AES/CBC/PKCS7PADDING"
+    private const val HASH_CIPHER_FALLBACK = "AES/CBC/PKCS5PADDING"
+    private const val AES = "AES"
+    private const val KDF_DIGEST = "MD5"
+
+    fun decryptWithSalt(cipherText: String, salt: String, password: String): String {
+        return try {
+            val ctBytes = base64DecodeArray(cipherText)
+            val md5: MessageDigest = MessageDigest.getInstance("MD5")
+            val keyAndIV = generateKeyAndIV(
+                KEY_SIZE,
+                IV_SIZE,
+                1,
+                salt.decodeHex(),
+                password.toByteArray(Charsets.UTF_8),
+                md5,
+            )
+            decryptAES(
+                ctBytes,
+                keyAndIV?.get(0) ?: ByteArray(KEY_SIZE),
+                keyAndIV?.get(1) ?: ByteArray(IV_SIZE),
+            )
+        } catch (e: Exception) {
+            ""
+        }
+    }
+
+    private fun decryptAES(
+        cipherTextBytes: ByteArray,
+        keyBytes: ByteArray,
+        ivBytes: ByteArray
+    ): String {
+        return try {
+            val cipher = try {
+                Cipher.getInstance(HASH_CIPHER)
+            } catch (e: Throwable) {
+                Cipher.getInstance(HASH_CIPHER_FALLBACK)
+            }
+            val keyS = SecretKeySpec(keyBytes, AES)
+            cipher.init(Cipher.DECRYPT_MODE, keyS, IvParameterSpec(ivBytes))
+            cipher.doFinal(cipherTextBytes).toString(Charsets.UTF_8)
+        } catch (e: Exception) {
+            ""
+        }
+    }
+
+    private fun generateKeyAndIV(
+        keyLength: Int,
+        ivLength: Int,
+        iterations: Int,
+        salt: ByteArray,
+        password: ByteArray,
+        md: MessageDigest,
+    ): Array<ByteArray?>? {
+        val digestLength = md.digestLength
+        val requiredLength = (keyLength + ivLength + digestLength - 1) / digestLength * digestLength
+        val generatedData = ByteArray(requiredLength)
+        var generatedLength = 0
+        return try {
+            md.reset()
+            while (generatedLength < keyLength + ivLength) {
+                if (generatedLength > 0) md.update(
+                    generatedData,
+                    generatedLength - digestLength,
+                    digestLength
+                )
+                md.update(password)
+                md.update(salt, 0, SALT_SIZE)
+                md.digest(generatedData, generatedLength, digestLength)
+                for (i in 1 until iterations) {
+                    md.update(generatedData, generatedLength, digestLength)
+                    md.digest(generatedData, generatedLength, digestLength)
+                }
+                generatedLength += digestLength
+            }
+            val result = arrayOfNulls<ByteArray>(2)
+            result[0] = generatedData.copyOfRange(0, keyLength)
+            if (ivLength > 0) result[1] = generatedData.copyOfRange(keyLength, keyLength + ivLength)
+            result
+        } catch (e: Exception) {
+            throw e
+        } finally {
+            Arrays.fill(generatedData, 0.toByte())
+        }
+    }
+
+    private fun String.decodeHex(): ByteArray {
+        check(length % 2 == 0) { "Must have an even length" }
+        return chunked(2)
+            .map { it.toInt(16).toByte() }
+            .toByteArray()
+    }
+}
+
+@RequiresApi(Build.VERSION_CODES.O)
+fun generateVrfAES(movieId: String, userId: String): String {
+    val keyData = "secret_$userId".toByteArray(Charsets.UTF_8)
+    val keyBytes = MessageDigest.getInstance("SHA-256").digest(keyData)
+    val keySpec = SecretKeySpec(keyBytes, "AES")
+    val ivSpec = IvParameterSpec(ByteArray(16))
+    val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+    cipher.init(Cipher.ENCRYPT_MODE, keySpec, ivSpec)
+    val encrypted = cipher.doFinal(movieId.toByteArray(Charsets.UTF_8))
+    return Base64.getUrlEncoder().withoutPadding().encodeToString(encrypted)
+}
+
+fun vidrockEncode(tmdb: String, type: String, season: Int? = null, episode: Int? = null): String {
+    val base = if (type == "tv" && season != null && episode != null) {
+        "$tmdb-$season-$episode"
+    } else {
+        val map = mapOf(
+            '0' to 'a', '1' to 'b', '2' to 'c', '3' to 'd', '4' to 'e',
+            '5' to 'f', '6' to 'g', '7' to 'h', '8' to 'i', '9' to 'j'
+        )
+        tmdb.map { map[it] ?: it }.joinToString("")
+    }
+    val reversed = base.reversed()
+    val firstEncode = base64Encode(reversed.toByteArray())
+    val doubleEncode = base64Encode(firstEncode.toByteArray())
+    return doubleEncode
+}
+
+fun decryptVidzeeUrl(encrypted: String, key: ByteArray): String {
+    val decoded = base64Decode(encrypted)
+    val parts = decoded.split(":")
+    if (parts.size != 2) throw IllegalArgumentException("Invalid encrypted format")
+    val iv = base64DecodeArray(parts[0])
+    val cipherData = base64DecodeArray(parts[1])
+    val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+    val secretKey = SecretKeySpec(key, "AES")
+    cipher.init(Cipher.DECRYPT_MODE, secretKey, IvParameterSpec(iv))
+    val decryptedBytes = cipher.doFinal(cipherData)
+    return decryptedBytes.toString(Charsets.UTF_8)
+}
+
+fun derivePbkdf2Key(password: String, salt: ByteArray, iterations: Int, keyLength: Int): ByteArray {
+    val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+    val spec: KeySpec = PBEKeySpec(password.toCharArray(), salt, iterations, keyLength * 8)
+    return factory.generateSecret(spec).encoded
+}
+
+fun unpadData(data: ByteArray): ByteArray {
+    val padding = data[data.size - 1].toInt() and 0xFF
+    if (padding < 1 || padding > data.size) return data
+    return data.copyOf(data.size - padding)
+}
+
+fun hexStringToByteArray2(hex: String): ByteArray {
+    val result = ByteArray(hex.length / 2)
+    for (i in hex.indices step 2) {
+        val value = hex.substring(i, i + 2).toInt(16)
+        result[i / 2] = value.toByte()
+    }
+    return result
+}
+
+fun toHex(bytes: ByteArray): String {
+    return bytes.joinToString("") { "%02x".format(it) }
+}
+
+fun generateKeyIv(keySize: Int = 32): KeyIvResult {
+    val secureRandom = SecureRandom()
+    val keyBytes = ByteArray(keySize)
+    secureRandom.nextBytes(keyBytes)
+    val ivBytes = ByteArray(16)
+    secureRandom.nextBytes(ivBytes)
+    return KeyIvResult(
+        keyBytes = keyBytes,
+        ivBytes = ivBytes,
+        keyHex = toHex(keyBytes),
+        ivHex = toHex(ivBytes)
+    )
+}
+
+fun hasHost(url: String): Boolean {
+    return try {
+        val host = URL(url).host
+        !host.isNullOrEmpty()
+    } catch (e: Exception) {
+        false
+    }
+}
+
+// --- End StreamPlay Utils Port ---
 
 suspend fun convertTmdbToAnimeId(
     title: String?,
@@ -230,17 +426,6 @@ fun String.xorDecrypt(key: String): String {
     return sb.toString()
 }
 
-fun vidsrctoDecrypt(text: String): String {
-    val parse = Base64.decode(text.toByteArray(), Base64.URL_SAFE)
-    val cipher = Cipher.getInstance("RC4")
-    cipher.init(
-        Cipher.DECRYPT_MODE,
-        SecretKeySpec("8z5Ag5wgagfsOuhz".toByteArray(), "RC4"),
-        cipher.parameters
-    )
-    return decode(cipher.doFinal(parse).toString(Charsets.UTF_8))
-}
-
 fun String?.createSlug(): String? {
     return this?.filter { it.isWhitespace() || it.isLetterOrDigit() }
         ?.trim()
@@ -302,21 +487,15 @@ fun getQuality(str: String): Int {
     }
 }
 
-fun getGMoviesQuality(str: String): Int {
-    return when {
-        str.contains("480P", true) -> Qualities.P480.value
-        str.contains("720P", true) -> Qualities.P720.value
-        str.contains("1080P", true) -> Qualities.P1080.value
-        str.contains("4K", true) -> Qualities.P2160.value
+fun getQualityFromName(qualityName: String): Int {
+    return when (qualityName.replace("p", "").trim()) {
+        "360" -> Qualities.P360.value
+        "480" -> Qualities.P480.value
+        "720" -> Qualities.P720.value
+        "1080" -> Qualities.P1080.value
+        "1440" -> Qualities.P1440.value
+        "2160", "4k", "4K" -> Qualities.P2160.value
         else -> Qualities.Unknown.value
-    }
-}
-
-fun getFDoviesQuality(str: String): String {
-    return when {
-        str.contains("1080P", true) -> "1080P"
-        str.contains("4K", true) -> "4K"
-        else -> ""
     }
 }
 
@@ -330,22 +509,6 @@ fun getLanguageNameFromCode(code: String?): String? {
             langCode
         }
     }
-}
-
-fun getVipLanguage(str: String): String {
-    return when (str) {
-        "in_ID" -> "Indonesian"
-        "pt" -> "Portuguese"
-        else -> str.split("_").first().let { code ->
-            getLanguageNameFromCode(code) ?: code
-        }
-    }
-}
-
-fun fixCrunchyrollLang(language: String?): String? {
-    val langCode = language?.split("_")?.first()
-    return getLanguageNameFromCode(langCode)
-        ?: getLanguageNameFromCode(langCode?.substringBefore("-"))
 }
 
 fun getDeviceId(length: Int = 16): String {
@@ -427,70 +590,4 @@ fun base64UrlEncode(input: ByteArray): String {
         .replace("+", "-")
         .replace("/", "_")
         .replace("=", "")
-}
-
-fun Int.toRomanNumeral(): String = Symbol.closestBelow(this)
-    .let { symbol ->
-        if (symbol != null) {
-            "$symbol${(this - symbol.decimalValue).toRomanNumeral()}"
-        } else {
-            ""
-        }
-    }
-
-private enum class Symbol(val decimalValue: Int) {
-    I(1),
-    IV(4),
-    V(5),
-    IX(9),
-    X(10);
-
-    companion object {
-        fun closestBelow(value: Int) =
-            entries.toTypedArray()
-                .sortedByDescending { it.decimalValue }
-                .firstOrNull { value >= it.decimalValue }
-    }
-}
-
-object VidrockHelper {
-    private const val Ww = "x7k9mPqT2rWvY8zA5bC3nF6hJ2lK4mN9"
-
-    fun encrypt(
-        r: Int?,
-        e: String,
-        t: Int?,
-        n: Int?
-    ): String {
-        val s = if (e == "tv") "${r}_${t}_${n}" else r.toString()
-        val keyBytes = Ww.toByteArray(Charsets.UTF_8)
-        val ivBytes = Ww.substring(0, 16).toByteArray(Charsets.UTF_8)
-
-        val secretKey = SecretKeySpec(keyBytes, "AES")
-        val ivSpec = IvParameterSpec(ivBytes)
-
-        val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
-        cipher.init(Cipher.ENCRYPT_MODE, secretKey, ivSpec)
-        val encrypted = cipher.doFinal(s.toByteArray(Charsets.UTF_8))
-        return base64UrlEncode(encrypted)
-    }
-}
-
-object VidsrcHelper {
-
-    fun encryptAesCbc(plainText: String, keyText: String): String {
-        val sha256 = MessageDigest.getInstance("SHA-256")
-        val keyBytes = sha256.digest(keyText.toByteArray(Charsets.UTF_8))
-        val secretKey = SecretKeySpec(keyBytes, "AES")
-
-        val iv = ByteArray(16) { 0 }
-        val ivSpec = IvParameterSpec(iv)
-
-        val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
-        cipher.init(Cipher.ENCRYPT_MODE, secretKey, ivSpec)
-
-        val encrypted = cipher.doFinal(plainText.toByteArray(Charsets.UTF_8))
-        return base64UrlEncode(encrypted)
-    }
-
 }
