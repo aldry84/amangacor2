@@ -2,17 +2,22 @@ package com.AdiDrakor
 
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.Plugin
-import com.lagradost.cloudstream3.utils.ioSafe
 import android.content.Context
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 
 @CloudstreamPlugin
 class AdiDrakorPlugin : Plugin() {
     override fun load(context: Context) {
         // ==========================================
-        // PERBAIKAN: UPDATE DOMAIN SAAT STARTUP
+        // PERBAIKAN: COROUTINE SCOPE & IMPORTS
         // ==========================================
-        // Menjalankan update domain di background thread agar tidak memblokir UI
-        ioSafe {
+        // Menggunakan GlobalScope.launch karena ioSafe tidak tersedia
+        // Ini menjalankan update domain di background
+        
+        @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
+        GlobalScope.launch(Dispatchers.IO) {
             DomainManager.updateDomains()
         }
 
