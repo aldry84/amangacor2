@@ -39,9 +39,9 @@ import com.phisher98.StreamPlayExtractor.invokevidrock
 import com.phisher98.StreamPlayExtractor.sharedPref
 
 class StreamPlayLite() : StreamPlay(sharedPref) {
-    override var name = "StreamPlay-Id"
+    override var name = "StreamPlay-Lite"
 
-    // Variabel helper
+    // Helper Variables
     private val apiKey = BuildConfig.TMDB_API
     
     // Filter Bahasa Asia
@@ -52,55 +52,41 @@ class StreamPlayLite() : StreamPlay(sharedPref) {
 
     override val mainPage = mainPageOf(
         // 1. Indonesia
-        // Box Office: Diurutkan berdasarkan Vote Count (film yang paling banyak ditonton/di-rate orang Indonesia)
         "/discover/movie?api_key=$apiKey&with_original_language=id&sort_by=vote_count.desc$noAnime" to "Indonesia Box Office",
-        // Prime Picks: Film Indonesia yang sedang Trending/Populer saat ini
         "/discover/movie?api_key=$apiKey&with_original_language=id&sort_by=popularity.desc$noAnime" to "Indo Prime Picks",
         
         // 2. China / Mandarin
-        // Box Office: Diurutkan berdasarkan Revenue (Pendapatan Tertinggi)
         "/discover/movie?api_key=$apiKey&with_original_language=zh|cn&sort_by=revenue.desc$noAnime" to "China Box Office",
-        // Hits: Yang sedang populer
         "/discover/movie?api_key=$apiKey&with_original_language=zh|cn&sort_by=popularity.desc$noAnime" to "Mandarin Hits",
         
         // 3. Japan
-        // Box Office: Revenue Tertinggi (Tanpa Anime)
         "/discover/movie?api_key=$apiKey&with_original_language=ja&sort_by=revenue.desc$noAnime" to "Japan Box Office",
-        // Highlights: Film Jepang dengan Rating Terbaik (Vote Average tinggi)
-        "/discover/movie?api_key=$apiKey&with_original_language=ja&sort_by=vote_average.desc&vote_count.gte=100$noAnime" to "J-Movie Highlights",
+        "/discover/movie?api_key=$apiKey&with_original_language=ja&sort_by=popularity.desc$noAnime" to "J-Movie Highlights",
         
         // 4. Thailand
-        // Box Office: Vote Count terbanyak
         "/discover/movie?api_key=$apiKey&with_original_language=th&sort_by=vote_count.desc$noAnime" to "Thailand Box Office",
-        // Hits: Populer saat ini
         "/discover/movie?api_key=$apiKey&with_original_language=th&sort_by=popularity.desc$noAnime" to "Thai Movie Hits",
         
-        // 5. Streaming Platforms (Region ID)
-        // Netflix Asia: Populer di Netflix Indonesia
+        // 5. Streaming Platforms
+        // Netflix Asia
         "/discover/movie?api_key=$apiKey&with_watch_providers=8&watch_region=ID&with_original_language=$asianLangs&sort_by=popularity.desc$noAnime" to "Netflix Asia Films",
-        // Viu: Populer di Viu Indonesia
+        // Viu
         "/discover/movie?api_key=$apiKey&with_watch_providers=158&watch_region=ID&sort_by=popularity.desc$noAnime" to "Viu Movie Zone",
-        // WeTV: Film Mandarin/Thai populer (Pendekatan terbaik untuk WeTV)
+        // WeTV (Pendekatan menggunakan konten populer China/Thailand)
         "/discover/movie?api_key=$apiKey&with_original_language=zh|th&sort_by=popularity.desc&page=2$noAnime" to "WeTV Movie Hub",
-        // Disney+: Hotstar/Disney content Asia
-        "/discover/movie?api_key=$apiKey&with_watch_providers=337|390&watch_region=ID&with_original_language=$asianLangs&sort_by=popularity.desc$noAnime" to "Disney+ Asia Movies",
-        // HBO: HBO Go Asia
-        "/discover/movie?api_key=$apiKey&with_watch_providers=118|119&watch_region=ID&with_original_language=$asianLangs&sort_by=popularity.desc$noAnime" to "HBO Movie Vault",
-        // Prime Video: Amazon Prime Asia
+        
+        // HBO Movie Vault (Diubah ke HBO Originals Global - Company ID 3268 HBO Films)
+        "/discover/movie?api_key=$apiKey&with_companies=3268|1632&sort_by=revenue.desc$noAnime" to "HBO Movie Vault",
+        
+        // Prime Video Asia
         "/discover/movie?api_key=$apiKey&with_watch_providers=119&watch_region=ID&with_original_language=$asianLangs&sort_by=popularity.desc$noAnime" to "Prime Video Asia",
         
-        // 6. Genres (Asian Content Only & No Anime)
-        // Horror Asia
+        // 6. Genres (Asian Content Only)
         "/discover/movie?api_key=$apiKey&with_genres=27&with_original_language=$asianLangs&sort_by=popularity.desc$noAnime" to "Asian Horror Room",
-        // Thriller Asia
         "/discover/movie?api_key=$apiKey&with_genres=53&with_original_language=$asianLangs&sort_by=popularity.desc$noAnime" to "Asian Thriller Zone",
-        // Comedy Asia
         "/discover/movie?api_key=$apiKey&with_genres=35&with_original_language=$asianLangs&sort_by=popularity.desc$noAnime" to "Asian Comedy Club",
-        // Adventure Asia
         "/discover/movie?api_key=$apiKey&with_genres=12&with_original_language=$asianLangs&sort_by=popularity.desc$noAnime" to "Adventure Asia",
-        // Romance Asia
         "/discover/movie?api_key=$apiKey&with_genres=10749&with_original_language=$asianLangs&sort_by=popularity.desc$noAnime" to "Asian Romance Line",
-        // Drama Asia
         "/discover/movie?api_key=$apiKey&with_genres=18&with_original_language=$asianLangs&sort_by=popularity.desc$noAnime" to "Asian Drama Choice"
     )
 
