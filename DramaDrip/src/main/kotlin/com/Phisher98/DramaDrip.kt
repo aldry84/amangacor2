@@ -15,7 +15,7 @@ import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import kotlinx.coroutines.runBlocking
 import org.jsoup.nodes.Element
 
-// Import fungsi extractor kita
+// Import fungsi extractor
 import com.Phisher98.DramaDripExtractor.invokeGomovies
 import com.Phisher98.DramaDripExtractor.invokeIdlix
 import com.Phisher98.DramaDripExtractor.invokeVidfast
@@ -23,6 +23,7 @@ import com.Phisher98.DramaDripExtractor.invokeVidlink
 import com.Phisher98.DramaDripExtractor.invokeVidrock
 import com.Phisher98.DramaDripExtractor.invokeVidsrc
 import com.Phisher98.DramaDripExtractor.invokeVidsrccc
+import com.Phisher98.DramaDripExtractor.invokeVixsrc
 import com.Phisher98.DramaDripExtractor.invokeWyzie
 
 class DramaDrip : MainAPI() {
@@ -103,7 +104,6 @@ class DramaDrip : MainAPI() {
             background = responseData.meta?.background ?: image
         }
 
-        // Kita masih mengambil link asli DramaDrip sebagai backup
         val hrefs: List<String> = document.select("div.wp-block-button > a").mapNotNull { linkElement ->
             val link = linkElement.attr("href")
             val actual = cinematickitloadBypass(link) ?: return@mapNotNull null
@@ -164,9 +164,28 @@ class DramaDrip : MainAPI() {
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
         val parsedData = tryParseJson<LinkData>(data) ?: return false
         
-        // Eksekusi Paralel Semua Extractor (Hybrid: DramaDrip Asli + Adicinemax Sources)
         runAllAsync(
-            // 1. Sumber Asli DramaDrip (Backup)
+            // --- PRIORITAS UTAMA (SESUAI PERMINTAAN) ---
+            
+            // 1. JeniusPlay (Idlix)
+            { invokeIdlix(parsedData.title, parsedData.year, parsedData.season, parsedData.episode, subtitleCallback, callback) },
+
+            // 2. Vidlink
+            { invokeVidlink(parsedData.tmdbId, parsedData.season, parsedData.episode, callback) },
+
+            // 3. VidPlay (via Vidsrccc)
+            { invokeVidsrccc(parsedData.tmdbId, parsedData.imdbId, parsedData.season, parsedData.episode, subtitleCallback, callback) },
+            
+            // 4. Vixsrc (Alpha / Beta)
+            { invokeVixsrc(parsedData.tmdbId, parsedData.season, parsedData.episode, callback) },
+
+            // --- SUMBER PENDUKUNG / CADANGAN ---
+            { invokeWyzie(parsedData.tmdbId, parsedData.season, parsedData.episode, subtitleCallback) },
+            { invokeGomovies(parsedData.title, parsedData.year, parsedData.season, parsedData.episode, callback) },
+            { invokeVidsrc(parsedData.imdbId, parsedData.season, parsedData.episode, callback) },
+            { invokeVidfast(parsedData.tmdbId, parsedData.season, parsedData.episode, subtitleCallback, callback) },
+            
+            // --- SUMBER ASLI DRAMADRIP (BACKUP TERAKHIR) ---
             {
                parsedData.links.forEach { link ->
                    try {
@@ -174,23 +193,11 @@ class DramaDrip : MainAPI() {
                        if (finalLink != null) loadExtractor(finalLink, subtitleCallback, callback)
                    } catch (_: Exception) {}
                }
-            },
-            // 2. Extractor Wyzie (Subtitle)
-            { invokeWyzie(parsedData.tmdbId, parsedData.season, parsedData.episode, subtitleCallback) },
-            // 3. Extractor Idlix
-            { invokeIdlix(parsedData.title, parsedData.year, parsedData.season, parsedData.episode, subtitleCallback, callback) },
-            // 4. Extractor Vidrock
-            { invokeVidrock(parsedData.tmdbId, parsedData.season, parsedData.episode, subtitleCallback, callback) },
-            // 5. Extractor Gomovies
-            { invokeGomovies(parsedData.title, parsedData.year, parsedData.season, parsedData.episode, callback) },
-            // 6. Extractor Vidsrc
-            { invokeVidsrc(parsedData.imdbId, parsedData.season, parsedData.episode, callback) },
-            // 7. Extractor Vidsrc.cc
-            { invokeVidsrccc(parsedData.tmdbId, parsedData.imdbId, parsedData.season, parsedData.episode, subtitleCallback, callback) },
-            // 8. Extractor Vidlink (WebView)
-            { invokeVidlink(parsedData.tmdbId, parsedData.season, parsedData.episode, callback) },
-            // 9. Extractor Vidfast (WebView)
-            { invokeVidfast(parsedData.tmdbId, parsedData.season, parsedData.episode, subtitleCallback, callback) }
+            }
+            
+            // NONAKTIF (DIHAPUS SESUAI PERMINTAAN):
+            // - Vidrock
+            // - VidsrcCx
         )
         return true
     }
