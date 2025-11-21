@@ -28,6 +28,7 @@ open class DramaDrip : MainAPI() {
     private val cinemeta_url = "https://v3-cinemeta.strem.io/meta"
 
     companion object {
+        // Konstanta API untuk Extractor
         const val idlixAPI = "https://tv6.idlixku.com"
         const val vidsrcccAPI = "https://vidsrc.cc"
         const val vidlinkAPI = "https://vidlink.pro"
@@ -35,6 +36,7 @@ open class DramaDrip : MainAPI() {
         const val mappleAPI = "https://mapple.uk" 
     }
 
+    // Data Class untuk mengirim info lengkap dari Load ke LoadLinks
     data class LinkData(
         val tmdbId: Int? = null,
         val imdbId: String? = null,
@@ -108,7 +110,7 @@ open class DramaDrip : MainAPI() {
         var tmdbId: String? = null
         var tmdbType: String? = null
 
-        // 1. Ambil ID dari Halaman Web
+        // 1. Ambil ID dari teks halaman (Regex)
         document.select("div.su-spoiler-content ul.wp-block-list > li").forEach { li ->
             val text = li.text()
             if (imdbId == null && "imdb.com/title/tt" in text) {
@@ -128,7 +130,7 @@ open class DramaDrip : MainAPI() {
             else -> TvType.TvSeries
         }
 
-        // Metadata dasar dari halaman web
+        // Metadata dasar dari web DramaDrip
         val image = document.select("meta[property=og:image]").attr("content")
         val title = document.selectFirst("div.wp-block-column > h2.wp-block-heading")?.text()
             ?.substringBefore("(")?.trim().toString()
@@ -137,16 +139,17 @@ open class DramaDrip : MainAPI() {
             ?.substringAfter("(")?.substringBefore(")")?.toIntOrNull()
         val webDescription = document.selectFirst("div.content-section p.mt-4")?.text()?.trim()
         
-        // 2. Ambil Metadata Lengkap dari Cinemeta (Wajib untuk Episode List yang benar)
+        // 2. Ambil Metadata Lengkap via Cinemeta (Wajib untuk Episode List yang benar)
         val typeset = if (tvType == TvType.TvSeries) "series" else "movie"
-        val responseData = if (tmdbId?.isNotEmpty() == true) {
-            // Coba cari pakai IMDB ID dulu kalau ada, kalau tidak coba logic lain (Cinemeta butuh IMDB ID biasanya)
-            val metaId = imdbId ?: return throw ErrorLoadingException("No IMDB ID found on DramaDrip page")
-            val jsonResponse = app.get("$cinemeta_url/$typeset/$metaId.json").text
-            if (jsonResponse.isNotEmpty() && jsonResponse.startsWith("{")) {
-                val gson = Gson()
-                gson.fromJson(jsonResponse, ResponseData::class.java)
-            } else null
+        val responseData = if (tmdbId?.isNotEmpty() == true || imdbId?.isNotEmpty() == true) {
+            val metaId = imdbId ?: return throw ErrorLoadingException("No IMDB/TMDB ID found")
+            try {
+                val jsonResponse = app.get("$cinemeta_url/$typeset/$metaId.json").text
+                if (jsonResponse.isNotEmpty() && jsonResponse.startsWith("{")) {
+                    val gson = Gson()
+                    gson.fromJson(jsonResponse, ResponseData::class.java)
+                } else null
+            } catch (e: Exception) { null }
         } else null
         
         var cast: List<String> = emptyList()
@@ -169,12 +172,12 @@ open class DramaDrip : MainAPI() {
             }
         }
 
-        // 3. Logika Pembuatan Episode (PERBAIKAN UTAMA)
+        // 3. Logika Episode Baru (Bersih dari bug "Episode 720")
         if (tvType == TvType.TvSeries) {
             val episodes = mutableListOf<Episode>()
 
             if (responseData?.meta?.videos != null && responseData.meta.videos.isNotEmpty()) {
-                // A. Gunakan Episode dari Cinemeta (Bersih & Akurat)
+                // Menggunakan data dari Cinemeta untuk membuat list episode
                 responseData.meta.videos.forEach { video ->
                     val epData = LinkData(
                         tmdbId = tmdbId?.toIntOrNull(),
@@ -197,9 +200,8 @@ open class DramaDrip : MainAPI() {
                     )
                 }
             } else {
-                // B. Fallback jika Cinemeta gagal (Sangat jarang terjadi jika IMDB ID valid)
-                // Kita tidak lagi mengikis HTML tombol download karena menyebabkan bug "Episode 720"
-                throw ErrorLoadingException("Could not fetch episode metadata. Please check connection.")
+                // Jika tidak ada metadata, jangan scraping tombol download yang rusak
+                throw ErrorLoadingException("Metadata episode tidak ditemukan. Cek koneksi internet.")
             }
 
             return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
@@ -214,7 +216,6 @@ open class DramaDrip : MainAPI() {
                 addTMDbId(tmdbId)
             }
         } else {
-            // Logika Movie
              val linkData = LinkData(
                  tmdbId = tmdbId?.toIntOrNull(),
                  imdbId = imdbId,
@@ -249,61 +250,51 @@ open class DramaDrip : MainAPI() {
         
         val req = tryParseJson<LinkData>(data) ?: return false
         
-        Log.d("DramaDrip", "Loading Links for: $req")
-
-        // 1. JeniusPlay (via Idlix)
-        invokeSource("Idlix") {
-            DramaDripExtractor.invokeIdlix(
-                title = req.title,
-                year = req.year,
-                season = req.season,
-                episode = req.episode,
-                subtitleCallback = subtitleCallback,
-                callback = callback
-            )
-        }
-
-        // 2. Vidlink
-        invokeSource("Vidlink") {
-            DramaDripExtractor.invokeVidlink(
-                tmdbId = req.tmdbId,
-                season = req.season,
-                episode = req.episode,
-                callback = callback
-            )
-        }
-
-        // 3. VidPlay (via Vidsrccc)
-        invokeSource("Vidsrccc") {
-            DramaDripExtractor.invokeVidsrccc(
-                tmdbId = req.tmdbId,
-                imdbId = req.imdbId,
-                season = req.season,
-                episode = req.episode,
-                subtitleCallback = subtitleCallback,
-                callback = callback
-            )
-        }
-
-        // 4. Vixsrc Alpha
-        invokeSource("Vixsrc") {
-            DramaDripExtractor.invokeVixsrc(
-                tmdbId = req.tmdbId,
-                season = req.season,
-                episode = req.episode,
-                callback = callback
-            )
-        }
+        // 4. Logika LoadLinks Paralel (Cepat)
+        // Menggunakan runAllAsync agar semua sumber dipanggil bersamaan
+        runAllAsync(
+            {
+                // 1. JeniusPlay (via Idlix)
+                DramaDripExtractor.invokeIdlix(
+                    title = req.title,
+                    year = req.year,
+                    season = req.season,
+                    episode = req.episode,
+                    subtitleCallback = subtitleCallback,
+                    callback = callback
+                )
+            },
+            {
+                // 2. Vidlink
+                DramaDripExtractor.invokeVidlink(
+                    tmdbId = req.tmdbId,
+                    season = req.season,
+                    episode = req.episode,
+                    callback = callback
+                )
+            },
+            {
+                // 3. VidPlay (via Vidsrccc)
+                DramaDripExtractor.invokeVidsrccc(
+                    tmdbId = req.tmdbId,
+                    imdbId = req.imdbId,
+                    season = req.season,
+                    episode = req.episode,
+                    subtitleCallback = subtitleCallback,
+                    callback = callback
+                )
+            },
+            {
+                // 4. Vixsrc Alpha
+                DramaDripExtractor.invokeVixsrc(
+                    tmdbId = req.tmdbId,
+                    season = req.season,
+                    episode = req.episode,
+                    callback = callback
+                )
+            }
+        )
 
         return true
-    }
-
-    // Helper agar jika satu source error, tidak menghentikan source berikutnya
-    private suspend fun invokeSource(name: String, action: suspend () -> Unit) {
-        try {
-            action()
-        } catch (e: Exception) {
-            Log.e("DramaDrip", "Error loading $name: ${e.message}")
-        }
     }
 }
