@@ -26,6 +26,7 @@ class DramaDrip : MainAPI() {
     override val hasQuickSearch = true
     override val supportedTypes = setOf(TvType.Movie, TvType.AsianDrama, TvType.TvSeries)
     private val cinemeta_url = "https://v3-cinemeta.strem.io/meta"
+    private val wyzieAPI = "https://sub.wyzie.ru" // Tambahkan URL Wyzie
 
     override val mainPage = mainPageOf(
         "drama/ongoing" to "Ongoing Dramas",
@@ -171,12 +172,10 @@ class DramaDrip : MainAPI() {
                     val season = seasonMatch?.groupValues?.getOrNull(1)?.toIntOrNull()
 
                     if (season != null) {
-                        // Try to get the links block; if next sibling doesn't have buttons, try alternative selection
                         var linksBlock = seasonHeader.nextElementSibling()
                         if (linksBlock == null || linksBlock.select("div.wp-block-button")
                                 .isEmpty()
                         ) {
-                            // Sometimes buttons could be inside a child or sibling div
                             linksBlock = seasonHeader.parent()?.selectFirst("div.wp-block-button")
                                 ?: linksBlock
                         }
@@ -218,11 +217,6 @@ class DramaDrip : MainAPI() {
                                                 "Could not extract episode number from text: '$epText'"
                                             )
                                         }
-                                    } else {
-                                        Log.w(
-                                            "EpisodeFetch",
-                                            "Empty href for episode button with text: '$epText'"
-                                        )
                                     }
                                 }
                             } catch (_: Exception) {
@@ -237,8 +231,16 @@ class DramaDrip : MainAPI() {
                 val (season, epNo) = seasonEpisode
                 val info =
                     responseData?.meta?.videos?.find { it.season == season && it.episode == epNo }
+                
+                // MODIFIED: Membungkus links + TMDB ID ke dalam object LinkData
+                val linkData = LinkData(
+                    links = links.distinct(),
+                    tmdbId = tmdbId,
+                    season = season,
+                    episode = epNo
+                )
 
-                newEpisode(links.distinct().toJson()) {
+                newEpisode(linkData.toJson()) {
                     this.name = info?.name ?: "Episode $epNo"
                     this.posterUrl = info?.thumbnail
                     this.season = season
@@ -259,7 +261,15 @@ class DramaDrip : MainAPI() {
                 addTMDbId(tmdbId)
             }
         } else {
-            return newMovieLoadResponse(title, url, TvType.Movie, hrefs) {
+            // MODIFIED: Membungkus links + TMDB ID ke dalam object LinkData untuk Movie
+            val linkData = LinkData(
+                links = hrefs,
+                tmdbId = tmdbId,
+                season = null,
+                episode = null
+            )
+            
+            return newMovieLoadResponse(title, url, TvType.Movie, linkData.toJson()) {
                 this.backgroundPosterUrl = background
                 this.year = year
                 this.plot = description
@@ -280,7 +290,15 @@ class DramaDrip : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val links = tryParseJson<List<String>>(data).orEmpty()
+        // MODIFIED: Mencoba parsing sebagai LinkData, jika gagal fallback ke List<String> (untuk kompatibilitas)
+        val parsedData = tryParseJson<LinkData>(data)
+        val links = parsedData?.links ?: tryParseJson<List<String>>(data).orEmpty()
+        
+        // MODIFIED: Panggil Wyzie jika TMDB ID tersedia
+        if (parsedData?.tmdbId != null) {
+            invokeWyzie(parsedData.tmdbId, parsedData.season, parsedData.episode, subtitleCallback)
+        }
+
         if (links.isEmpty()) {
             Log.e("LoadLinks", "No links found in data: $data")
             return false
@@ -306,4 +324,45 @@ class DramaDrip : MainAPI() {
 
         return true
     }
+
+    // ADDED: Fungsi Helper untuk Wyzie
+    private suspend fun invokeWyzie(
+        tmdbId: String,
+        season: Int?,
+        episode: Int?,
+        subtitleCallback: (SubtitleFile) -> Unit
+    ) {
+        val url = if (season == null) {
+            "$wyzieAPI/search?id=$tmdbId"
+        } else {
+            "$wyzieAPI/search?id=$tmdbId&season=$season&episode=$episode"
+        }
+
+        try {
+            val res = app.get(url).text
+            tryParseJson<ArrayList<WyzieSubtitle>>(res)?.map { subtitle ->
+                subtitleCallback.invoke(
+                    newSubtitleFile(
+                        subtitle.display ?: return@map,
+                        subtitle.url ?: return@map,
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            Log.e("Wyzie", "Failed to load subtitles: ${e.message}")
+        }
+    }
+
+    // ADDED: Data Classes
+    data class LinkData(
+        val links: List<String>,
+        val tmdbId: String?,
+        val season: Int?,
+        val episode: Int?
+    )
+
+    data class WyzieSubtitle(
+        val display: String? = null,
+        val url: String? = null,
+    )
 }
