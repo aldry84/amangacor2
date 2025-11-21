@@ -7,8 +7,9 @@ import com.lagradost.cloudstream3.app
 import org.jsoup.nodes.Document
 import java.net.URI
 import java.util.Base64
+import java.util.Locale
 
-
+// --- Data Classes untuk Cinemeta & API ---
 data class Meta(
     val id: String?,
     val imdb_id: String?,
@@ -47,6 +48,27 @@ data class EpisodeDetails(
 data class ResponseData(
     val meta: Meta?
 )
+
+// --- Helper Bahasa (Diambil dari Adicinemax21) ---
+
+/**
+ * Mengubah kode bahasa (misal: "id", "in_ID", "en") menjadi nama lengkap ("Indonesian", "English")
+ * Sangat berguna untuk merapikan label subtitle dari Wyzie dan Vidrock.
+ */
+fun getLanguageNameFromCode(code: String?): String? {
+    return code?.split("_")?.first()?.let { langCode ->
+        try {
+            // Gunakan Locale untuk mendapatkan nama bahasa yang dilokalkan
+            Locale(langCode).displayLanguage.replaceFirstChar {
+                if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString()
+            }
+        } catch (e: Exception) {
+            langCode // Fallback ke kode jika terjadi kesalahan
+        }
+    }
+}
+
+// --- Fungsi Bypass & Network Utilities ---
 
 suspend fun bypassHrefli(url: String): String? {
     fun Document.getFormUrl(): String {
