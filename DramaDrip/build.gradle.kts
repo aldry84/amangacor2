@@ -1,7 +1,6 @@
 // use an integer for version numbers
 version = 5
 
-
 cloudstream {
     // All of these properties are optional, you can safely remove them
 
@@ -24,5 +23,6 @@ cloudstream {
     tvTypes = listOf("Movie","TvSeries","AsianDrama")
     iconUrl = "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/Icons/dramadrip-icon.png"
 
-    isCrossPlatform = true
+    // PERBAIKAN: Ubah menjadi false karena menggunakan Android imports
+    isCrossPlatform = false 
 }
