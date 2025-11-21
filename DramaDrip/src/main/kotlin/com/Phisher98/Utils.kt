@@ -3,14 +3,9 @@ package com.Phisher98
 import android.os.Build
 import android.util.Base64
 import androidx.annotation.RequiresApi
-import com.lagradost.api.Log
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.Qualities
-import org.jsoup.nodes.Document
 import java.net.URI
-import java.net.URL
-import java.net.URLDecoder
-import java.net.URLEncoder
 import java.security.MessageDigest
 import java.util.Locale
 import javax.crypto.Cipher
@@ -18,72 +13,37 @@ import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 import kotlin.text.isLowerCase
 
-// --- Data Classes untuk Cinemeta ---
+// --- Data Classes ---
 data class Meta(
-    val id: String?,
-    val imdb_id: String?,
-    val type: String?,
-    val poster: String?,
-    val logo: String?,
-    val background: String?,
-    val moviedb_id: Int?,
-    val name: String?,
-    val description: String?,
-    val genre: List<String>?,
-    val releaseInfo: String?,
-    val status: String?,
-    val runtime: String?,
-    val cast: List<String>?,
-    val language: String?,
-    val country: String?,
-    val imdbRating: String?,
-    val slug: String?,
-    val year: String?,
-    val videos: List<EpisodeDetails>?
+    val id: String?, val imdb_id: String?, val type: String?, val poster: String?, val logo: String?, val background: String?,
+    val moviedb_id: Int?, val name: String?, val description: String?, val genre: List<String>?, val releaseInfo: String?,
+    val status: String?, val runtime: String?, val cast: List<String>?, val language: String?, val country: String?,
+    val imdbRating: String?, val slug: String?, val year: String?, val videos: List<EpisodeDetails>?
 )
 
 data class EpisodeDetails(
-    val id: String?,
-    val name: String?,
-    val title: String?,
-    val season: Int?,
-    val episode: Int?,
-    val released: String?,
-    val overview: String?,
-    val thumbnail: String?,
-    val moviedb_id: Int?
+    val id: String?, val name: String?, val title: String?, val season: Int?, val episode: Int?,
+    val released: String?, val overview: String?, val thumbnail: String?, val moviedb_id: Int?
 )
 
 data class ResponseData(val meta: Meta?)
 
-// --- Helpers dari Adicinemax21 ---
-
+// --- Helpers ---
 fun getLanguageNameFromCode(code: String?): String? {
     return code?.split("_")?.first()?.let { langCode ->
         try {
             Locale(langCode).displayLanguage.replaceFirstChar {
                 if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString()
             }
-        } catch (e: Exception) {
-            langCode
-        }
+        } catch (e: Exception) { langCode }
     }
 }
 
 fun getEpisodeSlug(season: Int? = null, episode: Int? = null): Pair<String, String> {
-    return if (season == null && episode == null) {
-        "" to ""
-    } else {
-        (if (season!! < 10) "0$season" else "$season") to (if (episode!! < 10) "0$episode" else "$episode")
-    }
+    return if (season == null && episode == null) "" to "" else (if (season!! < 10) "0$season" else "$season") to (if (episode!! < 10) "0$episode" else "$episode")
 }
 
-fun String?.createSlug(): String? {
-    return this?.filter { it.isWhitespace() || it.isLetterOrDigit() }
-        ?.trim()
-        ?.replace("\\s+".toRegex(), "-")
-        ?.lowercase()
-}
+fun String?.createSlug(): String? = this?.filter { it.isWhitespace() || it.isLetterOrDigit() }?.trim()?.replace("\\s+".toRegex(), "-")?.lowercase()
 
 fun getQualityFromName(str: String?): Int {
     return when {
@@ -112,20 +72,10 @@ fun String.fixUrlBloat(): String = this.replace("\"", "").replace("\\", "")
 fun base64Decode(string: String): String {
     val clean = string.trim().replace("\n", "").replace("\r", "")
     val padded = clean.padEnd((clean.length + 3) / 4 * 4, '=')
-    return try {
-        String(Base64.decode(padded, Base64.DEFAULT), Charsets.UTF_8)
-    } catch (e: Exception) {
-        ""
-    }
+    return try { String(Base64.decode(padded, Base64.DEFAULT), Charsets.UTF_8) } catch (e: Exception) { "" }
 }
 
-fun base64UrlEncode(input: ByteArray): String {
-    return Base64.encodeToString(input, Base64.DEFAULT)
-        .replace("+", "-")
-        .replace("/", "_")
-        .replace("=", "")
-        .trim()
-}
+fun base64UrlEncode(input: ByteArray): String = Base64.encodeToString(input, Base64.DEFAULT).replace("+", "-").replace("/", "_").replace("=", "").trim()
 
 fun String.xorDecrypt(key: String): String {
     val sb = StringBuilder()
@@ -145,24 +95,19 @@ fun generateWpKey(r: String, m: String): String {
     val rList = r.split("\\x").toTypedArray()
     var n = ""
     val decodedM = base64Decode(m.reversed())
-    for (s in decodedM.split("|")) {
-        n += "\\x" + rList[Integer.parseInt(s) + 1]
-    }
+    for (s in decodedM.split("|")) { n += "\\x" + rList[Integer.parseInt(s) + 1] }
     return n
 }
 
-// --- Helpers Kriptografi ---
-
+// --- Kriptografi ---
 object VidrockHelper {
     private const val Ww = "x7k9mPqT2rWvY8zA5bC3nF6hJ2lK4mN9"
     fun encrypt(r: Int?, e: String, t: Int?, n: Int?): String {
         val s = if (e == "tv") "${r}_${t}_${n}" else r.toString()
         val keyBytes = Ww.toByteArray(Charsets.UTF_8)
         val ivBytes = Ww.substring(0, 16).toByteArray(Charsets.UTF_8)
-        val secretKey = SecretKeySpec(keyBytes, "AES")
-        val ivSpec = IvParameterSpec(ivBytes)
         val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
-        cipher.init(Cipher.ENCRYPT_MODE, secretKey, ivSpec)
+        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(keyBytes, "AES"), IvParameterSpec(ivBytes))
         return base64UrlEncode(cipher.doFinal(s.toByteArray(Charsets.UTF_8)))
     }
 }
@@ -171,32 +116,22 @@ object VidsrcHelper {
     fun encryptAesCbc(plainText: String, keyText: String): String {
         val sha256 = MessageDigest.getInstance("SHA-256")
         val keyBytes = sha256.digest(keyText.toByteArray(Charsets.UTF_8))
-        val secretKey = SecretKeySpec(keyBytes, "AES")
-        val iv = ByteArray(16) { 0 }
-        val ivSpec = IvParameterSpec(iv)
         val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
-        cipher.init(Cipher.ENCRYPT_MODE, secretKey, ivSpec)
+        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(keyBytes, "AES"), IvParameterSpec(ByteArray(16) { 0 }))
         return base64UrlEncode(cipher.doFinal(plainText.toByteArray(Charsets.UTF_8)))
     }
 }
 
-// --- Bypass Hrefli & Cinematickit ---
-// (Disertakan kembali untuk kompatibilitas jika masih ada link manual)
-
+// --- Bypass Functions ---
 suspend fun bypassHrefli(url: String): String? {
     return try {
         val res = app.get(url).documentLarge
         val form = res.select("form#landing")
-        val action = form.attr("action")
         val data = form.select("input").associate { it.attr("name") to it.attr("value") }
-        
-        val res2 = app.post(action, data = data).documentLarge
+        val res2 = app.post(form.attr("action"), data = data).documentLarge
         val skToken = res2.selectFirst("script:containsData(?go=)")?.data()?.substringAfter("?go=")?.substringBefore("\"") ?: return null
-        
-        val finalUrl = app.get(getBaseUrl(url) + "?go=$skToken", cookies = mapOf(skToken to (data["_wp_http2"] ?: ""))).documentLarge
+        app.get(getBaseUrl(url) + "?go=$skToken", cookies = mapOf(skToken to (data["_wp_http2"] ?: ""))).documentLarge
             .selectFirst("meta[http-equiv=refresh]")?.attr("content")?.substringAfter("url=")
-            
-        finalUrl
     } catch (e: Exception) { null }
 }
 
@@ -204,10 +139,22 @@ suspend fun bypassHrefli(url: String): String? {
 suspend fun cinematickitBypass(url: String): String? {
     return try {
         val encoded = url.substringAfter("safelink=").substringBefore("-")
-        val decoded = base64Decode(encoded)
-        val doc = app.get(decoded).documentLarge
-        val goValue = doc.select("input[name=go]").attr("value")
+        val goValue = app.get(base64Decode(encoded)).documentLarge.select("input[name=go]").attr("value")
         val nextUrl = base64Decode(goValue)
         if(nextUrl.startsWith("http")) nextUrl else null
     } catch (e: Exception) { null }
+}
+
+// --- FUNGSI YANG HILANG DIKEMBALIKAN ---
+@RequiresApi(Build.VERSION_CODES.O)
+suspend fun cinematickitloadBypass(url: String): String? {
+    return try {
+        val encodedLink = url.replace("&#038;", "&").substringAfter("safelink=").substringBefore("-")
+        if (encodedLink.isEmpty()) return null
+        val goValue = app.get(base64Decode(encodedLink)).documentLarge.select("form#landing input[name=go]").attr("value")
+        return base64Decode(goValue)
+    } catch (e: Exception) {
+        e.printStackTrace()
+        null
+    }
 }
