@@ -81,37 +81,42 @@ open class Adicinemax21 : TmdbProvider() {
     }
 
     override val mainPage = mainPageOf(
-        // 1. Trending & Popular
+        // 1. Trending & Popular (Campuran)
         "$tmdbAPI/trending/movie/day?api_key=$apiKey&region=US&without_genres=16" to "Trending Movies",
         "$tmdbAPI/movie/popular?api_key=$apiKey&region=US&without_genres=16" to "Popular Movies",
-        "$tmdbAPI/movie/top_rated?api_key=$apiKey&region=US&without_genres=16" to "Top Rated Movies",
-        "$tmdbAPI/movie/upcoming?api_key=$apiKey&region=US&without_genres=16" to "Upcoming Movies",
+        "$tmdbAPI/tv/popular?api_key=$apiKey&region=US&without_genres=16" to "Popular TV Shows",
+        
+        // 2. Streaming Services (DIPERBAIKI)
+        // Netflix (Network ID: 213)
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_networks=213&sort_by=popularity.desc&without_genres=16" to "Netflix Originals",
+        
+        // WeTV / Tencent Video (Network ID: 3399) - Diperbaiki dengan sort dan language
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_networks=3399&sort_by=popularity.desc&without_genres=16" to "WeTV Originals",
+        
+        // Viu (Tidak punya Network ID tunggal, menggunakan bahasa Asia Tenggara + Korea)
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko|th|zh&sort_by=popularity.desc&without_genres=16" to "Viu / Asian Premium",
 
-        // 2. Indonesian Content (Local Pride)
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=id&without_genres=16" to "Indonesian Movies",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=id&without_genres=16" to "Indonesian Series",
+        // 3. Local Pride (Indonesia)
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=id&sort_by=popularity.desc" to "Indonesian Movies",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=id&sort_by=popularity.desc" to "Indonesian Series",
 
-        // 3. Korean Content (Viu/Netflix Vibes)
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&without_genres=16" to "Korean Movies",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&without_genres=16" to "K-Dramas",
+        // 4. Korean & Chinese (Drakor & Dracin)
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&sort_by=popularity.desc&without_genres=16" to "Korean Dramas",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=zh&sort_by=popularity.desc&without_genres=16" to "Chinese Dramas",
 
-        // 4. Chinese Content (WeTV Vibes)
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=zh&without_genres=16" to "Chinese Movies",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=zh&without_genres=16" to "C-Dramas",
-
-        // 5. Streaming Giants Series
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_networks=213&without_genres=16" to "Netflix Originals",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_networks=3399&without_genres=16" to "WeTV Originals", // Tencent/WeTV
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=th|vi|tl&without_genres=16" to "Asian TV Shows", // Covers Viu (Thai, Viet, etc)
-
-        // 6. International Genres (Excluding Anime/Cartoon ID 16)
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=28&without_genres=16" to "Action Movies",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=878&without_genres=16" to "Sci-Fi Movies",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=27&without_genres=16" to "Horror Movies",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=10749&without_genres=16" to "Romance Movies",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=35&without_genres=16" to "Comedy Movies",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=53&without_genres=16" to "Thriller Movies",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=18&without_genres=16" to "Drama Movies",
+        // 5. International Genres (Film Barat dll)
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=28&sort_by=popularity.desc&without_genres=16" to "Action Movies",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=878&sort_by=popularity.desc&without_genres=16" to "Sci-Fi Movies",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=27&sort_by=popularity.desc&without_genres=16" to "Horror Movies",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=10749&sort_by=popularity.desc&without_genres=16" to "Romance Movies",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=35&sort_by=popularity.desc&without_genres=16" to "Comedy Movies",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=53&sort_by=popularity.desc&without_genres=16" to "Thriller Movies",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=18&sort_by=popularity.desc&without_genres=16" to "Drama Movies",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=12&sort_by=popularity.desc&without_genres=16" to "Adventure Movies",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=9648&sort_by=popularity.desc&without_genres=16" to "Mystery Movies",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=14&sort_by=popularity.desc&without_genres=16" to "Fantasy Movies",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=10752&sort_by=popularity.desc&without_genres=16" to "War Movies",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=80&sort_by=popularity.desc&without_genres=16" to "Crime Movies",
     )
 
     private fun getImageUrl(link: String?): String? {
@@ -125,12 +130,10 @@ open class Adicinemax21 : TmdbProvider() {
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        // Filter tambahan untuk memastikan tidak ada konten dewasa/animasi yang lolos
         val adultQuery =
             if (settingsForProvider.enableAdult) "" else "&without_keywords=190370|13059|226161|195669"
         val type = if (request.data.contains("/movie")) "movie" else "tv"
         
-        // Request ke TMDB dengan halaman yang sesuai
         val home = app.get("${request.data}$adultQuery&page=$page")
             .parsedSafe<Results>()?.results?.mapNotNull { media ->
                 media.toSearchResponse(type)
@@ -160,9 +163,7 @@ open class Adicinemax21 : TmdbProvider() {
 
     override suspend fun load(url: String): LoadResponse? {
         val data = try {
-            // Handle case where url is a direct TMDB URL
             if (url.startsWith("https://www.themoviedb.org/")) {
-                // Extract ID and type from TMDB URL
                 val segments = url.removeSuffix("/").split("/")
                 val id = segments.lastOrNull()?.toIntOrNull()
                 val type = when {
@@ -172,7 +173,6 @@ open class Adicinemax21 : TmdbProvider() {
                 }
                 Data(id = id, type = type)
             } else {
-                // Original JSON parsing for internal URLs
                 parseJson<Data>(url)
             }
         } catch (e: Exception) {
@@ -198,9 +198,6 @@ open class Adicinemax21 : TmdbProvider() {
         
         val genres = res.genres?.mapNotNull { it.name }
 
-        // Logika Deteksi Jenis Konten
-        // Memastikan Animasi tidak diprioritaskan kecuali dicari secara spesifik,
-        // tapi karena kategori utama sudah difilter, ini hanya untuk penandaan internal.
         val isCartoon = genres?.contains("Animation") ?: false
         val isAnime = isCartoon && (res.original_language == "zh" || res.original_language == "ja")
         val isAsian = !isAnime && (res.original_language == "zh" || res.original_language == "ko")
@@ -398,9 +395,6 @@ open class Adicinemax21 : TmdbProvider() {
                     callback
                 )
             }
-            // DINONAKTIFKAN (DIHAPUS):
-            // invokeVidsrccx
-            // invokeVidrock
         )
 
         return true
