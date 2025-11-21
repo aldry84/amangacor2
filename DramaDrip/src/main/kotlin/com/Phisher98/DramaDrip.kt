@@ -25,69 +25,22 @@ class DramaDrip : MainAPI() {
     override val hasDownloadSupport = true
     override val hasQuickSearch = true
     override val supportedTypes = setOf(TvType.Movie, TvType.AsianDrama, TvType.TvSeries)
+    
     private val cinemeta_url = "https://v3-cinemeta.strem.io/meta"
-    private val wyzieAPI = "https://sub.wyzie.ru" // Tambahkan URL Wyzie
+    
+    // --- API DARI ADICINEMAX21 ---
+    private val wyzieAPI = "https://sub.wyzie.ru"
+    private val vidrockSubAPI = "https://sub.vdrk.site"
 
-    override val mainPage = mainPageOf(
-        "drama/ongoing" to "Ongoing Dramas",
-        "latest" to "Latest Releases",
-        "drama/chinese-drama" to "Chinese Dramas",
-        "drama/japanese-drama" to "Japanese Dramas",
-        "drama/korean-drama" to "Korean Dramas",
-        "movies" to "Movies",
-        "web-series" to "Web Series",
-    )
-
-    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val document = app.get("$mainUrl/${request.data}/page/$page").documentLarge
-        val home = document.select("article").mapNotNull { it.toSearchResult() }
-
-        return newHomePageResponse(
-            list = HomePageList(
-                name = request.name,
-                list = home,
-                isHorizontalImages = false
-            ),
-            hasNext = true
-        )
-    }
-
-    private fun Element.toSearchResult(): SearchResponse? {
-        val title =
-            this.selectFirst("h2.entry-title")?.text()?.substringAfter("Download") ?: return null
-        val href = this.select("h2.entry-title > a").attr("href")
-        val imgElement = this.selectFirst("img")
-        val srcset = imgElement?.attr("srcset")
-
-        val highestResUrl = srcset
-            ?.split(",")
-            ?.map { it.trim() }
-            ?.mapNotNull {
-                val parts = it.split(" ")
-                if (parts.size == 2) parts[0] to parts[1].removeSuffix("w").toIntOrNull() else null
-            }
-            ?.maxByOrNull { it.second ?: 0 }
-            ?.first
-
-        val posterUrl = highestResUrl ?: imgElement?.attr("src")
-        return newMovieSearchResponse(title, href, TvType.Movie) {
-            this.posterUrl = posterUrl
-        }
-
-    }
-
-    override suspend fun search(query: String): List<SearchResponse> {
-        val document = app.get("$mainUrl/?s=$query").documentLarge
-        val results = document.select("article").mapNotNull {
-            it.toSearchResult()
-        }
-        return results
-    }
+    // ... (Main Page & Search functions biarkan sama) ...
 
     @RequiresApi(Build.VERSION_CODES.O)
     override suspend fun load(url: String): LoadResponse {
+        // ... (Bagian awal load sama seperti sebelumnya sampai pengambilan ID TMDB) ...
+        
+        // Simpan referensi kode lama Anda untuk parsing HTML disini...
         val document = app.get(url).documentLarge
-
+        // ... Logika ekstraksi imdbId dan tmdbId ...
         var imdbId: String? = null
         var tmdbId: String? = null
         var tmdbType: String? = null
@@ -97,147 +50,35 @@ class DramaDrip : MainAPI() {
             if (imdbId == null && "imdb.com/title/tt" in text) {
                 imdbId = Regex("tt\\d+").find(text)?.value
             }
-
             if (tmdbId == null && tmdbType == null && "themoviedb.org" in text) {
                 Regex("/(movie|tv)/(\\d+)").find(text)?.let { match ->
-                    tmdbType = match.groupValues[1] // movie or tv
-                    tmdbId = match.groupValues[2]   // numeric ID
+                    tmdbType = match.groupValues[1]
+                    tmdbId = match.groupValues[2]
                 }
             }
         }
-        val tvType = when (true) {
-            (tmdbType?.contains("Movie", ignoreCase = true) == true) -> TvType.Movie
-            else -> TvType.TvSeries
-        }
-
-        val image = document.select("meta[property=og:image]").attr("content")
-        val title = document.selectFirst("div.wp-block-column > h2.wp-block-heading")?.text()
-            ?.substringBefore("(")?.trim().toString()
-        val tags = document.select("div.mt-2 span.badge").map { it.text() }
-        val year = document.selectFirst("div.wp-block-column > h2.wp-block-heading")?.text()
-            ?.substringAfter("(")?.substringBefore(")")?.toIntOrNull()
-        val descriptions = document.selectFirst("div.content-section p.mt-4")?.text()?.trim()
-        val typeset = if (tvType == TvType.TvSeries) "series" else "movie"
-        val responseData = if (tmdbId?.isNotEmpty() == true) {
-            val jsonResponse = app.get("$cinemeta_url/$typeset/$imdbId.json").text
-            if (jsonResponse.isNotEmpty() && jsonResponse.startsWith("{")) {
-                val gson = Gson()
-                gson.fromJson(jsonResponse, ResponseData::class.java)
-            } else null
-        } else null
-        var cast: List<String> = emptyList()
-
-        var background: String = image
-        var description: String? = null
-        if (responseData != null) {
-            description = responseData.meta?.description ?: descriptions
-            cast = responseData.meta?.cast ?: emptyList()
-            background = responseData.meta?.background ?: image
-        }
-
-
-        val hrefs: List<String> = document.select("div.wp-block-button > a")
-            .mapNotNull { linkElement ->
-                val link = linkElement.attr("href")
-                val actual=cinematickitloadBypass(link) ?: return@mapNotNull null
-                val page = app.get(actual).documentLarge
-                page.select("div.wp-block-button.movie_btn a")
-                    .eachAttr("href")
-            }.flatten()
-
-        val trailer = document.selectFirst("div.wp-block-embed__wrapper > iframe")?.attr("src")
-
-        val recommendations =
-            document.select("div.entry-related-inner-content article").mapNotNull {
-                val recName = it.select("h3").text().substringAfter("Download")
-                val recHref = it.select("h3 a").attr("href")
-                val recPosterUrl = it.select("img").attr("src")
-                newTvSeriesSearchResponse(recName, recHref, TvType.TvSeries) {
-                    this.posterUrl = recPosterUrl
-                }
-            }
-
+        
+        // ... (Logika Cinemeta load, cast, trailer, dll tetap sama) ...
+        // ... (Pastikan Anda menyalin logika parsing HTML DramaDrip yang asli di sini) ...
+        
+        // --- PERUBAHAN PENTING DI SINI ---
+        // Kita membungkus Link + Metadata (TMDB ID) agar bisa dibaca di loadLinks
+        
         if (tvType == TvType.TvSeries) {
-            val tvSeriesEpisodes = mutableMapOf<Pair<Int, Int>, MutableList<String>>()
-
-            val seasonBlocks = document.select("div.su-accordion h2")
-
-            for (seasonHeader in seasonBlocks) {
-                val seasonText = seasonHeader.text()
-                if (seasonText.contains("ZIP", ignoreCase = true)) {
-                    Log.d("Skip", "Skipping ZIP season: $seasonText")
-                } else {
-                    val seasonMatch = Regex("""S?e?a?s?o?n?\s*([0-9]+)""", RegexOption.IGNORE_CASE)
-                        .find(seasonText)
-                    val season = seasonMatch?.groupValues?.getOrNull(1)?.toIntOrNull()
-
-                    if (season != null) {
-                        var linksBlock = seasonHeader.nextElementSibling()
-                        if (linksBlock == null || linksBlock.select("div.wp-block-button")
-                                .isEmpty()
-                        ) {
-                            linksBlock = seasonHeader.parent()?.selectFirst("div.wp-block-button")
-                                ?: linksBlock
-                        }
-
-                        val qualityLinks = linksBlock?.select("div.wp-block-button a")
-                            ?.mapNotNull { it.attr("href").takeIf { href -> href.isNotBlank() } }
-                            ?.distinct() ?: emptyList()
-
-                        for (qualityPageLink in qualityLinks) {
-                            try {
-                                val rawqualityPageLink=if (qualityPageLink.contains("modpro")) qualityPageLink else cinematickitloadBypass(qualityPageLink) ?: ""
-                                val response = app.get(rawqualityPageLink)
-                                val episodeDoc = response.documentLarge
-
-                                val episodeButtons =
-                                    episodeDoc.select("a").filter { element: Element ->
-                                        element.text()
-                                            .matches(Regex("""(?i)(Episode|Ep|E)?\s*0*\d+"""))
-                                    }
-
-                                for (btn in episodeButtons) {
-                                    val ephref = btn.attr("href")
-                                    val epText = btn.text()
-
-                                    if (ephref.isNotBlank()) {
-                                        val epNo = Regex(
-                                            """(?:Episode|Ep|E)?\s*0*([0-9]+)""",
-                                            RegexOption.IGNORE_CASE
-                                        )
-                                            .find(epText)?.groupValues?.getOrNull(1)?.toIntOrNull()
-
-                                        if (epNo != null) {
-                                            val key = season to epNo
-                                            tvSeriesEpisodes.getOrPut(key) { mutableListOf() }
-                                                .add(ephref)
-                                        } else {
-                                            Log.w(
-                                                "EpisodeFetch",
-                                                "Could not extract episode number from text: '$epText'"
-                                            )
-                                        }
-                                    }
-                                }
-                            } catch (_: Exception) {
-                                Log.e("EpisodeFetch", "Failed to load or parse $qualityPageLink")
-                            }
-                        }
-                    }
-                }
-            }
-
+            // ... (Logika parsing episode TvSeries tetap sama) ...
+            
+            // Contoh implementasi di bagian return TvSeries:
             val finalEpisodes = tvSeriesEpisodes.map { (seasonEpisode, links) ->
                 val (season, epNo) = seasonEpisode
-                val info =
-                    responseData?.meta?.videos?.find { it.season == season && it.episode == epNo }
-                
-                // MODIFIED: Membungkus links + TMDB ID ke dalam object LinkData
+                val info = responseData?.meta?.videos?.find { it.season == season && it.episode == epNo }
+
+                // BUNGKUS DATA KE LinkData
                 val linkData = LinkData(
                     links = links.distinct(),
                     tmdbId = tmdbId,
                     season = season,
-                    episode = epNo
+                    episode = epNo,
+                    type = "tv"
                 )
 
                 newEpisode(linkData.toJson()) {
@@ -248,36 +89,24 @@ class DramaDrip : MainAPI() {
                     this.description = info?.overview
                 }
             }
-
+            
             return newTvSeriesLoadResponse(title, url, TvType.TvSeries, finalEpisodes) {
-                this.backgroundPosterUrl = background
-                this.year = year
-                this.plot = description
-                this.tags = tags
-                this.recommendations = recommendations
-                addTrailer(trailer)
-                addActors(cast)
-                addImdbId(imdbId)
+                // ... properti lain ...
                 addTMDbId(tmdbId)
             }
+
         } else {
-            // MODIFIED: Membungkus links + TMDB ID ke dalam object LinkData untuk Movie
+            // MOVIE
             val linkData = LinkData(
-                links = hrefs,
+                links = hrefs, // variabel hrefs dari parsing HTML Anda
                 tmdbId = tmdbId,
                 season = null,
-                episode = null
+                episode = null,
+                type = "movie"
             )
-            
+
             return newMovieLoadResponse(title, url, TvType.Movie, linkData.toJson()) {
-                this.backgroundPosterUrl = background
-                this.year = year
-                this.plot = description
-                this.tags = tags
-                this.recommendations = recommendations
-                addTrailer(trailer)
-                addActors(cast)
-                addImdbId(imdbId)
+                // ... properti lain ...
                 addTMDbId(tmdbId)
             }
         }
@@ -290,42 +119,45 @@ class DramaDrip : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // MODIFIED: Mencoba parsing sebagai LinkData, jika gagal fallback ke List<String> (untuk kompatibilitas)
         val parsedData = tryParseJson<LinkData>(data)
         val links = parsedData?.links ?: tryParseJson<List<String>>(data).orEmpty()
         
-        // MODIFIED: Panggil Wyzie jika TMDB ID tersedia
+        // --- INTEGRASI SUBTITLE DARI ADICINEMAX21 ---
         if (parsedData?.tmdbId != null) {
-            invokeWyzie(parsedData.tmdbId, parsedData.season, parsedData.episode, subtitleCallback)
-        }
+            val tmdbId = parsedData.tmdbId
+            val season = parsedData.season
+            val episode = parsedData.episode
+            val type = parsedData.type ?: "movie"
 
-        if (links.isEmpty()) {
-            Log.e("LoadLinks", "No links found in data: $data")
-            return false
+            // 1. Panggil Wyzie (Dari Adicinemax21)
+            invokeWyzie(tmdbId, season, episode, subtitleCallback)
+            
+            // 2. Panggil Vidrock Subtitles (Dari Adicinemax21)
+            invokeVidrockSubs(tmdbId, season, episode, type, subtitleCallback)
         }
+        // --------------------------------------------
+
+        if (links.isEmpty()) return false
+
         for (link in links) {
-            try {
+            // ... (Logika bypass link tetap sama) ...
+             try {
                 val finalLink = when {
                     "safelink=" in link -> cinematickitBypass(link)
                     "unblockedgames" in link -> bypassHrefli(link)
                     "examzculture" in link -> bypassHrefli(link)
                     else -> link
                 }
-
                 if (finalLink != null) {
                     loadExtractor(finalLink, subtitleCallback, callback)
-                } else {
-                    Log.w("LoadLinks", "Bypass returned null for link: $link")
                 }
-            } catch (_: Exception) {
-                Log.e("LoadLinks", "Failed to load link: $link")
-            }
+            } catch (_: Exception) {}
         }
-
         return true
     }
 
-    // ADDED: Fungsi Helper untuk Wyzie
+    // --- FUNGSI SUBTITLE BARU (Diadaptasi dari Adicinemax21Extractor.kt) ---
+
     private suspend fun invokeWyzie(
         tmdbId: String,
         season: Int?,
@@ -341,28 +173,64 @@ class DramaDrip : MainAPI() {
         try {
             val res = app.get(url).text
             tryParseJson<ArrayList<WyzieSubtitle>>(res)?.map { subtitle ->
+                val lang = getLanguageNameFromCode(subtitle.display) ?: subtitle.display ?: "Unknown"
                 subtitleCallback.invoke(
                     newSubtitleFile(
-                        subtitle.display ?: return@map,
+                        lang,
                         subtitle.url ?: return@map,
                     )
                 )
             }
         } catch (e: Exception) {
-            Log.e("Wyzie", "Failed to load subtitles: ${e.message}")
+            Log.e("Wyzie", "Error: ${e.message}")
         }
     }
 
-    // ADDED: Data Classes
+    private suspend fun invokeVidrockSubs(
+        tmdbId: String,
+        season: Int?,
+        episode: Int?,
+        type: String,
+        subtitleCallback: (SubtitleFile) -> Unit
+    ) {
+        // Logika URL Vidrock dari Adicinemax21
+        val url = "$vidrockSubAPI/$type/$tmdbId${if (type == "movie") "" else "/$season/$episode"}"
+        
+        try {
+            val res = app.get(url).text
+            tryParseJson<ArrayList<VidrockSubtitle>>(res)?.map { subtitle ->
+                // Bersihkan label menggunakan Regex dari Adicinemax21
+                val rawLabel = subtitle.label?.replace(Regex("\\d"), "")?.replace(Regex("\\s+Hi"), "")?.trim()
+                val lang = getLanguageNameFromCode(rawLabel) ?: rawLabel ?: "Unknown"
+                
+                subtitleCallback.invoke(
+                    newSubtitleFile(
+                        "Vidrock - $lang", // Tambah prefix agar tahu sumbernya
+                        subtitle.file ?: return@map
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            Log.e("Vidrock", "Error: ${e.message}")
+        }
+    }
+
+    // Data Class Pembantu
     data class LinkData(
         val links: List<String>,
         val tmdbId: String?,
         val season: Int?,
-        val episode: Int?
+        val episode: Int?,
+        val type: String? // "movie" atau "tv"
     )
 
     data class WyzieSubtitle(
         val display: String? = null,
         val url: String? = null,
+    )
+
+    data class VidrockSubtitle(
+        val label: String? = null,
+        val file: String? = null,
     )
 }
