@@ -8,14 +8,9 @@ import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 @CloudstreamPlugin
 class DramaDripProvider: BasePlugin() {
     override fun load() {
-        // Mendaftarkan API Utama
         registerMainAPI(DramaDrip())
-        
-        // PERBAIKAN: Ganti Driveseed() dengan Jeniusplay2()
-        // Driveseed sudah dihapus, Jeniusplay2 adalah extractor baru untuk Idlix
-        registerExtractorAPI(Jeniusplay2())
+        registerExtractorAPI(Jeniusplay()) // PERBAIKAN: Jeniusplay2 -> Jeniusplay
     }
-
     companion object {
         private const val DOMAINS_URL =
             "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/domains.json"
