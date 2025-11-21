@@ -89,16 +89,19 @@ open class Adicinemax21 : TmdbProvider() {
         // 2. Streaming Giants (Netflix & HBO)
         // Netflix Series (Network ID 213)
         "$tmdbAPI/discover/tv?api_key=$apiKey&with_networks=213&sort_by=popularity.desc&without_genres=16" to "Netflix Originals",
-        // Netflix Movies (Provider ID 8) - Mencakup Horror dll tapi bukan Series
+        // Netflix Movies (Provider ID 8)
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_watch_providers=8&watch_region=US&sort_by=popularity.desc&without_genres=16" to "Netflix Movies",
-        // HBO (Network ID 49)
+        
+        // HBO Series (Network ID 49)
         "$tmdbAPI/discover/tv?api_key=$apiKey&with_networks=49&sort_by=popularity.desc&without_genres=16" to "HBO Originals",
+        // HBO Movies (Provider ID 384/1899 - HBO Max/Max)
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_watch_providers=384|1899&watch_region=US&sort_by=popularity.desc&without_genres=16" to "HBO Movies",
 
         // 3. Indonesian Content (Spesifik)
         // Series Indonesia
         "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=id&sort_by=popularity.desc" to "Indonesian Series",
         // Movie Indonesia (Non-Horror) -> Exclude Animation(16) & Horror(27)
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=id&without_genres=16,27&sort_by=popularity.desc" to "Indonesian Movies (Non-Horror)",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=id&without_genres=16,27&sort_by=popularity.desc" to "Indonesian Movies",
         // Movie Indonesia (Horror Only) -> Include Horror(27)
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=id&with_genres=27&without_genres=16&sort_by=popularity.desc" to "Indonesian Horror",
 
@@ -113,7 +116,8 @@ open class Adicinemax21 : TmdbProvider() {
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=10749&sort_by=popularity.desc&without_genres=16" to "Romance Movies",
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=35&sort_by=popularity.desc&without_genres=16" to "Comedy Movies",
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=53&sort_by=popularity.desc&without_genres=16" to "Thriller Movies",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=18&sort_by=popularity.desc&without_genres=16" to "Drama Movies",
+        // GANTI NAMA: Drama Movies -> Movies Lagi
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=18&sort_by=popularity.desc&without_genres=16" to "Movies Lagi",
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=12&sort_by=popularity.desc&without_genres=16" to "Adventure Movies",
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=9648&sort_by=popularity.desc&without_genres=16" to "Mystery Movies",
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=14&sort_by=popularity.desc&without_genres=16" to "Fantasy Movies",
@@ -465,8 +469,6 @@ open class Adicinemax21 : TmdbProvider() {
     data class Seasons(
         @JsonProperty("id") val id: Int? = null,
         @JsonProperty("name") val name: String? = null,
-        @JsonProperty("season_number") val seasonNumber: Int? = null,
-        @JsonProperty("air_date") val airDate: String? = null,
     )
 
     data class Cast(
