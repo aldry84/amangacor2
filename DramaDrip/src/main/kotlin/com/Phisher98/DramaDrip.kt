@@ -15,7 +15,8 @@ import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import kotlinx.coroutines.runBlocking
 import org.jsoup.nodes.Element
 
-class DramaDrip : MainAPI() {
+// PERBAIKAN: Menambahkan 'open' di sini
+open class DramaDrip : MainAPI() {
     override var mainUrl: String = runBlocking {
         DramaDripProvider.getDomains()?.dramadrip ?: "https://dramadrip.com"
     }
@@ -32,10 +33,9 @@ class DramaDrip : MainAPI() {
         const val vidsrcccAPI = "https://vidsrc.cc"
         const val vidlinkAPI = "https://vidlink.pro"
         const val vixsrcAPI = "https://vixsrc.to"
-        const val mappleAPI = "https://mapple.uk" // Diperlukan untuk fallback Vixsrc
+        const val mappleAPI = "https://mapple.uk" 
     }
 
-    // Data class untuk mengirim ID dari fungsi Load ke LoadLinks
     data class LinkData(
         val tmdbId: Int? = null,
         val imdbId: String? = null,
@@ -177,18 +177,12 @@ class DramaDrip : MainAPI() {
                     val seasonMatch = Regex("""S?e?a?s?o?n?\s*([0-9]+)""", RegexOption.IGNORE_CASE).find(seasonText)
                     val seasonNum = seasonMatch?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 1
 
-                    // Scrape for episode numbers to create the list (walaupun kita pakai API, kita perlu list episode)
-                    // Kita ambil dari buttons
                     var linksBlock = seasonHeader.nextElementSibling()
                     if (linksBlock == null || linksBlock.select("div.wp-block-button").isEmpty()) {
                          linksBlock = seasonHeader.parent()?.selectFirst("div.wp-block-button") ?: linksBlock
                     }
                     
                     val episodeButtons = linksBlock?.select("div.wp-block-button a") ?: emptyList()
-                    
-                    // Karena kita pindah ke API based (Vidlink/Vidsrc), kita bisa generate episode list dari TMDB atau
-                    // pakai scraping yang ada cuma buat nentuin episode number.
-                    // Disini saya pakai scraping yang ada untuk list episode yang tersedia di DramaDrip
                     
                     episodeButtons.forEach { btn ->
                          val epText = btn.text()
@@ -197,7 +191,7 @@ class DramaDrip : MainAPI() {
                          
                          if(epNo != null) {
                              val info = responseData?.meta?.videos?.find { it.season == seasonNum && it.episode == epNo }
-                             // Buat LinkData baru untuk setiap episode
+                             
                              val linkData = LinkData(
                                  tmdbId = tmdbId?.toIntOrNull(),
                                  imdbId = imdbId,
@@ -234,7 +228,6 @@ class DramaDrip : MainAPI() {
                 addTMDbId(tmdbId)
             }
         } else {
-            // Untuk Movie
              val linkData = LinkData(
                  tmdbId = tmdbId?.toIntOrNull(),
                  imdbId = imdbId,
@@ -266,14 +259,8 @@ class DramaDrip : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        
-        // Parse LinkData
         val req = tryParseJson<LinkData>(data) ?: return false
         
-        // Urutan Extractor Sesuai Permintaan:
-        
-        // 1. JeniusPlay (via Idlix search logic)
-        // Ini scraping web, mungkin sedikit lambat tapi requested as #1
         DramaDripExtractor.invokeIdlix(
             title = req.title,
             year = req.year,
@@ -283,7 +270,6 @@ class DramaDrip : MainAPI() {
             callback = callback
         )
 
-        // 2. Vidlink (API)
         DramaDripExtractor.invokeVidlink(
             tmdbId = req.tmdbId,
             season = req.season,
@@ -291,7 +277,6 @@ class DramaDrip : MainAPI() {
             callback = callback
         )
 
-        // 3. VidPlay (via Vidsrccc)
         DramaDripExtractor.invokeVidsrccc(
             tmdbId = req.tmdbId,
             imdbId = req.imdbId,
@@ -301,7 +286,6 @@ class DramaDrip : MainAPI() {
             callback = callback
         )
 
-        // 4. Vixsrc Alpha
         DramaDripExtractor.invokeVixsrc(
             tmdbId = req.tmdbId,
             season = req.season,
