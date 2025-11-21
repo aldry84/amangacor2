@@ -1,81 +1,214 @@
 package com.Phisher98
 
 import android.os.Build
-import android.util.Base64
 import androidx.annotation.RequiresApi
+import com.lagradost.api.Log
 import com.lagradost.cloudstream3.app
-import com.lagradost.cloudstream3.utils.Qualities
+import org.jsoup.nodes.Document
 import java.net.URI
-import java.security.MessageDigest
-import java.util.Locale
+import java.net.URLDecoder
+import java.net.URLEncoder
+import java.util.Base64
 import javax.crypto.Cipher
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
-import kotlin.text.isLowerCase
+import java.security.MessageDigest
 
-// --- Data Classes ---
 data class Meta(
-    val id: String?, val imdb_id: String?, val type: String?, val poster: String?, val logo: String?, val background: String?,
-    val moviedb_id: Int?, val name: String?, val description: String?, val genre: List<String>?, val releaseInfo: String?,
-    val status: String?, val runtime: String?, val cast: List<String>?, val language: String?, val country: String?,
-    val imdbRating: String?, val slug: String?, val year: String?, val videos: List<EpisodeDetails>?
+    val id: String?,
+    val imdb_id: String?,
+    val type: String?,
+    val poster: String?,
+    val logo: String?,
+    val background: String?,
+    val moviedb_id: Int?,
+    val name: String?,
+    val description: String?,
+    val genre: List<String>?,
+    val releaseInfo: String?,
+    val status: String?,
+    val runtime: String?,
+    val cast: List<String>?,
+    val language: String?,
+    val country: String?,
+    val imdbRating: String?,
+    val slug: String?,
+    val year: String?,
+    val videos: List<EpisodeDetails>?
 )
 
 data class EpisodeDetails(
-    val id: String?, val name: String?, val title: String?, val season: Int?, val episode: Int?,
-    val released: String?, val overview: String?, val thumbnail: String?, val moviedb_id: Int?
+    val id: String?,
+    val name: String?,
+    val title: String?,
+    val season: Int?,
+    val episode: Int?,
+    val released: String?,
+    val overview: String?,
+    val thumbnail: String?,
+    val moviedb_id: Int?
 )
 
-data class ResponseData(val meta: Meta?)
+data class ResponseData(
+    val meta: Meta?
+)
 
-// --- Helpers ---
-fun getLanguageNameFromCode(code: String?): String? {
-    return code?.split("_")?.first()?.let { langCode ->
-        try {
-            Locale(langCode).displayLanguage.replaceFirstChar {
-                if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString()
-            }
-        } catch (e: Exception) { langCode }
+// --- DramaDrip Original Helpers ---
+
+suspend fun bypassHrefli(url: String): String? {
+    fun Document.getFormUrl(): String {
+        return this.select("form#landing").attr("action")
+    }
+
+    fun Document.getFormData(): Map<String, String> {
+        return this.select("form#landing input").associate { it.attr("name") to it.attr("value") }
+    }
+
+    val host = getBaseUrl(url)
+    var res = app.get(url).documentLarge
+    var formUrl = res.getFormUrl()
+    var formData = res.getFormData()
+
+    res = app.post(formUrl, data = formData).documentLarge
+    formUrl = res.getFormUrl()
+    formData = res.getFormData()
+
+    res = app.post(formUrl, data = formData).documentLarge
+    val skToken = res.selectFirst("script:containsData(?go=)")?.data()?.substringAfter("?go=")
+        ?.substringBefore("\"") ?: return null
+    val driveUrl = app.get(
+        "$host?go=$skToken", cookies = mapOf(
+            skToken to "${formData["_wp_http2"]}"
+        )
+    ).documentLarge.selectFirst("meta[http-equiv=refresh]")?.attr("content")?.substringAfter("url=")
+    val path = app.get(driveUrl ?: return null).text.substringAfter("replace(\"")
+        .substringBefore("\")")
+    if (path == "/404") return null
+    return fixUrl(path, getBaseUrl(driveUrl))
+}
+
+fun getBaseUrl(url: String): String {
+    return URI(url).let {
+        "${it.scheme}://${it.host}"
     }
 }
-
-fun getEpisodeSlug(season: Int? = null, episode: Int? = null): Pair<String, String> {
-    return if (season == null && episode == null) "" to "" else (if (season!! < 10) "0$season" else "$season") to (if (episode!! < 10) "0$episode" else "$episode")
-}
-
-fun String?.createSlug(): String? = this?.filter { it.isWhitespace() || it.isLetterOrDigit() }?.trim()?.replace("\\s+".toRegex(), "-")?.lowercase()
-
-fun getQualityFromName(str: String?): Int {
-    return when {
-        str == null -> Qualities.Unknown.value
-        str.contains("4k", true) || str.contains("2160", true) -> Qualities.P2160.value
-        str.contains("1080", true) -> Qualities.P1080.value
-        str.contains("720", true) -> Qualities.P720.value
-        str.contains("480", true) -> Qualities.P480.value
-        str.contains("360", true) -> Qualities.P360.value
-        else -> Qualities.Unknown.value
-    }
-}
-
-fun getBaseUrl(url: String): String = URI(url).let { "${it.scheme}://${it.host}" }
 
 fun fixUrl(url: String, domain: String): String {
-    if (url.startsWith("http")) return url
-    if (url.isEmpty()) return ""
-    if (url.startsWith("//")) return "https:$url"
-    return if (url.startsWith('/')) domain + url else "$domain/$url"
+    if (url.startsWith("http")) {
+        return url
+    }
+    if (url.isEmpty()) {
+        return ""
+    }
+
+    val startsWithNoHttp = url.startsWith("//")
+    if (startsWithNoHttp) {
+        return "https:$url"
+    } else {
+        if (url.startsWith('/')) {
+            return domain + url
+        }
+        return "$domain/$url"
+    }
 }
 
-fun String.fixUrlBloat(): String = this.replace("\"", "").replace("\\", "")
+@RequiresApi(Build.VERSION_CODES.O)
+suspend fun cinematickitBypass(url: String): String? {
+    return try {
+        val cleanedUrl = url.replace("&#038;", "&")
+        val encodedLink = cleanedUrl.substringAfter("safelink=").substringBefore("-")
+        if (encodedLink.isEmpty()) return null
+        val decodedUrl = base64Decode(encodedLink)
+        val doc = app.get(decodedUrl).documentLarge
+        val goValue = doc.select("form#landing input[name=go]").attr("value")
+        if (goValue.isBlank()) return null
+        val decodedGoUrl = base64Decode(goValue).replace("&#038;", "&")
+        val responseDoc = app.get(decodedGoUrl).documentLarge
+        val script = responseDoc.select("script").firstOrNull { it.data().contains("window.location.replace") }?.data() ?: return null
+        val regex = Regex("""window\.location\.replace\s*\(\s*["'](.+?)["']\s*\)\s*;?""")
+        val match = regex.find(script) ?: return null
+        val redirectPath = match.groupValues[1]
+        return if (redirectPath.startsWith("http")) redirectPath else URI(decodedGoUrl).let { "${it.scheme}://${it.host}$redirectPath" }
+    } catch (e: Exception) {
+        e.printStackTrace()
+        null
+    }
+}
+
+@RequiresApi(Build.VERSION_CODES.O)
+suspend fun cinematickitloadBypass(url: String): String? {
+    return try {
+        val cleanedUrl = url.replace("&#038;", "&")
+        val encodedLink = cleanedUrl.substringAfter("safelink=").substringBefore("-")
+        if (encodedLink.isEmpty()) return null
+        val decodedUrl = base64Decode(encodedLink)
+        val doc = app.get(decodedUrl).documentLarge
+        val goValue = doc.select("form#landing input[name=go]").attr("value")
+        Log.d("Phisher",goValue)
+        return base64Decode(goValue)
+    } catch (e: Exception) {
+        e.printStackTrace()
+        null
+    }
+}
 
 @RequiresApi(Build.VERSION_CODES.O)
 fun base64Decode(string: String): String {
     val clean = string.trim().replace("\n", "").replace("\r", "")
     val padded = clean.padEnd((clean.length + 3) / 4 * 4, '=')
-    return try { String(Base64.decode(padded, Base64.DEFAULT), Charsets.UTF_8) } catch (e: Exception) { "" }
+    return try {
+        val decodedBytes = Base64.getDecoder().decode(padded)
+        String(decodedBytes, Charsets.UTF_8)
+    } catch (e: Exception) {
+        e.printStackTrace()
+        ""
+    }
 }
 
-fun base64UrlEncode(input: ByteArray): String = Base64.encodeToString(input, Base64.DEFAULT).replace("+", "-").replace("/", "_").replace("=", "").trim()
+// --- Adicinemax21 Helpers (Dibutuhkan untuk DramaDripExtractor) ---
+
+fun String.createSlug(): String? {
+    return this?.filter { it.isWhitespace() || it.isLetterOrDigit() }
+        ?.trim()
+        ?.replace("\\s+".toRegex(), "-")
+        ?.lowercase()
+}
+
+fun String.fixUrlBloat(): String {
+    return this.replace("\"", "").replace("\\", "")
+}
+
+fun base64Encode(input: ByteArray): String {
+    return Base64.getEncoder().encodeToString(input)
+}
+
+fun base64UrlEncode(input: ByteArray): String {
+    return base64Encode(input)
+        .replace("+", "-")
+        .replace("/", "_")
+        .replace("=", "")
+}
+
+fun encode(input: String): String = URLEncoder.encode(input, "utf-8").replace("+", "%20")
+
+fun generateWpKey(r: String, m: String): String {
+    val rList = r.split("\\x").toTypedArray()
+    var n = ""
+    val decodedM = safeBase64Decode(m.reversed())
+    for (s in decodedM.split("|")) {
+        n += "\\x" + rList[Integer.parseInt(s) + 1]
+    }
+    return n
+}
+
+fun safeBase64Decode(input: String): String {
+    var paddedInput = input
+    val remainder = input.length % 4
+    if (remainder != 0) {
+        paddedInput += "=".repeat(4 - remainder)
+    }
+    return String(Base64.getDecoder().decode(paddedInput), Charsets.UTF_8)
+}
 
 fun String.xorDecrypt(key: String): String {
     val sb = StringBuilder()
@@ -91,70 +224,19 @@ fun String.xorDecrypt(key: String): String {
     return sb.toString()
 }
 
-fun generateWpKey(r: String, m: String): String {
-    val rList = r.split("\\x").toTypedArray()
-    var n = ""
-    val decodedM = base64Decode(m.reversed())
-    for (s in decodedM.split("|")) { n += "\\x" + rList[Integer.parseInt(s) + 1] }
-    return n
-}
-
-// --- Kriptografi ---
-object VidrockHelper {
-    private const val Ww = "x7k9mPqT2rWvY8zA5bC3nF6hJ2lK4mN9"
-    fun encrypt(r: Int?, e: String, t: Int?, n: Int?): String {
-        val s = if (e == "tv") "${r}_${t}_${n}" else r.toString()
-        val keyBytes = Ww.toByteArray(Charsets.UTF_8)
-        val ivBytes = Ww.substring(0, 16).toByteArray(Charsets.UTF_8)
-        val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
-        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(keyBytes, "AES"), IvParameterSpec(ivBytes))
-        return base64UrlEncode(cipher.doFinal(s.toByteArray(Charsets.UTF_8)))
-    }
-}
-
 object VidsrcHelper {
     fun encryptAesCbc(plainText: String, keyText: String): String {
         val sha256 = MessageDigest.getInstance("SHA-256")
         val keyBytes = sha256.digest(keyText.toByteArray(Charsets.UTF_8))
+        val secretKey = SecretKeySpec(keyBytes, "AES")
+
+        val iv = ByteArray(16) { 0 }
+        val ivSpec = IvParameterSpec(iv)
+
         val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
-        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(keyBytes, "AES"), IvParameterSpec(ByteArray(16) { 0 }))
-        return base64UrlEncode(cipher.doFinal(plainText.toByteArray(Charsets.UTF_8)))
-    }
-}
+        cipher.init(Cipher.ENCRYPT_MODE, secretKey, ivSpec)
 
-// --- Bypass Functions ---
-suspend fun bypassHrefli(url: String): String? {
-    return try {
-        val res = app.get(url).documentLarge
-        val form = res.select("form#landing")
-        val data = form.select("input").associate { it.attr("name") to it.attr("value") }
-        val res2 = app.post(form.attr("action"), data = data).documentLarge
-        val skToken = res2.selectFirst("script:containsData(?go=)")?.data()?.substringAfter("?go=")?.substringBefore("\"") ?: return null
-        app.get(getBaseUrl(url) + "?go=$skToken", cookies = mapOf(skToken to (data["_wp_http2"] ?: ""))).documentLarge
-            .selectFirst("meta[http-equiv=refresh]")?.attr("content")?.substringAfter("url=")
-    } catch (e: Exception) { null }
-}
-
-@RequiresApi(Build.VERSION_CODES.O)
-suspend fun cinematickitBypass(url: String): String? {
-    return try {
-        val encoded = url.substringAfter("safelink=").substringBefore("-")
-        val goValue = app.get(base64Decode(encoded)).documentLarge.select("input[name=go]").attr("value")
-        val nextUrl = base64Decode(goValue)
-        if(nextUrl.startsWith("http")) nextUrl else null
-    } catch (e: Exception) { null }
-}
-
-// --- FUNGSI YANG HILANG DIKEMBALIKAN ---
-@RequiresApi(Build.VERSION_CODES.O)
-suspend fun cinematickitloadBypass(url: String): String? {
-    return try {
-        val encodedLink = url.replace("&#038;", "&").substringAfter("safelink=").substringBefore("-")
-        if (encodedLink.isEmpty()) return null
-        val goValue = app.get(base64Decode(encodedLink)).documentLarge.select("form#landing input[name=go]").attr("value")
-        return base64Decode(goValue)
-    } catch (e: Exception) {
-        e.printStackTrace()
-        null
+        val encrypted = cipher.doFinal(plainText.toByteArray(Charsets.UTF_8))
+        return base64UrlEncode(encrypted)
     }
 }
