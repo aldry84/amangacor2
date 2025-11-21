@@ -81,30 +81,32 @@ open class Adicinemax21 : TmdbProvider() {
     }
 
     override val mainPage = mainPageOf(
-        // 1. Trending & Popular (Campuran)
+        // 1. Trending & Popular
         "$tmdbAPI/trending/movie/day?api_key=$apiKey&region=US&without_genres=16" to "Trending Movies",
         "$tmdbAPI/movie/popular?api_key=$apiKey&region=US&without_genres=16" to "Popular Movies",
         "$tmdbAPI/tv/popular?api_key=$apiKey&region=US&without_genres=16" to "Popular TV Shows",
-        
-        // 2. Streaming Services (DIPERBAIKI)
-        // Netflix (Network ID: 213)
+
+        // 2. Streaming Giants (Netflix & HBO)
+        // Netflix Series (Network ID 213)
         "$tmdbAPI/discover/tv?api_key=$apiKey&with_networks=213&sort_by=popularity.desc&without_genres=16" to "Netflix Originals",
-        
-        // WeTV / Tencent Video (Network ID: 3399) - Diperbaiki dengan sort dan language
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_networks=3399&sort_by=popularity.desc&without_genres=16" to "WeTV Originals",
-        
-        // Viu (Tidak punya Network ID tunggal, menggunakan bahasa Asia Tenggara + Korea)
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko|th|zh&sort_by=popularity.desc&without_genres=16" to "Viu / Asian Premium",
+        // Netflix Movies (Provider ID 8) - Mencakup Horror dll tapi bukan Series
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_watch_providers=8&watch_region=US&sort_by=popularity.desc&without_genres=16" to "Netflix Movies",
+        // HBO (Network ID 49)
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_networks=49&sort_by=popularity.desc&without_genres=16" to "HBO Originals",
 
-        // 3. Local Pride (Indonesia)
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=id&sort_by=popularity.desc" to "Indonesian Movies",
+        // 3. Indonesian Content (Spesifik)
+        // Series Indonesia
         "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=id&sort_by=popularity.desc" to "Indonesian Series",
+        // Movie Indonesia (Non-Horror) -> Exclude Animation(16) & Horror(27)
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=id&without_genres=16,27&sort_by=popularity.desc" to "Indonesian Movies (Non-Horror)",
+        // Movie Indonesia (Horror Only) -> Include Horror(27)
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=id&with_genres=27&without_genres=16&sort_by=popularity.desc" to "Indonesian Horror",
 
-        // 4. Korean & Chinese (Drakor & Dracin)
+        // 4. Asian Dramas
         "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&sort_by=popularity.desc&without_genres=16" to "Korean Dramas",
         "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=zh&sort_by=popularity.desc&without_genres=16" to "Chinese Dramas",
 
-        // 5. International Genres (Film Barat dll)
+        // 5. International Genres
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=28&sort_by=popularity.desc&without_genres=16" to "Action Movies",
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=878&sort_by=popularity.desc&without_genres=16" to "Sci-Fi Movies",
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=27&sort_by=popularity.desc&without_genres=16" to "Horror Movies",
