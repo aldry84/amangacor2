@@ -1,5 +1,6 @@
 package com.Phisher98
 
+import android.util.Base64
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.extractors.helper.AesHelper
@@ -12,6 +13,7 @@ import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.jsoup.Jsoup
+import java.net.URLEncoder
 
 // --- Extractor Logic Object ---
 object DramaDripExtractor {
@@ -169,6 +171,28 @@ object DramaDripExtractor {
              subtitleCallback.invoke(newSubtitleFile(getLanguageNameFromCode(it.label?.replace(Regex("\\d|Hi"), "")?.trim()) ?: "", it.file ?: "")) 
         }
     }
+
+    // FITUR BARU: Vixsrc (Alpha/Beta)
+    suspend fun invokeVixsrc(tmdbId: String?, season: Int?, episode: Int?, callback: (ExtractorLink) -> Unit) {
+        val proxy = "https://proxy.heistotron.uk"
+        val type = if (season == null) "movie" else "tv"
+        val url = if (season == null) "$vixsrcAPI/$type/$tmdbId" else "$vixsrcAPI/$type/$tmdbId/$season/$episode"
+
+        val res = app.get(url).document.selectFirst("script:containsData(window.masterPlaylist)")?.data() ?: return
+        val video1 = Regex("""'token':\s*'(\w+)'[\S\s]+'expires':\s*'(\w+)'[\S\s]+url:\s*'(\S+)'""").find(res)?.let {
+            val (token, expires, path) = it.destructured
+            "$path?token=$token&expires=$expires&h=1&lang=en"
+        } ?: return
+
+        // Manual encoding karena kita di Android plugin
+        val encodedVideo1 = URLEncoder.encode(video1, "utf-8").replace("+", "%20")
+        val base64Encoded = Base64.encodeToString("$proxy/api/proxy/m3u8?url=$encodedVideo1&source=sakura|ananananananananaBatman!".toByteArray(), Base64.NO_WRAP).trim()
+        val video2 = "$proxy/p/$base64Encoded"
+
+        listOf(VixsrcSource("Vixsrc [Alpha]", video1, url), VixsrcSource("Vixsrc [Beta]", video2, "$mappleAPI/")).map {
+            callback.invoke(newExtractorLink(it.name, it.name, it.url, ExtractorLinkType.M3U8) { this.referer = it.referer; this.headers = mapOf("Accept" to "*/*") })
+        }
+    }
 }
 
 // --- Classes Jeniusplay & Data ---
@@ -201,3 +225,5 @@ data class VidFastTracks(@JsonProperty("file") val file: String?, @JsonProperty(
 data class VidFastServers(@JsonProperty("name") val name: String?, @JsonProperty("description") val description: String?, @JsonProperty("data") val data: String?)
 data class VidrockSource(@JsonProperty("resolution") val resolution: Int?, @JsonProperty("url") val url: String?)
 data class VidrockSubtitle(@JsonProperty("label") val label: String?, @JsonProperty("file") val file: String?)
+// Class Data Baru untuk Vixsrc
+data class VixsrcSource(val name: String, val url: String, val referer: String)
