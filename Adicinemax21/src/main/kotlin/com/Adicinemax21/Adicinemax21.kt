@@ -33,7 +33,6 @@ open class Adicinemax21 : TmdbProvider() {
     override val supportedTypes = setOf(
         TvType.Movie,
         TvType.TvSeries,
-        TvType.Anime,
     )
 
     val wpRedisInterceptor by lazy { CloudflareKiller() }
@@ -82,26 +81,37 @@ open class Adicinemax21 : TmdbProvider() {
     }
 
     override val mainPage = mainPageOf(
-        "$tmdbAPI/trending/all/day?api_key=$apiKey&region=US" to "Trending",
-        "$tmdbAPI/movie/popular?api_key=$apiKey&region=US" to "Popular Movies",
-        "$tmdbAPI/tv/popular?api_key=$apiKey&region=US&with_original_language=en" to "Popular TV Shows",
-        "$tmdbAPI/tv/airing_today?api_key=$apiKey&region=US&with_original_language=en" to "Airing Today TV Shows",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_networks=213" to "Netflix",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_networks=1024" to "Amazon",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_networks=2739" to "Disney+",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_networks=453" to "Hulu",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_networks=2552" to "Apple TV+",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_networks=49" to "HBO",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_networks=4330" to "Paramount+",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_networks=3353" to "Peacock",
-        "$tmdbAPI/movie/top_rated?api_key=$apiKey&region=US" to "Top Rated Movies",
-        "$tmdbAPI/tv/top_rated?api_key=$apiKey&region=US" to "Top Rated TV Shows",
-        "$tmdbAPI/movie/upcoming?api_key=$apiKey&region=US" to "Upcoming Movies",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko" to "Korean Shows",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_keywords=210024|222243&sort_by=popularity.desc&air_date.lte=${getDate().today}&air_date.gte=${getDate().today}" to "Airing Today Anime",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_keywords=210024|222243&sort_by=popularity.desc&air_date.lte=${getDate().nextWeek}&air_date.gte=${getDate().today}" to "On The Air Anime",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_keywords=210024|222243" to "Anime",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_keywords=210024|222243" to "Anime Movies",
+        // 1. Trending & Popular
+        "$tmdbAPI/trending/movie/day?api_key=$apiKey&region=US&without_genres=16" to "Trending Movies",
+        "$tmdbAPI/movie/popular?api_key=$apiKey&region=US&without_genres=16" to "Popular Movies",
+        "$tmdbAPI/movie/top_rated?api_key=$apiKey&region=US&without_genres=16" to "Top Rated Movies",
+        "$tmdbAPI/movie/upcoming?api_key=$apiKey&region=US&without_genres=16" to "Upcoming Movies",
+
+        // 2. Indonesian Content (Local Pride)
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=id&without_genres=16" to "Indonesian Movies",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=id&without_genres=16" to "Indonesian Series",
+
+        // 3. Korean Content (Viu/Netflix Vibes)
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&without_genres=16" to "Korean Movies",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&without_genres=16" to "K-Dramas",
+
+        // 4. Chinese Content (WeTV Vibes)
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=zh&without_genres=16" to "Chinese Movies",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=zh&without_genres=16" to "C-Dramas",
+
+        // 5. Streaming Giants Series
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_networks=213&without_genres=16" to "Netflix Originals",
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_networks=3399&without_genres=16" to "WeTV Originals", // Tencent/WeTV
+        "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=th|vi|tl&without_genres=16" to "Asian TV Shows", // Covers Viu (Thai, Viet, etc)
+
+        // 6. International Genres (Excluding Anime/Cartoon ID 16)
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=28&without_genres=16" to "Action Movies",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=878&without_genres=16" to "Sci-Fi Movies",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=27&without_genres=16" to "Horror Movies",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=10749&without_genres=16" to "Romance Movies",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=35&without_genres=16" to "Comedy Movies",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=53&without_genres=16" to "Thriller Movies",
+        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=18&without_genres=16" to "Drama Movies",
     )
 
     private fun getImageUrl(link: String?): String? {
@@ -115,9 +125,12 @@ open class Adicinemax21 : TmdbProvider() {
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+        // Filter tambahan untuk memastikan tidak ada konten dewasa/animasi yang lolos
         val adultQuery =
             if (settingsForProvider.enableAdult) "" else "&without_keywords=190370|13059|226161|195669"
         val type = if (request.data.contains("/movie")) "movie" else "tv"
+        
+        // Request ke TMDB dengan halaman yang sesuai
         val home = app.get("${request.data}$adultQuery&page=$page")
             .parsedSafe<Results>()?.results?.mapNotNull { media ->
                 media.toSearchResponse(type)
@@ -182,9 +195,12 @@ open class Adicinemax21 : TmdbProvider() {
         val orgTitle = res.originalTitle ?: res.originalName ?: return null
         val releaseDate = res.releaseDate ?: res.firstAirDate
         val year = releaseDate?.split("-")?.first()?.toIntOrNull()
-        // Hapus variabel lokal 'rating' yang tidak diperlukan lagi
+        
         val genres = res.genres?.mapNotNull { it.name }
 
+        // Logika Deteksi Jenis Konten
+        // Memastikan Animasi tidak diprioritaskan kecuali dicari secara spesifik,
+        // tapi karena kategori utama sudah difilter, ini hanya untuk penandaan internal.
         val isCartoon = genres?.contains("Animation") ?: false
         val isAnime = isCartoon && (res.original_language == "zh" || res.original_language == "ja")
         val isAsian = !isAnime && (res.original_language == "zh" || res.original_language == "ko")
@@ -240,7 +256,7 @@ open class Adicinemax21 : TmdbProvider() {
                             this.season = eps.seasonNumber
                             this.episode = eps.episodeNumber
                             this.posterUrl = getImageUrl(eps.stillPath)
-                            this.score = Score.from10(eps.voteAverage) // Diganti dari 'rating'
+                            this.score = Score.from10(eps.voteAverage) 
                             this.description = eps.overview
                         }.apply {
                             this.addDate(eps.airDate)
@@ -258,7 +274,7 @@ open class Adicinemax21 : TmdbProvider() {
                 this.year = year
                 this.plot = res.overview
                 this.tags = keywords.takeIf { !it.isNullOrEmpty() } ?: genres
-                this.score = Score.from10(res.vote_average?.toString()) // Diganti dari 'rating'
+                this.score = Score.from10(res.vote_average?.toString())
                 this.showStatus = getStatus(res.status)
                 this.recommendations = recommendations
                 this.actors = actors
@@ -295,7 +311,7 @@ open class Adicinemax21 : TmdbProvider() {
                 this.plot = res.overview
                 this.duration = res.runtime
                 this.tags = keywords.takeIf { !it.isNullOrEmpty() } ?: genres
-                this.score = Score.from10(res.vote_average?.toString()) // Diganti dari 'rating'
+                this.score = Score.from10(res.vote_average?.toString())
                 this.recommendations = recommendations
                 this.actors = actors
                 this.contentRating = fetchContentRating(data.id, "US")
