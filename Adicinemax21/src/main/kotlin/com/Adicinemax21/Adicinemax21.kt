@@ -7,10 +7,8 @@ import com.Adicinemax21.Adicinemax21Extractor.invokeMapple
 import com.Adicinemax21.Adicinemax21Extractor.invokeSuperembed
 import com.Adicinemax21.Adicinemax21Extractor.invokeVidfast
 import com.Adicinemax21.Adicinemax21Extractor.invokeVidlink
-import com.Adicinemax21.Adicinemax21Extractor.invokeVidrock
 import com.Adicinemax21.Adicinemax21Extractor.invokeVidsrc
 import com.Adicinemax21.Adicinemax21Extractor.invokeVidsrccc
-import com.Adicinemax21.Adicinemax21Extractor.invokeVidsrccx
 import com.Adicinemax21.Adicinemax21Extractor.invokeVixsrc
 import com.Adicinemax21.Adicinemax21Extractor.invokeWatchsomuch
 import com.Adicinemax21.Adicinemax21Extractor.invokeWyzie
@@ -318,6 +316,7 @@ open class Adicinemax21 : TmdbProvider() {
         val res = parseJson<LinkData>(data)
 
         runAllAsync(
+            // 1. JeniusPlay (Prioritas #1 via Idlix)
             {
                 invokeIdlix(
                     res.title,
@@ -328,6 +327,11 @@ open class Adicinemax21 : TmdbProvider() {
                     callback
                 )
             },
+            // 2. Vidlink (Prioritas #2)
+            {
+                invokeVidlink(res.id, res.season, res.episode, callback)
+            },
+            // 3. Vidplay (Prioritas #3 via Vidsrccc)
             {
                 invokeVidsrccc(
                     res.id,
@@ -338,6 +342,11 @@ open class Adicinemax21 : TmdbProvider() {
                     callback
                 )
             },
+            // 4. Vixsrc Alpha (Prioritas #4 via Vixsrc)
+            {
+                invokeVixsrc(res.id, res.season, res.episode, callback)
+            },
+            // Sumber-sumber lain (Urutan berikutnya)
             {
                 invokeVidsrc(
                     res.imdbId,
@@ -356,12 +365,6 @@ open class Adicinemax21 : TmdbProvider() {
                 )
             },
             {
-                invokeVixsrc(res.id, res.season, res.episode, callback)
-            },
-            {
-                invokeVidlink(res.id, res.season, res.episode, callback)
-            },
-            {
                 invokeVidfast(res.id, res.season, res.episode, subtitleCallback, callback)
             },
             {
@@ -371,9 +374,6 @@ open class Adicinemax21 : TmdbProvider() {
                 invokeWyzie(res.id, res.season, res.episode, subtitleCallback)
             },
             {
-                invokeVidsrccx(res.id, res.season, res.episode, callback)
-            },
-            {
                 invokeSuperembed(
                     res.id,
                     res.season,
@@ -381,16 +381,10 @@ open class Adicinemax21 : TmdbProvider() {
                     subtitleCallback,
                     callback
                 )
-            },
-            {
-                invokeVidrock(
-                    res.id,
-                    res.season,
-                    res.episode,
-                    subtitleCallback,
-                    callback
-                )
             }
+            // DINONAKTIFKAN (DIHAPUS):
+            // invokeVidsrccx
+            // invokeVidrock
         )
 
         return true
