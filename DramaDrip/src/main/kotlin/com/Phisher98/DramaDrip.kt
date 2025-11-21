@@ -15,7 +15,6 @@ import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import kotlinx.coroutines.runBlocking
 import org.jsoup.nodes.Element
 
-// PERBAIKAN: Menambahkan 'open' di sini
 open class DramaDrip : MainAPI() {
     override var mainUrl: String = runBlocking {
         DramaDripProvider.getDomains()?.dramadrip ?: "https://dramadrip.com"
@@ -91,7 +90,6 @@ open class DramaDrip : MainAPI() {
         return newMovieSearchResponse(title, href, TvType.Movie) {
             this.posterUrl = posterUrl
         }
-
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
@@ -110,6 +108,7 @@ open class DramaDrip : MainAPI() {
         var tmdbId: String? = null
         var tmdbType: String? = null
 
+        // 1. Ambil ID dari Halaman Web
         document.select("div.su-spoiler-content ul.wp-block-list > li").forEach { li ->
             val text = li.text()
             if (imdbId == null && "imdb.com/title/tt" in text) {
@@ -123,22 +122,27 @@ open class DramaDrip : MainAPI() {
                 }
             }
         }
+
         val tvType = when (true) {
             (tmdbType?.contains("Movie", ignoreCase = true) == true) -> TvType.Movie
             else -> TvType.TvSeries
         }
 
+        // Metadata dasar dari halaman web
         val image = document.select("meta[property=og:image]").attr("content")
         val title = document.selectFirst("div.wp-block-column > h2.wp-block-heading")?.text()
             ?.substringBefore("(")?.trim().toString()
         val tags = document.select("div.mt-2 span.badge").map { it.text() }
         val year = document.selectFirst("div.wp-block-column > h2.wp-block-heading")?.text()
             ?.substringAfter("(")?.substringBefore(")")?.toIntOrNull()
-        val descriptions = document.selectFirst("div.content-section p.mt-4")?.text()?.trim()
-        val typeset = if (tvType == TvType.TvSeries) "series" else "movie"
+        val webDescription = document.selectFirst("div.content-section p.mt-4")?.text()?.trim()
         
+        // 2. Ambil Metadata Lengkap dari Cinemeta (Wajib untuk Episode List yang benar)
+        val typeset = if (tvType == TvType.TvSeries) "series" else "movie"
         val responseData = if (tmdbId?.isNotEmpty() == true) {
-            val jsonResponse = app.get("$cinemeta_url/$typeset/$imdbId.json").text
+            // Coba cari pakai IMDB ID dulu kalau ada, kalau tidak coba logic lain (Cinemeta butuh IMDB ID biasanya)
+            val metaId = imdbId ?: return throw ErrorLoadingException("No IMDB ID found on DramaDrip page")
+            val jsonResponse = app.get("$cinemeta_url/$typeset/$metaId.json").text
             if (jsonResponse.isNotEmpty() && jsonResponse.startsWith("{")) {
                 val gson = Gson()
                 gson.fromJson(jsonResponse, ResponseData::class.java)
@@ -147,76 +151,58 @@ open class DramaDrip : MainAPI() {
         
         var cast: List<String> = emptyList()
         var background: String = image
-        var description: String? = null
+        var description: String? = webDescription
         
         if (responseData != null) {
-            description = responseData.meta?.description ?: descriptions
+            description = responseData.meta?.description ?: webDescription
             cast = responseData.meta?.cast ?: emptyList()
             background = responseData.meta?.background ?: image
         }
 
         val trailer = document.selectFirst("div.wp-block-embed__wrapper > iframe")?.attr("src")
-
-        val recommendations =
-            document.select("div.entry-related-inner-content article").mapNotNull {
-                val recName = it.select("h3").text().substringAfter("Download")
-                val recHref = it.select("h3 a").attr("href")
-                val recPosterUrl = it.select("img").attr("src")
-                newTvSeriesSearchResponse(recName, recHref, TvType.TvSeries) {
-                    this.posterUrl = recPosterUrl
-                }
+        val recommendations = document.select("div.entry-related-inner-content article").mapNotNull {
+            val recName = it.select("h3").text().substringAfter("Download")
+            val recHref = it.select("h3 a").attr("href")
+            val recPosterUrl = it.select("img").attr("src")
+            newTvSeriesSearchResponse(recName, recHref, TvType.TvSeries) {
+                this.posterUrl = recPosterUrl
             }
+        }
 
+        // 3. Logika Pembuatan Episode (PERBAIKAN UTAMA)
         if (tvType == TvType.TvSeries) {
             val episodes = mutableListOf<Episode>()
-            val seasonBlocks = document.select("div.su-accordion h2")
 
-            for (seasonHeader in seasonBlocks) {
-                val seasonText = seasonHeader.text()
-                if (!seasonText.contains("ZIP", ignoreCase = true)) {
-                    val seasonMatch = Regex("""S?e?a?s?o?n?\s*([0-9]+)""", RegexOption.IGNORE_CASE).find(seasonText)
-                    val seasonNum = seasonMatch?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 1
-
-                    var linksBlock = seasonHeader.nextElementSibling()
-                    if (linksBlock == null || linksBlock.select("div.wp-block-button").isEmpty()) {
-                         linksBlock = seasonHeader.parent()?.selectFirst("div.wp-block-button") ?: linksBlock
-                    }
-                    
-                    val episodeButtons = linksBlock?.select("div.wp-block-button a") ?: emptyList()
-                    
-                    episodeButtons.forEach { btn ->
-                         val epText = btn.text()
-                         val epNo = Regex("""(?:Episode|Ep|E)?\s*0*([0-9]+)""", RegexOption.IGNORE_CASE)
-                                            .find(epText)?.groupValues?.getOrNull(1)?.toIntOrNull()
-                         
-                         if(epNo != null) {
-                             val info = responseData?.meta?.videos?.find { it.season == seasonNum && it.episode == epNo }
-                             
-                             val linkData = LinkData(
-                                 tmdbId = tmdbId?.toIntOrNull(),
-                                 imdbId = imdbId,
-                                 title = title,
-                                 year = year,
-                                 season = seasonNum,
-                                 episode = epNo,
-                                 type = "tv"
-                             )
-
-                             episodes.add(
-                                 newEpisode(linkData.toJson()) {
-                                     this.name = info?.name ?: "Episode $epNo"
-                                     this.posterUrl = info?.thumbnail
-                                     this.season = seasonNum
-                                     this.episode = epNo
-                                     this.description = info?.overview
-                                 }
-                             )
-                         }
-                    }
+            if (responseData?.meta?.videos != null && responseData.meta.videos.isNotEmpty()) {
+                // A. Gunakan Episode dari Cinemeta (Bersih & Akurat)
+                responseData.meta.videos.forEach { video ->
+                    val epData = LinkData(
+                        tmdbId = tmdbId?.toIntOrNull(),
+                        imdbId = imdbId,
+                        title = title,
+                        year = year,
+                        season = video.season,
+                        episode = video.episode,
+                        type = "tv"
+                    )
+                    episodes.add(
+                        newEpisode(epData.toJson()) {
+                            this.name = video.name ?: "Episode ${video.episode}"
+                            this.season = video.season
+                            this.episode = video.episode
+                            this.posterUrl = video.thumbnail
+                            this.description = video.overview
+                            this.addDate(video.released)
+                        }
+                    )
                 }
+            } else {
+                // B. Fallback jika Cinemeta gagal (Sangat jarang terjadi jika IMDB ID valid)
+                // Kita tidak lagi mengikis HTML tombol download karena menyebabkan bug "Episode 720"
+                throw ErrorLoadingException("Could not fetch episode metadata. Please check connection.")
             }
 
-            return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes.distinctBy { it.season to it.episode }) {
+            return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                 this.backgroundPosterUrl = background
                 this.year = year
                 this.plot = description
@@ -228,6 +214,7 @@ open class DramaDrip : MainAPI() {
                 addTMDbId(tmdbId)
             }
         } else {
+            // Logika Movie
              val linkData = LinkData(
                  tmdbId = tmdbId?.toIntOrNull(),
                  imdbId = imdbId,
@@ -259,40 +246,64 @@ open class DramaDrip : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
+        
         val req = tryParseJson<LinkData>(data) ?: return false
         
-        DramaDripExtractor.invokeIdlix(
-            title = req.title,
-            year = req.year,
-            season = req.season,
-            episode = req.episode,
-            subtitleCallback = subtitleCallback,
-            callback = callback
-        )
+        Log.d("DramaDrip", "Loading Links for: $req")
 
-        DramaDripExtractor.invokeVidlink(
-            tmdbId = req.tmdbId,
-            season = req.season,
-            episode = req.episode,
-            callback = callback
-        )
+        // 1. JeniusPlay (via Idlix)
+        invokeSource("Idlix") {
+            DramaDripExtractor.invokeIdlix(
+                title = req.title,
+                year = req.year,
+                season = req.season,
+                episode = req.episode,
+                subtitleCallback = subtitleCallback,
+                callback = callback
+            )
+        }
 
-        DramaDripExtractor.invokeVidsrccc(
-            tmdbId = req.tmdbId,
-            imdbId = req.imdbId,
-            season = req.season,
-            episode = req.episode,
-            subtitleCallback = subtitleCallback,
-            callback = callback
-        )
+        // 2. Vidlink
+        invokeSource("Vidlink") {
+            DramaDripExtractor.invokeVidlink(
+                tmdbId = req.tmdbId,
+                season = req.season,
+                episode = req.episode,
+                callback = callback
+            )
+        }
 
-        DramaDripExtractor.invokeVixsrc(
-            tmdbId = req.tmdbId,
-            season = req.season,
-            episode = req.episode,
-            callback = callback
-        )
+        // 3. VidPlay (via Vidsrccc)
+        invokeSource("Vidsrccc") {
+            DramaDripExtractor.invokeVidsrccc(
+                tmdbId = req.tmdbId,
+                imdbId = req.imdbId,
+                season = req.season,
+                episode = req.episode,
+                subtitleCallback = subtitleCallback,
+                callback = callback
+            )
+        }
+
+        // 4. Vixsrc Alpha
+        invokeSource("Vixsrc") {
+            DramaDripExtractor.invokeVixsrc(
+                tmdbId = req.tmdbId,
+                season = req.season,
+                episode = req.episode,
+                callback = callback
+            )
+        }
 
         return true
+    }
+
+    // Helper agar jika satu source error, tidak menghentikan source berikutnya
+    private suspend fun invokeSource(name: String, action: suspend () -> Unit) {
+        try {
+            action()
+        } catch (e: Exception) {
+            Log.e("DramaDrip", "Error loading $name: ${e.message}")
+        }
     }
 }
