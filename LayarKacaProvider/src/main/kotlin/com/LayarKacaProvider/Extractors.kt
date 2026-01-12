@@ -9,6 +9,7 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.INFER_TYPE
 import com.lagradost.cloudstream3.utils.M3u8Helper
 import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.utils.newExtractorLink
 import org.json.JSONObject
 
 // Extractor Generik
@@ -72,19 +73,21 @@ open class Hownetwork : ExtractorApi() {
                 if (playlist.isNotEmpty()) {
                     playlist.forEach(callback)
                 } else {
-                    // Jika M3u8Helper menolak (karena dianggap invalid), kita PAKSA masukkan linknya.
-                    // Biarkan ExoPlayer yang mencoba memutarnya nanti.
+                    // Jika M3u8Helper menolak, kita PAKSA masukkan linknya menggunakan newExtractorLink
                     Log.d("Phisher-Warn", "M3u8Helper failed, forcing link: $file")
+                    
+                    // PERBAIKAN DI SINI (Menggunakan newExtractorLink)
                     callback(
-                        ExtractorLink(
+                        newExtractorLink(
                             source = this.name,
                             name = this.name,
                             url = file,
                             referer = properReferer,
-                            quality = Qualities.Unknown.value, // Atau bisa parse "480" dari string URL jika mau
-                            type = INFER_TYPE,
-                            headers = headers
-                        )
+                            quality = Qualities.Unknown.value,
+                            type = INFER_TYPE
+                        ).apply {
+                            this.headers = headers
+                        }
                     )
                 }
             } else {
