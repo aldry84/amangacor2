@@ -43,20 +43,6 @@ class LayarKacaProvider : MainAPI() {
         return newHomePageResponse(request.name, home)
     }
 
-    private suspend fun getProperLink(url: String): String {
-        if (url.contains("nontondrama")) return url
-        if (url.contains("/series/")) {
-            try {
-                // Follow redirect untuk mendapatkan URL series yang benar
-                val res = app.get(url, allowRedirects = true)
-                return res.url 
-            } catch (e: Exception) {
-                return url
-            }
-        }
-        return url
-    }
-
     private fun Element.toSearchResult(): SearchResponse? {
         val title = this.selectFirst("h3")?.ownText()?.trim() ?: return null
         val rawHref = this.selectFirst("a")!!.attr("href")
@@ -127,20 +113,41 @@ class LayarKacaProvider : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val finalUrl = getProperLink(url)
-        val response = app.get(finalUrl)
-        val document = response.documentLarge
+        // 1. Request Halaman Awal
+        var response = app.get(url)
+        var document = response.documentLarge
+        var finalUrl = response.url // URL setelah redirect HTTP standar
+        
+        // --- PERBAIKAN UTAMA: DETEKSI HALAMAN REDIRECT MANUAL ---
+        // Cek teks "dialihkan ke" atau "Nontondrama" di body
+        val bodyText = document.body().text()
+        if (bodyText.contains("dialihkan ke", ignoreCase = true) && bodyText.contains("Nontondrama", ignoreCase = true)) {
+            Log.d("Phisher-Info", "Redirect page detected at $url")
+            
+            // Cari tombol "Buka Sekarang" atau link apapun yang mengandung nontondrama
+            val redirectLink = document.select("a").firstOrNull { 
+                it.text().contains("Buka Sekarang", ignoreCase = true) ||
+                it.attr("href").contains("nontondrama", ignoreCase = true)
+            }?.attr("href")
+            
+            if (!redirectLink.isNullOrEmpty()) {
+                finalUrl = fixUrl(redirectLink)
+                Log.d("Phisher-Info", "Jumping to: $finalUrl")
+                // LOAD ULANG ke halaman tujuan yang sebenarnya
+                document = app.get(finalUrl).documentLarge
+            }
+        }
+        // ---------------------------------------------------------
+
         val baseurl = getBaseUrl(finalUrl)
         
-        // 1. Selector Judul (Sangat Penting)
-        // Kita cari H1 di beberapa tempat. Jika null, cari H1 apa saja di halaman.
+        // Parsing Data (Sekarang aman karena sudah di halaman yang benar)
         var title = document.selectFirst("div.movie-info h1")?.text()?.trim() 
             ?: document.selectFirst("h1.entry-title")?.text()?.trim()
             ?: document.selectFirst("header h1")?.text()?.trim()
-            ?: document.selectFirst("h1")?.text()?.trim() // Fallback terakhir
+            ?: document.selectFirst("h1")?.text()?.trim() 
             ?: "Unknown Title"
 
-        // 2. Selector Poster
         var poster = document.select("meta[property=og:image]").attr("content")
         if (poster.isNullOrEmpty()) {
              poster = document.selectFirst("div.poster img")?.getImageAttr() ?: ""
@@ -168,17 +175,14 @@ class LayarKacaProvider : MainAPI() {
             }
         }
 
-        // 3. Deteksi Tipe (Menggunakan data-web_type dari screenshotmu)
-        val bodyType = document.select("body").attr("data-web_type")
+        // Deteksi Tipe (Nontondrama atau LK21)
         val hasSeasonData = document.selectFirst("#season-data") != null
-        
-        val tvType = if (bodyType == "series" || hasSeasonData || url.contains("nontondrama")) 
-                     TvType.TvSeries else TvType.Movie
+        val tvType = if (finalUrl.contains("nontondrama") || hasSeasonData) TvType.TvSeries else TvType.Movie
 
         return if (tvType == TvType.TvSeries) {
             val episodes = mutableListOf<Episode>()
             
-            // Logic 1: JSON Season Data (Format LK21 Lama)
+            // Logic 1: JSON Season Data (LK21)
             val json = document.selectFirst("script#season-data")?.data()
             if (!json.isNullOrEmpty()) {
                 val root = JSONObject(json)
@@ -187,7 +191,6 @@ class LayarKacaProvider : MainAPI() {
                     for (i in 0 until seasonArr.length()) {
                         val ep = seasonArr.getJSONObject(i)
                         val slug = ep.getString("slug")
-                        // Fix link episode
                         val href = fixUrl(if (slug.startsWith("http")) slug else "$baseurl/$slug")
                         val episodeNo = ep.optInt("episode_no")
                         val seasonNo = ep.optInt("s")
@@ -199,9 +202,9 @@ class LayarKacaProvider : MainAPI() {
                     }
                 }
             } 
-            // Logic 2: HTML List (Format Nontondrama)
+            // Logic 2: HTML List (Nontondrama) - PENTING
             else {
-                // Cari semua link yang mengandung kata 'episode' atau ada di dalam list episode
+                // Selector untuk Nontondrama biasanya list link biasa
                 val episodeLinks = document.select("ul.episodios li a, div.list-episode a, a[href*=episode]")
                 episodeLinks.forEach { 
                     val epHref = fixUrl(it.attr("href"))
@@ -247,10 +250,8 @@ class LayarKacaProvider : MainAPI() {
     ): Boolean {
         val document = app.get(data).documentLarge
         
-        // Coba beberapa kemungkinan selector player
         var playerNodes = document.select("ul#player-list > li")
         if (playerNodes.isEmpty()) {
-             // Selector alternatif untuk nontondrama
              playerNodes = document.select("div.player_nav ul li, ul.player-list li")
         }
 
