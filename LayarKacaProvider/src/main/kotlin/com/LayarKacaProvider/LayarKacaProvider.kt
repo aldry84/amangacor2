@@ -23,14 +23,17 @@ class LayarKacaProvider : MainAPI() {
         TvType.AsianDrama
     )
 
+    // --- BAGIAN YANG DIUBAH ---
     override val mainPage = mainPageOf(
-        "$mainUrl/populer/page/" to "Film Terplopuler",
-        "$mainUrl/rating/page/" to "Film Berdasarkan IMDb Rating",
-        "$mainUrl/most-commented/page/" to "Film Dengan Komentar Terbanyak",
+        "$mainUrl/populer/page/" to "Top Bulan Ini",
+        "$mainUrl/latest/page/" to "Film Terbaru",
+        "$mainUrl/top-series-today/page/" to "Series Hari Ini",
         "$mainUrl/latest-series/page/" to "Series Terbaru",
-        "$mainUrl/series/asian/page/" to "Film Asian Terbaru",
-        "$mainUrl/latest/page/" to "Film Upload Terbaru",
+        "$mainUrl/nonton-bareng-keluarga/page/" to "Nobar Keluarga",
+        "$mainUrl/genre/romance/page/" to "Romantis",
+        "$mainUrl/country/thailand/page/" to "Thailand"
     )
+    // ---------------------------
 
     override suspend fun getMainPage(
         page: Int,
@@ -118,13 +121,11 @@ class LayarKacaProvider : MainAPI() {
         var document = response.documentLarge
         var finalUrl = response.url // URL setelah redirect HTTP standar
         
-        // --- PERBAIKAN UTAMA: DETEKSI HALAMAN REDIRECT MANUAL ---
-        // Cek teks "dialihkan ke" atau "Nontondrama" di body
+        // Deteksi Redirect Manual (Anti-Phishing)
         val bodyText = document.body().text()
         if (bodyText.contains("dialihkan ke", ignoreCase = true) && bodyText.contains("Nontondrama", ignoreCase = true)) {
             Log.d("Phisher-Info", "Redirect page detected at $url")
             
-            // Cari tombol "Buka Sekarang" atau link apapun yang mengandung nontondrama
             val redirectLink = document.select("a").firstOrNull { 
                 it.text().contains("Buka Sekarang", ignoreCase = true) ||
                 it.attr("href").contains("nontondrama", ignoreCase = true)
@@ -133,15 +134,12 @@ class LayarKacaProvider : MainAPI() {
             if (!redirectLink.isNullOrEmpty()) {
                 finalUrl = fixUrl(redirectLink)
                 Log.d("Phisher-Info", "Jumping to: $finalUrl")
-                // LOAD ULANG ke halaman tujuan yang sebenarnya
                 document = app.get(finalUrl).documentLarge
             }
         }
-        // ---------------------------------------------------------
 
         val baseurl = getBaseUrl(finalUrl)
         
-        // Parsing Data (Sekarang aman karena sudah di halaman yang benar)
         var title = document.selectFirst("div.movie-info h1")?.text()?.trim() 
             ?: document.selectFirst("h1.entry-title")?.text()?.trim()
             ?: document.selectFirst("header h1")?.text()?.trim()
@@ -175,14 +173,12 @@ class LayarKacaProvider : MainAPI() {
             }
         }
 
-        // Deteksi Tipe (Nontondrama atau LK21)
         val hasSeasonData = document.selectFirst("#season-data") != null
         val tvType = if (finalUrl.contains("nontondrama") || hasSeasonData) TvType.TvSeries else TvType.Movie
 
         return if (tvType == TvType.TvSeries) {
             val episodes = mutableListOf<Episode>()
             
-            // Logic 1: JSON Season Data (LK21)
             val json = document.selectFirst("script#season-data")?.data()
             if (!json.isNullOrEmpty()) {
                 val root = JSONObject(json)
@@ -201,15 +197,11 @@ class LayarKacaProvider : MainAPI() {
                         })
                     }
                 }
-            } 
-            // Logic 2: HTML List (Nontondrama) - PENTING
-            else {
-                // Selector untuk Nontondrama biasanya list link biasa
+            } else {
                 val episodeLinks = document.select("ul.episodios li a, div.list-episode a, a[href*=episode]")
                 episodeLinks.forEach { 
                     val epHref = fixUrl(it.attr("href"))
                     val epName = it.text().trim()
-                    // Filter agar tidak mengambil link sampah
                     if(epHref.contains(baseurl) || epHref.contains("episode")) {
                         episodes.add(newEpisode(epHref) {
                             this.name = epName
