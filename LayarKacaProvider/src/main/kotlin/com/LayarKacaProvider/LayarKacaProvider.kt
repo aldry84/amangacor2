@@ -10,9 +10,14 @@ import java.net.URI
 
 class LayarKacaProvider : MainAPI() {
 
-    override var mainUrl = "https://lk21.de"
-    private var seriesUrl = "https://series.lk21.de"
-    private var searchurl = "https://search.lk21.party"
+    // UPDATE 1: Domain utama baru sesuai temuan cURL
+    override var mainUrl = "https://tv7.lk21official.cc"
+    
+    // Domain lama mungkin redirect, tapi kita pakai yang terbaru biar aman
+    private var seriesUrl = "https://tv7.lk21official.cc" 
+    
+    // UPDATE 2: API Search baru (GudangVape)
+    private var searchurl = "https://gudangvape.com"
 
     override var name = "LayarKaca"
     override val hasMainPage = true
@@ -44,7 +49,9 @@ class LayarKacaProvider : MainAPI() {
     }
 
     private suspend fun getProperLink(url: String): String {
-        if (url.startsWith(seriesUrl)) return url
+        // Cek domain series (bisa jadi structure berubah di domain baru)
+        if (url.contains("/series/")) return url
+        
         val res = app.get(url).documentLarge
         return if (res.select("title").text().contains("Nontondrama", true)) {
             res.selectFirst("a#openNow")?.attr("href")
@@ -80,31 +87,56 @@ class LayarKacaProvider : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val res = app.get("$searchurl/search.php?s=$query").text
+        // UPDATE 3: Request ke domain API baru dengan Header yang benar
+        val res = app.get(
+            "$searchurl/search.php?s=$query",
+            headers = mapOf(
+                "Origin" to mainUrl,
+                "Referer" to "$mainUrl/"
+            )
+        ).text
+        
         val results = mutableListOf<SearchResponse>()
 
-        val root = JSONObject(res)
-        val arr = root.getJSONArray("data")
+        try {
+            val root = JSONObject(res)
+            // Pastikan key "data" ada, kadang API error balikin HTML
+            if (root.has("data")) {
+                val arr = root.getJSONArray("data")
 
-        for (i in 0 until arr.length()) {
-            val item = arr.getJSONObject(i)
-            val title = item.getString("title")
-            val slug = item.getString("slug")
-            val type = item.getString("type")
-            val posterUrl = "https://poster.lk21.party/wp-content/uploads/" + item.optString("poster")
-            when (type) {
-                "series" -> results.add(
-                    newTvSeriesSearchResponse(title, "$seriesUrl/$slug", TvType.TvSeries) {
-                        this.posterUrl = posterUrl
+                for (i in 0 until arr.length()) {
+                    val item = arr.getJSONObject(i)
+                    val title = item.getString("title")
+                    val slug = item.getString("slug")
+                    val type = item.getString("type")
+                    
+                    // Logic poster: kadang sudah full URL, kadang parsial
+                    var posterUrl = item.optString("poster")
+                    if (!posterUrl.startsWith("http")) {
+                        posterUrl = "https://poster.lk21.party/wp-content/uploads/$posterUrl"
                     }
-                )
-                "movie" -> results.add(
-                    newMovieSearchResponse(title, "$mainUrl/$slug", TvType.Movie) {
-                        this.posterUrl = posterUrl
+
+                    // Logic URL item
+                    val itemUrl = if (type == "series") "$mainUrl/$slug" else "$mainUrl/$slug"
+
+                    when (type) {
+                        "series" -> results.add(
+                            newTvSeriesSearchResponse(title, itemUrl, TvType.TvSeries) {
+                                this.posterUrl = posterUrl
+                            }
+                        )
+                        "movie" -> results.add(
+                            newMovieSearchResponse(title, itemUrl, TvType.Movie) {
+                                this.posterUrl = posterUrl
+                            }
+                        )
                     }
-                )
+                }
             }
+        } catch (e: Exception) {
+            Log.e("LayarKacaSearch", "Error parsing search JSON: ${e.message}")
         }
+        
         return results
     }
 
@@ -127,7 +159,6 @@ class LayarKacaProvider : MainAPI() {
 
         val recommendations = document.select("li.slider article").map {
             val recName = it.selectFirst("h3")?.text()?.trim().toString()
-            // UPDATE: Menggunakan fixUrl agar format URL lebih aman dan tidak double slash
             val recHref = fixUrl(it.selectFirst("a")!!.attr("href"))
             val recPosterUrl = fixUrl(it.selectFirst("img")?.attr("src").toString())
             newTvSeriesSearchResponse(recName, recHref, TvType.TvSeries) {
@@ -145,7 +176,6 @@ class LayarKacaProvider : MainAPI() {
                     val seasonArr = root.getJSONArray(seasonKey)
                     for (i in 0 until seasonArr.length()) {
                         val ep = seasonArr.getJSONObject(i)
-                        // Menggunakan fixUrl untuk episode juga
                         val href = fixUrl("$baseurl/" + ep.getString("slug"))
                         val episodeNo = ep.optInt("episode_no")
                         val seasonNo = ep.optInt("s")
@@ -193,7 +223,6 @@ class LayarKacaProvider : MainAPI() {
         document.select("ul#player-list > li").map {
             fixUrl(it.select("a").attr("href"))
         }.amap {
-            // Log ini akan membantumu melihat URL yang berhasil diambil
             val iframeUrl = it.getIframe()
             val referer = getBaseUrl(it)
             Log.d("Phisher-Debug", "Found iframe: $iframeUrl from $it")
@@ -205,7 +234,6 @@ class LayarKacaProvider : MainAPI() {
         return true
     }
 
-    // UPDATE: Fungsi getIframe yang diperbarui (Robust Version)
     private suspend fun String.getIframe(): String {
         // Request halaman player dengan referer yang tepat
         val response = app.get(this, referer = "$seriesUrl/")
