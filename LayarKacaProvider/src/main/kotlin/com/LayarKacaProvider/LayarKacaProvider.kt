@@ -39,7 +39,8 @@ class LayarKacaProvider : MainAPI() {
     ): HomePageResponse {
         val document = app.get(request.data + page).documentLarge
         
-        // Selector "article" agar bisa melihat label di luar gambar
+        // PERBAIKAN 1: Pakai "article" saja (bukan article figure)
+        // Agar bisa membaca label quality yang ada di luar gambar
         val home = document.select("article").mapNotNull {
             it.toSearchResult()
         }
@@ -53,20 +54,19 @@ class LayarKacaProvider : MainAPI() {
         
         val posterUrl = fixUrlNull(this.selectFirst("img")?.getImageAttr())
         
-        // --- 1. DETEKSI TIPE (SERIES VS MOVIE) YANG LEBIH KUAT ---
-        // Cari elemen visual episode
+        // --- PERBAIKAN 2: DETEKSI SERIES LEBIH KUAT ---
+        // Cek elemen visual (.episode, .mli-eps) ATAU cek URL-nya
         val episodeElement = this.selectFirst("span.episode, .episode, .mli-eps, .ep")
         
-        // Cek URL (PENTING: Jika visual tidak ada, kita cek linknya)
         val isSeriesUrl = href.contains("series", true) || 
                           href.contains("nontondrama", true) || 
                           href.contains("drama", true) ||
                           href.contains("episode", true)
 
-        // Jika ada elemen episode ATAU link-nya berbau series, maka itu Series
+        // Jika ada tanda visual ATAU linknya mengandung kata series, anggap Series
         val type = if (episodeElement != null || isSeriesUrl) TvType.TvSeries else TvType.Movie
         
-        // --- 2. DETEKSI KUALITAS FILM (CAM/HD) ---
+        // --- PERBAIKAN 3: DETEKSI LABEL QUALITY (CAM/HD) ---
         val qualityText = this.select(".quality, .q, .label").text().trim()
         val searchQuality = when {
             qualityText.contains("CAM", true) -> SearchQuality.Cam
@@ -82,23 +82,23 @@ class LayarKacaProvider : MainAPI() {
             newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
                 this.posterUrl = posterUrl
                 
-                // --- 3. LOGIKA PENAMPIL EPS ---
+                // --- PERBAIKAN 4: LABEL "EPS" MANUAL (Bukan "Sub") ---
                 var finalLabel: String? = null
                 
-                // Coba ambil dari elemen episode (span.episode)
+                // Coba ambil angka dari elemen episode
                 if (episodeElement != null) {
                     val rawText = episodeElement.text().trim()
                     val num = Regex("(\\d+)").find(rawText)?.value
                     finalLabel = if (num != null) "EPS $num" else rawText
                 }
                 
-                // Fallback: Jika elemen episode kosong, cek apakah ada angka di qualityText (kadang nyasar ke sana)
+                // Fallback: Jika kosong, coba cari angka di label quality (kadang nyasar ke situ)
                 if (finalLabel == null && qualityText.isNotEmpty() && !qualityText.contains("HD", true)) {
                     val num = Regex("(\\d+)").find(qualityText)?.value
                     if (num != null) finalLabel = "EPS $num"
                 }
 
-                // Tampilkan Label
+                // Tampilkan Label jika ada
                 if (finalLabel != null) {
                     addQuality(finalLabel)
                 }
