@@ -4,16 +4,12 @@ import com.lagradost.api.Log
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.extractors.Filesim
-import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.INFER_TYPE
 import com.lagradost.cloudstream3.utils.M3u8Helper
-import com.lagradost.cloudstream3.utils.getQualityFromName
-import com.lagradost.cloudstream3.utils.newExtractorLink
 import org.json.JSONObject
 
-
+// Extractor Generik untuk Turbovid, dll
 class Co4nxtrl : Filesim() {
     override val mainUrl = "https://co4nxtrl.com"
     override val name = "Co4nxtrl"
@@ -31,11 +27,15 @@ open class Hownetwork : ExtractorApi() {
             subtitleCallback: (SubtitleFile) -> Unit,
             callback: (ExtractorLink) -> Unit
     ) {
+        // Logika untuk membersihkan ID
         val id = url.substringAfter("id=")
+                    .substringBefore("&") // Jaga-jaga ada parameter lain di belakang
+
+        // Request ke API
         val response = app.post(
                 "$mainUrl/api.php?id=$id",
                 data = mapOf(
-                        "r" to "",
+                        "r" to (referer ?: ""),
                         "d" to mainUrl,
                 ),
                 referer = url,
@@ -43,24 +43,41 @@ open class Hownetwork : ExtractorApi() {
                         "X-Requested-With" to "XMLHttpRequest"
                 )
         ).text
-        val json = JSONObject(response)
-        val file = json.optString("file")
-        Log.d("Phisher", file)
-            M3u8Helper.generateM3u8(
-                this.name,
-                file,
-                file
-            ).forEach(callback)
+
+        try {
+            val json = JSONObject(response)
+            val file = json.optString("file")
+            
+            if (file.isNotBlank() && file != "null") {
+                Log.d("Phisher-Success", "File Found: $file")
+                
+                // PERBAIKAN UTAMA DI SINI:
+                // Menambahkan Referer Header ke dalam helper M3u8
+                // Agar server tidak menolak (HTTP 403 Forbidden)
+                M3u8Helper.generateM3u8(
+                    source = this.name,
+                    streamUrl = file,
+                    referer = "$mainUrl/", // Header penting!
+                    headers = mapOf("Origin" to mainUrl) // Tambahan header
+                ).forEach(callback)
+            } else {
+                 Log.d("Phisher-Error", "File is empty in JSON")
+            }
+        } catch (e: Exception) {
+            Log.e("Phisher-Error", "Json parse error: ${e.message}")
+        }
     }
 }
 
+// Extractor Turunan
+class Cloudhownetwork : Hownetwork() {
+    override var mainUrl = "https://cloud.hownetwork.xyz"
+}
+
+// Extractor Standar
 class Furher : Filesim() {
     override val name = "Furher"
     override var mainUrl = "https://furher.in"
-}
-
-class Cloudhownetwork : Hownetwork() {
-    override var mainUrl = "https://cloud.hownetwork.xyz"
 }
 
 class Furher2 : Filesim() {
