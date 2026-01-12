@@ -23,7 +23,7 @@ class LayarKacaProvider : MainAPI() {
         TvType.AsianDrama
     )
 
-    // --- BAGIAN YANG DIUBAH ---
+    // --- UPDATE 1: KATEGORI BARU ---
     override val mainPage = mainPageOf(
         "$mainUrl/populer/page/" to "Top Bulan Ini",
         "$mainUrl/latest/page/" to "Film Terbaru",
@@ -33,7 +33,6 @@ class LayarKacaProvider : MainAPI() {
         "$mainUrl/genre/romance/page/" to "Romantis",
         "$mainUrl/country/thailand/page/" to "Thailand"
     )
-    // ---------------------------
 
     override suspend fun getMainPage(
         page: Int,
@@ -46,6 +45,7 @@ class LayarKacaProvider : MainAPI() {
         return newHomePageResponse(request.name, home)
     }
 
+    // --- UPDATE 2: DETEKSI LABEL KUALITAS (CAM/HD) & EPISODE ---
     private fun Element.toSearchResult(): SearchResponse? {
         val title = this.selectFirst("h3")?.ownText()?.trim() ?: return null
         val rawHref = this.selectFirst("a")!!.attr("href")
@@ -54,18 +54,30 @@ class LayarKacaProvider : MainAPI() {
         val posterUrl = fixUrlNull(this.selectFirst("img")?.getImageAttr())
         val type = if (this.selectFirst("span.episode") == null) TvType.Movie else TvType.TvSeries
         
+        // Logika warna label (CAM = Merah, HD = Hijau/Biru)
+        val qualityText = this.select("div.quality").text().trim()
+        val searchQuality = when {
+            qualityText.contains("CAM", true) -> SearchQuality.Cam
+            qualityText.contains("HDCAM", true) -> SearchQuality.Cam
+            qualityText.contains("HD", true) -> SearchQuality.Hd
+            qualityText.contains("Bluray", true) -> SearchQuality.BlueRay
+            qualityText.contains("Web", true) -> SearchQuality.WebRip
+            else -> SearchQuality.Hd
+        }
+
         return if (type == TvType.TvSeries) {
-            val episode = this.selectFirst("span.episode strong")?.text()?.filter { it.isDigit() }
-                ?.toIntOrNull()
+            // Mengambil angka episode untuk label "EPS X"
+            val episodeText = this.selectFirst("span.episode")?.text() ?: ""
+            val episodeNum = Regex("\\d+").find(episodeText)?.value?.toIntOrNull()
+            
             newAnimeSearchResponse(title, href, TvType.TvSeries) {
                 this.posterUrl = posterUrl
-                addSub(episode)
+                addSub(episodeNum)
             }
         } else {
-            val quality = this.select("div.quality").text().trim()
             newMovieSearchResponse(title, href, TvType.Movie) {
                 this.posterUrl = posterUrl
-                addQuality(quality)
+                this.quality = searchQuality
             }
         }
     }
@@ -116,16 +128,14 @@ class LayarKacaProvider : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        // 1. Request Halaman Awal
         var response = app.get(url)
         var document = response.documentLarge
-        var finalUrl = response.url // URL setelah redirect HTTP standar
+        var finalUrl = response.url 
         
-        // Deteksi Redirect Manual (Anti-Phishing)
+        // Anti-Phishing Redirect Logic
         val bodyText = document.body().text()
         if (bodyText.contains("dialihkan ke", ignoreCase = true) && bodyText.contains("Nontondrama", ignoreCase = true)) {
             Log.d("Phisher-Info", "Redirect page detected at $url")
-            
             val redirectLink = document.select("a").firstOrNull { 
                 it.text().contains("Buka Sekarang", ignoreCase = true) ||
                 it.attr("href").contains("nontondrama", ignoreCase = true)
@@ -133,7 +143,6 @@ class LayarKacaProvider : MainAPI() {
             
             if (!redirectLink.isNullOrEmpty()) {
                 finalUrl = fixUrl(redirectLink)
-                Log.d("Phisher-Info", "Jumping to: $finalUrl")
                 document = app.get(finalUrl).documentLarge
             }
         }
