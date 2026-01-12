@@ -23,6 +23,7 @@ class LayarKacaProvider : MainAPI() {
         TvType.AsianDrama
     )
 
+    // --- Kategori Menu Baru ---
     override val mainPage = mainPageOf(
         "$mainUrl/populer/page/" to "Top Bulan Ini",
         "$mainUrl/latest/page/" to "Film Terbaru",
@@ -39,9 +40,7 @@ class LayarKacaProvider : MainAPI() {
     ): HomePageResponse {
         val document = app.get(request.data + page).documentLarge
         
-        // PERBAIKAN PENTING:
-        // Mengubah "article figure" menjadi "article" saja.
-        // Ini agar kita bisa menangkap label quality yang berada di luar tag <figure>
+        // Selector "article" (tanpa figure) agar bisa melihat label quality di luar gambar
         val home = document.select("article").mapNotNull {
             it.toSearchResult()
         }
@@ -54,31 +53,41 @@ class LayarKacaProvider : MainAPI() {
         val href = fixUrl(rawHref) 
         
         val posterUrl = fixUrlNull(this.selectFirst("img")?.getImageAttr())
-        val type = if (this.selectFirst("span.episode") == null) TvType.Movie else TvType.TvSeries
         
-        // --- LOGIKA DETEKSI KUALITAS (CAM/HD/TS) ---
-        // Mencari elemen dengan class .quality, .q, atau .label
+        // --- PERBAIKAN LOGIKA SERIES ---
+        // Mencari elemen dengan class "episode" (bisa span, div, atau lainnya)
+        val episodeElement = this.selectFirst("span.episode, .episode")
+        val type = if (episodeElement == null) TvType.Movie else TvType.TvSeries
+        
+        // --- LOGIKA KUALITAS (CAM/HD/TS) ---
         val qualityText = this.select(".quality, .q, .label").text().trim()
-        
         val searchQuality = when {
             qualityText.contains("CAM", true) -> SearchQuality.Cam
             qualityText.contains("HDCAM", true) -> SearchQuality.Cam
-            qualityText.contains("TS", true) -> SearchQuality.Cam // Avatar sering pakai label TS
+            qualityText.contains("TS", true) -> SearchQuality.Cam 
             qualityText.contains("HD", true) -> SearchQuality.HD 
             qualityText.contains("Bluray", true) -> SearchQuality.BlueRay
             qualityText.contains("Web", true) -> SearchQuality.WebRip
-            else -> SearchQuality.HD // Default ke HD jika tidak terbaca
+            else -> SearchQuality.HD
         }
 
         return if (type == TvType.TvSeries) {
-            val episodeText = this.selectFirst("span.episode")?.text() ?: ""
-            val episodeNum = Regex("\\d+").find(episodeText)?.value?.toIntOrNull()
-            
             newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
                 this.posterUrl = posterUrl
-                if (episodeNum != null) {
-                    // Menampilkan "EPS 10" secara manual
-                    addQuality("EPS $episodeNum")
+                
+                // Logika Penampil Episode
+                if (episodeElement != null) {
+                    val rawText = episodeElement.text().trim()
+                    // Cari angka saja dalam teks (misal "Sub Ep 16" -> ambil "16")
+                    val episodeNum = Regex("(\\d+)").find(rawText)?.value
+                    
+                    if (episodeNum != null) {
+                        // Tampilkan format "EPS 16"
+                        addQuality("EPS $episodeNum")
+                    } else if (rawText.isNotEmpty()) {
+                        // Jika tidak ada angka, tampilkan teks aslinya (misal "On Going")
+                        addQuality(rawText)
+                    }
                 }
             }
         } else {
@@ -139,11 +148,10 @@ class LayarKacaProvider : MainAPI() {
         var document = response.documentLarge
         var finalUrl = response.url 
         
-        // Anti-Phishing Redirect Logic
+        // Anti-Phishing Redirect
         val bodyText = document.body().text()
         if (bodyText.contains("dialihkan ke", ignoreCase = true) && bodyText.contains("Nontondrama", ignoreCase = true)) {
             Log.d("Phisher-Info", "Redirect page detected at $url")
-            
             val redirectLink = document.select("a").firstOrNull { 
                 it.text().contains("Buka Sekarang", ignoreCase = true) ||
                 it.attr("href").contains("nontondrama", ignoreCase = true)
@@ -151,7 +159,6 @@ class LayarKacaProvider : MainAPI() {
             
             if (!redirectLink.isNullOrEmpty()) {
                 finalUrl = fixUrl(redirectLink)
-                Log.d("Phisher-Info", "Jumping to: $finalUrl")
                 document = app.get(finalUrl).documentLarge
             }
         }
