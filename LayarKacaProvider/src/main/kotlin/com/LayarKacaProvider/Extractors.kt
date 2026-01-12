@@ -30,6 +30,7 @@ open class Hownetwork : ExtractorApi() {
             subtitleCallback: (SubtitleFile) -> Unit,
             callback: (ExtractorLink) -> Unit
     ) {
+        // Membersihkan ID dari URL
         val id = url.substringAfter("id=").substringBefore("&")
         
         // Request API
@@ -52,16 +53,15 @@ open class Hownetwork : ExtractorApi() {
             if (file.isNotBlank() && file != "null") {
                 Log.d("Phisher-Success", "File Found: $file")
                 
-                // Gunakan URL halaman player sebagai referer yang valid
                 val properReferer = url 
                 
-                // Coba generate M3U8 standar
                 val headers = mapOf(
                     "Origin" to mainUrl,
                     "Referer" to properReferer,
                     "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
                 )
 
+                // Coba generate M3U8 standar
                 val playlist = M3u8Helper.generateM3u8(
                     source = this.name,
                     streamUrl = file,
@@ -69,24 +69,24 @@ open class Hownetwork : ExtractorApi() {
                     headers = headers
                 )
 
-                // LOGIKA BARU: Fallback / Force Load
                 if (playlist.isNotEmpty()) {
                     playlist.forEach(callback)
                 } else {
-                    // Jika M3u8Helper menolak, kita PAKSA masukkan linknya menggunakan newExtractorLink
+                    // Fallback: Force link masuk jika M3u8Helper gagal
                     Log.d("Phisher-Warn", "M3u8Helper failed, forcing link: $file")
                     
-                    // PERBAIKAN DI SINI (Menggunakan newExtractorLink)
+                    // PERBAIKAN DI SINI:
+                    // referer dan quality diatur di dalam .apply {}, bukan di dalam kurung newExtractorLink()
                     callback(
                         newExtractorLink(
                             source = this.name,
                             name = this.name,
                             url = file,
-                            referer = properReferer,
-                            quality = Qualities.Unknown.value,
                             type = INFER_TYPE
                         ).apply {
                             this.headers = headers
+                            this.referer = properReferer
+                            this.quality = Qualities.Unknown.value
                         }
                     )
                 }
@@ -99,12 +99,10 @@ open class Hownetwork : ExtractorApi() {
     }
 }
 
-// Extractor Turunan
 class Cloudhownetwork : Hownetwork() {
     override var mainUrl = "https://cloud.hownetwork.xyz"
 }
 
-// Extractor Lainnya
 class Furher : Filesim() {
     override val name = "Furher"
     override var mainUrl = "https://furher.in"
