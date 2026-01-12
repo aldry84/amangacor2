@@ -23,7 +23,6 @@ class LayarKacaProvider : MainAPI() {
         TvType.AsianDrama
     )
 
-    // --- Kategori Menu Baru ---
     override val mainPage = mainPageOf(
         "$mainUrl/populer/page/" to "Top Bulan Ini",
         "$mainUrl/latest/page/" to "Film Terbaru",
@@ -40,7 +39,7 @@ class LayarKacaProvider : MainAPI() {
     ): HomePageResponse {
         val document = app.get(request.data + page).documentLarge
         
-        // Selector "article" (tanpa figure) agar bisa melihat label quality di luar gambar
+        // Selector "article" agar bisa melihat label di luar gambar
         val home = document.select("article").mapNotNull {
             it.toSearchResult()
         }
@@ -54,12 +53,20 @@ class LayarKacaProvider : MainAPI() {
         
         val posterUrl = fixUrlNull(this.selectFirst("img")?.getImageAttr())
         
-        // --- PERBAIKAN LOGIKA SERIES ---
-        // Mencari elemen dengan class "episode" (bisa span, div, atau lainnya)
-        val episodeElement = this.selectFirst("span.episode, .episode")
-        val type = if (episodeElement == null) TvType.Movie else TvType.TvSeries
+        // --- 1. DETEKSI TIPE (SERIES VS MOVIE) YANG LEBIH KUAT ---
+        // Cari elemen visual episode
+        val episodeElement = this.selectFirst("span.episode, .episode, .mli-eps, .ep")
         
-        // --- LOGIKA KUALITAS (CAM/HD/TS) ---
+        // Cek URL (PENTING: Jika visual tidak ada, kita cek linknya)
+        val isSeriesUrl = href.contains("series", true) || 
+                          href.contains("nontondrama", true) || 
+                          href.contains("drama", true) ||
+                          href.contains("episode", true)
+
+        // Jika ada elemen episode ATAU link-nya berbau series, maka itu Series
+        val type = if (episodeElement != null || isSeriesUrl) TvType.TvSeries else TvType.Movie
+        
+        // --- 2. DETEKSI KUALITAS FILM (CAM/HD) ---
         val qualityText = this.select(".quality, .q, .label").text().trim()
         val searchQuality = when {
             qualityText.contains("CAM", true) -> SearchQuality.Cam
@@ -75,19 +82,25 @@ class LayarKacaProvider : MainAPI() {
             newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
                 this.posterUrl = posterUrl
                 
-                // Logika Penampil Episode
+                // --- 3. LOGIKA PENAMPIL EPS ---
+                var finalLabel: String? = null
+                
+                // Coba ambil dari elemen episode (span.episode)
                 if (episodeElement != null) {
                     val rawText = episodeElement.text().trim()
-                    // Cari angka saja dalam teks (misal "Sub Ep 16" -> ambil "16")
-                    val episodeNum = Regex("(\\d+)").find(rawText)?.value
-                    
-                    if (episodeNum != null) {
-                        // Tampilkan format "EPS 16"
-                        addQuality("EPS $episodeNum")
-                    } else if (rawText.isNotEmpty()) {
-                        // Jika tidak ada angka, tampilkan teks aslinya (misal "On Going")
-                        addQuality(rawText)
-                    }
+                    val num = Regex("(\\d+)").find(rawText)?.value
+                    finalLabel = if (num != null) "EPS $num" else rawText
+                }
+                
+                // Fallback: Jika elemen episode kosong, cek apakah ada angka di qualityText (kadang nyasar ke sana)
+                if (finalLabel == null && qualityText.isNotEmpty() && !qualityText.contains("HD", true)) {
+                    val num = Regex("(\\d+)").find(qualityText)?.value
+                    if (num != null) finalLabel = "EPS $num"
+                }
+
+                // Tampilkan Label
+                if (finalLabel != null) {
+                    addQuality(finalLabel)
                 }
             }
         } else {
