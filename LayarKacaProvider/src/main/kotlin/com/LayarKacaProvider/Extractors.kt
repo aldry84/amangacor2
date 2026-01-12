@@ -6,10 +6,12 @@ import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.extractors.Filesim
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.INFER_TYPE
 import com.lagradost.cloudstream3.utils.M3u8Helper
+import com.lagradost.cloudstream3.utils.Qualities
 import org.json.JSONObject
 
-// Extractor Generik untuk Turbovid, dll
+// Extractor Generik
 class Co4nxtrl : Filesim() {
     override val mainUrl = "https://co4nxtrl.com"
     override val name = "Co4nxtrl"
@@ -27,11 +29,9 @@ open class Hownetwork : ExtractorApi() {
             subtitleCallback: (SubtitleFile) -> Unit,
             callback: (ExtractorLink) -> Unit
     ) {
-        // Logika untuk membersihkan ID
-        val id = url.substringAfter("id=")
-                    .substringBefore("&") // Jaga-jaga ada parameter lain di belakang
-
-        // Request ke API
+        val id = url.substringAfter("id=").substringBefore("&")
+        
+        // Request API
         val response = app.post(
                 "$mainUrl/api.php?id=$id",
                 data = mapOf(
@@ -51,15 +51,42 @@ open class Hownetwork : ExtractorApi() {
             if (file.isNotBlank() && file != "null") {
                 Log.d("Phisher-Success", "File Found: $file")
                 
-                // PERBAIKAN UTAMA DI SINI:
-                // Menambahkan Referer Header ke dalam helper M3u8
-                // Agar server tidak menolak (HTTP 403 Forbidden)
-                M3u8Helper.generateM3u8(
+                // Gunakan URL halaman player sebagai referer yang valid
+                val properReferer = url 
+                
+                // Coba generate M3U8 standar
+                val headers = mapOf(
+                    "Origin" to mainUrl,
+                    "Referer" to properReferer,
+                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                )
+
+                val playlist = M3u8Helper.generateM3u8(
                     source = this.name,
                     streamUrl = file,
-                    referer = "$mainUrl/", // Header penting!
-                    headers = mapOf("Origin" to mainUrl) // Tambahan header
-                ).forEach(callback)
+                    referer = properReferer,
+                    headers = headers
+                )
+
+                // LOGIKA BARU: Fallback / Force Load
+                if (playlist.isNotEmpty()) {
+                    playlist.forEach(callback)
+                } else {
+                    // Jika M3u8Helper menolak (karena dianggap invalid), kita PAKSA masukkan linknya.
+                    // Biarkan ExoPlayer yang mencoba memutarnya nanti.
+                    Log.d("Phisher-Warn", "M3u8Helper failed, forcing link: $file")
+                    callback(
+                        ExtractorLink(
+                            source = this.name,
+                            name = this.name,
+                            url = file,
+                            referer = properReferer,
+                            quality = Qualities.Unknown.value, // Atau bisa parse "480" dari string URL jika mau
+                            type = INFER_TYPE,
+                            headers = headers
+                        )
+                    )
+                }
             } else {
                  Log.d("Phisher-Error", "File is empty in JSON")
             }
@@ -74,7 +101,7 @@ class Cloudhownetwork : Hownetwork() {
     override var mainUrl = "https://cloud.hownetwork.xyz"
 }
 
-// Extractor Standar
+// Extractor Lainnya
 class Furher : Filesim() {
     override val name = "Furher"
     override var mainUrl = "https://furher.in"
