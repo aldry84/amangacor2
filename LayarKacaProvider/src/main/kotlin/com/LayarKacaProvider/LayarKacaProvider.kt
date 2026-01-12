@@ -10,13 +10,8 @@ import java.net.URI
 
 class LayarKacaProvider : MainAPI() {
 
-    // Domain Utama (Movie)
     override var mainUrl = "https://tv7.lk21official.cc"
-    
-    // Domain Khusus Series (Nontondrama)
     private var seriesDomain = "https://tv3.nontondrama.my"
-    
-    // API Search (Pusat)
     private var searchApiUrl = "https://gudangvape.com"
 
     override var name = "LayarKaca"
@@ -32,7 +27,7 @@ class LayarKacaProvider : MainAPI() {
         "$mainUrl/populer/page/" to "Film Terplopuler",
         "$mainUrl/rating/page/" to "Film Berdasarkan IMDb Rating",
         "$mainUrl/most-commented/page/" to "Film Dengan Komentar Terbanyak",
-        "$mainUrl/latest-series/page/" to "Series Terbaru", // Pake mainUrl dulu, nanti diredirect
+        "$mainUrl/latest-series/page/" to "Series Terbaru",
         "$mainUrl/series/asian/page/" to "Film Asian Terbaru",
         "$mainUrl/latest/page/" to "Film Upload Terbaru",
     )
@@ -48,26 +43,23 @@ class LayarKacaProvider : MainAPI() {
         return newHomePageResponse(request.name, home)
     }
 
-    // LOGIKA REDIRECT PENTING DI SINI
     private suspend fun getProperLink(url: String): String {
-        // 1. Jika URL sudah mengarah ke nontondrama, biarkan saja
         if (url.contains("nontondrama")) return url
-        
-        // 2. Jika URL mengandung /series/, kemungkinan besar akan redirect
-        // Kita coba request HEAD/GET untuk melihat URL akhirnya (follow redirects)
         if (url.contains("/series/")) {
-            val res = app.get(url, allowRedirects = true)
-            return res.url // Kembalikan URL akhir setelah redirect (misal: ke nontondrama)
+            try {
+                // Follow redirect untuk mendapatkan URL series yang benar
+                val res = app.get(url, allowRedirects = true)
+                return res.url 
+            } catch (e: Exception) {
+                return url
+            }
         }
-        
         return url
     }
 
     private fun Element.toSearchResult(): SearchResponse? {
         val title = this.selectFirst("h3")?.ownText()?.trim() ?: return null
-        // Ambil href mentah
         val rawHref = this.selectFirst("a")!!.attr("href")
-        // FixUrl akan menggabungkan dengan mainUrl jika relatif, atau biarkan jika absolut
         val href = fixUrl(rawHref) 
         
         val posterUrl = fixUrlNull(this.selectFirst("img")?.getImageAttr())
@@ -115,13 +107,7 @@ class LayarKacaProvider : MainAPI() {
                         posterUrl = "https://poster.lk21.party/wp-content/uploads/$posterUrl"
                     }
 
-                    // Logika URL Item Search:
-                    // Jika tipe series, kita arahkan langsung ke domain nontondrama biar cepat
-                    val itemUrl = if (type == "series") {
-                        "$seriesDomain/$slug" 
-                    } else {
-                        "$mainUrl/$slug"
-                    }
+                    val itemUrl = if (type == "series") "$seriesDomain/$slug" else "$mainUrl/$slug"
 
                     if (type == "series") {
                         results.add(newTvSeriesSearchResponse(title, itemUrl, TvType.TvSeries) {
@@ -141,23 +127,34 @@ class LayarKacaProvider : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        // Dapatkan link asli (menangani redirect lk21 -> nontondrama)
         val finalUrl = getProperLink(url)
+        val response = app.get(finalUrl)
+        val document = response.documentLarge
+        val baseurl = getBaseUrl(finalUrl)
         
-        val document = app.get(finalUrl).documentLarge
-        val baseurl = getBaseUrl(finalUrl) // Base URL dinamis (bisa lk21 atau nontondrama)
+        // 1. Selector Judul (Sangat Penting)
+        // Kita cari H1 di beberapa tempat. Jika null, cari H1 apa saja di halaman.
+        var title = document.selectFirst("div.movie-info h1")?.text()?.trim() 
+            ?: document.selectFirst("h1.entry-title")?.text()?.trim()
+            ?: document.selectFirst("header h1")?.text()?.trim()
+            ?: document.selectFirst("h1")?.text()?.trim() // Fallback terakhir
+            ?: "Unknown Title"
+
+        // 2. Selector Poster
+        var poster = document.select("meta[property=og:image]").attr("content")
+        if (poster.isNullOrEmpty()) {
+             poster = document.selectFirst("div.poster img")?.getImageAttr() ?: ""
+        }
         
-        val title = document.selectFirst("div.movie-info h1")?.text()?.trim().toString()
-        val poster = document.select("meta[property=og:image]").attr("content")
         val tags = document.select("div.tag-list span").map { it.text() }
         val posterheaders = mapOf("Referer" to baseurl)
 
-        val year = Regex("\\d, (\\d+)").find(
-            document.select("div.movie-info h1").text().trim()
-        )?.groupValues?.get(1).toString().toIntOrNull()
+        val year = Regex("\\d, (\\d+)").find(title)?.groupValues?.get(1)?.toIntOrNull()
         
-        val tvType = if (document.selectFirst("#season-data") != null) TvType.TvSeries else TvType.Movie
-        val description = document.selectFirst("div.meta-info")?.text()?.trim()
+        val description = document.selectFirst("div.meta-info")?.text()?.trim() 
+            ?: document.selectFirst("div.desc")?.text()?.trim()
+            ?: document.selectFirst("blockquote")?.text()?.trim()
+
         val trailer = document.selectFirst("ul.action-left > li:nth-child(3) > a")?.attr("href")
         val rating = document.selectFirst("div.info-tag strong")?.text()
 
@@ -171,32 +168,53 @@ class LayarKacaProvider : MainAPI() {
             }
         }
 
+        // 3. Deteksi Tipe (Menggunakan data-web_type dari screenshotmu)
+        val bodyType = document.select("body").attr("data-web_type")
+        val hasSeasonData = document.selectFirst("#season-data") != null
+        
+        val tvType = if (bodyType == "series" || hasSeasonData || url.contains("nontondrama")) 
+                     TvType.TvSeries else TvType.Movie
+
         return if (tvType == TvType.TvSeries) {
-            val json = document.selectFirst("script#season-data")?.data()
             val episodes = mutableListOf<Episode>()
-            if (json != null) {
+            
+            // Logic 1: JSON Season Data (Format LK21 Lama)
+            val json = document.selectFirst("script#season-data")?.data()
+            if (!json.isNullOrEmpty()) {
                 val root = JSONObject(json)
                 root.keys().forEach { seasonKey ->
                     val seasonArr = root.getJSONArray(seasonKey)
                     for (i in 0 until seasonArr.length()) {
                         val ep = seasonArr.getJSONObject(i)
-                        // Pastikan URL episode menggunakan baseurl yang benar (nontondrama/lk21)
                         val slug = ep.getString("slug")
-                        // Hati-hati double slash
-                        val href = if(baseurl.endsWith("/")) "$baseurl$slug" else "$baseurl/$slug"
-                        
+                        // Fix link episode
+                        val href = fixUrl(if (slug.startsWith("http")) slug else "$baseurl/$slug")
                         val episodeNo = ep.optInt("episode_no")
                         val seasonNo = ep.optInt("s")
-                        episodes.add(
-                            newEpisode(href) {
-                                this.name = "Episode $episodeNo"
-                                this.season = seasonNo
-                                this.episode = episodeNo
-                            }
-                        )
+                        episodes.add(newEpisode(href) {
+                            this.name = "Episode $episodeNo"
+                            this.season = seasonNo
+                            this.episode = episodeNo
+                        })
+                    }
+                }
+            } 
+            // Logic 2: HTML List (Format Nontondrama)
+            else {
+                // Cari semua link yang mengandung kata 'episode' atau ada di dalam list episode
+                val episodeLinks = document.select("ul.episodios li a, div.list-episode a, a[href*=episode]")
+                episodeLinks.forEach { 
+                    val epHref = fixUrl(it.attr("href"))
+                    val epName = it.text().trim()
+                    // Filter agar tidak mengambil link sampah
+                    if(epHref.contains(baseurl) || epHref.contains("episode")) {
+                        episodes.add(newEpisode(epHref) {
+                            this.name = epName
+                        })
                     }
                 }
             }
+
             newTvSeriesLoadResponse(title, finalUrl, TvType.TvSeries, episodes) {
                 this.posterUrl = poster
                 this.posterHeaders = posterheaders
@@ -227,18 +245,20 @@ class LayarKacaProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // Load halaman player
         val document = app.get(data).documentLarge
         
-        // Cari server players
-        document.select("ul#player-list > li").map {
+        // Coba beberapa kemungkinan selector player
+        var playerNodes = document.select("ul#player-list > li")
+        if (playerNodes.isEmpty()) {
+             // Selector alternatif untuk nontondrama
+             playerNodes = document.select("div.player_nav ul li, ul.player-list li")
+        }
+
+        playerNodes.map {
             fixUrl(it.select("a").attr("href"))
         }.amap {
-            // Gunakan 'data' (URL halaman saat ini) sebagai referer saat mencari iframe
             val iframeUrl = it.getIframe(referer = data)
-            val extractorReferer = getBaseUrl(it) // Referer untuk extractor
-            
-            Log.d("Phisher-Debug", "Found iframe: $iframeUrl from $it")
+            val extractorReferer = getBaseUrl(it)
             
             if(iframeUrl.isNotEmpty()) {
                 loadExtractor(iframeUrl, extractorReferer, subtitleCallback, callback)
@@ -247,7 +267,6 @@ class LayarKacaProvider : MainAPI() {
         return true
     }
 
-    // Update getIframe untuk menerima referer dinamis
     private suspend fun String.getIframe(referer: String): String {
         val response = app.get(this, referer = referer)
         val document = response.documentLarge
