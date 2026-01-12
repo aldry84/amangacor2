@@ -39,7 +39,7 @@ class LayarKacaProvider : MainAPI() {
     ): HomePageResponse {
         val document = app.get(request.data + page).documentLarge
         
-        // Menggunakan selector "article" agar jangkauan lebih luas
+        // Selector "article" agar jangkauan lebih luas (baca label di luar gambar)
         val home = document.select("article").mapNotNull {
             it.toSearchResult()
         }
@@ -53,9 +53,11 @@ class LayarKacaProvider : MainAPI() {
         
         val posterUrl = fixUrlNull(this.selectFirst("img")?.getImageAttr())
         
-        // --- DETEKSI TIPE (SERIES vs MOVIE) ---
-        // Cek elemen visual episode atau cek URL jika visual tidak ada
+        // --- 1. DETEKSI TIPE (SERIES vs MOVIE) ---
+        // Cari elemen visual episode (.episode, .mli-eps, .ep)
         val episodeElement = this.selectFirst("span.episode, .episode, .mli-eps, .ep")
+        
+        // Cek URL untuk memastikan (backup jika visual tidak ada)
         val isSeriesUrl = href.contains("series", true) || 
                           href.contains("nontondrama", true) || 
                           href.contains("drama", true) ||
@@ -63,37 +65,39 @@ class LayarKacaProvider : MainAPI() {
 
         val type = if (episodeElement != null || isSeriesUrl) TvType.TvSeries else TvType.Movie
         
-        // --- AMBIL TEXT QUALITY (CAM/HD) ---
-        var qualityText = this.select(".quality, .q, .label").text().trim()
-        if (qualityText.isEmpty()) qualityText = "HD" // Default
+        // --- 2. AMBIL DATA LABEL ---
         
-        // --- AMBIL RATING (NEW!) ---
+        // Ambil teks Quality (CAM/HD)
+        var qualityText = this.select(".quality, .q, .label").text().trim()
+        
+        // Ambil Rating (★)
         val ratingText = this.select(".rating, .vote").text().trim()
         
         return if (type == TvType.TvSeries) {
             newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
                 this.posterUrl = posterUrl
                 
-                // --- LOGIKA LABEL SERIES (EPS + RATING) ---
+                // --- LOGIKA LABEL SERIES (Sub Eps + Rating) ---
                 var epsLabel = ""
                 
-                // 1. Cari angka episode
+                // Ambil teks episode APA ADANYA (biar berhasil muncul)
                 if (episodeElement != null) {
-                    val rawText = episodeElement.text().trim()
-                    val num = Regex("(\\d+)").find(rawText)?.value
-                    epsLabel = if (num != null) "EPS $num" else rawText
+                    epsLabel = episodeElement.text().trim() // Hasil: "Sub Ep 16"
                 }
                 
-                // 2. Fallback: Cari angka di qualityText jika di episodeElement kosong
+                // Fallback: Jika kosong, cek apakah angka ada di qualityText
                 if (epsLabel.isEmpty() && qualityText.isNotEmpty() && !qualityText.contains("HD", true)) {
-                    val num = Regex("(\\d+)").find(qualityText)?.value
-                    if (num != null) epsLabel = "EPS $num"
+                    // Jika di label quality isinya angka (misal "16"), kita anggap itu episode
+                    if (qualityText.any { it.isDigit() }) {
+                        epsLabel = "Eps $qualityText"
+                    }
                 }
 
-                // 3. Gabungkan EPS dan RATING
-                // Contoh output: "EPS 10 ★ 7.5" atau "EPS 10"
+                // Gabungkan Episode + Rating
+                // Contoh: "Sub Ep 16 ★ 7.8"
                 val finalLabel = StringBuilder()
                 if (epsLabel.isNotEmpty()) finalLabel.append(epsLabel)
+                
                 if (ratingText.isNotEmpty()) {
                     if (finalLabel.isNotEmpty()) finalLabel.append(" ★ ")
                     finalLabel.append(ratingText)
@@ -105,8 +109,11 @@ class LayarKacaProvider : MainAPI() {
             newMovieSearchResponse(title, href, TvType.Movie) {
                 this.posterUrl = posterUrl
                 
-                // --- LOGIKA LABEL MOVIE (QUALITY + RATING) ---
-                // Contoh output: "HD ★ 7.5" atau "CAM ★ 6.0"
+                // --- LOGIKA LABEL MOVIE (Quality + Rating) ---
+                // Default ke HD jika quality kosong
+                if (qualityText.isEmpty()) qualityText = "HD"
+                
+                // Contoh: "HD ★ 7.8" atau "CAM ★ 6.5"
                 val finalLabel = StringBuilder()
                 finalLabel.append(qualityText)
                 
