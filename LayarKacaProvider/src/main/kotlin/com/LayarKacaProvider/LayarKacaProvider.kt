@@ -39,8 +39,7 @@ class LayarKacaProvider : MainAPI() {
     ): HomePageResponse {
         val document = app.get(request.data + page).documentLarge
         
-        // PERBAIKAN 1: Pakai "article" saja (bukan article figure)
-        // Agar bisa membaca label quality yang ada di luar gambar
+        // Menggunakan selector "article" agar jangkauan lebih luas
         val home = document.select("article").mapNotNull {
             it.toSearchResult()
         }
@@ -54,59 +53,68 @@ class LayarKacaProvider : MainAPI() {
         
         val posterUrl = fixUrlNull(this.selectFirst("img")?.getImageAttr())
         
-        // --- PERBAIKAN 2: DETEKSI SERIES LEBIH KUAT ---
-        // Cek elemen visual (.episode, .mli-eps) ATAU cek URL-nya
+        // --- DETEKSI TIPE (SERIES vs MOVIE) ---
+        // Cek elemen visual episode atau cek URL jika visual tidak ada
         val episodeElement = this.selectFirst("span.episode, .episode, .mli-eps, .ep")
-        
         val isSeriesUrl = href.contains("series", true) || 
                           href.contains("nontondrama", true) || 
                           href.contains("drama", true) ||
                           href.contains("episode", true)
 
-        // Jika ada tanda visual ATAU linknya mengandung kata series, anggap Series
         val type = if (episodeElement != null || isSeriesUrl) TvType.TvSeries else TvType.Movie
         
-        // --- PERBAIKAN 3: DETEKSI LABEL QUALITY (CAM/HD) ---
-        val qualityText = this.select(".quality, .q, .label").text().trim()
-        val searchQuality = when {
-            qualityText.contains("CAM", true) -> SearchQuality.Cam
-            qualityText.contains("HDCAM", true) -> SearchQuality.Cam
-            qualityText.contains("TS", true) -> SearchQuality.Cam 
-            qualityText.contains("HD", true) -> SearchQuality.HD 
-            qualityText.contains("Bluray", true) -> SearchQuality.BlueRay
-            qualityText.contains("Web", true) -> SearchQuality.WebRip
-            else -> SearchQuality.HD
-        }
-
+        // --- AMBIL TEXT QUALITY (CAM/HD) ---
+        var qualityText = this.select(".quality, .q, .label").text().trim()
+        if (qualityText.isEmpty()) qualityText = "HD" // Default
+        
+        // --- AMBIL RATING (NEW!) ---
+        val ratingText = this.select(".rating, .vote").text().trim()
+        
         return if (type == TvType.TvSeries) {
             newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
                 this.posterUrl = posterUrl
                 
-                // --- PERBAIKAN 4: LABEL "EPS" MANUAL (Bukan "Sub") ---
-                var finalLabel: String? = null
+                // --- LOGIKA LABEL SERIES (EPS + RATING) ---
+                var epsLabel = ""
                 
-                // Coba ambil angka dari elemen episode
+                // 1. Cari angka episode
                 if (episodeElement != null) {
                     val rawText = episodeElement.text().trim()
                     val num = Regex("(\\d+)").find(rawText)?.value
-                    finalLabel = if (num != null) "EPS $num" else rawText
+                    epsLabel = if (num != null) "EPS $num" else rawText
                 }
                 
-                // Fallback: Jika kosong, coba cari angka di label quality (kadang nyasar ke situ)
-                if (finalLabel == null && qualityText.isNotEmpty() && !qualityText.contains("HD", true)) {
+                // 2. Fallback: Cari angka di qualityText jika di episodeElement kosong
+                if (epsLabel.isEmpty() && qualityText.isNotEmpty() && !qualityText.contains("HD", true)) {
                     val num = Regex("(\\d+)").find(qualityText)?.value
-                    if (num != null) finalLabel = "EPS $num"
+                    if (num != null) epsLabel = "EPS $num"
                 }
 
-                // Tampilkan Label jika ada
-                if (finalLabel != null) {
-                    addQuality(finalLabel)
+                // 3. Gabungkan EPS dan RATING
+                // Contoh output: "EPS 10 ★ 7.5" atau "EPS 10"
+                val finalLabel = StringBuilder()
+                if (epsLabel.isNotEmpty()) finalLabel.append(epsLabel)
+                if (ratingText.isNotEmpty()) {
+                    if (finalLabel.isNotEmpty()) finalLabel.append(" ★ ")
+                    finalLabel.append(ratingText)
                 }
+
+                if (finalLabel.isNotEmpty()) addQuality(finalLabel.toString())
             }
         } else {
             newMovieSearchResponse(title, href, TvType.Movie) {
                 this.posterUrl = posterUrl
-                this.quality = searchQuality
+                
+                // --- LOGIKA LABEL MOVIE (QUALITY + RATING) ---
+                // Contoh output: "HD ★ 7.5" atau "CAM ★ 6.0"
+                val finalLabel = StringBuilder()
+                finalLabel.append(qualityText)
+                
+                if (ratingText.isNotEmpty()) {
+                    finalLabel.append(" ★ ").append(ratingText)
+                }
+                
+                addQuality(finalLabel.toString())
             }
         }
     }
