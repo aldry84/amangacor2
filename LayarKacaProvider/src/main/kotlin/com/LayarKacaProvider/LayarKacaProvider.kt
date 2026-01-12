@@ -23,6 +23,7 @@ class LayarKacaProvider : MainAPI() {
         TvType.AsianDrama
     )
 
+    // --- BAGIAN YANG DIUBAH ---
     override val mainPage = mainPageOf(
         "$mainUrl/populer/page/" to "Top Bulan Ini",
         "$mainUrl/latest/page/" to "Film Terbaru",
@@ -32,15 +33,14 @@ class LayarKacaProvider : MainAPI() {
         "$mainUrl/genre/romance/page/" to "Romantis",
         "$mainUrl/country/thailand/page/" to "Thailand"
     )
+    // ---------------------------
 
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest
     ): HomePageResponse {
         val document = app.get(request.data + page).documentLarge
-        
-        // Selector "article" agar jangkauan lebih luas (baca label di luar gambar)
-        val home = document.select("article").mapNotNull {
+        val home = document.select("article figure").mapNotNull {
             it.toSearchResult()
         }
         return newHomePageResponse(request.name, home)
@@ -52,76 +52,20 @@ class LayarKacaProvider : MainAPI() {
         val href = fixUrl(rawHref) 
         
         val posterUrl = fixUrlNull(this.selectFirst("img")?.getImageAttr())
-        
-        // --- 1. DETEKSI TIPE (SERIES vs MOVIE) ---
-        // Cari elemen visual episode (.episode, .mli-eps, .ep)
-        val episodeElement = this.selectFirst("span.episode, .episode, .mli-eps, .ep")
-        
-        // Cek URL untuk memastikan (backup jika visual tidak ada)
-        val isSeriesUrl = href.contains("series", true) || 
-                          href.contains("nontondrama", true) || 
-                          href.contains("drama", true) ||
-                          href.contains("episode", true)
-
-        val type = if (episodeElement != null || isSeriesUrl) TvType.TvSeries else TvType.Movie
-        
-        // --- 2. AMBIL DATA LABEL ---
-        
-        // Ambil teks Quality (CAM/HD)
-        var qualityText = this.select(".quality, .q, .label").text().trim()
-        
-        // Ambil Rating (★)
-        val ratingText = this.select(".rating, .vote").text().trim()
+        val type = if (this.selectFirst("span.episode") == null) TvType.Movie else TvType.TvSeries
         
         return if (type == TvType.TvSeries) {
-            newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
+            val episode = this.selectFirst("span.episode strong")?.text()?.filter { it.isDigit() }
+                ?.toIntOrNull()
+            newAnimeSearchResponse(title, href, TvType.TvSeries) {
                 this.posterUrl = posterUrl
-                
-                // --- LOGIKA LABEL SERIES (Sub Eps + Rating) ---
-                var epsLabel = ""
-                
-                // Ambil teks episode APA ADANYA (biar berhasil muncul)
-                if (episodeElement != null) {
-                    epsLabel = episodeElement.text().trim() // Hasil: "Sub Ep 16"
-                }
-                
-                // Fallback: Jika kosong, cek apakah angka ada di qualityText
-                if (epsLabel.isEmpty() && qualityText.isNotEmpty() && !qualityText.contains("HD", true)) {
-                    // Jika di label quality isinya angka (misal "16"), kita anggap itu episode
-                    if (qualityText.any { it.isDigit() }) {
-                        epsLabel = "Eps $qualityText"
-                    }
-                }
-
-                // Gabungkan Episode + Rating
-                // Contoh: "Sub Ep 16 ★ 7.8"
-                val finalLabel = StringBuilder()
-                if (epsLabel.isNotEmpty()) finalLabel.append(epsLabel)
-                
-                if (ratingText.isNotEmpty()) {
-                    if (finalLabel.isNotEmpty()) finalLabel.append(" ★ ")
-                    finalLabel.append(ratingText)
-                }
-
-                if (finalLabel.isNotEmpty()) addQuality(finalLabel.toString())
+                addSub(episode)
             }
         } else {
+            val quality = this.select("div.quality").text().trim()
             newMovieSearchResponse(title, href, TvType.Movie) {
                 this.posterUrl = posterUrl
-                
-                // --- LOGIKA LABEL MOVIE (Quality + Rating) ---
-                // Default ke HD jika quality kosong
-                if (qualityText.isEmpty()) qualityText = "HD"
-                
-                // Contoh: "HD ★ 7.8" atau "CAM ★ 6.5"
-                val finalLabel = StringBuilder()
-                finalLabel.append(qualityText)
-                
-                if (ratingText.isNotEmpty()) {
-                    finalLabel.append(" ★ ").append(ratingText)
-                }
-                
-                addQuality(finalLabel.toString())
+                addQuality(quality)
             }
         }
     }
@@ -172,14 +116,16 @@ class LayarKacaProvider : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
+        // 1. Request Halaman Awal
         var response = app.get(url)
         var document = response.documentLarge
-        var finalUrl = response.url 
+        var finalUrl = response.url // URL setelah redirect HTTP standar
         
-        // Anti-Phishing Redirect
+        // Deteksi Redirect Manual (Anti-Phishing)
         val bodyText = document.body().text()
         if (bodyText.contains("dialihkan ke", ignoreCase = true) && bodyText.contains("Nontondrama", ignoreCase = true)) {
             Log.d("Phisher-Info", "Redirect page detected at $url")
+            
             val redirectLink = document.select("a").firstOrNull { 
                 it.text().contains("Buka Sekarang", ignoreCase = true) ||
                 it.attr("href").contains("nontondrama", ignoreCase = true)
@@ -187,6 +133,7 @@ class LayarKacaProvider : MainAPI() {
             
             if (!redirectLink.isNullOrEmpty()) {
                 finalUrl = fixUrl(redirectLink)
+                Log.d("Phisher-Info", "Jumping to: $finalUrl")
                 document = app.get(finalUrl).documentLarge
             }
         }
