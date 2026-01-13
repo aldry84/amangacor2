@@ -8,10 +8,13 @@ import com.lagradost.cloudstream3.extractors.VidHidePro6
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.M3u8Helper
+import com.lagradost.cloudstream3.utils.INFER_TYPE
+import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.utils.newExtractorLink
 import org.json.JSONObject
 
 // ==========================================================
-// 1. HOWNETWORK (P2P) - SUDAH FIX & WORK
+// 1. HOWNETWORK (P2P) - KODE STABIL
 // ==========================================================
 open class Hownetwork : ExtractorApi() {
     override val name = "Hownetwork"
@@ -66,7 +69,7 @@ class Cloudhownetwork : Hownetwork() {
 }
 
 // ==========================================================
-// 2. TURBOVIP (TURBOVIDHLS) - FIX BERDASARKAN CURL KAMU
+// 2. TURBOVIP (TURBOVIDHLS) - INI YANG HILANG DI KODE KAMU
 // ==========================================================
 class Turbovidhls : ExtractorApi() {
     override val name = "Turbovid"
@@ -80,21 +83,22 @@ class Turbovidhls : ExtractorApi() {
         callback: (ExtractorLink) -> Unit
     ) {
         try {
-            // 1. Buka halaman webnya
+            // 1. Buka halaman turbovid
             val response = app.get(url, referer = referer).text
             
-            // 2. Cari link .m3u8 di dalam script HTML
+            // 2. Cari link .m3u8 di dalam script HTML (file: "...")
             val regex = """file:\s*["']([^"']+\.m3u8)["']""".toRegex()
             val m3u8Link = regex.find(response)?.groupValues?.get(1)
 
             if (!m3u8Link.isNullOrEmpty()) {
-                // 3. Masukkan Header Sesuai cURL
+                // 3. Header PENTING dari hasil analisa cURL kamu
                 val headers = mapOf(
                     "Origin" to "https://turbovidhls.com",
                     "Referer" to "https://turbovidhls.com/",
                     "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
                 )
 
+                // 4. Generate Link
                 M3u8Helper.generateM3u8(
                     source = this.name,
                     streamUrl = m3u8Link,
@@ -108,6 +112,7 @@ class Turbovidhls : ExtractorApi() {
     }
 }
 
+// Penanganan Redirect Awal (Emturbovid -> Turbovidhls)
 class EmturbovidCustom : ExtractorApi() {
     override val name = "Emturbovid"
     override val mainUrl = "https://emturbovid.com"
@@ -120,17 +125,19 @@ class EmturbovidCustom : ExtractorApi() {
         callback: (ExtractorLink) -> Unit
     ) {
         val response = app.get(url).text
+        // Cari link asli di dalam iframe/script
         val regex = """["'](https?://[^"']*turbovidhls[^"']*)["']""".toRegex()
         val realUrl = regex.find(response)?.groupValues?.get(1)
 
         if (realUrl != null) {
+            // Oper ke extractor Turbovidhls
             Turbovidhls().getUrl(realUrl, url, subtitleCallback, callback)
         }
     }
 }
 
 // ==========================================================
-// 3. CAST (F16PX)
+// 3. CAST (F16PX) - INI JUGA PERLU DITAMBAHKAN
 // ==========================================================
 class F16px : ExtractorApi() { 
     override val name = "VidHide (F16)"
@@ -143,6 +150,7 @@ class F16px : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
+        // Panggil VidHidePro6 manual
         VidHidePro6().getUrl(url, referer, subtitleCallback, callback)
     }
 }
