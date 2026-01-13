@@ -12,19 +12,20 @@ class LayarKacaProviderPlugin: BasePlugin() {
     override fun load() {
         registerMainAPI(LayarKacaProvider())
         
-        // Extractor Utama
+        // Prioritas Utama
+        registerExtractorAPI(PlayerIframe()) // INI WAJIB UNTUK MEMBUKA KULIT CAST/TURBO
         registerExtractorAPI(Hownetwork())
         registerExtractorAPI(Cloudhownetwork())
-        registerExtractorAPI(Turbovidhls())       // Pastikan ini terdaftar
-        registerExtractorAPI(EmturbovidCustom())  // Untuk redirect Turbo
-        registerExtractorAPI(F16px())             // Untuk Cast
-        
-        // Extractor Cadangan
+        registerExtractorAPI(F16px())        // Logika baru CAST
+        registerExtractorAPI(Turbovidhls())  // Logika baru TURBO
+        registerExtractorAPI(EmturbovidCustom())
+
+        // Cadangan
         registerExtractorAPI(Furher())
         registerExtractorAPI(Furher2())
         registerExtractorAPI(Co4nxtrl())
 
-        // Extractor Bawaan Cloudstream
+        // Bawaan
         registerExtractorAPI(VidHidePro6())
         registerExtractorAPI(MixDrop())    
         registerExtractorAPI(StreamTape())
