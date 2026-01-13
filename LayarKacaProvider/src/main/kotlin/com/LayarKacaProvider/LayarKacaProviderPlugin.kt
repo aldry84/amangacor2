@@ -11,16 +11,16 @@ class LayarKacaProviderPlugin: BasePlugin() {
     override fun load() {
         registerMainAPI(LayarKacaProvider())
         
-        // Extractor Khusus yang kita buat di Extractors.kt
+        // Extractor Khusus (Milikmu)
         registerExtractorAPI(Hownetwork())
         registerExtractorAPI(Cloudhownetwork())
-        registerExtractorAPI(F16px())             // Untuk CAST / VidHide
+        registerExtractorAPI(F16px())             // Untuk CAST
         registerExtractorAPI(EmturbovidCustom())  // Untuk TURBOVIP
+        registerExtractorAPI(Turbovidhls())
         
         // Extractor Cadangan
         registerExtractorAPI(Furher())
         registerExtractorAPI(Furher2())
-        registerExtractorAPI(Turbovidhls())
         registerExtractorAPI(Co4nxtrl())
 
         // Extractor Bawaan (Generic)
