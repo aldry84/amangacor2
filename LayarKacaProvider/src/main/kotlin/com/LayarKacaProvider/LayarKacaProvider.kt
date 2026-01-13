@@ -26,9 +26,7 @@ class LayarKacaProvider : MainAPI() {
     override val mainPage = mainPageOf(
         "$mainUrl/populer/page/" to "Film Terplopuler",
         "$mainUrl/rating/page/" to "Film Berdasarkan IMDb Rating",
-        "$mainUrl/most-commented/page/" to "Film Dengan Komentar Terbanyak",
         "$mainUrl/latest-series/page/" to "Series Terbaru",
-        "$mainUrl/series/asian/page/" to "Film Asian Terbaru",
         "$mainUrl/latest/page/" to "Film Upload Terbaru",
     )
 
@@ -112,14 +110,33 @@ class LayarKacaProvider : MainAPI() {
         return results
     }
 
-    // --- FUNGSI LOAD DIKEMBALIKAN KE VERSI STABIL ---
     override suspend fun load(url: String): LoadResponse {
-        val response = app.get(url)
-        val document = response.documentLarge
-        val finalUrl = response.url // Menggunakan URL final dari response
+        var response = app.get(url)
+        var document = response.documentLarge
+        var finalUrl = response.url 
+        
+        // --- FIX UTAMA: DETEKSI & LOMPATI HALAMAN REDIRECT ---
+        // Kita cek judul halamannya. Kalau isinya "Anda akan dialihkan...", kita cari link tujuannya.
+        val pageTitle = document.select("h1").text()
+        if (pageTitle.contains("dialihkan", ignoreCase = true) || pageTitle.contains("Redirect", ignoreCase = true)) {
+            Log.d("LayarKaca", "Halaman Redirect Terdeteksi!")
+            
+            // Cari link yang menuju ke nontondrama atau link tombol "Buka Sekarang"
+            val redirectLink = document.select("a").firstOrNull { 
+                it.attr("href").contains("nontondrama") || it.text().contains("Buka", ignoreCase = true)
+            }?.attr("href")
 
-        // Selector Judul yang lebih Robust
-        var title = document.selectFirst("div.movie-info h1")?.text()?.trim() 
+            if (!redirectLink.isNullOrEmpty()) {
+                finalUrl = fixUrl(redirectLink)
+                Log.d("LayarKaca", "Melompat ke: $finalUrl")
+                // LOAD ULANG dokumen dari URL baru
+                response = app.get(finalUrl)
+                document = response.documentLarge
+            }
+        }
+        // -----------------------------------------------------
+
+        val title = document.selectFirst("div.movie-info h1")?.text()?.trim() 
             ?: document.selectFirst("h1.entry-title")?.text()?.trim()
             ?: document.selectFirst("header h1")?.text()?.trim()
             ?: document.selectFirst("h1")?.text()?.trim() 
@@ -207,7 +224,6 @@ class LayarKacaProvider : MainAPI() {
         }
     }
 
-    // --- FUNGSI LOADLINKS TETAP DIPERBARUI (AGAR TURBO/P2P TETAP JALAN) ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -229,7 +245,7 @@ class LayarKacaProvider : MainAPI() {
 
             Log.d("LayarKaca", "Found server: $serverName -> $href")
 
-            // Ambil iframe dengan logika yang sudah diperbaiki
+            // --- PERBAIKAN PENCARIAN IFRAME ---
             var iframeUrl = href.getIframe(referer = data)
             
             // Penanganan Redirect (HYDRAX / SHORT.ICU)
@@ -262,7 +278,7 @@ class LayarKacaProvider : MainAPI() {
             }
 
             if (src.isEmpty() || src.contains("javascript")) {
-                // Regex mencakup semua domain yang kita incar (turbovid, hydrax, f16px, emturbovid)
+                // Regex super lengkap untuk menangkap link
                 val regex = """["'](https?://[^"']*(?:turbovid|hydrax|short|embed|player|watch|hownetwork|cloud|dood|mixdrop|f16px|emturbovid)[^"']*)["']""".toRegex()
                 src = regex.find(responseText)?.groupValues?.get(1) ?: ""
             }
@@ -279,7 +295,6 @@ class LayarKacaProvider : MainAPI() {
         }
     }
 
-    // Fungsi resolve redirect yang penting untuk Hydrax
     private suspend fun resolveRedirect(url: String): String {
         return try {
             val response = app.get(url, allowRedirects = false)
