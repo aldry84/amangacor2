@@ -11,7 +11,7 @@ import com.lagradost.cloudstream3.utils.M3u8Helper
 import org.json.JSONObject
 
 // ==========================================================
-// 1. HOWNETWORK (P2P) - SUDAH FIX
+// 1. HOWNETWORK (P2P) - SUDAH FIX & WORK
 // ==========================================================
 open class Hownetwork : ExtractorApi() {
     override val name = "Hownetwork"
@@ -46,7 +46,6 @@ open class Hownetwork : ExtractorApi() {
                         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
                     )
                     
-                    // Fix Named Arguments Error
                     M3u8Helper.generateM3u8(
                         source = name, 
                         streamUrl = file, 
@@ -67,7 +66,7 @@ class Cloudhownetwork : Hownetwork() {
 }
 
 // ==========================================================
-// 2. TURBOVIP (TURBOVIDHLS) - FIX LOGIKA CURL
+// 2. TURBOVIP (TURBOVIDHLS) - FIX BERDASARKAN CURL KAMU
 // ==========================================================
 class Turbovidhls : ExtractorApi() {
     override val name = "Turbovid"
@@ -81,11 +80,15 @@ class Turbovidhls : ExtractorApi() {
         callback: (ExtractorLink) -> Unit
     ) {
         try {
+            // 1. Buka halaman webnya
             val response = app.get(url, referer = referer).text
+            
+            // 2. Cari link .m3u8 di dalam script HTML
             val regex = """file:\s*["']([^"']+\.m3u8)["']""".toRegex()
             val m3u8Link = regex.find(response)?.groupValues?.get(1)
 
             if (!m3u8Link.isNullOrEmpty()) {
+                // 3. Masukkan Header Sesuai cURL
                 val headers = mapOf(
                     "Origin" to "https://turbovidhls.com",
                     "Referer" to "https://turbovidhls.com/",
@@ -127,7 +130,7 @@ class EmturbovidCustom : ExtractorApi() {
 }
 
 // ==========================================================
-// 3. CAST (F16PX) - FIX ERROR FINAL TYPE
+// 3. CAST (F16PX)
 // ==========================================================
 class F16px : ExtractorApi() { 
     override val name = "VidHide (F16)"
@@ -140,7 +143,6 @@ class F16px : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        // Panggil VidHidePro6 manual
         VidHidePro6().getUrl(url, referer, subtitleCallback, callback)
     }
 }
