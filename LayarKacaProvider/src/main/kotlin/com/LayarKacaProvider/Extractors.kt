@@ -11,7 +11,7 @@ import com.lagradost.cloudstream3.utils.M3u8Helper
 import org.json.JSONObject
 
 // ==========================================================
-// 1. HOWNETWORK (P2P) - FIXED (Named Arguments)
+// 1. HOWNETWORK (P2P) - SUDAH FIX
 // ==========================================================
 open class Hownetwork : ExtractorApi() {
     override val name = "Hownetwork"
@@ -31,14 +31,9 @@ open class Hownetwork : ExtractorApi() {
             try {
                 val response = app.post(
                         "$mainUrl/$endpoint?id=$id",
-                        data = mapOf(
-                                "r" to (referer ?: ""),
-                                "d" to mainUrl,
-                        ),
+                        data = mapOf("r" to (referer ?: ""), "d" to mainUrl),
                         referer = url,
-                        headers = mapOf(
-                                "X-Requested-With" to "XMLHttpRequest"
-                        )
+                        headers = mapOf("X-Requested-With" to "XMLHttpRequest")
                 ).text
 
                 val json = JSONObject(response)
@@ -51,12 +46,12 @@ open class Hownetwork : ExtractorApi() {
                         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
                     )
                     
-                    // PERBAIKAN ERROR 1 & 2: Tambahkan "headers ="
+                    // Fix Named Arguments Error
                     M3u8Helper.generateM3u8(
                         source = name, 
                         streamUrl = file, 
                         referer = url, 
-                        headers = headers // <-- INI KUNCINYA
+                        headers = headers 
                     ).forEach(callback)
                     return 
                 }
@@ -72,7 +67,7 @@ class Cloudhownetwork : Hownetwork() {
 }
 
 // ==========================================================
-// 2. TURBOVIP (TURBOVIDHLS) - FIXED (Named Arguments)
+// 2. TURBOVIP (TURBOVIDHLS) - FIX LOGIKA CURL
 // ==========================================================
 class Turbovidhls : ExtractorApi() {
     override val name = "Turbovid"
@@ -97,12 +92,11 @@ class Turbovidhls : ExtractorApi() {
                     "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
                 )
 
-                // PERBAIKAN ERROR 1 & 2: Tambahkan "headers ="
                 M3u8Helper.generateM3u8(
                     source = this.name,
                     streamUrl = m3u8Link,
                     referer = "https://turbovidhls.com/",
-                    headers = headers // <-- INI KUNCINYA
+                    headers = headers
                 ).forEach(callback)
             }
         } catch (e: Exception) {
@@ -133,9 +127,8 @@ class EmturbovidCustom : ExtractorApi() {
 }
 
 // ==========================================================
-// 3. CAST (F16PX) - FIXED (Delegation instead of Inheritance)
+// 3. CAST (F16PX) - FIX ERROR FINAL TYPE
 // ==========================================================
-// PERBAIKAN ERROR 3: Ubah ke ExtractorApi, jangan extend VidHidePro6
 class F16px : ExtractorApi() { 
     override val name = "VidHide (F16)"
     override val mainUrl = "https://f16px.com"
@@ -147,7 +140,7 @@ class F16px : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        // Panggil VidHidePro6 secara manual
+        // Panggil VidHidePro6 manual
         VidHidePro6().getUrl(url, referer, subtitleCallback, callback)
     }
 }
