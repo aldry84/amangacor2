@@ -24,10 +24,13 @@ class LayarKacaProvider : MainAPI() {
     )
 
     override val mainPage = mainPageOf(
-        "$mainUrl/populer/page/" to "Film Terplopuler",
-        "$mainUrl/rating/page/" to "Film Berdasarkan IMDb Rating",
+        "$mainUrl/populer/page/" to "Top Bulan Ini",
+        "$mainUrl/latest/page/" to "Film Terbaru",
+        "$mainUrl/top-series-today/page/" to "Series Hari Ini",
         "$mainUrl/latest-series/page/" to "Series Terbaru",
-        "$mainUrl/latest/page/" to "Film Upload Terbaru",
+        "$mainUrl/nonton-bareng-keluarga/page/" to "Nobar Keluarga",
+        "$mainUrl/genre/romance/page/" to "Romantis",
+        "$mainUrl/country/thailand/page/" to "Thailand"
     )
 
     override suspend fun getMainPage(
@@ -115,28 +118,22 @@ class LayarKacaProvider : MainAPI() {
         var document = response.documentLarge
         var finalUrl = response.url 
         
-        // --- FIX UTAMA: DETEKSI & LOMPATI HALAMAN REDIRECT ---
-        // Kita cek judul halamannya. Kalau isinya "Anda akan dialihkan...", kita cari link tujuannya.
-        val pageTitle = document.select("h1").text()
-        if (pageTitle.contains("dialihkan", ignoreCase = true) || pageTitle.contains("Redirect", ignoreCase = true)) {
-            Log.d("LayarKaca", "Halaman Redirect Terdeteksi!")
-            
-            // Cari link yang menuju ke nontondrama atau link tombol "Buka Sekarang"
+        val bodyText = document.body().text()
+        if (bodyText.contains("dialihkan ke", ignoreCase = true) && bodyText.contains("Nontondrama", ignoreCase = true)) {
             val redirectLink = document.select("a").firstOrNull { 
-                it.attr("href").contains("nontondrama") || it.text().contains("Buka", ignoreCase = true)
+                it.text().contains("Buka Sekarang", ignoreCase = true) ||
+                it.attr("href").contains("nontondrama", ignoreCase = true)
             }?.attr("href")
-
+            
             if (!redirectLink.isNullOrEmpty()) {
                 finalUrl = fixUrl(redirectLink)
-                Log.d("LayarKaca", "Melompat ke: $finalUrl")
-                // LOAD ULANG dokumen dari URL baru
-                response = app.get(finalUrl)
-                document = response.documentLarge
+                document = app.get(finalUrl).documentLarge
             }
         }
-        // -----------------------------------------------------
 
-        val title = document.selectFirst("div.movie-info h1")?.text()?.trim() 
+        val baseurl = getBaseUrl(finalUrl)
+        
+        var title = document.selectFirst("div.movie-info h1")?.text()?.trim() 
             ?: document.selectFirst("h1.entry-title")?.text()?.trim()
             ?: document.selectFirst("header h1")?.text()?.trim()
             ?: document.selectFirst("h1")?.text()?.trim() 
@@ -148,7 +145,7 @@ class LayarKacaProvider : MainAPI() {
         }
         
         val tags = document.select("div.tag-list span").map { it.text() }
-        val posterheaders = mapOf("Referer" to getBaseUrl(finalUrl))
+        val posterheaders = mapOf("Referer" to baseurl)
 
         val year = Regex("\\d, (\\d+)").find(title)?.groupValues?.get(1)?.toIntOrNull()
         
@@ -159,16 +156,22 @@ class LayarKacaProvider : MainAPI() {
         val trailer = document.selectFirst("ul.action-left > li:nth-child(3) > a")?.attr("href")
         val rating = document.selectFirst("div.info-tag strong")?.text()
 
-        val recommendations = document.select("li.slider article").mapNotNull {
-            it.toSearchResult()
+        val recommendations = document.select("li.slider article").map {
+            val recName = it.selectFirst("h3")?.text()?.trim().toString()
+            val recHref = fixUrl(it.selectFirst("a")!!.attr("href"))
+            val recPosterUrl = fixUrl(it.selectFirst("img")?.attr("src").toString())
+            newTvSeriesSearchResponse(recName, recHref, TvType.TvSeries) {
+                this.posterUrl = recPosterUrl
+                this.posterHeaders = posterheaders
+            }
         }
 
-        // Logic penentuan Series vs Movie
         val hasSeasonData = document.selectFirst("#season-data") != null
         val tvType = if (finalUrl.contains("nontondrama") || hasSeasonData) TvType.TvSeries else TvType.Movie
 
         return if (tvType == TvType.TvSeries) {
             val episodes = mutableListOf<Episode>()
+            
             val json = document.selectFirst("script#season-data")?.data()
             if (!json.isNullOrEmpty()) {
                 val root = JSONObject(json)
@@ -177,7 +180,7 @@ class LayarKacaProvider : MainAPI() {
                     for (i in 0 until seasonArr.length()) {
                         val ep = seasonArr.getJSONObject(i)
                         val slug = ep.getString("slug")
-                        val href = fixUrl(if (slug.startsWith("http")) slug else "${getBaseUrl(finalUrl)}/$slug")
+                        val href = fixUrl(if (slug.startsWith("http")) slug else "$baseurl/$slug")
                         val episodeNo = ep.optInt("episode_no")
                         val seasonNo = ep.optInt("s")
                         episodes.add(newEpisode(href) {
@@ -192,7 +195,7 @@ class LayarKacaProvider : MainAPI() {
                 episodeLinks.forEach { 
                     val epHref = fixUrl(it.attr("href"))
                     val epName = it.text().trim()
-                    if(epHref.contains(getBaseUrl(finalUrl)) || epHref.contains("episode")) {
+                    if(epHref.contains(baseurl) || epHref.contains("episode")) {
                         episodes.add(newEpisode(epHref) {
                             this.name = epName
                         })
@@ -224,6 +227,7 @@ class LayarKacaProvider : MainAPI() {
         }
     }
 
+    // === BAGIAN INI SAYA PERBAIKI AGAR TIDAK KENA SANDBOX ===
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -237,73 +241,58 @@ class LayarKacaProvider : MainAPI() {
              playerNodes = document.select("div.player_nav ul li, ul.player-list li")
         }
 
-        playerNodes.amap { element ->
-            val linkElement = element.selectFirst("a")
-            val rawHref = linkElement?.attr("href") ?: return@amap
-            val serverName = linkElement.text().trim()
-            val href = fixUrl(rawHref)
-
-            Log.d("LayarKaca", "Found server: $serverName -> $href")
-
-            // --- PERBAIKAN PENCARIAN IFRAME ---
-            var iframeUrl = href.getIframe(referer = data)
+        playerNodes.map {
+            fixUrl(it.select("a").attr("href"))
+        }.amap { url ->
+            // --- FIX PENTING ---
+            // Jika link mengarah ke playeriframe/turbo/cast, JANGAN di-getIframe dulu!
+            // Langsung oper ke Extractor (UniversalVIP/PlayerIframe) biar Header-nya benar.
+            if (url.contains("playeriframe.sbs") || 
+                url.contains("turbovid") || 
+                url.contains("f16px") ||
+                url.contains("hydrax")) {
+                
+                loadExtractor(url, data, subtitleCallback, callback)
             
-            // Penanganan Redirect (HYDRAX / SHORT.ICU)
-            if (iframeUrl.contains("short.icu") || iframeUrl.contains("hydrax")) {
-                iframeUrl = resolveRedirect(iframeUrl)
-                Log.d("LayarKaca", "Resolved Redirect ($serverName): $iframeUrl")
-            }
-            
-            if(iframeUrl.isNotEmpty()) {
-                loadExtractor(iframeUrl, data, subtitleCallback, callback)
             } else {
-                loadExtractor(href, data, subtitleCallback, callback)
+                // Untuk server lain (hownetwork lama, dll) lakukan cara biasa
+                val iframeUrl = url.getIframe(referer = data)
+                val extractorReferer = getBaseUrl(url)
+                
+                if(iframeUrl.isNotEmpty()) {
+                    loadExtractor(iframeUrl, extractorReferer, subtitleCallback, callback)
+                }
             }
         }
         return true
     }
+    // ========================================================
 
     private suspend fun String.getIframe(referer: String): String {
-        if (this.isEmpty() || this.contains("javascript:void")) return ""
+        val response = app.get(this, referer = referer)
+        val document = response.documentLarge
+        val responseText = response.text
 
-        try {
-            val response = app.get(this, referer = referer)
-            val document = response.documentLarge
-            val responseText = response.text
+        var src = document.selectFirst("div.embed-container iframe")?.attr("src")
 
-            var src = document.select("iframe").attr("src")
-            
-            if (src.startsWith("//")) {
-                src = "https:$src"
-            }
-
-            if (src.isEmpty() || src.contains("javascript")) {
-                // Regex super lengkap untuk menangkap link
-                val regex = """["'](https?://[^"']*(?:turbovid|hydrax|short|embed|player|watch|hownetwork|cloud|dood|mixdrop|f16px|emturbovid)[^"']*)["']""".toRegex()
-                src = regex.find(responseText)?.groupValues?.get(1) ?: ""
-            }
-
-             if (src.isEmpty() && response.url.contains("hownetwork")) {
-                return response.url
-            }
-
-            return fixUrl(src)
-
-        } catch (e: Exception) {
-            Log.e("LayarKaca", "Error getting iframe from $this : ${e.message}")
-            return ""
+        if (src.isNullOrEmpty()) {
+            src = document.selectFirst("iframe[src^=http]")?.attr("src")
         }
-    }
 
-    private suspend fun resolveRedirect(url: String): String {
-        return try {
-            val response = app.get(url, allowRedirects = false)
-            if (response.code == 301 || response.code == 302) {
-                response.headers["Location"] ?: url
-            } else {
-                url
+        if (src.isNullOrEmpty()) {
+            val regex = """["'](https?://[^"']+)["']""".toRegex()
+            val foundLinks = regex.findAll(responseText).map { it.groupValues[1] }.toList()
+            
+            src = foundLinks.firstOrNull { link -> 
+                !link.contains(".js") && 
+                !link.contains(".css") && 
+                !link.contains(".png") && 
+                !link.contains(".jpg") &&
+                (link.contains("embed") || link.contains("player") || link.contains("streaming") || link.contains("hownetwork"))
             }
-        } catch (e: Exception) { url }
+        }
+
+        return fixUrl(src ?: "")
     }
 
     private fun Element.getImageAttr(): String {
