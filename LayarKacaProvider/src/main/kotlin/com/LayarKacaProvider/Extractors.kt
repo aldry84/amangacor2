@@ -10,9 +10,10 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.M3u8Helper
 import com.lagradost.cloudstream3.utils.getPacked
 import org.json.JSONObject
+import java.net.URI
 
 // ==========================================
-// 1. PLAYER IFRAME (PEMBUKA PINTU)
+// 1. PLAYER IFRAME (ROUTER UTAMA)
 // ==========================================
 class PlayerIframe : ExtractorApi() {
     override val name = "PlayerIframe"
@@ -27,19 +28,25 @@ class PlayerIframe : ExtractorApi() {
     ) {
         try {
             val response = app.get(url, referer = referer).text
+            // Cari link di dalam iframe src
             val regex = """<iframe[^>]+src=["']([^"']+)["']""".toRegex()
             val match = regex.find(response)?.groupValues?.get(1)
             
             if (match != null) {
-                val innerUrl = if (match.startsWith("//")) "https:$match" else match
-                Log.d("LayarKaca", "PlayerIframe Unwrap: $innerUrl")
+                var innerUrl = if (match.startsWith("//")) "https:$match" else match
+                
+                // FIX HYDRAX: Resolve short.icu redirects
+                if (innerUrl.contains("short.icu")) {
+                    innerUrl = app.get(innerUrl, allowRedirects = true).url
+                }
 
-                if (innerUrl.contains("turbovid")) {
-                    Turbovidhls().getUrl(innerUrl, url, subtitleCallback, callback)
-                } else if (innerUrl.contains("f16px") || innerUrl.contains("vidhide") || innerUrl.contains("filemoon")) {
-                    F16px().getUrl(innerUrl, url, subtitleCallback, callback)
-                } else if (innerUrl.contains("hownetwork")) {
+                Log.d("LayarKaca", "Unwrapped: $innerUrl")
+
+                if (innerUrl.contains("hownetwork")) {
                     Hownetwork().getUrl(innerUrl, url, subtitleCallback, callback)
+                } else {
+                    // Lempar semua sisanya (Turbo, Cast, Hydrax/Abyss) ke UniversalVIP
+                    UniversalVIP().getUrl(innerUrl, url, subtitleCallback, callback)
                 }
             }
         } catch (e: Exception) {
@@ -49,11 +56,11 @@ class PlayerIframe : ExtractorApi() {
 }
 
 // ==========================================
-// 2. CAST (F16PX) - UPDATE AGAR TEMBUS SECURITY
+// 2. UNIVERSAL VIP (CAST, TURBO, HYDRAX)
 // ==========================================
-class F16px : ExtractorApi() {
-    override val name = "VidHide (F16)"
-    override val mainUrl = "https://f16px.com"
+class UniversalVIP : ExtractorApi() {
+    override val name = "UniversalVIP"
+    override val mainUrl = "https://f16px.com" // Placeholder
     override val requiresReferer = false
 
     override suspend fun getUrl(
@@ -62,117 +69,60 @@ class F16px : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        val id = url.substringAfter("/e/").substringBefore("?")
+        val domain = URI(url).host
         val headers = mapOf(
-            "Origin" to "https://f16px.com",
-            "Referer" to "https://f16px.com/",
+            "Origin" to "https://$domain",
+            "Referer" to "https://$domain/",
             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         )
 
-        // METODE 1: Coba Tembak API (Cara Sopan)
-        try {
-            val apiUrl = "https://f16px.com/api/videos/$id/embed/playback"
-            val jsonResponse = app.get(apiUrl, headers = headers).text
-            val json = JSONObject(jsonResponse)
-            val masterUrl = json.optString("url")
-
-            if (masterUrl.isNotEmpty()) {
-                Log.d("F16px", "API Success")
-                M3u8Helper.generateM3u8(name, masterUrl, "https://f16px.com/", headers = headers).forEach(callback)
-                return
-            }
-        } catch (e: Exception) {
-            Log.e("F16px", "API method failed, trying scraping method...")
+        // A. Coba API Khusus F16PX/VidHide (Paling Cepat)
+        if (url.contains("f16px") || url.contains("vidhide")) {
+            try {
+                val id = url.substringAfter("/e/").substringBefore("?")
+                val apiUrl = "https://$domain/api/videos/$id/embed/playback"
+                val jsonResponse = app.get(apiUrl, headers = headers).text
+                val masterUrl = JSONObject(jsonResponse).optString("url")
+                
+                if (masterUrl.isNotEmpty()) {
+                    M3u8Helper.generateM3u8(name, masterUrl, url, headers = headers).forEach(callback)
+                    return
+                }
+            } catch (e: Exception) { }
         }
 
-        // METODE 2: Geledah HTML (Cara Kasar / Brute Force)
+        // B. Coba Metode Scraping (Untuk Turbo, Hydrax, & Fallback F16)
         try {
             val pageHtml = app.get(url, headers = headers).text
-            
-            // Cari kode packed (eval(function...))
-            val packedRegex = """eval\(function\(p,a,c,k,e,d.*""".toRegex()
-            val packedMatch = packedRegex.find(pageHtml)?.value
-            
             var sourceUrl = ""
 
+            // 1. Cari Packed JS (Biasanya Hydrax/Abyss pake ini)
+            val packedRegex = """eval\(function\(p,a,c,k,e,d.*""".toRegex()
+            val packedMatch = packedRegex.find(pageHtml)?.value
             if (packedMatch != null) {
-                // Unpack JS-nya
                 val unpacked = getPacked(packedMatch) ?: ""
-                // Cari .m3u8 di dalam hasil unpack
                 sourceUrl = """file:"([^"]+\.m3u8[^"]*)"""".toRegex().find(unpacked)?.groupValues?.get(1) ?: ""
             }
 
-            // Jika masih kosong, cari regex standar di HTML mentah
+            // 2. Cari Regex Standar (Untuk Turbo & F16)
             if (sourceUrl.isEmpty()) {
                 sourceUrl = """file:\s*["']([^"']+\.m3u8[^"']*)["']""".toRegex().find(pageHtml)?.groupValues?.get(1) ?: ""
             }
 
             if (sourceUrl.isNotEmpty()) {
-                Log.d("F16px", "Scraping Success: $sourceUrl")
-                M3u8Helper.generateM3u8(name, sourceUrl, "https://f16px.com/", headers = headers).forEach(callback)
+                M3u8Helper.generateM3u8(name, sourceUrl, url, headers = headers).forEach(callback)
             } else {
-                // Fallback Terakhir: Panggil Extractor Bawaan Cloudstream
-                Log.d("F16px", "All methods failed, calling VidHidePro6")
+                // Fallback Terakhir
                 VidHidePro6().getUrl(url, referer, subtitleCallback, callback)
             }
-
         } catch (e: Exception) {
-            Log.e("F16px", "Fatal Error: ${e.message}")
+            Log.e("UniversalVIP", "Error: ${e.message}")
         }
     }
 }
 
 // ==========================================
-// 3. TURBOVIP (TURBOVIDHLS) - SESUAI CURL
-// ==========================================
-class Turbovidhls : ExtractorApi() {
-    override val name = "Turbovid"
-    override val mainUrl = "https://turbovidhls.com"
-    override val requiresReferer = false
-
-    override suspend fun getUrl(
-        url: String,
-        referer: String?,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ) {
-        try {
-            val response = app.get(url, referer = referer).text
-            val regex = """file:\s*["']([^"']+\.m3u8)["']""".toRegex()
-            val m3u8Link = regex.find(response)?.groupValues?.get(1)
-
-            if (!m3u8Link.isNullOrEmpty()) {
-                val headers = mapOf(
-                    "Origin" to "https://turbovidhls.com",
-                    "Referer" to "https://turbovidhls.com/",
-                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-                )
-                M3u8Helper.generateM3u8(name, m3u8Link, "https://turbovidhls.com/", headers = headers).forEach(callback)
-            }
-        } catch (e: Exception) { Log.e("Turbovid", e.message ?: "") }
-    }
-}
-
-class EmturbovidCustom : ExtractorApi() {
-    override val name = "Emturbovid"
-    override val mainUrl = "https://emturbovid.com"
-    override val requiresReferer = false
-
-    override suspend fun getUrl(
-        url: String,
-        referer: String?,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ) {
-        val response = app.get(url).text
-        val regex = """["'](https?://[^"']*turbovidhls[^"']*)["']""".toRegex()
-        val realUrl = regex.find(response)?.groupValues?.get(1)
-        if (realUrl != null) Turbovidhls().getUrl(realUrl, url, subtitleCallback, callback)
-    }
-}
-
-// ==========================================
-// 4. HOWNETWORK (P2P)
+// 3. HOWNETWORK (P2P)
 // ==========================================
 open class Hownetwork : ExtractorApi() {
     override val name = "Hownetwork"
@@ -219,20 +169,39 @@ class Cloudhownetwork : Hownetwork() {
 }
 
 // ==========================================
-// 5. CADANGAN
+// 4. CADANGAN & REDIRECTOR
 // ==========================================
-class Co4nxtrl : Filesim() {
-    override val mainUrl = "https://co4nxtrl.com"
-    override val name = "Co4nxtrl"
-    override val requiresReferer = true
+// Biarkan class ini ada agar tidak error jika dipanggil plugin
+class Turbovidhls : ExtractorApi() {
+    override val name = "Turbovid"
+    override val mainUrl = "https://turbovidhls.com"
+    override val requiresReferer = false
+    override suspend fun getUrl(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
+        UniversalVIP().getUrl(url, referer, subtitleCallback, callback)
+    }
 }
 
-class Furher : Filesim() {
-    override val name = "Furher"
-    override var mainUrl = "https://furher.in"
+class F16px : ExtractorApi() { 
+    override val name = "VidHide (F16)"
+    override val mainUrl = "https://f16px.com"
+    override val requiresReferer = false
+    override suspend fun getUrl(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
+        UniversalVIP().getUrl(url, referer, subtitleCallback, callback)
+    }
 }
 
-class Furher2 : Filesim() {
-    override val name = "Furher 2"
-    override var mainUrl = "723qrh1p.fun"
+class EmturbovidCustom : ExtractorApi() {
+    override val name = "Emturbovid"
+    override val mainUrl = "https://emturbovid.com"
+    override val requiresReferer = false
+    override suspend fun getUrl(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
+        val response = app.get(url).text
+        val regex = """["'](https?://[^"']*turbovidhls[^"']*)["']""".toRegex()
+        val realUrl = regex.find(response)?.groupValues?.get(1)
+        if (realUrl != null) UniversalVIP().getUrl(realUrl, url, subtitleCallback, callback)
+    }
 }
+
+class Co4nxtrl : Filesim() { override val mainUrl = "https://co4nxtrl.com"; override val name = "Co4nxtrl" }
+class Furher : Filesim() { override val name = "Furher"; override var mainUrl = "https://furher.in" }
+class Furher2 : Filesim() { override val name = "Furher 2"; override var mainUrl = "723qrh1p.fun" }
