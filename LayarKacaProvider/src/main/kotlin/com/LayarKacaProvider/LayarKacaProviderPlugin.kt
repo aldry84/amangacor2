@@ -2,8 +2,6 @@ package com.layarKacaProvider
 
 import com.lagradost.cloudstream3.extractors.EmturbovidExtractor
 import com.lagradost.cloudstream3.extractors.VidHidePro6
-import com.lagradost.cloudstream3.extractors.GenericExtractor
-import com.lagradost.cloudstream3.extractors.Hydrax
 import com.lagradost.cloudstream3.extractors.MixDrop
 import com.lagradost.cloudstream3.extractors.StreamTape
 import com.lagradost.cloudstream3.extractors.DoodLaExtractor
@@ -20,15 +18,17 @@ class LayarKacaProviderPlugin: BasePlugin() {
         registerExtractorAPI(Hownetwork())
         registerExtractorAPI(Furher2())
         registerExtractorAPI(Turbovidhls())
-        registerExtractorAPI(Cloudhownetwork()) // Ini yang akan menangani TURBOVIP (via cloud.hownetwork.xyz)
+        registerExtractorAPI(Cloudhownetwork())
         registerExtractorAPI(Co4nxtrl())
 
-        // Generic/Built-in Extractors (PENTING sebagai cadangan)
+        // Generic/Built-in Extractors (PENTING)
         registerExtractorAPI(EmturbovidExtractor())
         registerExtractorAPI(VidHidePro6())
-        registerExtractorAPI(Hydrax())     
         registerExtractorAPI(MixDrop())    
         registerExtractorAPI(StreamTape())
         registerExtractorAPI(DoodLaExtractor())
+        
+        // Catatan: Hydrax dan GenericExtractor dihapus sementara agar bisa build.
+        // Deteksi link tetap akan berjalan via Regex di Provider.
     }
 }
