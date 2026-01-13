@@ -26,7 +26,7 @@ class PlayerIframe : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        // Header khusus agar dikira browser beneran & menghindari Sandbox check
+        // Header Khusus agar lolos Sandbox check
         val headers = mapOf(
             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Referer" to (referer ?: "https://tv7.lk21official.cc/"),
@@ -56,7 +56,7 @@ class PlayerIframe : ExtractorApi() {
                 if (innerUrl.contains("hownetwork")) {
                     Hownetwork().getUrl(innerUrl, url, subtitleCallback, callback)
                 } else {
-                    // Oper link dalam + referer (url playeriframe) ke UniversalVIP
+                    // PENTING: Oper referer asli (url playeriframe) ke UniversalVIP
                     UniversalVIP().getUrl(innerUrl, url, subtitleCallback, callback)
                 }
             }
@@ -82,28 +82,30 @@ class UniversalVIP : ExtractorApi() {
     ) {
         val domain = try { URI(url).host } catch (e: Exception) { "" }
         
-        // Header untuk SCRAPING (Buka Halaman)
-        // PENTING: Gunakan referer dari halaman sebelumnya (PlayerIframe) agar lolos Sandbox check
+        // Header untuk SCRAPING (Saat buka halaman F16/Turbo)
+        // Referer harus dari 'playeriframe.sbs' supaya dikira resmi
         val scrapeHeaders = mapOf(
             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Referer" to (referer ?: "https://playeriframe.sbs/"),
-            "Sec-Fetch-Dest" to "iframe", 
+            "Referer" to "https://playeriframe.sbs/", 
+            "Sec-Fetch-Dest" to "iframe",
             "Upgrade-Insecure-Requests" to "1"
         )
 
-        // Header untuk PLAYBACK (Putar Video)
-        // Ini sesuai cURL kamu: Origin dan Referer harus ke domain video itu sendiri
+        // Header untuk PLAYBACK (Saat putar video)
+        // Referer harus dari domain video itu sendiri (self-referer)
         val playbackHeaders = mapOf(
             "Origin" to "https://$domain",
             "Referer" to "https://$domain/",
             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         )
 
-        // A. Coba API Khusus F16PX/VidHide
+        // A. Strategi Khusus CAST (API) - Sesuai Logger Kamu
         if (url.contains("f16px") || url.contains("vidhide")) {
             try {
                 val id = url.substringAfter("/e/").substringBefore("?")
                 val apiUrl = "https://$domain/api/videos/$id/embed/playback"
+                
+                // Request API dengan Referer dari URL video itu sendiri
                 val jsonResponse = app.get(apiUrl, headers = playbackHeaders).text
                 val masterUrl = JSONObject(jsonResponse).optString("url")
                 
@@ -114,9 +116,8 @@ class UniversalVIP : ExtractorApi() {
             } catch (e: Exception) { }
         }
 
-        // B. Coba Metode Scraping (Turbo, Hydrax, Fallback)
+        // B. Strategi Umum (Scraping) - Untuk TURBO, HYDRAX, & Fallback CAST
         try {
-            // Gunakan scrapeHeaders (Referer asli) agar tidak kena Sandbox Error
             val pageHtml = app.get(url, headers = scrapeHeaders).text
             var sourceUrl = ""
 
@@ -134,7 +135,6 @@ class UniversalVIP : ExtractorApi() {
             }
 
             if (sourceUrl.isNotEmpty()) {
-                // Saat video ketemu, gunakan playbackHeaders (Referer palsu)
                 M3u8Helper.generateM3u8(name, sourceUrl, url, headers = playbackHeaders).forEach(callback)
             } else {
                 // Fallback Terakhir
