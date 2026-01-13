@@ -26,7 +26,6 @@ class PlayerIframe : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        // Header agar dikira browser
         val headers = mapOf(
             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Referer" to (referer ?: "https://tv7.lk21official.cc/"),
@@ -36,27 +35,30 @@ class PlayerIframe : ExtractorApi() {
 
         try {
             val response = app.get(url, headers = headers).text
-            
-            // Regex src iframe
             val regex = """<iframe[^>]+src=["']([^"']+)["']""".toRegex()
             val match = regex.find(response)?.groupValues?.get(1)
             
             if (match != null) {
                 var innerUrl = if (match.startsWith("//")) "https:$match" else match
                 
-                // === FIX HYDRAX (SHORT.ICU) ===
+                // Fix Redirect: Short.icu -> Abyss
                 if (innerUrl.contains("short.icu")) {
                     try {
-                        // Ikuti redirect sampai ke abysscdn.com
-                        val res = app.get(innerUrl, allowRedirects = true)
+                        innerUrl = app.get(innerUrl, allowRedirects = true).url
+                    } catch (e: Exception) {}
+                }
+                
+                // Fix Redirect: Turbovid -> Emturbovid (PENTING!)
+                if (innerUrl.contains("turbovid")) {
+                     try {
+                        // Ikuti redirect Turbovid sampai ujung
+                        val res = app.get(innerUrl, headers = headers, allowRedirects = true)
                         innerUrl = res.url
-                        Log.d("LayarKaca", "Hydrax Redirected to: $innerUrl")
-                    } catch (e: Exception) {
-                        Log.e("LayarKaca", "Hydrax Redirect Fail: ${e.message}")
-                    }
+                        Log.d("LayarKaca", "Turbovid Redirected to: $innerUrl")
+                    } catch (e: Exception) {}
                 }
 
-                Log.d("LayarKaca", "Unwrapped: $innerUrl")
+                Log.d("LayarKaca", "Final URL to process: $innerUrl")
 
                 if (innerUrl.contains("hownetwork")) {
                     Hownetwork().getUrl(innerUrl, url, subtitleCallback, callback)
@@ -87,7 +89,7 @@ class UniversalVIP : ExtractorApi() {
     ) {
         val domain = try { URI(url).host } catch (e: Exception) { "" }
         
-        // Header Scraping (Buka Halaman)
+        // Header SCRAPING (Anti-Sandbox)
         val scrapeHeaders = mapOf(
             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Referer" to "https://playeriframe.sbs/", 
@@ -95,14 +97,21 @@ class UniversalVIP : ExtractorApi() {
             "Upgrade-Insecure-Requests" to "1"
         )
 
-        // Header Playback (Putar Video)
-        val playbackHeaders = mapOf(
+        // Header PLAYBACK (Anti-403)
+        // Khusus Turbo/Emturbo, Referer harus spesifik
+        val playbackHeaders = mutableMapOf(
             "Origin" to "https://$domain",
             "Referer" to "https://$domain/",
             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         )
 
-        // A. API Khusus CAST/F16PX
+        // Jika domainnya emturbovid, paksa referer ke turbovidhls juga (kadang perlu)
+        if (domain.contains("emturbovid")) {
+             playbackHeaders["Referer"] = "https://turbovidhls.com/"
+             playbackHeaders["Origin"] = "https://turbovidhls.com"
+        }
+
+        // A. API Method (CAST)
         if (url.contains("f16px") || url.contains("vidhide")) {
             try {
                 val id = url.substringAfter("/e/").substringBefore("?")
@@ -116,12 +125,12 @@ class UniversalVIP : ExtractorApi() {
             } catch (e: Exception) { }
         }
 
-        // B. Scraping Umum (Turbo, Hydrax, Fallback)
+        // B. Scraping Method (TURBO, HYDRAX)
         try {
             val pageHtml = app.get(url, headers = scrapeHeaders).text
             var sourceUrl = ""
 
-            // 1. Cari Packed JS (Biasanya Hydrax/Abyss)
+            // 1. Cari Packed JS
             val packedRegex = """eval\(function\(p,a,c,k,e,d.*""".toRegex()
             val packedMatch = packedRegex.find(pageHtml)?.value
             if (packedMatch != null) {
@@ -129,25 +138,14 @@ class UniversalVIP : ExtractorApi() {
                 sourceUrl = """file:"([^"]+\.m3u8[^"]*)"""".toRegex().find(unpacked)?.groupValues?.get(1) ?: ""
             }
 
-            // 2. Cari Regex Standar (Turbo/F16)
+            // 2. Cari Regex Standar
             if (sourceUrl.isEmpty()) {
                 sourceUrl = """file:\s*["']([^"']+\.m3u8[^"']*)["']""".toRegex().find(pageHtml)?.groupValues?.get(1) ?: ""
-            }
-            
-            // 3. Cari Regex Alternatif (Hydrax Base64 atau encoded)
-            if (sourceUrl.isEmpty()) {
-                 // Kadang Hydrax pakai atob() atau base64
-                 val b64Regex = """atob\(['"]([A-Za-z0-9+/=]+)['"]\)""".toRegex()
-                 val b64Match = b64Regex.find(pageHtml)?.groupValues?.get(1)
-                 if (b64Match != null) {
-                     // Decode base64 logic here if needed (biasanya jarang)
-                 }
             }
 
             if (sourceUrl.isNotEmpty()) {
                 M3u8Helper.generateM3u8(name, sourceUrl, url, headers = playbackHeaders).forEach(callback)
             } else {
-                // Fallback Terakhir
                 VidHidePro6().getUrl(url, referer, subtitleCallback, callback)
             }
         } catch (e: Exception) {
@@ -156,8 +154,8 @@ class UniversalVIP : ExtractorApi() {
     }
 }
 
-// ... (Hownetwork, Cloudhownetwork, Redirector Classes SAMA SEPERTI SEBELUMNYA) ...
-// (Untuk menghemat tempat, copy bagian bawah dari jawaban sebelumnya, tidak berubah)
+// ... (SISA FILE SAMA SEPERTI SEBELUMNYA: HOWNETWORK & REDIRECTOR CLASSES) ...
+// Copy bagian bawah dari jawaban sebelumnya
 open class Hownetwork : ExtractorApi() {
     override val name = "Hownetwork"
     override val mainUrl = "https://stream.hownetwork.xyz"
