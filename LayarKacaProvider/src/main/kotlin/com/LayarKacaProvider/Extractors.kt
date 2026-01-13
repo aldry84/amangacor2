@@ -8,10 +8,11 @@ import com.lagradost.cloudstream3.extractors.VidHidePro6
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.M3u8Helper
+import com.lagradost.cloudstream3.utils.getPacked
 import org.json.JSONObject
 
 // ==========================================
-// 1. PLAYER IFRAME (UNWRAPPER)
+// 1. PLAYER IFRAME (PEMBUKA PINTU)
 // ==========================================
 class PlayerIframe : ExtractorApi() {
     override val name = "PlayerIframe"
@@ -31,11 +32,11 @@ class PlayerIframe : ExtractorApi() {
             
             if (match != null) {
                 val innerUrl = if (match.startsWith("//")) "https:$match" else match
-                Log.d("LayarKaca", "Unwrapped: $innerUrl")
+                Log.d("LayarKaca", "PlayerIframe Unwrap: $innerUrl")
 
                 if (innerUrl.contains("turbovid")) {
                     Turbovidhls().getUrl(innerUrl, url, subtitleCallback, callback)
-                } else if (innerUrl.contains("f16px") || innerUrl.contains("vidhide")) {
+                } else if (innerUrl.contains("f16px") || innerUrl.contains("vidhide") || innerUrl.contains("filemoon")) {
                     F16px().getUrl(innerUrl, url, subtitleCallback, callback)
                 } else if (innerUrl.contains("hownetwork")) {
                     Hownetwork().getUrl(innerUrl, url, subtitleCallback, callback)
@@ -48,7 +49,7 @@ class PlayerIframe : ExtractorApi() {
 }
 
 // ==========================================
-// 2. CAST (F16PX) - NEW API LOGIC
+// 2. CAST (F16PX) - UPDATE AGAR TEMBUS SECURITY
 // ==========================================
 class F16px : ExtractorApi() {
     override val name = "VidHide (F16)"
@@ -61,53 +62,68 @@ class F16px : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        try {
-            // Ambil ID dari URL (contoh: https://f16px.com/e/fgijrp498djx -> fgijrp498djx)
-            val id = url.substringAfter("/e/").substringBefore("?")
-            
-            // 1. Tembak API Playback (Sesuai cURL kamu)
-            val apiUrl = "https://f16px.com/api/videos/$id/embed/playback"
-            val jsonResponse = app.get(
-                apiUrl,
-                headers = mapOf(
-                    "Referer" to url,
-                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-                )
-            ).text
+        val id = url.substringAfter("/e/").substringBefore("?")
+        val headers = mapOf(
+            "Origin" to "https://f16px.com",
+            "Referer" to "https://f16px.com/",
+            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        )
 
-            // 2. Parse JSON untuk cari link .m3u8
+        // METODE 1: Coba Tembak API (Cara Sopan)
+        try {
+            val apiUrl = "https://f16px.com/api/videos/$id/embed/playback"
+            val jsonResponse = app.get(apiUrl, headers = headers).text
             val json = JSONObject(jsonResponse)
             val masterUrl = json.optString("url")
 
             if (masterUrl.isNotEmpty()) {
-                // 3. Header WAJIB untuk memutar video (Sesuai cURL)
-                val headers = mapOf(
-                    "Origin" to "https://f16px.com",
-                    "Referer" to "https://f16px.com/",
-                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-                )
+                Log.d("F16px", "API Success")
+                M3u8Helper.generateM3u8(name, masterUrl, "https://f16px.com/", headers = headers).forEach(callback)
+                return
+            }
+        } catch (e: Exception) {
+            Log.e("F16px", "API method failed, trying scraping method...")
+        }
 
-                M3u8Helper.generateM3u8(
-                    name,
-                    masterUrl,
-                    "https://f16px.com/",
-                    headers = headers
-                ).forEach(callback)
+        // METODE 2: Geledah HTML (Cara Kasar / Brute Force)
+        try {
+            val pageHtml = app.get(url, headers = headers).text
+            
+            // Cari kode packed (eval(function...))
+            val packedRegex = """eval\(function\(p,a,c,k,e,d.*""".toRegex()
+            val packedMatch = packedRegex.find(pageHtml)?.value
+            
+            var sourceUrl = ""
+
+            if (packedMatch != null) {
+                // Unpack JS-nya
+                val unpacked = getPacked(packedMatch) ?: ""
+                // Cari .m3u8 di dalam hasil unpack
+                sourceUrl = """file:"([^"]+\.m3u8[^"]*)"""".toRegex().find(unpacked)?.groupValues?.get(1) ?: ""
+            }
+
+            // Jika masih kosong, cari regex standar di HTML mentah
+            if (sourceUrl.isEmpty()) {
+                sourceUrl = """file:\s*["']([^"']+\.m3u8[^"']*)["']""".toRegex().find(pageHtml)?.groupValues?.get(1) ?: ""
+            }
+
+            if (sourceUrl.isNotEmpty()) {
+                Log.d("F16px", "Scraping Success: $sourceUrl")
+                M3u8Helper.generateM3u8(name, sourceUrl, "https://f16px.com/", headers = headers).forEach(callback)
             } else {
-                // Fallback: Jika API gagal, coba metode lama VidHidePro6
+                // Fallback Terakhir: Panggil Extractor Bawaan Cloudstream
+                Log.d("F16px", "All methods failed, calling VidHidePro6")
                 VidHidePro6().getUrl(url, referer, subtitleCallback, callback)
             }
 
         } catch (e: Exception) {
-            Log.e("F16px", "Error: ${e.message}")
-            // Fallback terakhir
-            VidHidePro6().getUrl(url, referer, subtitleCallback, callback)
+            Log.e("F16px", "Fatal Error: ${e.message}")
         }
     }
 }
 
 // ==========================================
-// 3. TURBOVIP (TURBOVIDHLS)
+// 3. TURBOVIP (TURBOVIDHLS) - SESUAI CURL
 // ==========================================
 class Turbovidhls : ExtractorApi() {
     override val name = "Turbovid"
