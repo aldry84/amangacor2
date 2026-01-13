@@ -23,17 +23,14 @@ class LayarKacaProvider : MainAPI() {
         TvType.AsianDrama
     )
 
-    // --- BAGIAN YANG DIUBAH ---
     override val mainPage = mainPageOf(
-        "$mainUrl/populer/page/" to "Top Bulan Ini",
-        "$mainUrl/latest/page/" to "Film Terbaru",
-        "$mainUrl/top-series-today/page/" to "Series Hari Ini",
+        "$mainUrl/populer/page/" to "Film Terplopuler",
+        "$mainUrl/rating/page/" to "Film Berdasarkan IMDb Rating",
+        "$mainUrl/most-commented/page/" to "Film Dengan Komentar Terbanyak",
         "$mainUrl/latest-series/page/" to "Series Terbaru",
-        "$mainUrl/nonton-bareng-keluarga/page/" to "Nobar Keluarga",
-        "$mainUrl/genre/romance/page/" to "Romantis",
-        "$mainUrl/country/thailand/page/" to "Thailand"
+        "$mainUrl/series/asian/page/" to "Film Asian Terbaru",
+        "$mainUrl/latest/page/" to "Film Upload Terbaru",
     )
-    // ---------------------------
 
     override suspend fun getMainPage(
         page: Int,
@@ -116,16 +113,13 @@ class LayarKacaProvider : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        // 1. Request Halaman Awal
         var response = app.get(url)
         var document = response.documentLarge
-        var finalUrl = response.url // URL setelah redirect HTTP standar
+        var finalUrl = response.url 
         
-        // Deteksi Redirect Manual (Anti-Phishing)
+        // --- DETEKSI HALAMAN REDIRECT ---
         val bodyText = document.body().text()
         if (bodyText.contains("dialihkan ke", ignoreCase = true) && bodyText.contains("Nontondrama", ignoreCase = true)) {
-            Log.d("Phisher-Info", "Redirect page detected at $url")
-            
             val redirectLink = document.select("a").firstOrNull { 
                 it.text().contains("Buka Sekarang", ignoreCase = true) ||
                 it.attr("href").contains("nontondrama", ignoreCase = true)
@@ -133,7 +127,6 @@ class LayarKacaProvider : MainAPI() {
             
             if (!redirectLink.isNullOrEmpty()) {
                 finalUrl = fixUrl(redirectLink)
-                Log.d("Phisher-Info", "Jumping to: $finalUrl")
                 document = app.get(finalUrl).documentLarge
             }
         }
@@ -178,7 +171,6 @@ class LayarKacaProvider : MainAPI() {
 
         return if (tvType == TvType.TvSeries) {
             val episodes = mutableListOf<Episode>()
-            
             val json = document.selectFirst("script#season-data")?.data()
             if (!json.isNullOrEmpty()) {
                 val root = JSONObject(json)
@@ -247,55 +239,64 @@ class LayarKacaProvider : MainAPI() {
              playerNodes = document.select("div.player_nav ul li, ul.player-list li")
         }
 
-        playerNodes.map {
-            fixUrl(it.select("a").attr("href"))
-        }.amap {
-            val iframeUrl = it.getIframe(referer = data)
-            val extractorReferer = getBaseUrl(it)
+        // --- UPDATE PENTING UNTUK LOADLINKS ---
+        playerNodes.amap { element ->
+            val linkElement = element.selectFirst("a")
+            val rawHref = linkElement?.attr("href") ?: return@amap
+            val serverName = linkElement.text().trim() // Contoh: TURBOVIP, HYDRAX, HOWNETWORK
+            val href = fixUrl(rawHref)
+
+            Log.d("LayarKaca", "Found server: $serverName -> $href")
+
+            // Mencoba mendapatkan iframe asli
+            val iframeUrl = href.getIframe(referer = data)
             
             if(iframeUrl.isNotEmpty()) {
-                loadExtractor(iframeUrl, extractorReferer, subtitleCallback, callback)
+                Log.d("LayarKaca", "Extracted Iframe for $serverName: $iframeUrl")
+                loadExtractor(iframeUrl, data, subtitleCallback, callback)
+            } else {
+                // Jika gagal extract iframe, coba load link mentahannya
+                // Siapa tahu link tersebut langsung mengarah ke extractor (seperti case Hownetwork)
+                loadExtractor(href, data, subtitleCallback, callback)
             }
         }
         return true
     }
 
     private suspend fun String.getIframe(referer: String): String {
-        val response = app.get(this, referer = referer)
-        val document = response.documentLarge
-        val responseText = response.text
+        if (this.isEmpty() || this.contains("javascript:void")) return ""
 
-        var src = document.selectFirst("div.embed-container iframe")?.attr("src")
+        try {
+            // Request ke halaman player tab
+            val response = app.get(this, referer = referer)
+            val document = response.documentLarge
+            val responseText = response.text
 
-        if (src.isNullOrEmpty()) {
-            src = document.selectFirst("iframe[src^=http]")?.attr("src")
-        }
-
-        if (src.isNullOrEmpty()) {
-            val regex = """["'](https?://[^"']+)["']""".toRegex()
-            val foundLinks = regex.findAll(responseText).map { it.groupValues[1] }.toList()
+            // 1. Coba cari iframe src langsung (Standar)
+            var src = document.select("iframe").attr("src")
             
-            src = foundLinks.firstOrNull { link -> 
-                !link.contains(".js") && 
-                !link.contains(".css") && 
-                !link.contains(".png") && 
-                !link.contains(".jpg") &&
-                (link.contains("embed") || link.contains("player") || link.contains("streaming") || link.contains("hownetwork"))
+            // 2. Fix protocol relative URLs
+            if (src.startsWith("//")) {
+                src = "https:$src"
             }
-        }
 
-        return fixUrl(src ?: "")
-    }
+            // 3. Jika iframe kosong, cari via Regex di script (Untuk server bandel seperti Hydrax/Turbo)
+            if (src.isEmpty() || src.contains("javascript")) {
+                // Regex ini mencari URL yang mungkin menjadi sumber video
+                val regex = """["'](https?://[^"']*(?:turbovid|hydrax|short|embed|player|watch|hownetwork|cloud|dood|mixdrop)[^"']*)["']""".toRegex()
+                src = regex.find(responseText)?.groupValues?.get(1) ?: ""
+            }
 
-    private suspend fun fetchURL(url: String): String {
-        val res = app.get(url, allowRedirects = false)
-        val href = res.headers["location"]
+            // 4. Jika masih kosong, cek apakah ada redirect langsung
+             if (src.isEmpty() && response.url.contains("hownetwork")) {
+                return response.url
+            }
 
-        return if (href != null) {
-            val it = URI(href)
-            "${it.scheme}://${it.host}"
-        } else {
-            url
+            return fixUrl(src)
+
+        } catch (e: Exception) {
+            Log.e("LayarKaca", "Error getting iframe from $this : ${e.message}")
+            return ""
         }
     }
 
