@@ -12,12 +12,16 @@ class LayarKacaProviderPlugin: BasePlugin() {
     override fun load() {
         registerMainAPI(LayarKacaProvider())
         
-        // Extractor Utama
-        registerExtractorAPI(PlayerIframe()) // <--- WAJIB
+        // --- INI URUTAN TERBAIK ---
+        registerExtractorAPI(PlayerIframe()) // 1. Buka Kulit Luar
+        registerExtractorAPI(UniversalVIP()) // 2. Eksekusi CAST, TURBO, HYDRAX
+        
         registerExtractorAPI(Hownetwork())
         registerExtractorAPI(Cloudhownetwork())
-        registerExtractorAPI(F16px())
+        
+        // Redirector Classes (biar aman)
         registerExtractorAPI(Turbovidhls())
+        registerExtractorAPI(F16px())
         registerExtractorAPI(EmturbovidCustom())
         
         // Cadangan
