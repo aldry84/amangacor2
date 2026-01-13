@@ -1,4 +1,4 @@
-package com.layarKacaProvider
+package com.layarKacaProvide
 
 import com.lagradost.cloudstream3.extractors.VidHidePro6
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
