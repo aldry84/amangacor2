@@ -11,7 +11,7 @@ import com.lagradost.cloudstream3.utils.M3u8Helper
 import org.json.JSONObject
 
 // ==========================================================
-// 1. HOWNETWORK (P2P) - KODE STABIL
+// 1. HOWNETWORK (P2P) - SUDAH WORK
 // ==========================================================
 open class Hownetwork : ExtractorApi() {
     override val name = "Hownetwork"
@@ -66,7 +66,48 @@ class Cloudhownetwork : Hownetwork() {
 }
 
 // ==========================================================
-// 2. TURBOVIP (TURBOVIDHLS) - INI WAJIB ADA AGAR TURBO MUNCUL
+// 2. PLAYERIFRAME (PENYELAMAT UNTUK CAST & TURBO)
+// ==========================================================
+// Ini class baru yang WAJIB ada untuk membuka link playeriframe.sbs
+class PlayerIframe : ExtractorApi() {
+    override val name = "PlayerIframe"
+    override val mainUrl = "https://playeriframe.sbs"
+    override val requiresReferer = false
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        try {
+            val response = app.get(url, referer = referer).text
+            // Cari link asli di dalam iframe src
+            val regex = """<iframe[^>]+src=["']([^"']+)["']""".toRegex()
+            val match = regex.find(response)?.groupValues?.get(1)
+            
+            if (match != null) {
+                val innerUrl = if (match.startsWith("//")) "https:$match" else match
+                Log.d("LayarKaca", "PlayerIframe unwrap: $url -> $innerUrl")
+
+                // Oper ke extractor yang sesuai
+                if (innerUrl.contains("turbovid")) {
+                    Turbovidhls().getUrl(innerUrl, url, subtitleCallback, callback)
+                } else if (innerUrl.contains("f16px") || innerUrl.contains("vidhide") || innerUrl.contains("filemoon")) {
+                    // Ini untuk CAST
+                    F16px().getUrl(innerUrl, url, subtitleCallback, callback)
+                } else if (innerUrl.contains("hownetwork")) {
+                    Hownetwork().getUrl(innerUrl, url, subtitleCallback, callback)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("PlayerIframe", "Error: ${e.message}")
+        }
+    }
+}
+
+// ==========================================================
+// 3. TURBOVIP (TURBOVIDHLS)
 // ==========================================================
 class Turbovidhls : ExtractorApi() {
     override val name = "Turbovid"
@@ -80,22 +121,17 @@ class Turbovidhls : ExtractorApi() {
         callback: (ExtractorLink) -> Unit
     ) {
         try {
-            // 1. Buka halaman turbovid
             val response = app.get(url, referer = referer).text
-            
-            // 2. Cari link .m3u8 di dalam script HTML
             val regex = """file:\s*["']([^"']+\.m3u8)["']""".toRegex()
             val m3u8Link = regex.find(response)?.groupValues?.get(1)
 
             if (!m3u8Link.isNullOrEmpty()) {
-                // 3. Header PENTING dari hasil analisa cURL kamu
                 val headers = mapOf(
                     "Origin" to "https://turbovidhls.com",
                     "Referer" to "https://turbovidhls.com/",
                     "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
                 )
 
-                // 4. Generate Link
                 M3u8Helper.generateM3u8(
                     source = this.name,
                     streamUrl = m3u8Link,
@@ -109,7 +145,6 @@ class Turbovidhls : ExtractorApi() {
     }
 }
 
-// Penanganan Redirect Awal (Emturbovid -> Turbovidhls)
 class EmturbovidCustom : ExtractorApi() {
     override val name = "Emturbovid"
     override val mainUrl = "https://emturbovid.com"
@@ -132,7 +167,7 @@ class EmturbovidCustom : ExtractorApi() {
 }
 
 // ==========================================================
-// 3. CAST (F16PX)
+// 4. CAST (F16PX)
 // ==========================================================
 class F16px : ExtractorApi() { 
     override val name = "VidHide (F16)"
@@ -150,7 +185,7 @@ class F16px : ExtractorApi() {
 }
 
 // ==========================================================
-// 4. CADANGAN LAINNYA
+// 5. CADANGAN LAINNYA
 // ==========================================================
 class Co4nxtrl : Filesim() {
     override val mainUrl = "https://co4nxtrl.com"
