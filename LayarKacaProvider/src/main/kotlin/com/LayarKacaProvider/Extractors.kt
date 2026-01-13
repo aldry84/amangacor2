@@ -11,7 +11,6 @@ import com.lagradost.cloudstream3.utils.INFER_TYPE
 import com.lagradost.cloudstream3.utils.M3u8Helper
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.getPacked
-import com.lagradost.cloudstream3.utils.newExtractorLink
 import org.json.JSONObject
 import java.net.URI
 
@@ -59,11 +58,18 @@ open class Hownetwork : ExtractorApi() {
                 if (playlist.isNotEmpty()) {
                     playlist.forEach(callback)
                 } else {
+                    // --- FIX BUILD ERROR DI SINI ---
+                    // Menggunakan Constructor langsung dengan named arguments agar tidak tertukar
                     callback(
-                        newExtractorLink(this.name, this.name, file, INFER_TYPE, Qualities.Unknown.value).apply {
-                            this.headers = headers
-                            this.referer = properReferer
-                        }
+                        ExtractorLink(
+                            source = this.name,
+                            name = this.name,
+                            url = file,
+                            referer = properReferer,
+                            quality = Qualities.Unknown.value,
+                            type = INFER_TYPE,
+                            headers = headers
+                        )
                     )
                 }
             }
@@ -89,7 +95,8 @@ class PlayerIframe : ExtractorApi() {
         val headers = mapOf(
             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Referer" to (referer ?: "https://tv7.lk21official.cc/"),
-            "Sec-Fetch-Dest" to "iframe", // KUNCI LOLOS SANDBOX
+            "Sec-Fetch-Dest" to "iframe",
+            "Sec-Fetch-Mode" to "navigate",
             "Upgrade-Insecure-Requests" to "1"
         )
         try {
