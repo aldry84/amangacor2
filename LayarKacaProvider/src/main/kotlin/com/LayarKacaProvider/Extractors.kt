@@ -11,7 +11,7 @@ import com.lagradost.cloudstream3.utils.M3u8Helper
 import org.json.JSONObject
 
 // ==========================================================
-// 1. HOWNETWORK (P2P) - DENGAN FITUR CADANGAN API2
+// 1. HOWNETWORK (P2P) - FIXED (Named Arguments)
 // ==========================================================
 open class Hownetwork : ExtractorApi() {
     override val name = "Hownetwork"
@@ -25,8 +25,6 @@ open class Hownetwork : ExtractorApi() {
             callback: (ExtractorLink) -> Unit
     ) {
         val id = url.substringAfter("id=").substringBefore("&")
-        
-        // Loop cek endpoint: coba api.php, kalau gagal coba api2.php
         val endpoints = listOf("api.php", "api2.php")
 
         for (endpoint in endpoints) {
@@ -46,7 +44,6 @@ open class Hownetwork : ExtractorApi() {
                 val json = JSONObject(response)
                 val file = json.optString("file")
                 
-                // Jika file ditemukan, proses dan stop looping
                 if (file.isNotBlank() && file != "null") {
                     val headers = mapOf(
                         "Origin" to mainUrl,
@@ -54,7 +51,13 @@ open class Hownetwork : ExtractorApi() {
                         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
                     )
                     
-                    M3u8Helper.generateM3u8(name, file, url, headers).forEach(callback)
+                    // PERBAIKAN ERROR 1 & 2: Tambahkan "headers ="
+                    M3u8Helper.generateM3u8(
+                        source = name, 
+                        streamUrl = file, 
+                        referer = url, 
+                        headers = headers // <-- INI KUNCINYA
+                    ).forEach(callback)
                     return 
                 }
             } catch (e: Exception) {
@@ -69,7 +72,7 @@ class Cloudhownetwork : Hownetwork() {
 }
 
 // ==========================================================
-// 2. TURBOVIP (TURBOVIDHLS) - FIX BERDASARKAN CURL
+// 2. TURBOVIP (TURBOVIDHLS) - FIXED (Named Arguments)
 // ==========================================================
 class Turbovidhls : ExtractorApi() {
     override val name = "Turbovid"
@@ -83,26 +86,23 @@ class Turbovidhls : ExtractorApi() {
         callback: (ExtractorLink) -> Unit
     ) {
         try {
-            // 1. Ambil source halaman
             val response = app.get(url, referer = referer).text
-            
-            // 2. Cari file m3u8 via Regex
             val regex = """file:\s*["']([^"']+\.m3u8)["']""".toRegex()
             val m3u8Link = regex.find(response)?.groupValues?.get(1)
 
             if (!m3u8Link.isNullOrEmpty()) {
-                // 3. Header Wajib (Sesuai Curl kamu)
                 val headers = mapOf(
                     "Origin" to "https://turbovidhls.com",
                     "Referer" to "https://turbovidhls.com/",
                     "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
                 )
 
+                // PERBAIKAN ERROR 1 & 2: Tambahkan "headers ="
                 M3u8Helper.generateM3u8(
-                    this.name,
-                    m3u8Link,
-                    "https://turbovidhls.com/",
-                    headers
+                    source = this.name,
+                    streamUrl = m3u8Link,
+                    referer = "https://turbovidhls.com/",
+                    headers = headers // <-- INI KUNCINYA
                 ).forEach(callback)
             }
         } catch (e: Exception) {
@@ -111,7 +111,6 @@ class Turbovidhls : ExtractorApi() {
     }
 }
 
-// Redirector untuk Turbovid (Menangani link emturbovid.com)
 class EmturbovidCustom : ExtractorApi() {
     override val name = "Emturbovid"
     override val mainUrl = "https://emturbovid.com"
@@ -124,7 +123,6 @@ class EmturbovidCustom : ExtractorApi() {
         callback: (ExtractorLink) -> Unit
     ) {
         val response = app.get(url).text
-        // Cari link asli turbovidhls di dalam iframe/script
         val regex = """["'](https?://[^"']*turbovidhls[^"']*)["']""".toRegex()
         val realUrl = regex.find(response)?.groupValues?.get(1)
 
@@ -135,11 +133,23 @@ class EmturbovidCustom : ExtractorApi() {
 }
 
 // ==========================================================
-// 3. CAST (F16PX / VIDHIDE)
+// 3. CAST (F16PX) - FIXED (Delegation instead of Inheritance)
 // ==========================================================
-class F16px : VidHidePro6() {
+// PERBAIKAN ERROR 3: Ubah ke ExtractorApi, jangan extend VidHidePro6
+class F16px : ExtractorApi() { 
     override val name = "VidHide (F16)"
     override val mainUrl = "https://f16px.com"
+    override val requiresReferer = false
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        // Panggil VidHidePro6 secara manual
+        VidHidePro6().getUrl(url, referer, subtitleCallback, callback)
+    }
 }
 
 // ==========================================================
