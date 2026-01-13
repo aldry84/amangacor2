@@ -1,4 +1,4 @@
-package com.layarKacaProvider
+package com.layarKacaProvide
 
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.BasePlugin
