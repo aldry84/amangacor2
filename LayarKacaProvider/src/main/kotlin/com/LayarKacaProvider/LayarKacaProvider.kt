@@ -145,8 +145,6 @@ class LayarKacaProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val document = app.get(data).documentLarge
-        
-        // Ambil semua tab player
         val playerNodes = document.select("ul#player-list > li a, div.player_nav ul li a")
 
         playerNodes.amap { linkElement ->
@@ -156,10 +154,9 @@ class LayarKacaProvider : MainAPI() {
 
             Log.d("LayarKaca", "Processing Server: $serverName -> $href")
 
-            // Ambil iframe asli dari halaman tab
             var iframeUrl = href.getIframe(referer = data)
             
-            // Penanganan Khusus Redirect (HYDRAX / SHORT.ICU)
+            // Penanganan Redirect (HYDRAX / SHORT.ICU)
             if (iframeUrl.contains("short.icu") || iframeUrl.contains("hydrax")) {
                 iframeUrl = resolveRedirect(iframeUrl)
                 Log.d("LayarKaca", "Resolved Redirect ($serverName): $iframeUrl")
@@ -178,30 +175,27 @@ class LayarKacaProvider : MainAPI() {
             val response = app.get(this, referer = referer)
             val doc = response.documentLarge
             
-            // 1. Cari iframe src standar
             var src = doc.select("iframe").attr("src")
             
-            // 2. Jika kosong, cari via Regex (untuk server bandel)
             if (src.isEmpty()) {
+                // Regex mencakup domain-domain nakal (f16px, emturbovid)
                 val regex = """["'](https?://[^"']*(?:turbovid|hydrax|short|embed|player|watch|hownetwork|cloud|dood|mixdrop|f16px|emturbovid)[^"']*)["']""".toRegex()
                 src = regex.find(response.text)?.groupValues?.get(1) ?: ""
             }
             
-            // 3. Jika ini halaman redirect Hownetwork
             if (src.isEmpty() && response.url.contains("hownetwork")) return response.url
 
             return fixUrl(src)
         } catch (e: Exception) { return "" }
     }
 
-    // Fungsi untuk membuka link redirector (seperti short.icu)
     private suspend fun resolveRedirect(url: String): String {
         return try {
             val response = app.get(url, allowRedirects = false)
             if (response.code == 301 || response.code == 302) {
                 response.headers["Location"] ?: url
             } else {
-                url // Jika tidak redirect, kembalikan URL asli
+                url
             }
         } catch (e: Exception) { url }
     }
