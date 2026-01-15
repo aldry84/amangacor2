@@ -3,7 +3,6 @@ package com.IndoFilm
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import org.jsoup.nodes.Element
-import org.jsoup.Jsoup
 
 class HomeSpecially : ParsedHttpSource() {
     override val name = "HomeSpecially"
@@ -15,6 +14,7 @@ class HomeSpecially : ParsedHttpSource() {
     // ==========================================
     // 1. SELECTOR UTAMA
     // ==========================================
+    // Sesuai gambar: konten ada di div.gmr-maincontent -> row
     override val searchSelector = "div.gmr-maincontent .row article.item-infinite"
 
     // ==========================================
@@ -85,44 +85,46 @@ class HomeSpecially : ParsedHttpSource() {
     ): Boolean {
         val document = app.get(data).document
         
-        // Ambil Post ID untuk keperluan AJAX (contoh: 96555 dari gambar kamu)
+        // 1. Ambil Post ID (96555) dari elemen yang kamu temukan di gambar
         val postId = document.selectFirst("#muvipro_player_content_id")?.attr("data-id")
 
-        // Cari semua tab server (Server 1, Server 2, dst)
-        // Selektor berdasarkan id="gmr-tab" di gambar 6
+        // 2. Cari semua tab server (Server 1, Server 2...) di dalam ul#gmr-tab
         document.select("ul#gmr-tab li a").forEach { tab ->
-            val tabId = tab.attr("href").removePrefix("#") // Hasil: p1, p2, p3...
-            val serverName = tab.text() // Hasil: "Server 1", "Server 2"
-
-            // Logika 1: Cek apakah videonya sudah ada langsung (Biasanya Server 1)
-            val directIframe = document.selectFirst("div#$tabId iframe")
+            val tabHref = tab.attr("href") // Contoh: #p1, #p2
+            val tabId = tabHref.removePrefix("#") // Jadi: p1, p2
+            
+            // Cek apakah di halaman itu videonya sudah langsung ada (seperti Server 1 di gambar)
+            val directIframe = document.selectFirst("div$tabHref iframe")
+            
             if (directIframe != null) {
+                // KASUS A: Video langsung ketemu (Server 1)
                 val src = directIframe.attr("src")
-                // LoadExtractor otomatis mengenali embedpyrox, streamtape, dll
                 loadExtractor(src, callback, subtitleCallback)
             } 
-            // Logika 2: Jika kosong (Server 2, 3..), kita panggil lewat AJAX
             else if (postId != null) {
+                // KASUS B: Video masih kosong (Server 2, 3..), panggil AJAX
                 try {
                     val ajaxUrl = "$mainUrl/wp-admin/admin-ajax.php"
-                    // Mengirim formulir rahasia ke server mereka
+                    
+                    // Kita kirim formulir rahasia ke server mereka
                     val formBody = mapOf(
                         "action" to "muvipro_player_content",
                         "tab" to tabId,
                         "post_id" to postId
                     )
                     
-                    // Request ke server
+                    // Tembak servernya!
                     val responseHtml = app.post(ajaxUrl, data = formBody).text
                     
-                    // Cari link iframe di dalam jawaban server
+                    // Cari iframe di jawaban server
+                    // Regex ini mencari src="..." di dalam teks jawaban
                     val iframeMatch = Regex("src=\"(.*?)\"").find(responseHtml)
                     if (iframeMatch != null) {
                         val src = iframeMatch.groupValues[1]
                         loadExtractor(src, callback, subtitleCallback)
                     }
                 } catch (e: Exception) {
-                    // Jika gagal load salah satu server, abaikan dan lanjut ke server berikutnya
+                    // Jika satu server gagal, lanjut ke server berikutnya saja
                 }
             }
         }
