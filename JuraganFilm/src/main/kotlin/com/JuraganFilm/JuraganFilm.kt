@@ -168,11 +168,11 @@ class JuraganFilm : MainAPI() {
 
                     // Link ini butuh Referer: https://juragan.info/
                     if (decodedUrl.contains(".m3u8")) {
-                        // FIX: Menggunakan M3u8Helper.generateM3u8
+                        // FIX: Menggunakan 'source' alih-alih 'name'
                         M3u8Helper.generateM3u8(
-                            name = "JuraganFilm (VIP)",
+                            source = "JuraganFilm (VIP)", // <-- Ganti parameter 'name' jadi 'source'
                             streamUrl = decodedUrl,
-                            referer = "https://juragan.info/", // INI KUNCINYA!
+                            referer = "https://juragan.info/",
                             headers = mapOf(
                                 "Origin" to "https://juragan.info",
                                 "User-Agent" to commonHeaders["User-Agent"]!!
