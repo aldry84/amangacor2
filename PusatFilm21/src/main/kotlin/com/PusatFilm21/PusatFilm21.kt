@@ -13,11 +13,19 @@ class PusatFilm21 : MainAPI() {
     override var lang = "id"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.AsianDrama)
 
-    private val commonHeaders = mapOf(
-        "User-Agent" to "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
+    // 1. Header untuk Halaman Biasa (Browser Mode)
+    // HAPUS 'X-Requested-With' dari sini agar tidak dideteksi sebagai bot/ajax
+    private val mainHeaders = mapOf(
+        "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
         "Referer" to "$mainUrl/",
-        "Accept" to "*/*",
-        "X-Requested-With" to "XMLHttpRequest"
+        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7"
+    )
+
+    // 2. Header Khusus untuk Search (AJAX Mode)
+    private val ajaxHeaders = mainHeaders + mapOf(
+        "X-Requested-With" to "XMLHttpRequest",
+        "Accept" to "*/*"
     )
 
     // ==============================
@@ -38,17 +46,21 @@ class PusatFilm21 : MainAPI() {
 
         val homeSets = items.mapNotNull { (url, name) ->
             try {
-                val doc = app.get(url, headers = commonHeaders).document
+                // PENTING: Gunakan 'mainHeaders' di sini, BUKAN ajaxHeaders
+                val doc = app.get(url, headers = mainHeaders).document
+                
                 val movies = doc.select("div.ml-item").mapNotNull { element ->
                     toSearchResult(element)
                 }
+                
                 if (movies.isNotEmpty()) HomePageList(name, movies) else null
             } catch (e: Exception) {
+                // Uncomment baris bawah ini jika ingin melihat error di Logcat Android Studio
+                // e.printStackTrace() 
                 null
             }
         }
         
-        // PERBAIKAN DI SINI: Menggunakan fungsi baru 'newHomePageResponse'
         return newHomePageResponse(homeSets)
     }
 
@@ -94,15 +106,20 @@ class PusatFilm21 : MainAPI() {
     override suspend fun search(query: String): List<SearchResponse> {
         val url = "$mainUrl/wp-admin/admin-ajax.php?action=muvipro_core_ajax_search_movie&query=$query"
         try {
-            val response = app.get(url, headers = commonHeaders).parsedSafe<SearchResponseJson>()
+            // PENTING: Gunakan 'ajaxHeaders' di sini karena ini API JSON
+            val response = app.get(url, headers = ajaxHeaders).parsedSafe<SearchResponseJson>()
+            
             return response?.suggestions?.mapNotNull { item ->
                 val title = item.value
                 val href = item.url
+                
+                // Regex untuk ambil URL gambar dari string HTML <img>
                 val posterUrl = if (item.thumb != null) {
                     Regex("""src="([^"]+)"""").find(item.thumb)?.groupValues?.get(1)
                 } else null
 
                 val isSeries = href.contains("/tv-show/") || href.contains("/drama-")
+
                 if (isSeries) {
                     newTvSeriesSearchResponse(title, href, TvType.TvSeries) { this.posterUrl = posterUrl }
                 } else {
@@ -118,7 +135,8 @@ class PusatFilm21 : MainAPI() {
     // 3. LOAD (Detail Film)
     // ==============================
     override suspend fun load(url: String): LoadResponse? {
-        val doc = app.get(url, headers = commonHeaders).document
+        // Gunakan mainHeaders agar dianggap browser biasa
+        val doc = app.get(url, headers = mainHeaders).document
         
         val title = doc.selectFirst("h1.entry-title")?.text() ?: "Unknown"
         val poster = doc.selectFirst("div.gmr-movie-data img")?.attr("src")
@@ -131,7 +149,6 @@ class PusatFilm21 : MainAPI() {
         if (isSeries) {
             val episodes = ArrayList<Episode>()
             
-            // PERBAIKAN: Menggunakan newEpisode() sesuai standar baru
             doc.select("span.gmr-eps-list a").forEach { ep ->
                 episodes.add(newEpisode(ep.attr("href")) {
                     this.name = ep.text()
@@ -169,7 +186,8 @@ class PusatFilm21 : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val doc = app.get(data, headers = commonHeaders).document
+        // Gunakan mainHeaders
+        val doc = app.get(data, headers = mainHeaders).document
         
         doc.select("div.gmr-embed-responsive iframe").forEach { iframe ->
             var sourceUrl = iframe.attr("src")
