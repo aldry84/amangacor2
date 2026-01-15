@@ -1,4 +1,4 @@
-package com.JuraganFilm
+package com.juraganfilm
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
@@ -6,7 +6,6 @@ import org.jsoup.nodes.Element
 
 class JuraganFilm : MainAPI() {
 
-    // URL Utama website
     override var mainUrl = "https://tv41.juragan.film"
     override var name = "JuraganFilm"
     override val hasMainPage = true
@@ -17,102 +16,72 @@ class JuraganFilm : MainAPI() {
         TvType.AsianDrama
     )
 
-    // Header agar tidak diblokir (Sesuai screenshot header request kamu)
     private val commonHeaders = mapOf(
         "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
         "Referer" to "$mainUrl/",
         "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7"
     )
 
-    // =========================================================================
-    // 1. HALAMAN UTAMA (Home)
-    // =========================================================================
+    // ==============================
+    // 1. HOME
+    // ==============================
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val document = app.get(mainUrl, headers = commonHeaders).document
-        
-        // Target: <div id="gmr-main-load"> berisi daftar <article>
-        // Sesuai screenshot elemen
         val homeItems = document.select("div#gmr-main-load article").mapNotNull {
             toSearchResult(it)
         }
-
         return newHomePageResponse(
-            list = HomePageList(
-                name = "Film Terbaru",
-                list = homeItems,
-                isHorizontalImages = false
-            ),
+            list = HomePageList(name = "Film Terbaru", list = homeItems, isHorizontalImages = false),
             hasNext = false
         )
     }
 
-    // =========================================================================
-    // 2. PENCARIAN (Search)
-    // =========================================================================
+    // ==============================
+    // 2. SEARCH
+    // ==============================
     override suspend fun search(query: String): List<SearchResponse> {
         val url = "$mainUrl/?s=$query"
         val document = app.get(url, headers = commonHeaders).document
-
-        // Di halaman search, kita cari elemen article dengan class 'item'
         return document.select("article.item").mapNotNull {
             toSearchResult(it)
         }
     }
 
-    // =========================================================================
-    // FUNGSI PENGOLAH DATA (HTML -> Cloudstream)
-    // =========================================================================
     private fun toSearchResult(element: Element): SearchResponse? {
-        // 1. Ambil Judul & Link
-        // Struktur: <div class="item-article"> <header> <h2> <a href="...">Judul</a>
         val titleElement = element.selectFirst("div.item-article a") ?: return null
-        
-        val title = titleElement.text()
+        val title = titleElement.text().replace(Regex("(?i)Nonton\\s+"), "").trim() // Hapus kata "Nonton" biar rapi
         val href = titleElement.attr("href")
-
-        // 2. Ambil Poster
-        // Struktur: <div class="content-thumbnail"> <a...> <img src="...">
-        val posterElement = element.selectFirst("div.content-thumbnail img")
-        val posterUrl = posterElement?.let { img ->
-            // Cek data-src (lazy load) dulu, kalau kosong baru src
+        val posterUrl = element.selectFirst("div.content-thumbnail img")?.let { img ->
             img.attr("data-src").ifEmpty { img.attr("src") }
         }
 
-        // 3. Cek Tipe (Series atau Movie)
-        // Indikator: Ada teks "EPS" di overlay gambar atau judul mengandung "Season"
-        val isSeries = element.text().contains("EPS", ignoreCase = true) || 
-                       title.contains("Season", ignoreCase = true)
+        val isSeries = element.text().contains("EPS", ignoreCase = true) || title.contains("Season", ignoreCase = true)
 
         return if (isSeries) {
-            newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
-                this.posterUrl = posterUrl
-            }
+            newTvSeriesSearchResponse(title, href, TvType.TvSeries) { this.posterUrl = posterUrl }
         } else {
-            newMovieSearchResponse(title, href, TvType.Movie) {
-                this.posterUrl = posterUrl
-            }
+            newMovieSearchResponse(title, href, TvType.Movie) { this.posterUrl = posterUrl }
         }
     }
 
-    // =========================================================================
-    // 3. MEMUAT DETAIL (Load)
-    // =========================================================================
+    // ==============================
+    // 3. LOAD (DETAIL)
+    // ==============================
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url, headers = commonHeaders).document
 
-        // Mengambil Judul Utama
-        val title = document.selectFirst("h1.entry-title")?.text() ?: "No Title"
-        
-        // Mengambil Poster Resolusi Tinggi di halaman detail
+        // Bersihkan judul dari kata "Nonton Film" dsb
+        val rawTitle = document.selectFirst("h1.entry-title")?.text() ?: "No Title"
+        val title = rawTitle.replace(Regex("(?i)Nonton\\s+(Film\\s+)?"), "").trim()
+
         val poster = document.selectFirst("div.gmr-poster img")?.let { img ->
              img.attr("data-src").ifEmpty { img.attr("src") }
         } ?: document.selectFirst("img.wp-post-image")?.attr("src")
 
-        // Mengambil Deskripsi/Sinopsis
         val description = document.select("div.entry-content p").text()
-        
-        // Cek Episode (Khusus Series)
-        // Tema GMR biasanya menaruh list episode di div.gmr-listseries
+        val year = document.select("span.year").text().filter { it.isDigit() }.toIntOrNull()
+
+        // Cek Series
         val episodes = mutableListOf<Episode>()
         val episodeElements = document.select("div.gmr-listseries a")
         
@@ -120,26 +89,25 @@ class JuraganFilm : MainAPI() {
             episodeElements.forEach { ep ->
                 val epTitle = ep.text()
                 val epUrl = ep.attr("href")
-                episodes.add(newEpisode(epUrl) {
-                    this.name = epTitle
-                })
+                episodes.add(newEpisode(epUrl) { this.name = epTitle })
             }
             return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                 this.posterUrl = poster
                 this.plot = description
+                this.year = year
             }
         } else {
-            // Jika tidak ada list episode, berarti Movie biasa
             return newMovieLoadResponse(title, url, TvType.Movie, url) {
                 this.posterUrl = poster
                 this.plot = description
+                this.year = year
             }
         }
     }
 
-    // =========================================================================
-    // 4. MENGAMBIL LINK VIDEO (LoadLinks)
-    // =========================================================================
+    // ==============================
+    // 4. LOAD LINKS (VIDEO) - UPDATE PENTING!
+    // ==============================
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -148,16 +116,42 @@ class JuraganFilm : MainAPI() {
     ): Boolean {
         val document = app.get(data, headers = commonHeaders).document
 
-        // Mencari semua iframe video player
-        document.select("iframe").forEach { iframe ->
-            var src = iframe.attr("src")
-            if (src.startsWith("//")) src = "https:$src"
-            
-            // Filter: Abaikan link iklan Google/Facebook
-            if (!src.contains("google") && !src.contains("facebook")) {
-                loadExtractor(src, data, subtitleCallback, callback)
+        // 1. Ambil video utama (Iframe default)
+        document.select("div#muvipro_player_content_id iframe").forEach { iframe ->
+            val src = iframe.attr("src")
+            loadExtractor(fixUrl(src), data, subtitleCallback, callback)
+        }
+
+        // 2. Ambil tombol server (GDRIVE, JUICE, dll)
+        // Biasanya ada di tab muvipro-player-tabs
+        document.select("ul.muvipro-player-tabs li a").forEach { serverBtn ->
+            val serverUrl = serverBtn.attr("href")
+            val serverName = serverBtn.text()
+
+            // Jika tombolnya bukan link '#' (link mati), kita load isinya
+            if (serverUrl.isNotEmpty() && !serverUrl.contains("#")) {
+                 // Terkadang link tombol itu memuat halaman baru/ajax
+                 // Untuk simplifikasi, kita coba loadExtractor langsung jika itu link embed
+                 loadExtractor(fixUrl(serverUrl), data, subtitleCallback, callback)
+            } else {
+                // Jika linknya memanggil script (AJAX), kita coba cari iframe di dalam content data-post (Advanced)
+                // Untuk tahap ini, kita fokus ke iframe utama dulu.
             }
         }
+
+        // 3. Cadangan: Cari semua iframe di halaman (Metode Sapu Jagat)
+        document.select("iframe").forEach { iframe ->
+            val src = iframe.attr("src")
+            if (src.contains("juragan") || src.contains("google") || src.contains("facebook")) return@forEach // Skip iklan
+            loadExtractor(fixUrl(src), data, subtitleCallback, callback)
+        }
+
         return true
+    }
+    
+    // Fungsi kecil untuk benerin URL (misal dari //gdrive... jadi https://gdrive...)
+    private fun fixUrl(url: String): String {
+        if (url.startsWith("//")) return "https:$url"
+        return url
     }
 }
