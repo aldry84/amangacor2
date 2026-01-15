@@ -17,8 +17,9 @@ class LayarKacaProviderPlugin: BasePlugin() {
         registerExtractorAPI(Turbovidhls())
         registerExtractorAPI(Cloudhownetwork())
         registerExtractorAPI(Co4nxtrl())
+        registerExtractorAPI(F16px())
         
         // TAMBAHAN BARU:
-        registerExtractorAPI(F16px())
+        registerExtractorAPI(AbyssCdn())
     }
 }
