@@ -12,19 +12,15 @@ class LayarKacaProviderPlugin: BasePlugin() {
         // Router Utama
         registerExtractorAPI(PlayerIframe())
         
-        // Extractor Server Spesifik
+        // Pendaftaran Class Server
         registerExtractorAPI(Hownetwork())
         registerExtractorAPI(Cloudhownetwork())
         registerExtractorAPI(Turbovidhls())
         registerExtractorAPI(F16px())
-        registerExtractorAPI(Hydrax()) // AbyssCDN
-        
-        // Extractor Simple
+        registerExtractorAPI(Hydrax())
         registerExtractorAPI(Co4nxtrl())
         registerExtractorAPI(Furher())
         registerExtractorAPI(Furher2())
-        
-        // Extractor Bawaan
         registerExtractorAPI(VidHidePro6())
     }
 }
