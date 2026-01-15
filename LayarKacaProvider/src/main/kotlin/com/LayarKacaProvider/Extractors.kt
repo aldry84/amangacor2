@@ -10,6 +10,7 @@ import com.lagradost.cloudstream3.utils.INFER_TYPE
 import com.lagradost.cloudstream3.utils.M3u8Helper
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.getPacked
+import com.lagradost.cloudstream3.utils.newExtractorLink
 import org.json.JSONObject
 import java.net.URI
 
@@ -184,11 +185,12 @@ class F16px : ExtractorApi() {
                         headers = mapOf("Referer" to url)
                     ).forEach(callback)
                 } else if (mp4Match != null) {
+                    // FIX: Menggunakan newExtractorLink
                     callback(
-                        ExtractorLink(
-                            name,
-                            name,
-                            mp4Match,
+                        newExtractorLink(
+                            source = name,
+                            name = name,
+                            url = mp4Match,
                             referer = url,
                             quality = Qualities.Unknown.value,
                             type = INFER_TYPE
@@ -207,7 +209,6 @@ class F16px : ExtractorApi() {
     }
 }
 
-// --- NEW ABYSS / HYDRAX EXTRACTOR ---
 class AbyssCdn : ExtractorApi() {
     override val name = "Hydrax"
     override val mainUrl = "https://abysscdn.com"
@@ -220,22 +221,15 @@ class AbyssCdn : ExtractorApi() {
         callback: (ExtractorLink) -> Unit
     ) {
         try {
-            // URL bisa berupa abysscdn.com atau hydrax.net
             val res = app.get(url, referer = referer).text
             
-            // 1. Coba decode "Packed JS" (eval(function...))
-            // AbyssCDN hampir selalu menggunakan ini
             val packed = getPacked(res)
-            
             val contentToSearch = packed ?: res
             
-            // 2. Cari link file (mp4/m3u8) di dalam hasil decode
-            // Regex mencari: file:"https://..." atau source:"https://..."
             val linkRegex = Regex("""(?:file|source|src)\s*:\s*["']([^"']+)["']""")
             val match = linkRegex.find(contentToSearch)?.groupValues?.get(1)
 
             if (!match.isNullOrEmpty() && match.startsWith("http")) {
-                // Bersihkan slash yang di-escape jika ada (contoh: https:\/\/...)
                 val cleanUrl = match.replace("\\/", "/")
                 
                 if (cleanUrl.contains(".m3u8")) {
@@ -246,11 +240,12 @@ class AbyssCdn : ExtractorApi() {
                         headers = mapOf("Origin" to getBaseDomain(url))
                     ).forEach(callback)
                 } else {
+                    // FIX: Menggunakan newExtractorLink
                     callback(
-                        ExtractorLink(
-                            name,
-                            name,
-                            cleanUrl,
+                        newExtractorLink(
+                            source = name,
+                            name = name,
+                            url = cleanUrl,
                             referer = url,
                             quality = Qualities.Unknown.value,
                             type = INFER_TYPE
