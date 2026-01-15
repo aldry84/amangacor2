@@ -185,16 +185,17 @@ class F16px : ExtractorApi() {
                         headers = mapOf("Referer" to url)
                     ).forEach(callback)
                 } else if (mp4Match != null) {
-                    // FIX: Menggunakan newExtractorLink
+                    // FIX: Gunakan .apply {} karena parameter referer/quality tidak ada di constructor
                     callback(
                         newExtractorLink(
                             source = name,
                             name = name,
                             url = mp4Match,
-                            referer = url,
-                            quality = Qualities.Unknown.value,
                             type = INFER_TYPE
-                        )
+                        ).apply {
+                            this.referer = url
+                            this.quality = Qualities.Unknown.value
+                        }
                     )
                 }
             } else {
@@ -240,16 +241,17 @@ class AbyssCdn : ExtractorApi() {
                         headers = mapOf("Origin" to getBaseDomain(url))
                     ).forEach(callback)
                 } else {
-                    // FIX: Menggunakan newExtractorLink
+                    // FIX: Gunakan .apply {} karena parameter referer/quality tidak ada di constructor
                     callback(
                         newExtractorLink(
                             source = name,
                             name = name,
                             url = cleanUrl,
-                            referer = url,
-                            quality = Qualities.Unknown.value,
                             type = INFER_TYPE
-                        )
+                        ).apply {
+                            this.referer = url
+                            this.quality = Qualities.Unknown.value
+                        }
                     )
                 }
             } else {
