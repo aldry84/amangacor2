@@ -1,4 +1,4 @@
-package com.juraganfilm
+package com.JuraganFilm
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
