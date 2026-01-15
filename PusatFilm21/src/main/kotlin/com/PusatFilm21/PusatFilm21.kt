@@ -13,8 +13,8 @@ class PusatFilm21 : MainAPI() {
     override var lang = "id"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.AsianDrama)
 
-    // 1. Header untuk Halaman Biasa (Browser Mode)
-    // HAPUS 'X-Requested-With' dari sini agar tidak dideteksi sebagai bot/ajax
+    // 1. Header BIASA (Untuk Buka Halaman & Load Video)
+    // PENTING: Jangan pakai X-Requested-With di sini agar server menganggap kita browser asli
     private val mainHeaders = mapOf(
         "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
         "Referer" to "$mainUrl/",
@@ -22,7 +22,8 @@ class PusatFilm21 : MainAPI() {
         "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7"
     )
 
-    // 2. Header Khusus untuk Search (AJAX Mode)
+    // 2. Header AJAX (Khusus Search)
+    // API Search situs ini mewajibkan header ini
     private val ajaxHeaders = mainHeaders + mapOf(
         "X-Requested-With" to "XMLHttpRequest",
         "Accept" to "*/*"
@@ -31,6 +32,7 @@ class PusatFilm21 : MainAPI() {
     // ==============================
     // 1. MAIN PAGE (Halaman Depan)
     // ==============================
+    @Suppress("DEPRECATION")
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
         val items = listOf(
             Pair("$mainUrl/trending/page/$page/", "Trending"),
@@ -46,21 +48,18 @@ class PusatFilm21 : MainAPI() {
 
         val homeSets = items.mapNotNull { (url, name) ->
             try {
-                // PENTING: Gunakan 'mainHeaders' di sini, BUKAN ajaxHeaders
+                // PENTING: Pakai mainHeaders
                 val doc = app.get(url, headers = mainHeaders).document
-                
                 val movies = doc.select("div.ml-item").mapNotNull { element ->
                     toSearchResult(element)
                 }
-                
                 if (movies.isNotEmpty()) HomePageList(name, movies) else null
             } catch (e: Exception) {
-                // Uncomment baris bawah ini jika ingin melihat error di Logcat Android Studio
-                // e.printStackTrace() 
                 null
             }
         }
         
+        // Menggunakan newHomePageResponse (Standar Baru)
         return newHomePageResponse(homeSets)
     }
 
@@ -106,20 +105,18 @@ class PusatFilm21 : MainAPI() {
     override suspend fun search(query: String): List<SearchResponse> {
         val url = "$mainUrl/wp-admin/admin-ajax.php?action=muvipro_core_ajax_search_movie&query=$query"
         try {
-            // PENTING: Gunakan 'ajaxHeaders' di sini karena ini API JSON
+            // PENTING: Search wajib pakai ajaxHeaders
             val response = app.get(url, headers = ajaxHeaders).parsedSafe<SearchResponseJson>()
-            
             return response?.suggestions?.mapNotNull { item ->
                 val title = item.value
                 val href = item.url
                 
-                // Regex untuk ambil URL gambar dari string HTML <img>
+                // Ekstrak gambar dari string HTML <img> di JSON
                 val posterUrl = if (item.thumb != null) {
                     Regex("""src="([^"]+)"""").find(item.thumb)?.groupValues?.get(1)
                 } else null
 
                 val isSeries = href.contains("/tv-show/") || href.contains("/drama-")
-
                 if (isSeries) {
                     newTvSeriesSearchResponse(title, href, TvType.TvSeries) { this.posterUrl = posterUrl }
                 } else {
@@ -135,7 +132,7 @@ class PusatFilm21 : MainAPI() {
     // 3. LOAD (Detail Film)
     // ==============================
     override suspend fun load(url: String): LoadResponse? {
-        // Gunakan mainHeaders agar dianggap browser biasa
+        // PENTING: Load halaman pakai mainHeaders
         val doc = app.get(url, headers = mainHeaders).document
         
         val title = doc.selectFirst("h1.entry-title")?.text() ?: "Unknown"
@@ -149,12 +146,14 @@ class PusatFilm21 : MainAPI() {
         if (isSeries) {
             val episodes = ArrayList<Episode>()
             
+            // Selector Episode 1
             doc.select("span.gmr-eps-list a").forEach { ep ->
                 episodes.add(newEpisode(ep.attr("href")) {
                     this.name = ep.text()
                 })
             }
             
+            // Selector Episode 2 (Backup)
             if (episodes.isEmpty()) {
                 doc.select("div.tv-eps a").forEach { ep ->
                     episodes.add(newEpisode(ep.attr("href")) {
@@ -186,15 +185,19 @@ class PusatFilm21 : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // Gunakan mainHeaders
+        // PENTING: Load player pakai mainHeaders
         val doc = app.get(data, headers = mainHeaders).document
         
+        // Cari iframe kotakajaib/turbovid
         doc.select("div.gmr-embed-responsive iframe").forEach { iframe ->
             var sourceUrl = iframe.attr("src")
             if (sourceUrl.startsWith("//")) sourceUrl = "https:$sourceUrl"
+            
+            // loadExtractor otomatis mengenali KotakAjaib & Hydrax
             loadExtractor(sourceUrl, data, subtitleCallback, callback)
         }
         
+        // Link direct jika ada
         doc.select("a.gmr-player-link").forEach { link ->
              val sourceUrl = link.attr("href")
              loadExtractor(sourceUrl, data, subtitleCallback, callback)
