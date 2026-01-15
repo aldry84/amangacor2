@@ -11,13 +11,11 @@ class HomeSpecially : MainAPI() {
     override val hasMainPage = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
-    // ==========================================
-    // 1. SELECTOR UTAMA
-    // ==========================================
-    override val searchSelector = "div.gmr-maincontent .row article.item-infinite"
+    // Kita hapus 'override' karena di MainAPI variabel ini tidak ada secara default
+    val searchSelector = "div.gmr-maincontent .row article.item-infinite"
 
     // ==========================================
-    // 2. HALAMAN UTAMA (Main Page)
+    // 1. HALAMAN UTAMA (Main Page)
     // ==========================================
     override val mainPage = mainPageOf(
         "$mainUrl/page/" to "Terbaru",
@@ -33,6 +31,7 @@ class HomeSpecially : MainAPI() {
         val url = request.data + page
         val document = app.get(url).document
         
+        // Memanggil searchSelector yang kita buat di atas
         val home = document.select(searchSelector).mapNotNull {
             toSearchResult(it)
         }
@@ -40,7 +39,6 @@ class HomeSpecially : MainAPI() {
         return newHomePageResponse(request.name, home)
     }
 
-    // Fungsi bantuan agar kode lebih rapi
     private fun toSearchResult(element: Element): SearchResponse? {
         val titleElement = element.selectFirst(".entry-title a") ?: return null
         val title = titleElement.text()
@@ -55,7 +53,7 @@ class HomeSpecially : MainAPI() {
     }
 
     // ==========================================
-    // 3. PENCARIAN (Search)
+    // 2. PENCARIAN (Search)
     // ==========================================
     override suspend fun search(query: String): List<SearchResponse> {
         val url = "$mainUrl/?s=$query&post_type[]=post&post_type[]=tv"
@@ -67,7 +65,7 @@ class HomeSpecially : MainAPI() {
     }
 
     // ==========================================
-    // 4. HALAMAN DETAIL (Load)
+    // 3. HALAMAN DETAIL (Load)
     // ==========================================
     override suspend fun load(url: String): LoadResponse? {
         val document = app.get(url).document
@@ -76,8 +74,6 @@ class HomeSpecially : MainAPI() {
         val poster = document.selectFirst(".gmr-movie-view-poster img")?.attr("src")
         val plot = document.selectFirst(".entry-content p")?.text()
         val year = document.selectFirst(".gmr-movie-data:contains(Tahun) a")?.text()?.toIntOrNull()
-        
-        // SAYA MENGHAPUS BAGIAN RATING KARENA BIKIN ERROR BUILD
         
         val type = if (url.contains("/tv/") || title.contains("Episode")) TvType.TvSeries else TvType.Movie
 
@@ -89,7 +85,7 @@ class HomeSpecially : MainAPI() {
     }
 
     // ==========================================
-    // 5. PEMUTAR VIDEO (LoadLinks - UPDATE CURL)
+    // 4. PEMUTAR VIDEO (LoadLinks)
     // ==========================================
     override suspend fun loadLinks(
         data: String,
@@ -101,29 +97,23 @@ class HomeSpecially : MainAPI() {
         val postId = document.selectFirst("#muvipro_player_content_id")?.attr("data-id")
 
         document.select("ul#gmr-tab li a").forEach { tab ->
-            val tabHref = tab.attr("href") // #p1, #p2
-            val tabId = tabHref.removePrefix("#") // p1, p2
+            val tabHref = tab.attr("href") 
+            val tabId = tabHref.removePrefix("#") 
             
-            // Helper function
             suspend fun resolveLink(url: String) {
                 var fixUrl = url
                 if (fixUrl.startsWith("//")) fixUrl = "https:$fixUrl"
-                
-                // EmbedPyrox didukung otomatis oleh CloudStream
                 loadExtractor(fixUrl, data, subtitleCallback, callback)
             }
 
-            // Cek 1: Iframe langsung ada?
             val directIframe = document.selectFirst("div$tabHref iframe")
             if (directIframe != null) {
                 resolveLink(directIframe.attr("src"))
             } 
-            // Cek 2: Panggil via AJAX (Sesuai CURL yang kamu kirim)
             else if (postId != null) {
                 try {
                     val ajaxUrl = "$mainUrl/wp-admin/admin-ajax.php"
                     
-                    // Header Referer Wajib Ada (dari data curl)
                     val headers = mapOf(
                         "Referer" to data,
                         "X-Requested-With" to "XMLHttpRequest",
@@ -138,15 +128,12 @@ class HomeSpecially : MainAPI() {
 
                     val response = app.post(ajaxUrl, headers = headers, data = formBody).text
                     
-                    // Regex mencari src="..."
                     val iframeMatch = Regex("src=\"(.*?)\"").find(response)
                     if (iframeMatch != null) {
-                        // Bersihkan URL dari backslash
                         val cleanUrl = iframeMatch.groupValues[1].replace("\\", "")
                         resolveLink(cleanUrl)
                     }
                 } catch (e: Exception) {
-                    // Skip jika gagal
                 }
             }
         }
