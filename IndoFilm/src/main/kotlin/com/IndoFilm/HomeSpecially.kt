@@ -11,138 +11,115 @@ class HomeSpecially : MainAPI() {
     override val hasMainPage = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.AsianDrama)
 
-    val searchSelector = "div.gmr-maincontent .row article.item-infinite"
-
+    // 1. PENGATURAN KATEGORI (Sesuai Gambar 14 & 15)
     override val mainPage = mainPageOf(
-        "$mainUrl/page/" to "Terbaru",
+        "$mainUrl/category/movie/page/" to "Bioskop Terbaru",
+        "$mainUrl/category/serial-tv/page/" to "Serial TV",
+        "$mainUrl/category/drama-asia/page/" to "Drama Asia",
         "$mainUrl/genre/action/page/" to "Action",
-        "$mainUrl/genre/komedi/page/" to "Komedi",
-        "$mainUrl/genre/horror/page/" to "Horror",
-        "$mainUrl/genre/romance/page/" to "Romance",
-        "$mainUrl/genre/drama/page/" to "Drama",
-        "$mainUrl/genre/anime/page/" to "Anime"
+        "$mainUrl/genre/horror/page/" to "Horror"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val url = request.data + page
-        val document = app.get(url, timeout = 30).document
-        val home = document.select(searchSelector).mapNotNull { toSearchResult(it) }
+        val document = app.get(url).document
+        
+        // Selektor kartu film berdasarkan class MuviPro
+        val home = document.select("article.item-infinite").mapNotNull {
+            val titleEl = it.selectFirst(".entry-title a") ?: return@mapNotNull null
+            val poster = it.selectFirst(".content-thumbnail img")?.attr("src")
+            
+            newMovieSearchResponse(titleEl.text(), titleEl.attr("href"), TvType.Movie) {
+                this.posterUrl = poster
+            }
+        }
         return newHomePageResponse(request.name, home)
     }
 
-    private fun toSearchResult(element: Element): SearchResponse? {
-        val titleElement = element.selectFirst(".entry-title a") ?: return null
-        val title = titleElement.text()
-        val href = titleElement.attr("href")
-        val posterUrl = element.selectFirst(".content-thumbnail img")?.attr("src")
-        val quality = element.selectFirst(".gmr-quality-item a")?.text()
-
-        val type = if (href.contains("/tv/") || href.contains("/eps/")) TvType.TvSeries else TvType.Movie
-
-        return newMovieSearchResponse(title, href, type) {
-            this.posterUrl = posterUrl
-            if (!quality.isNullOrEmpty()) addQuality(quality)
+    // 2. LOGIKA PENCARIAN
+    override suspend fun search(query: String): List<SearchResponse> {
+        val url = "$mainUrl/?s=$query&post_type[]=post&post_type[]=tv"
+        val document = app.get(url).document
+        return document.select("article.item-infinite").mapNotNull {
+            val titleEl = it.selectFirst(".entry-title a") ?: return@mapNotNull null
+            newMovieSearchResponse(titleEl.text(), titleEl.attr("href"), TvType.Movie) {
+                this.posterUrl = it.selectFirst(".content-thumbnail img")?.attr("src")
+            }
         }
     }
 
-    override suspend fun search(query: String): List<SearchResponse> {
-        val url = "$mainUrl/?s=$query&post_type[]=post&post_type[]=tv"
-        val document = app.get(url, timeout = 30).document
-        return document.select(searchSelector).mapNotNull { toSearchResult(it) }
-    }
-
+    // 3. LOGIKA SERIES & DETAIL (Perbaikan Berdasarkan Gambar 12)
     override suspend fun load(url: String): LoadResponse? {
-        val document = app.get(url, timeout = 30).document
+        val document = app.get(url).document
         val title = document.selectFirst("h1.entry-title")?.text() ?: return null
         val poster = document.selectFirst(".gmr-movie-view-poster img")?.attr("src")
-        val plot = document.selectFirst(".entry-content p")?.text()
-        val year = document.selectFirst(".gmr-movie-data:contains(Tahun) a")?.text()?.toIntOrNull()
-
-        // MENCARI DAFTAR EPISODE ASLI (Kunci perbaikan tampilan Seri)
+        
+        // MENCARI DAFTAR EPISODE (Selector pasti: .gmr-listseries a)
         val episodeElements = document.select(".gmr-listseries a")
         
-        return if (url.contains("/tv/") || url.contains("/eps/") || episodeElements.isNotEmpty()) {
-            val episodes = if (episodeElements.isNotEmpty()) {
-                episodeElements.mapIndexed { index, element ->
-                    newEpisode(element.attr("href")) {
-                        this.name = element.text()
-                        this.episode = index + 1
-                    }
-                }.reversed()
-            } else {
-                listOf(
-                    newEpisode(url) {
-                        this.name = "Play Movie / Episode"
-                        this.episode = 1
-                    }
-                )
-            }
+        return if (episodeElements.isNotEmpty()) {
+            val episodes = episodeElements.mapIndexed { index, element ->
+                newEpisode(element.attr("href")) {
+                    this.name = element.text()
+                    this.episode = index + 1
+                }
+            }.reversed() // Episode 1 di atas
             
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                 this.posterUrl = poster
-                this.plot = plot
-                this.year = year
             }
         } else {
+            // Jika bukan series atau halaman episode tunggal
             newMovieLoadResponse(title, url, TvType.Movie, url) {
                 this.posterUrl = poster
-                this.plot = plot
-                this.year = year
             }
         }
     }
 
+    // 4. PENGAMBILAN LINK (Sesuai Gambar 13 & Data CURL)
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val document = app.get(data, timeout = 30).document
+        val document = app.get(data).document
         
-        // Ambil ID dari body class atau container (Sangat krusial untuk AJAX)
-        val postId = document.selectFirst("#muvipro_player_content_id")?.attr("data-id") 
-                   ?: document.selectFirst(".muvipro_player_content")?.attr("data-id")
-                   ?: Regex("""postid-(\d+)""").find(document.selectFirst("body")?.className() ?: "")?.groupValues?.get(1)
+        // Ambil Post ID dari class body 'postid-XXXX' (Pasti berfungsi, Lihat Gambar 13)
+        val bodyClass = document.selectFirst("body")?.className() ?: ""
+        val postId = Regex("""postid-(\d+)""").find(bodyClass)?.groupValues?.get(1)
+                   ?: document.selectFirst("#muvipro_player_content_id")?.attr("data-id")
 
-        document.select("ul#gmr-tab li a").forEach { tab ->
-            val tabHref = tab.attr("href") 
-            val tabId = tabHref.removePrefix("#") 
-            
-            val directIframe = document.selectFirst("div$tabHref iframe")
-            if (directIframe != null) {
-                loadExtractor(fixUrl(directIframe.attr("src")), data, subtitleCallback, callback)
-            } else if (postId != null) {
-                try {
-                    val ajaxUrl = "$mainUrl/wp-admin/admin-ajax.php"
-                    val response = app.post(
-                        ajaxUrl,
-                        headers = mapOf(
-                            "Referer" to data, 
-                            "X-Requested-With" to "XMLHttpRequest",
-                            // User Agent Mobile agar server mau memberikan tautan
-                            "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36"
-                        ),
-                        data = mapOf(
-                            "action" to "muvipro_player_content",
-                            "tab" to tabId,
-                            "post_id" to postId
-                        ),
-                        timeout = 20
-                    ).text
-                    
-                    val iframeSrc = Regex("""src=["'](.*?)["']""").find(response)?.groupValues?.get(1)
-                    if (iframeSrc != null) {
-                        loadExtractor(fixUrl(iframeSrc), data, subtitleCallback, callback)
-                    }
-                } catch (e: Exception) { }
-            }
+        if (postId == null) return false
+
+        val ajaxUrl = "$mainUrl/wp-admin/admin-ajax.php"
+        
+        // Menguji Server p1 sampai p3 (Berdasarkan Gambar 6)
+        for (i in 1..3) {
+            try {
+                val response = app.post(
+                    ajaxUrl,
+                    headers = mapOf(
+                        "Referer" to data,
+                        "X-Requested-With" to "XMLHttpRequest",
+                        "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36"
+                    ),
+                    data = mapOf(
+                        "action" to "muvipro_player_content",
+                        "tab" to "p$i",
+                        "post_id" to postId
+                    )
+                ).text
+                
+                // Regex presisi untuk link iframe
+                val iframeSrc = Regex("""src=["'](.*?)["']""").find(response)?.groupValues?.get(1)
+                if (iframeSrc != null) {
+                    val cleanUrl = iframeSrc.replace("\\", "")
+                    val finalUrl = if (cleanUrl.startsWith("//")) "https:$cleanUrl" else cleanUrl
+                    loadExtractor(finalUrl, data, subtitleCallback, callback)
+                }
+            } catch (e: Exception) { }
         }
         return true
-    }
-
-    private fun fixUrl(url: String): String {
-        // Membersihkan karakter backslash dan memastikan https
-        return if (url.startsWith("//")) "https:$url" else url.replace("\\", "")
     }
 }
