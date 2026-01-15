@@ -62,12 +62,13 @@ open class Hownetwork : ExtractorApi() {
                     "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36"
                 )
 
-                // Gunakan Positional Args (Urutan: source, url, referer, headers)
+                // PERBAIKAN: Menambahkan 'null' di posisi ke-4 untuk parameter Quality
                 M3u8Helper.generateM3u8(
-                    this.name,
-                    file,
-                    url,
-                    m3u8Headers
+                    this.name,      // 1. Source
+                    file,           // 2. Url
+                    url,            // 3. Referer
+                    null,           // 4. Quality (Int?) -> Kita isi null
+                    m3u8Headers     // 5. Headers (Map)
                 ).forEach(callback)
             }
         } catch (e: Exception) {
@@ -119,11 +120,12 @@ open class Turbovidhls : ExtractorApi() {
             val m3u8Url = Regex("""["'](https?://[^"']+/master\.m3u8)["']""").find(script)?.groupValues?.get(1)
             
             if (m3u8Url != null) {
-                // Positional Args untuk M3u8Helper
+                // PERBAIKAN: Menambahkan 'null' di posisi ke-4
                 M3u8Helper.generateM3u8(
                     name,
                     m3u8Url,
                     "https://turbovidhls.com/", 
+                    null, // Quality = null
                     mapOf(
                         "Origin" to "https://turbovidhls.com",
                         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -183,11 +185,12 @@ open class F16px : ExtractorApi() {
                         "Referer" to "$mainUrl/",
                     )
 
-                    // PERBAIKAN: Hapus named arguments, pakai urutan
+                    // PERBAIKAN: Menambahkan 'null' di posisi ke-4
                     M3u8Helper.generateM3u8(
                         this.name,
                         file,
                         "$mainUrl/",
+                        null, // Quality = null
                         videoHeaders
                     ).forEach(callback)
                 }
@@ -236,16 +239,16 @@ open class Hydrax : ExtractorApi() {
                 val isM3u8 = videoUrl.contains(".m3u8")
                 
                 if (isM3u8) {
-                    // PERBAIKAN: Positional Args
+                    // PERBAIKAN: Menambahkan 'null' di posisi ke-4
                     M3u8Helper.generateM3u8(
                         this.name,
                         videoUrl,
                         "https://abysscdn.com/",
+                        null, // Quality = null
                         mapOf("Origin" to "https://abysscdn.com")
                     ).forEach(callback)
                 } else {
-                    // PERBAIKAN MAJOR: Gunakan .apply untuk referer & quality
-                    // Ini menghindari error "No parameter with name 'referer'"
+                    // PERBAIKAN: Menggunakan .apply untuk referer dan quality
                     callback(
                         newExtractorLink(
                             this.name,
