@@ -31,5 +31,5 @@ cloudstream {
     iconUrl = "https://tv41.juragan.film/wp-content/uploads/2019/05/faviconjf.png"
 
     // Mendukung Android & TV
-    isCrossPlatform = true
+    isCrossPlatform = false
 }
