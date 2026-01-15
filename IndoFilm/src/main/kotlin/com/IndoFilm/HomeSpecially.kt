@@ -11,7 +11,7 @@ class HomeSpecially : MainAPI() {
     override val hasMainPage = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.AsianDrama)
 
-    // 1. PENGATURAN KATEGORI (Sesuai Gambar 14 & 15)
+    // 1. DAFTAR KATEGORI UTAMA (Sesuai Gambar 14 & 15)
     override val mainPage = mainPageOf(
         "$mainUrl/category/movie/page/" to "Bioskop Terbaru",
         "$mainUrl/category/serial-tv/page/" to "Serial TV",
@@ -23,60 +23,62 @@ class HomeSpecially : MainAPI() {
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val url = request.data + page
         val document = app.get(url).document
-        
-        // Selektor kartu film berdasarkan class MuviPro
-        val home = document.select("article.item-infinite").mapNotNull {
-            val titleEl = it.selectFirst(".entry-title a") ?: return@mapNotNull null
-            val poster = it.selectFirst(".content-thumbnail img")?.attr("src")
-            
-            newMovieSearchResponse(titleEl.text(), titleEl.attr("href"), TvType.Movie) {
-                this.posterUrl = poster
-            }
-        }
+        // Selektor kartu film berdasarkan struktur MuviPro
+        val home = document.select("article.item-infinite").mapNotNull { toSearchResult(it) }
         return newHomePageResponse(request.name, home)
     }
 
-    // 2. LOGIKA PENCARIAN
-    override suspend fun search(query: String): List<SearchResponse> {
-        val url = "$mainUrl/?s=$query&post_type[]=post&post_type[]=tv"
-        val document = app.get(url).document
-        return document.select("article.item-infinite").mapNotNull {
-            val titleEl = it.selectFirst(".entry-title a") ?: return@mapNotNull null
-            newMovieSearchResponse(titleEl.text(), titleEl.attr("href"), TvType.Movie) {
-                this.posterUrl = it.selectFirst(".content-thumbnail img")?.attr("src")
-            }
+    private fun toSearchResult(element: Element): SearchResponse? {
+        val titleEl = element.selectFirst(".entry-title a") ?: return null
+        val href = titleEl.attr("href")
+        // Deteksi tipe secara otomatis berdasarkan pola URL (tv/eps/movie)
+        val type = if (href.contains("/tv/") || href.contains("/eps/")) TvType.TvSeries else TvType.Movie
+
+        return newMovieSearchResponse(titleEl.text(), href, type) {
+            this.posterUrl = element.selectFirst(".content-thumbnail img")?.attr("src")
         }
     }
 
-    // 3. LOGIKA SERIES & DETAIL (Perbaikan Berdasarkan Gambar 12)
+    // 2. LOGIKA DETAIL & EPISODE (Memperbaiki Tampilan Seri yang Kosong)
     override suspend fun load(url: String): LoadResponse? {
         val document = app.get(url).document
         val title = document.selectFirst("h1.entry-title")?.text() ?: return null
-        val poster = document.selectFirst(".gmr-movie-view-poster img")?.attr("src")
         
-        // MENCARI DAFTAR EPISODE (Selector pasti: .gmr-listseries a)
+        // Selektor Daftar Episode Asli (Berdasarkan Gambar 12: class .gmr-listseries)
         val episodeElements = document.select(".gmr-listseries a")
         
         return if (episodeElements.isNotEmpty()) {
+            // Jika ditemukan list episode (Halaman /tv/)
             val episodes = episodeElements.mapIndexed { index, element ->
                 newEpisode(element.attr("href")) {
                     this.name = element.text()
                     this.episode = index + 1
                 }
-            }.reversed() // Episode 1 di atas
+            }.reversed() // Membalik urutan agar Episode 1 di atas
             
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
-                this.posterUrl = poster
+                this.posterUrl = document.selectFirst(".gmr-movie-view-poster img")?.attr("src")
+            }
+        } else if (url.contains("/eps/")) {
+            // Jika membuka halaman episode tunggal secara langsung
+            val episodes = listOf(
+                newEpisode(url) {
+                    this.name = title
+                    this.episode = 1
+                }
+            )
+            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+                this.posterUrl = document.selectFirst(".gmr-movie-view-poster img")?.attr("src")
             }
         } else {
-            // Jika bukan series atau halaman episode tunggal
+            // Jika konten adalah Film (Movie)
             newMovieLoadResponse(title, url, TvType.Movie, url) {
-                this.posterUrl = poster
+                this.posterUrl = document.selectFirst(".gmr-movie-view-poster img")?.attr("src")
             }
         }
     }
 
-    // 4. PENGAMBILAN LINK (Sesuai Gambar 13 & Data CURL)
+    // 3. PENGAMBILAN LINK VIDEO (Menggunakan Post ID & AJAX Pasti)
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -85,7 +87,7 @@ class HomeSpecially : MainAPI() {
     ): Boolean {
         val document = app.get(data).document
         
-        // Ambil Post ID dari class body 'postid-XXXX' (Pasti berfungsi, Lihat Gambar 13)
+        // Mengambil Post ID dari class body (Sesuai Gambar 13: postid-XXXX)
         val bodyClass = document.selectFirst("body")?.className() ?: ""
         val postId = Regex("""postid-(\d+)""").find(bodyClass)?.groupValues?.get(1)
                    ?: document.selectFirst("#muvipro_player_content_id")?.attr("data-id")
@@ -94,7 +96,7 @@ class HomeSpecially : MainAPI() {
 
         val ajaxUrl = "$mainUrl/wp-admin/admin-ajax.php"
         
-        // Menguji Server p1 sampai p3 (Berdasarkan Gambar 6)
+        // Loop Server p1 - p3 (Berdasarkan tab pada Gambar 6 dan 11)
         for (i in 1..3) {
             try {
                 val response = app.post(
@@ -102,7 +104,7 @@ class HomeSpecially : MainAPI() {
                     headers = mapOf(
                         "Referer" to data,
                         "X-Requested-With" to "XMLHttpRequest",
-                        "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36"
+                        "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36"
                     ),
                     data = mapOf(
                         "action" to "muvipro_player_content",
@@ -111,14 +113,16 @@ class HomeSpecially : MainAPI() {
                     )
                 ).text
                 
-                // Regex presisi untuk link iframe
+                // Mencari URL Iframe (Misal: embedpyrox.xyz) di respons AJAX
                 val iframeSrc = Regex("""src=["'](.*?)["']""").find(response)?.groupValues?.get(1)
                 if (iframeSrc != null) {
                     val cleanUrl = iframeSrc.replace("\\", "")
                     val finalUrl = if (cleanUrl.startsWith("//")) "https:$cleanUrl" else cleanUrl
+                    
+                    // CloudStream akan otomatis menggunakan extractor untuk link embedpyrox
                     loadExtractor(finalUrl, data, subtitleCallback, callback)
                 }
-            } catch (e: Exception) { }
+            } catch (e: Exception) { /* skip server bermasalah */ }
         }
         return true
     }
