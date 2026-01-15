@@ -7,21 +7,18 @@ import com.lagradost.cloudstream3.plugins.BasePlugin
 @CloudstreamPlugin
 class LayarKacaProviderPlugin: BasePlugin() {
     override fun load() {
+        // Mendaftarkan Provider Utama
         registerMainAPI(LayarKacaProvider())
         
-        // --- ADDED ---
-        registerExtractorAPI(PlayerIframe())
-        registerExtractorAPI(UniversalVIP())
-        registerExtractorAPI(F16px())
-        registerExtractorAPI(EmturbovidCustom())
-        
-        // --- ORIGINAL ---
+        // Mendaftarkan Extractor yang SUDAH didefinisikan di Extractors.kt
         registerExtractorAPI(Hownetwork())
-        registerExtractorAPI(VidHidePro6())
+        registerExtractorAPI(Cloudhownetwork())
+        registerExtractorAPI(Co4nxtrl())
         registerExtractorAPI(Furher())
         registerExtractorAPI(Furher2())
         registerExtractorAPI(Turbovidhls())
-        registerExtractorAPI(Cloudhownetwork())
-        registerExtractorAPI(Co4nxtrl())
+        
+        // Mendaftarkan Extractor Bawaan Cloudstream (opsional tapi berguna)
+        registerExtractorAPI(VidHidePro6())
     }
 }
