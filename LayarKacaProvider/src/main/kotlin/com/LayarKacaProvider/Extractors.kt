@@ -9,17 +9,17 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.INFER_TYPE
 import com.lagradost.cloudstream3.utils.M3u8Helper
 import com.lagradost.cloudstream3.utils.Qualities
-import com.lagradost.cloudstream3.utils.newExtractorLink
 import org.json.JSONObject
 import java.net.URI
 
-// Extractor Generik
+// --- 1. Server Co4nxtrl (Standar) ---
 class Co4nxtrl : Filesim() {
     override val mainUrl = "https://co4nxtrl.com"
     override val name = "Co4nxtrl"
     override val requiresReferer = true
 }
 
+// --- 2. Server Hownetwork (API v2 Update) ---
 open class Hownetwork : ExtractorApi() {
     override val name = "Hownetwork"
     override val mainUrl = "https://stream.hownetwork.xyz"
@@ -31,56 +31,46 @@ open class Hownetwork : ExtractorApi() {
             subtitleCallback: (SubtitleFile) -> Unit,
             callback: (ExtractorLink) -> Unit
     ) {
-        // 1. Ambil Host Dinamis (bisa stream.hownetwork atau cloud.hownetwork)
         val host = try { URI(url).host } catch (e: Exception) { URI(mainUrl).host }
         val apiHost = "https://$host"
-        
-        // 2. Ambil ID
         val id = url.substringAfter("id=").substringBefore("&")
         
-        // 3. Request ke API2.php (Sesuai Log Curl terbaru)
+        // Data POST sesuai log terbaru (API2)
         val postData = mapOf(
-            "r" to "https://playeriframe.sbs/", // Value dari log curl
+            "r" to "https://playeriframe.sbs/",
             "d" to host
         )
 
-        val response = app.post(
+        try {
+            val response = app.post(
                 "$apiHost/api2.php?id=$id", 
                 data = postData,
-                referer = url, // Referer request API adalah URL video page
+                referer = url,
                 headers = mapOf(
-                        "X-Requested-With" to "XMLHttpRequest",
-                        "Origin" to apiHost
+                    "X-Requested-With" to "XMLHttpRequest",
+                    "Origin" to apiHost
                 )
-        ).text
+            ).text
 
-        try {
             val json = JSONObject(response)
             val file = json.optString("file")
             
             if (file.isNotBlank() && file != "null") {
-                Log.d("LayarKaca-Extractor", "File Found: $file")
-                
-                // Headers wajib untuk M3U8 (Referer harus url halaman video)
                 val m3u8Headers = mapOf(
                     "Origin" to apiHost,
-                    "Referer" to url, // PENTING: Referer harus https://cloud.hownetwork.xyz/video.php...
+                    "Referer" to url,
                     "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36"
                 )
 
-                // Generate M3U8
                 M3u8Helper.generateM3u8(
                     source = this.name,
                     streamUrl = file,
                     referer = url,
                     headers = m3u8Headers
                 ).forEach(callback)
-
-            } else {
-                 Log.d("LayarKaca-Extractor", "File empty for $name")
             }
         } catch (e: Exception) {
-            Log.e("LayarKaca-Extractor", "Error parsing JSON $name: ${e.message}")
+            Log.e("LayarKaca-Hownetwork", "Error: ${e.message}")
         }
     }
 }
@@ -89,6 +79,7 @@ class Cloudhownetwork : Hownetwork() {
     override var mainUrl = "https://cloud.hownetwork.xyz"
 }
 
+// --- 3. Server Furher (Standar) ---
 class Furher : Filesim() {
     override val name = "Furher"
     override var mainUrl = "https://furher.in"
@@ -99,7 +90,178 @@ class Furher2 : Filesim() {
     override var mainUrl = "723qrh1p.fun"
 }
 
-class Turbovidhls : Filesim() {
-    override val name = "Turbovidhls"
-    override var mainUrl = "https://turbovidhls.com"
+// --- 4. Server Turbovid (Redirect Handler) ---
+open class Turbovidhls : ExtractorApi() {
+    override val name = "Turbovid"
+    override val mainUrl = "https://turbovidhls.com"
+    override val requiresReferer = true
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        // Handle redirect berantai: playeriframe -> emturbovid -> turbovid
+        var finalUrl = url
+        if (url.contains("playeriframe") || url.contains("emturbovid")) {
+            val response = app.get(url, referer = referer).document
+            val iframeSrc = response.select("iframe").attr("src")
+            if (iframeSrc.isNotBlank()) {
+                finalUrl = if (iframeSrc.startsWith("http")) iframeSrc else "https:$iframeSrc"
+            }
+        }
+
+        // Request halaman asli Turbovid
+        val document = app.get(finalUrl, referer = "https://playeriframe.sbs/").document
+        
+        // Cari Master M3U8 dalam script
+        val script = document.select("script").find { it.data().contains("master.m3u8") }?.data()
+        
+        if (script != null) {
+            val m3u8Url = Regex("""["'](https?://[^"']+/master\.m3u8)["']""").find(script)?.groupValues?.get(1)
+            
+            if (m3u8Url != null) {
+                M3u8Helper.generateM3u8(
+                    name,
+                    m3u8Url,
+                    referer = "https://turbovidhls.com/", 
+                    headers = mapOf(
+                        "Origin" to "https://turbovidhls.com",
+                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                    )
+                ).forEach(callback)
+            }
+        }
+    }
+}
+
+// --- 5. Server F16px (Hidden API) ---
+open class F16px : ExtractorApi() {
+    override val name = "F16px"
+    override val mainUrl = "https://f16px.com"
+    override val requiresReferer = true
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        // Handle iframe redirect jika perlu
+        val finalUrl = if (url.contains("playeriframe")) {
+            val doc = app.get(url, referer = referer).document
+            doc.select("iframe[src*='f16px']").attr("src").let { 
+                if (it.startsWith("//")) "https:$it" else it 
+            }
+        } else {
+            url
+        }
+
+        if (!finalUrl.contains("/e/")) return
+
+        val id = finalUrl.substringAfter("/e/").substringBefore("?")
+        val apiUrl = "$mainUrl/api/videos/$id/embed/playback"
+
+        // Headers wajib berdasarkan Log
+        val apiHeaders = mapOf(
+            "Referer" to "$mainUrl/e/$id",
+            "X-Requested-With" to "XMLHttpRequest",
+            "x-embed-origin" to "playeriframe.sbs",
+            "x-embed-parent" to "$mainUrl/e/$id",
+            "x-embed-referer" to "https://playeriframe.sbs/"
+        )
+
+        try {
+            val response = app.get(apiUrl, headers = apiHeaders).text
+            val json = JSONObject(response)
+            val sources = json.optJSONArray("sources") ?: return
+
+            for (i in 0 until sources.length()) {
+                val source = sources.getJSONObject(i)
+                val file = source.optString("file")
+                
+                if (file.isNotBlank()) {
+                    val videoHeaders = mapOf(
+                        "Origin" to mainUrl,
+                        "Referer" to "$mainUrl/",
+                    )
+
+                    M3u8Helper.generateM3u8(
+                        name = this.name,
+                        streamUrl = file,
+                        referer = "$mainUrl/",
+                        headers = videoHeaders
+                    ).forEach(callback)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("LayarKaca-F16", "Error: ${e.message}")
+        }
+    }
+}
+
+// --- 6. Server Hydrax / AbyssCDN (Regex HTML) ---
+open class Hydrax : ExtractorApi() {
+    override val name = "Hydrax"
+    override val mainUrl = "https://abysscdn.com"
+    override val requiresReferer = true
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        var targetUrl = url
+        
+        // 1. Cek redirect dari playeriframe
+        if (url.contains("playeriframe")) {
+             val doc = app.get(url, referer = referer).document
+             targetUrl = doc.select("iframe").attr("src").let {
+                 if (it.startsWith("//")) "https:$it" else it
+             }
+        }
+
+        // 2. Cek redirect dari short.icu
+        if (targetUrl.contains("short.icu")) {
+             targetUrl = app.get(targetUrl, referer = "https://playeriframe.sbs/").url
+        }
+        
+        if (!targetUrl.contains("abysscdn")) return
+
+        // 3. Ambil HTML
+        val response = app.get(targetUrl, referer = "https://playeriframe.sbs/").text
+        
+        // 4. Cari link video (mp4/m3u8) di dalam script
+        val regex = Regex("""["'](https?://[^"']+\.(?:mp4|m3u8)[^"']*)["']""")
+        val matches = regex.findAll(response)
+        
+        matches.forEach { match ->
+            val videoUrl = match.groupValues[1]
+            if (!videoUrl.contains(".jpg") && !videoUrl.contains(".png")) {
+                val isM3u8 = videoUrl.contains(".m3u8")
+                
+                if (isM3u8) {
+                    M3u8Helper.generateM3u8(
+                        name = this.name,
+                        streamUrl = videoUrl,
+                        referer = "https://abysscdn.com/",
+                        headers = mapOf("Origin" to "https://abysscdn.com")
+                    ).forEach(callback)
+                } else {
+                    callback(
+                        ExtractorLink(
+                            source = this.name,
+                            name = this.name,
+                            url = videoUrl,
+                            referer = "https://abysscdn.com/",
+                            quality = Qualities.Unknown.value,
+                            type = INFER_TYPE
+                        )
+                    )
+                }
+            }
+        }
+    }
 }
