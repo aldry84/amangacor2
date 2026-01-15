@@ -1,6 +1,7 @@
 package com.PusatFilm21
 
 import com.lagradost.cloudstream3.*
+import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.fasterxml.jackson.annotation.JsonProperty
@@ -13,23 +14,28 @@ class PusatFilm21 : MainAPI() {
     override var lang = "id"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.AsianDrama)
 
-    // User-Agent yang lebih baru dan lengkap (Meniru Chrome Android asli)
-    private val userAgent = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+    // User-Agent Chrome Android Modern agar tidak dideteksi sebagai bot lama
+    private val userAgent = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
 
-    // Header untuk Halaman Utama & Detail (Browser Mode)
+    // 1. Header BIASA (Browser Mode)
+    // Digunakan untuk getMainPage, load, dan loadLinks.
+    // Meniru request browser asli untuk menghindari blokir/blank screen.
     private val mainHeaders = mapOf(
         "User-Agent" to userAgent,
         "Referer" to "$mainUrl/",
-        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-        "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "Accept-Language" to "en-US,en;q=0.9", // Bahasa Inggris kadang lebih aman dari blokir geo-ip sederhana
         "Upgrade-Insecure-Requests" to "1",
         "Sec-Fetch-Dest" to "document",
         "Sec-Fetch-Mode" to "navigate",
         "Sec-Fetch-Site" to "none",
-        "Sec-Fetch-User" to "?1"
+        "Sec-Fetch-User" to "?1",
+        "Pragma" to "no-cache",
+        "Cache-Control" to "no-cache"
     )
 
-    // Header untuk Search & API (AJAX Mode)
+    // 2. Header AJAX (Khusus Search)
+    // API Search di situs ini mewajibkan header AJAX.
     private val ajaxHeaders = mapOf(
         "User-Agent" to userAgent,
         "Referer" to "$mainUrl/",
@@ -41,7 +47,7 @@ class PusatFilm21 : MainAPI() {
     )
 
     // ==============================
-    // 1. MAIN PAGE
+    // 1. MAIN PAGE (Halaman Depan)
     // ==============================
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
         val items = listOf(
@@ -58,24 +64,19 @@ class PusatFilm21 : MainAPI() {
 
         val homeSets = items.mapNotNull { (url, name) ->
             try {
-                // Request dengan header lengkap
-                val response = app.get(url, headers = mainHeaders)
-                val doc = response.document
+                // Gunakan mainHeaders agar tidak blank
+                val doc = app.get(url, headers = mainHeaders).document
                 
-                // Debugging: Cek apakah halaman benar-benar termuat
-                // Jika ingin melihat log, uncomment baris ini:
-                // System.out.println("PusatFilm21 Check: ${doc.title()}")
-
-                val movies = doc.select("div.ml-item").mapNotNull { element ->
+                // Coba selector utama
+                var movies = doc.select("div.ml-item").mapNotNull { element ->
                     toSearchResult(element)
                 }
-                
-                // Backup selector jika div.ml-item gagal
+
+                // Coba selector cadangan jika utama kosong (misal layout berubah)
                 if (movies.isEmpty()) {
-                     val altMovies = doc.select("article.item-list").mapNotNull {
-                        toSearchResult(it)
-                     }
-                     if (altMovies.isNotEmpty()) return@mapNotNull HomePageList(name, altMovies)
+                    movies = doc.select("article.item-list").mapNotNull { element ->
+                        toSearchResult(element)
+                    }
                 }
 
                 if (movies.isNotEmpty()) HomePageList(name, movies) else null
@@ -84,7 +85,6 @@ class PusatFilm21 : MainAPI() {
             }
         }
         
-        // PENTING: Gunakan newHomePageResponse (bukan konstruktor lama)
         return newHomePageResponse(homeSets)
     }
 
@@ -103,6 +103,7 @@ class PusatFilm21 : MainAPI() {
             ?: imgElement?.attr("data-src")
             ?: imgElement?.attr("src")
 
+        // Deteksi Series yang lebih lengkap (termasuk /tv/ dan /eps/)
         val isSeries = href.contains("/tv-show/") || 
                        href.contains("/drama-") || 
                        href.contains("series") || 
@@ -121,7 +122,7 @@ class PusatFilm21 : MainAPI() {
     }
 
     // ==============================
-    // 2. SEARCH
+    // 2. SEARCH (Pencarian Cepat via JSON)
     // ==============================
     data class SearchResponseJson(
         @JsonProperty("suggestions") val suggestions: List<Suggestion>?
@@ -135,17 +136,19 @@ class PusatFilm21 : MainAPI() {
     )
 
     override suspend fun search(query: String): List<SearchResponse> {
-        // Encode spasi menjadi %20 (standar URL) bukan +
-        val cleanQuery = query.replace(" ", "%20") 
+        // Encode spasi jadi %20 agar aman di URL
+        val cleanQuery = query.replace(" ", "%20")
         val url = "$mainUrl/wp-admin/admin-ajax.php?action=muvipro_core_ajax_search_movie&query=$cleanQuery"
         
         return try {
+            // Gunakan ajaxHeaders karena ini API
             val response = app.get(url, headers = ajaxHeaders).parsedSafe<SearchResponseJson>()
             
             response?.suggestions?.mapNotNull { item ->
                 val title = item.value
                 val href = item.url
                 
+                // Ambil URL gambar dari tag HTML <img> di dalam JSON
                 val posterUrl = if (item.thumb != null) {
                     Regex("""src="([^"]+)"""").find(item.thumb)?.groupValues?.get(1)
                 } else null
@@ -167,7 +170,7 @@ class PusatFilm21 : MainAPI() {
     }
 
     // ==============================
-    // 3. LOAD
+    // 3. LOAD (Detail Film)
     // ==============================
     override suspend fun load(url: String): LoadResponse? {
         val doc = app.get(url, headers = mainHeaders).document
@@ -177,8 +180,8 @@ class PusatFilm21 : MainAPI() {
             ?: doc.selectFirst("div.mvic-thumb img")?.attr("src")
         val description = doc.select("div.entry-content p").text() 
             ?: doc.select("div.desc").text()
-        
-        // Ambil Trailer
+
+        // Ambil Trailer YouTube
         val trailerUrl = doc.select("iframe[src*='youtube.com']").attr("src")
 
         val isSeries = url.contains("/tv-show/") || 
@@ -190,12 +193,14 @@ class PusatFilm21 : MainAPI() {
         if (isSeries) {
             val episodes = ArrayList<Episode>()
             
+            // Selector Episode Utama
             doc.select("span.gmr-eps-list a").forEach { ep ->
                 episodes.add(newEpisode(ep.attr("href")) {
                     this.name = ep.text()
                 })
             }
             
+            // Selector Episode Cadangan
             if (episodes.isEmpty()) {
                 doc.select("div.tv-eps a").forEach { ep ->
                     episodes.add(newEpisode(ep.attr("href")) {
@@ -221,7 +226,7 @@ class PusatFilm21 : MainAPI() {
     }
 
     // ==============================
-    // 4. LOAD LINKS
+    // 4. LOAD LINKS (Video Player)
     // ==============================
     override suspend fun loadLinks(
         data: String,
@@ -231,12 +236,16 @@ class PusatFilm21 : MainAPI() {
     ): Boolean {
         val doc = app.get(data, headers = mainHeaders).document
         
+        // Target 1: Extractor Otomatis (KotakAjaib/TurboVid/Hydrax)
         doc.select("div.gmr-embed-responsive iframe").forEach { iframe ->
             var sourceUrl = iframe.attr("src")
             if (sourceUrl.startsWith("//")) sourceUrl = "https:$sourceUrl"
+            
+            // loadExtractor otomatis mengenali layanan yang digunakan situs ini
             loadExtractor(sourceUrl, data, subtitleCallback, callback)
         }
         
+        // Target 2: Link Direct (Cadangan)
         doc.select("a.gmr-player-link").forEach { link ->
              val sourceUrl = link.attr("href")
              loadExtractor(sourceUrl, data, subtitleCallback, callback)
