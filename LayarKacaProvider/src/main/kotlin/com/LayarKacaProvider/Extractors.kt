@@ -8,8 +8,10 @@ import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.INFER_TYPE
 import com.lagradost.cloudstream3.utils.M3u8Helper
+import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.getPacked
 import org.json.JSONObject
+import java.net.URI
 
 // --- Extractor Helper Classes ---
 
@@ -152,7 +154,6 @@ class Turbovidhls : ExtractorApi() {
     }
 }
 
-// --- NEW F16PX EXTRACTOR (ATTACKING HTML SOURCE) ---
 class F16px : ExtractorApi() {
     override val name = "F16px"
     override val mainUrl = "https://f16px.com"
@@ -165,17 +166,10 @@ class F16px : ExtractorApi() {
         callback: (ExtractorLink) -> Unit
     ) {
         try {
-            // 1. Ambil Source Code Halaman Embed
             val response = app.get(url, referer = referer).text
-            
-            // 2. Cari kode "Packed" (eval(function(p,a,c,k,e,d)...))
-            // Ini biasanya memuat link asli tanpa perlu lewat API attest yang rumit
             val packed = getPacked(response)
             
             if (packed != null) {
-                Log.d("F16px", "Packed JS found & decoded")
-                
-                // 3. Cari file .m3u8 atau .mp4 di dalam kode yang sudah di-unpack
                 val m3u8Regex = Regex("""file:\s*["']([^"']+\.m3u8[^"']*)["']""")
                 val mp4Regex = Regex("""file:\s*["']([^"']+\.mp4[^"']*)["']""")
                 
@@ -187,7 +181,7 @@ class F16px : ExtractorApi() {
                         name,
                         m3u8Match,
                         referer = url,
-                        headers = mapOf("Referer" to url) // Penting!
+                        headers = mapOf("Referer" to url)
                     ).forEach(callback)
                 } else if (mp4Match != null) {
                     callback(
@@ -202,8 +196,6 @@ class F16px : ExtractorApi() {
                     )
                 }
             } else {
-                Log.d("F16px", "No packed JS found, trying raw regex")
-                // Fallback: Siapa tahu tidak dipacking
                 val rawLink = Regex("""["']([^"']+\.m3u8[^"']*)["']""").find(response)?.groupValues?.get(1)
                 if (rawLink != null) {
                     M3u8Helper.generateM3u8(name, rawLink, url).forEach(callback)
@@ -211,6 +203,75 @@ class F16px : ExtractorApi() {
             }
         } catch (e: Exception) {
             Log.e("F16px", "Error: ${e.message}")
+        }
+    }
+}
+
+// --- NEW ABYSS / HYDRAX EXTRACTOR ---
+class AbyssCdn : ExtractorApi() {
+    override val name = "Hydrax"
+    override val mainUrl = "https://abysscdn.com"
+    override val requiresReferer = true
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        try {
+            // URL bisa berupa abysscdn.com atau hydrax.net
+            val res = app.get(url, referer = referer).text
+            
+            // 1. Coba decode "Packed JS" (eval(function...))
+            // AbyssCDN hampir selalu menggunakan ini
+            val packed = getPacked(res)
+            
+            val contentToSearch = packed ?: res
+            
+            // 2. Cari link file (mp4/m3u8) di dalam hasil decode
+            // Regex mencari: file:"https://..." atau source:"https://..."
+            val linkRegex = Regex("""(?:file|source|src)\s*:\s*["']([^"']+)["']""")
+            val match = linkRegex.find(contentToSearch)?.groupValues?.get(1)
+
+            if (!match.isNullOrEmpty() && match.startsWith("http")) {
+                // Bersihkan slash yang di-escape jika ada (contoh: https:\/\/...)
+                val cleanUrl = match.replace("\\/", "/")
+                
+                if (cleanUrl.contains(".m3u8")) {
+                     M3u8Helper.generateM3u8(
+                        name,
+                        cleanUrl,
+                        referer = url,
+                        headers = mapOf("Origin" to getBaseDomain(url))
+                    ).forEach(callback)
+                } else {
+                    callback(
+                        ExtractorLink(
+                            name,
+                            name,
+                            cleanUrl,
+                            referer = url,
+                            quality = Qualities.Unknown.value,
+                            type = INFER_TYPE
+                        )
+                    )
+                }
+            } else {
+                Log.d("AbyssCdn", "No link found in unpacked content")
+            }
+
+        } catch (e: Exception) {
+            Log.e("AbyssCdn", "Error: ${e.message}")
+        }
+    }
+
+    private fun getBaseDomain(url: String): String {
+        return try {
+            val uri = URI(url)
+            "${uri.scheme}://${uri.host}"
+        } catch (e: Exception) {
+            mainUrl
         }
     }
 }
