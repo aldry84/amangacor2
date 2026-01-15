@@ -12,7 +12,8 @@ import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import org.json.JSONObject
 
-// Extractor Generik
+// --- Extractor Helper Classes ---
+
 class Co4nxtrl : Filesim() {
     override val mainUrl = "https://co4nxtrl.com"
     override val name = "Co4nxtrl"
@@ -31,12 +32,11 @@ open class Hownetwork : ExtractorApi() {
             callback: (ExtractorLink) -> Unit
     ) {
         val id = url.substringAfter("id=").substringBefore("&")
-        // Default behavior untuk Hownetwork lama (api.php)
+        // Default endpoint (old)
         val apiEndpoint = "$mainUrl/api.php?id=$id"
         invokeApi(url, apiEndpoint, id, referer, callback)
     }
 
-    // Fungsi bantu agar bisa dipanggil oleh child class
     protected suspend fun invokeApi(
         originalUrl: String,
         apiEndpoint: String,
@@ -46,7 +46,6 @@ open class Hownetwork : ExtractorApi() {
     ) {
         val reqReferer = "$mainUrl/video.php?id=$id"
         
-        // Header sesuai CURL
         val headers = mapOf(
             "Origin" to mainUrl,
             "Referer" to reqReferer,
@@ -54,10 +53,9 @@ open class Hownetwork : ExtractorApi() {
             "X-Requested-With" to "XMLHttpRequest"
         )
 
-        // Body sesuai CURL
         val bodyData = mapOf(
-            "r" to "https://playeriframe.sbs/", // Hardcoded based on logs/CURL
-            "d" to mainUrl.substringAfter("://"), // cloud.hownetwork.xyz
+            "r" to "https://playeriframe.sbs/",
+            "d" to mainUrl.substringAfter("://"),
         )
 
         try {
@@ -72,37 +70,15 @@ open class Hownetwork : ExtractorApi() {
             val file = json.optString("file")
             
             if (file.isNotBlank() && file != "null") {
-                Log.d("Phisher-Success", "File Found: $file")
-                
-                // M3U8 Helper dengan header yang benar
-                val playlist = M3u8Helper.generateM3u8(
+                M3u8Helper.generateM3u8(
                     source = this.name,
                     streamUrl = file,
-                    referer = reqReferer, // Penting! M3U8 butuh referer ini
+                    referer = reqReferer,
                     headers = headers
-                )
-
-                if (playlist.isNotEmpty()) {
-                    playlist.forEach(callback)
-                } else {
-                    // Fallback jika generateM3u8 gagal parsing
-                    callback(
-                        newExtractorLink(
-                            source = this.name,
-                            name = this.name,
-                            url = file,
-                            type = INFER_TYPE
-                        ).apply {
-                            this.headers = headers
-                            this.referer = reqReferer
-                        }
-                    )
-                }
-            } else {
-                 Log.d("Phisher-Error", "File is empty in JSON response")
+                ).forEach(callback)
             }
         } catch (e: Exception) {
-            Log.e("Phisher-Error", "Error fetching Hownetwork: ${e.message}")
+            Log.e("Hownetwork", "Error: ${e.message}")
         }
     }
 }
@@ -118,7 +94,7 @@ class Cloudhownetwork : Hownetwork() {
         callback: (ExtractorLink) -> Unit
     ) {
         val id = url.substringAfter("id=").substringBefore("&")
-        // UPDATE TERBARU: Menggunakan api2.php sesuai CURL
+        // Endpoint baru untuk Cloudhownetwork (P2P)
         val apiEndpoint = "$mainUrl/api2.php?id=$id"
         invokeApi(url, apiEndpoint, id, referer, callback)
     }
@@ -134,7 +110,51 @@ class Furher2 : Filesim() {
     override var mainUrl = "723qrh1p.fun"
 }
 
-class Turbovidhls : Filesim() {
+// --- UPDATE UTAMA DI SINI ---
+class Turbovidhls : ExtractorApi() {
     override val name = "Turbovidhls"
-    override var mainUrl = "https://turbovidhls.com"
+    override val mainUrl = "https://turbovidhls.com"
+    override val requiresReferer = false
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val headers = mapOf(
+            "User-Agent" to "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
+            "Origin" to "https://turbovidhls.com", // Safe fallback origin
+            "Sec-Ch-Ua-Mobile" to "?0",
+            "Sec-Ch-Ua-Platform" to "\"Linux\""
+        )
+
+        // Jika URL yang masuk sudah .m3u8 (seperti di CURL)
+        if (url.contains(".m3u8")) {
+            M3u8Helper.generateM3u8(
+                name,
+                url,
+                referer ?: "https://turbovidhls.com/",
+                headers = headers
+            ).forEach(callback)
+        } else {
+            // Jika URL masih berupa link embed (html), kita coba ambil m3u8-nya
+            try {
+                val res = app.get(url, headers = headers).text
+                // Regex mencari link .m3u8 di dalam source code halaman
+                val m3u8Link = Regex("""["']([^"']+\.m3u8[^"']*)["']""").find(res)?.groupValues?.get(1)
+                
+                if (!m3u8Link.isNullOrEmpty()) {
+                    M3u8Helper.generateM3u8(
+                        name,
+                        m3u8Link,
+                        referer ?: url,
+                        headers = headers
+                    ).forEach(callback)
+                }
+            } catch (e: Exception) {
+                Log.e("Turbovidhls", "Error parsing embed: ${e.message}")
+            }
+        }
+    }
 }
