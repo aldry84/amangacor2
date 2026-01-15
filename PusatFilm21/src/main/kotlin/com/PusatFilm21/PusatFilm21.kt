@@ -1,6 +1,7 @@
 package com.PusatFilm21
 
 import com.lagradost.cloudstream3.*
+import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.fasterxml.jackson.annotation.JsonProperty
@@ -13,8 +14,6 @@ class PusatFilm21 : MainAPI() {
     override var lang = "id"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.AsianDrama)
 
-    // 1. Header BIASA (Untuk Buka Halaman & Load Video)
-    // PENTING: Jangan pakai X-Requested-With di sini agar server menganggap kita browser asli
     private val mainHeaders = mapOf(
         "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
         "Referer" to "$mainUrl/",
@@ -22,16 +21,11 @@ class PusatFilm21 : MainAPI() {
         "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7"
     )
 
-    // 2. Header AJAX (Khusus Search)
-    // API Search situs ini mewajibkan header ini
     private val ajaxHeaders = mainHeaders + mapOf(
         "X-Requested-With" to "XMLHttpRequest",
         "Accept" to "*/*"
     )
 
-    // ==============================
-    // 1. MAIN PAGE (Halaman Depan)
-    // ==============================
     @Suppress("DEPRECATION")
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
         val items = listOf(
@@ -48,7 +42,6 @@ class PusatFilm21 : MainAPI() {
 
         val homeSets = items.mapNotNull { (url, name) ->
             try {
-                // PENTING: Pakai mainHeaders
                 val doc = app.get(url, headers = mainHeaders).document
                 val movies = doc.select("div.ml-item").mapNotNull { element ->
                     toSearchResult(element)
@@ -59,7 +52,6 @@ class PusatFilm21 : MainAPI() {
             }
         }
         
-        // Menggunakan newHomePageResponse (Standar Baru)
         return newHomePageResponse(homeSets)
     }
 
@@ -75,7 +67,8 @@ class PusatFilm21 : MainAPI() {
             ?: imgElement?.attr("data-src")
             ?: imgElement?.attr("src")
 
-        val isSeries = href.contains("/tv-show/") || href.contains("/drama-") || href.contains("series")
+        // FIX: Tambahkan "/tv/" agar Avatar series terdeteksi sebagai Series
+        val isSeries = href.contains("/tv-show/") || href.contains("/drama-") || href.contains("series") || href.contains("/tv/")
 
         return if (isSeries) {
             newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
@@ -88,9 +81,6 @@ class PusatFilm21 : MainAPI() {
         }
     }
 
-    // ==============================
-    // 2. SEARCH (Pencarian Cepat via JSON)
-    // ==============================
     data class SearchResponseJson(
         @JsonProperty("suggestions") val suggestions: List<Suggestion>?
     )
@@ -105,18 +95,16 @@ class PusatFilm21 : MainAPI() {
     override suspend fun search(query: String): List<SearchResponse> {
         val url = "$mainUrl/wp-admin/admin-ajax.php?action=muvipro_core_ajax_search_movie&query=$query"
         try {
-            // PENTING: Search wajib pakai ajaxHeaders
             val response = app.get(url, headers = ajaxHeaders).parsedSafe<SearchResponseJson>()
             return response?.suggestions?.mapNotNull { item ->
                 val title = item.value
                 val href = item.url
-                
-                // Ekstrak gambar dari string HTML <img> di JSON
                 val posterUrl = if (item.thumb != null) {
                     Regex("""src="([^"]+)"""").find(item.thumb)?.groupValues?.get(1)
                 } else null
 
-                val isSeries = href.contains("/tv-show/") || href.contains("/drama-")
+                // FIX: Tambahkan "/tv/" di sini juga
+                val isSeries = href.contains("/tv-show/") || href.contains("/drama-") || href.contains("/tv/")
                 if (isSeries) {
                     newTvSeriesSearchResponse(title, href, TvType.TvSeries) { this.posterUrl = posterUrl }
                 } else {
@@ -128,11 +116,7 @@ class PusatFilm21 : MainAPI() {
         }
     }
 
-    // ==============================
-    // 3. LOAD (Detail Film)
-    // ==============================
     override suspend fun load(url: String): LoadResponse? {
-        // PENTING: Load halaman pakai mainHeaders
         val doc = app.get(url, headers = mainHeaders).document
         
         val title = doc.selectFirst("h1.entry-title")?.text() ?: "Unknown"
@@ -141,19 +125,21 @@ class PusatFilm21 : MainAPI() {
         val description = doc.select("div.entry-content p").text() 
             ?: doc.select("div.desc").text()
 
-        val isSeries = url.contains("/tv-show/") || url.contains("/drama-") || url.contains("series")
+        // FIX: Tambahkan "/tv/" di sini juga
+        val isSeries = url.contains("/tv-show/") || url.contains("/drama-") || url.contains("series") || url.contains("/tv/")
+
+        // Ambil Trailer YouTube jika ada
+        val trailerUrl = doc.select("iframe[src*='youtube.com']").attr("src")
 
         if (isSeries) {
             val episodes = ArrayList<Episode>()
             
-            // Selector Episode 1
             doc.select("span.gmr-eps-list a").forEach { ep ->
                 episodes.add(newEpisode(ep.attr("href")) {
                     this.name = ep.text()
                 })
             }
             
-            // Selector Episode 2 (Backup)
             if (episodes.isEmpty()) {
                 doc.select("div.tv-eps a").forEach { ep ->
                     episodes.add(newEpisode(ep.attr("href")) {
@@ -167,37 +153,31 @@ class PusatFilm21 : MainAPI() {
             return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                 this.posterUrl = poster
                 this.plot = description
+                addTrailer(trailerUrl) // Menambahkan trailer
             }
         } else {
             return newMovieLoadResponse(title, url, TvType.Movie, url) {
                 this.posterUrl = poster
                 this.plot = description
+                addTrailer(trailerUrl) // Menambahkan trailer
             }
         }
     }
 
-    // ==============================
-    // 4. LOAD LINKS (Video Player)
-    // ==============================
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // PENTING: Load player pakai mainHeaders
         val doc = app.get(data, headers = mainHeaders).document
         
-        // Cari iframe kotakajaib/turbovid
         doc.select("div.gmr-embed-responsive iframe").forEach { iframe ->
             var sourceUrl = iframe.attr("src")
             if (sourceUrl.startsWith("//")) sourceUrl = "https:$sourceUrl"
-            
-            // loadExtractor otomatis mengenali KotakAjaib & Hydrax
             loadExtractor(sourceUrl, data, subtitleCallback, callback)
         }
         
-        // Link direct jika ada
         doc.select("a.gmr-player-link").forEach { link ->
              val sourceUrl = link.attr("href")
              loadExtractor(sourceUrl, data, subtitleCallback, callback)
