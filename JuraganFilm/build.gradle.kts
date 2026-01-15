@@ -1,5 +1,5 @@
 // Gunakan angka integer untuk versi (mulai dari 1 untuk rilis baru)
-version = 1
+version = 2
 
 cloudstream {
     // Bahasa konten utama
