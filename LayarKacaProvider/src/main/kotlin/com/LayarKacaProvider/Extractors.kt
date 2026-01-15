@@ -62,11 +62,12 @@ open class Hownetwork : ExtractorApi() {
                     "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36"
                 )
 
+                // Gunakan Positional Args (Urutan: source, url, referer, headers)
                 M3u8Helper.generateM3u8(
-                    source = this.name,
-                    streamUrl = file,
-                    referer = url,
-                    headers = m3u8Headers
+                    this.name,
+                    file,
+                    url,
+                    m3u8Headers
                 ).forEach(callback)
             }
         } catch (e: Exception) {
@@ -118,11 +119,12 @@ open class Turbovidhls : ExtractorApi() {
             val m3u8Url = Regex("""["'](https?://[^"']+/master\.m3u8)["']""").find(script)?.groupValues?.get(1)
             
             if (m3u8Url != null) {
+                // Positional Args untuk M3u8Helper
                 M3u8Helper.generateM3u8(
-                    source = this.name,
-                    streamUrl = m3u8Url,
-                    referer = "https://turbovidhls.com/", 
-                    headers = mapOf(
+                    name,
+                    m3u8Url,
+                    "https://turbovidhls.com/", 
+                    mapOf(
                         "Origin" to "https://turbovidhls.com",
                         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
                     )
@@ -181,12 +183,12 @@ open class F16px : ExtractorApi() {
                         "Referer" to "$mainUrl/",
                     )
 
-                    // PERBAIKAN: Menggunakan parameter 'source' yang benar
+                    // PERBAIKAN: Hapus named arguments, pakai urutan
                     M3u8Helper.generateM3u8(
-                        source = this.name,
-                        streamUrl = file,
-                        referer = "$mainUrl/",
-                        headers = videoHeaders
+                        this.name,
+                        file,
+                        "$mainUrl/",
+                        videoHeaders
                     ).forEach(callback)
                 }
             }
@@ -234,24 +236,26 @@ open class Hydrax : ExtractorApi() {
                 val isM3u8 = videoUrl.contains(".m3u8")
                 
                 if (isM3u8) {
-                    // PERBAIKAN: Menggunakan parameter 'source'
+                    // PERBAIKAN: Positional Args
                     M3u8Helper.generateM3u8(
-                        source = this.name,
-                        streamUrl = videoUrl,
-                        referer = "https://abysscdn.com/",
-                        headers = mapOf("Origin" to "https://abysscdn.com")
+                        this.name,
+                        videoUrl,
+                        "https://abysscdn.com/",
+                        mapOf("Origin" to "https://abysscdn.com")
                     ).forEach(callback)
                 } else {
-                    // PERBAIKAN: Menggunakan newExtractorLink() alih-alih constructor
+                    // PERBAIKAN MAJOR: Gunakan .apply untuk referer & quality
+                    // Ini menghindari error "No parameter with name 'referer'"
                     callback(
                         newExtractorLink(
-                            source = this.name,
-                            name = this.name,
-                            url = videoUrl,
-                            referer = "https://abysscdn.com/",
-                            quality = Qualities.Unknown.value,
-                            type = INFER_TYPE
-                        )
+                            this.name,
+                            this.name,
+                            videoUrl,
+                            INFER_TYPE
+                        ).apply {
+                            this.referer = "https://abysscdn.com/"
+                            this.quality = Qualities.Unknown.value
+                        }
                     )
                 }
             }
