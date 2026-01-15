@@ -37,7 +37,7 @@ class HomeSpecially : MainAPI() {
         val posterUrl = element.selectFirst(".content-thumbnail img")?.attr("src")
         val quality = element.selectFirst(".gmr-quality-item a")?.text()
 
-        val type = if (href.contains("/tv/") || title.contains("Season", true)) TvType.TvSeries else TvType.Movie
+        val type = if (href.contains("/tv/") || href.contains("/eps/")) TvType.TvSeries else TvType.Movie
 
         return newMovieSearchResponse(title, href, type) {
             this.posterUrl = posterUrl
@@ -58,15 +58,26 @@ class HomeSpecially : MainAPI() {
         val plot = document.selectFirst(".entry-content p")?.text()
         val year = document.selectFirst(".gmr-movie-data:contains(Tahun) a")?.text()?.toIntOrNull()
 
-        return if (url.contains("/tv/")) {
-            // PERBAIKAN: Menggunakan newEpisode sesuai instruksi compiler
-            val episodes = listOf(
-                newEpisode(url) {
-                    this.name = "Play Movie / Episode"
-                    this.episode = 1
-                    this.season = 1
-                }
-            )
+        // MENCARI DAFTAR EPISODE ASLI (Kunci perbaikan tampilan Seri)
+        val episodeElements = document.select(".gmr-listseries a")
+        
+        return if (url.contains("/tv/") || url.contains("/eps/") || episodeElements.isNotEmpty()) {
+            val episodes = if (episodeElements.isNotEmpty()) {
+                episodeElements.mapIndexed { index, element ->
+                    newEpisode(element.attr("href")) {
+                        this.name = element.text()
+                        this.episode = index + 1
+                    }
+                }.reversed()
+            } else {
+                listOf(
+                    newEpisode(url) {
+                        this.name = "Play Movie / Episode"
+                        this.episode = 1
+                    }
+                )
+            }
+            
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                 this.posterUrl = poster
                 this.plot = plot
@@ -89,9 +100,10 @@ class HomeSpecially : MainAPI() {
     ): Boolean {
         val document = app.get(data, timeout = 30).document
         
-        // Mengambil data-id dari container player (contoh: 96555)
+        // Ambil ID dari body class atau container (Sangat krusial untuk AJAX)
         val postId = document.selectFirst("#muvipro_player_content_id")?.attr("data-id") 
                    ?: document.selectFirst(".muvipro_player_content")?.attr("data-id")
+                   ?: Regex("""postid-(\d+)""").find(document.selectFirst("body")?.className() ?: "")?.groupValues?.get(1)
 
         document.select("ul#gmr-tab li a").forEach { tab ->
             val tabHref = tab.attr("href") 
@@ -100,13 +112,17 @@ class HomeSpecially : MainAPI() {
             val directIframe = document.selectFirst("div$tabHref iframe")
             if (directIframe != null) {
                 loadExtractor(fixUrl(directIframe.attr("src")), data, subtitleCallback, callback)
-            } 
-            else if (postId != null) {
+            } else if (postId != null) {
                 try {
                     val ajaxUrl = "$mainUrl/wp-admin/admin-ajax.php"
                     val response = app.post(
                         ajaxUrl,
-                        headers = mapOf("Referer" to data, "X-Requested-With" to "XMLHttpRequest"),
+                        headers = mapOf(
+                            "Referer" to data, 
+                            "X-Requested-With" to "XMLHttpRequest",
+                            // User Agent Mobile agar server mau memberikan tautan
+                            "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36"
+                        ),
                         data = mapOf(
                             "action" to "muvipro_player_content",
                             "tab" to tabId,
@@ -126,6 +142,7 @@ class HomeSpecially : MainAPI() {
     }
 
     private fun fixUrl(url: String): String {
+        // Membersihkan karakter backslash dan memastikan https
         return if (url.startsWith("//")) "https:$url" else url.replace("\\", "")
     }
 }
