@@ -11,15 +11,10 @@ class HomeSpecially : ParsedHttpSource() {
     override val hasMainPage = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
-    // ==========================================
-    // 1. SELECTOR UTAMA
-    // ==========================================
-    // Mengambil kotak film dari halaman utama/pencarian
+    // 1. Selector Utama
     override val searchSelector = "div.gmr-maincontent .row article.item-infinite"
 
-    // ==========================================
-    // 2. HALAMAN UTAMA (Main Page)
-    // ==========================================
+    // 2. Halaman Utama
     override val mainPage = mainPageOf(
         "$mainUrl/page/" to "Terbaru",
         "$mainUrl/genre/action/page/" to "Action",
@@ -35,43 +30,31 @@ class HomeSpecially : ParsedHttpSource() {
         return newHomePageResponse(request.name, url)
     }
 
-    // ==========================================
-    // 3. PARSING KARTU FILM
-    // ==========================================
+    // 3. Parsing Kartu Film
     override fun searchFromElement(element: Element): SearchResponse? {
         val titleElement = element.selectFirst(".entry-title a") ?: return null
         val title = titleElement.text()
         val href = titleElement.attr("href")
-
-        val posterElement = element.selectFirst(".content-thumbnail img")
-        val posterUrl = posterElement?.attr("src")
-        
-        // Mengambil kualitas (HD/CAM) jika ada
+        val posterUrl = element.selectFirst(".content-thumbnail img")?.attr("src")
         val quality = element.selectFirst(".gmr-quality-item a")?.text()
 
         return newMovieSearchResponse(title, href, TvType.Movie) {
             this.posterUrl = posterUrl
-            if (!quality.isNullOrEmpty()) {
-                addQuality(quality)
-            }
+            if (!quality.isNullOrEmpty()) addQuality(quality)
         }
     }
 
-    // ==========================================
-    // 4. HALAMAN DETAIL (Load)
-    // ==========================================
+    // 4. Halaman Detail
     override fun load(url: String): LoadResponse? {
         val document = app.get(url).document
 
         val title = document.selectFirst("h1.entry-title")?.text() ?: return null
         val poster = document.selectFirst(".gmr-movie-view-poster img")?.attr("src")
         val plot = document.selectFirst(".entry-content p")?.text()
-        
-        // Parsing Tahun & Rating
         val year = document.selectFirst(".gmr-movie-data:contains(Tahun) a")?.text()?.toIntOrNull()
         val rating = document.selectFirst(".gmr-meta-rating .gmr-rating-value")?.text()?.toRatingInt()
-
-        // Deteksi apakah ini Series atau Movie
+        
+        // Cek tipe (Movie atau TV)
         val type = if (url.contains("/tv/") || title.contains("Episode")) TvType.TvSeries else TvType.Movie
 
         return newMovieLoadResponse(title, url, type, url) {
@@ -83,7 +66,7 @@ class HomeSpecially : ParsedHttpSource() {
     }
 
     // ==========================================
-    // 5. PEMUTAR VIDEO (LoadLinks - FINAL FIX)
+    // 5. PEMUTAR VIDEO (DISEMPURNAKAN DARI DATA CURL)
     // ==========================================
     override suspend fun loadLinks(
         data: String,
@@ -92,33 +75,36 @@ class HomeSpecially : ParsedHttpSource() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val document = app.get(data).document
-
-        // 1. Ambil Post ID (Wajib untuk AJAX)
-        // ID ini ada di div #muvipro_player_content_id
         val postId = document.selectFirst("#muvipro_player_content_id")?.attr("data-id")
 
-        // 2. Loop semua tab server (p1, p2, p3...)
         document.select("ul#gmr-tab li a").forEach { tab ->
-            val tabHref = tab.attr("href") // Contoh: #p1
-            val tabId = tabHref.removePrefix("#") // Contoh: p1
+            val tabHref = tab.attr("href") // #p1, #p2
+            val tabId = tabHref.removePrefix("#") // p1, p2
             
-            // Cek apakah iframe sudah ada langsung (Server 1 biasanya langsung load)
+            // Helper function untuk memproses link yang ditemukan
+            suspend fun resolveLink(url: String) {
+                var fixUrl = url
+                if (fixUrl.startsWith("//")) fixUrl = "https:$fixUrl"
+                
+                // EmbedPyrox dan server lain akan otomatis dideteksi di sini
+                loadExtractor(fixUrl, data, subtitleCallback, callback)
+            }
+
+            // Cek 1: Apakah iframe sudah ada langsung? (Biasanya Server 1)
             val directIframe = document.selectFirst("div$tabHref iframe")
-            
             if (directIframe != null) {
-                // KASUS A: Video langsung tersedia
-                val src = directIframe.attr("src")
-                loadExtractor(fixUrl(src), callback, subtitleCallback)
+                resolveLink(directIframe.attr("src"))
             } 
+            // Cek 2: Jika tidak ada, panggil via AJAX (Sesuai Data CURL kamu)
             else if (postId != null) {
-                // KASUS B: Video perlu dipanggil via AJAX (Server 2, 3, dst)
                 try {
                     val ajaxUrl = "$mainUrl/wp-admin/admin-ajax.php"
                     
-                    // Header Referer ditambahkan sesuai data curl kamu agar tidak ditolak
+                    // Header Referer PENTING agar server tidak menolak (Sesuai CURL)
                     val headers = mapOf(
                         "Referer" to data,
-                        "X-Requested-With" to "XMLHttpRequest"
+                        "X-Requested-With" to "XMLHttpRequest",
+                        "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36"
                     )
 
                     val formBody = mapOf(
@@ -127,26 +113,20 @@ class HomeSpecially : ParsedHttpSource() {
                         "post_id" to postId
                     )
 
-                    // Kirim Request
                     val response = app.post(ajaxUrl, headers = headers, data = formBody).text
                     
-                    // Cari link video (src="...") di dalam respons AJAX
+                    // Regex untuk mencari src iframe di dalam response text
                     val iframeMatch = Regex("src=\"(.*?)\"").find(response)
                     if (iframeMatch != null) {
-                        // Bersihkan URL (kadang ada escape character backslash)
-                        val src = iframeMatch.groupValues[1].replace("\\", "")
-                        loadExtractor(fixUrl(src), callback, subtitleCallback)
+                        // Bersihkan URL dari karakter backslash jika ada (contoh: https:\/\/...)
+                        val cleanUrl = iframeMatch.groupValues[1].replace("\\", "")
+                        resolveLink(cleanUrl)
                     }
                 } catch (e: Exception) {
-                    // Lanjut ke server berikutnya jika error
+                    // Skip jika server ini gagal
                 }
             }
         }
         return true
-    }
-
-    // Helper untuk memperbaiki URL (misal: //embedpyrox.xyz -> https://embedpyrox.xyz)
-    private fun fixUrl(url: String): String {
-        return if (url.startsWith("//")) "https:$url" else url
     }
 }
