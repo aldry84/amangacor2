@@ -13,7 +13,61 @@ import com.lagradost.cloudstream3.utils.newExtractorLink
 import org.json.JSONObject
 
 // ==========================================
-// UPDATE: P2P / CLOUD HOWNETWORK (API2.PHP)
+// 1. UPDATE: TURBOVIP / TURBOVIDHLS
+// ==========================================
+class Turbovidhls : ExtractorApi() {
+    override val name = "Turbovid"
+    override val mainUrl = "https://turbovidhls.com"
+    override val requiresReferer = true
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        // Headers ketat sesuai data Curl Anda
+        // Origin dan Referer WAJIB https://turbovidhls.com/ (dengan trailing slash)
+        val headers = mapOf(
+            "Origin" to mainUrl,
+            "Referer" to "$mainUrl/",
+            "User-Agent" to "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
+        )
+
+        try {
+            // 1. Ambil Source HTML dari halaman embed
+            val response = app.get(url, headers = headers).text
+
+            // 2. Cari link .m3u8 di dalam script HTML
+            // Pola umum: file: "https://..." atau sources: [{file: "..."}]
+            val regex = """file\s*:\s*["']([^"']+\.m3u8[^"']*)["']""".toRegex()
+            val masterUrl = regex.find(response)?.groupValues?.get(1)
+
+            if (!masterUrl.isNullOrEmpty()) {
+                Log.d("Turbovid", "Found Master M3U8: $masterUrl")
+
+                // 3. Generate M3U8 dengan Header Khusus
+                // Header ini akan diteruskan ke setiap request segmen (.ts/image)
+                M3u8Helper.generateM3u8(
+                    source = name,
+                    streamUrl = masterUrl,
+                    referer = "$mainUrl/", 
+                    headers = headers // KUNCI: Header ini agar segmen 'gambar' ibyteimg bisa diputar
+                ).forEach(callback)
+
+            } else {
+                Log.e("Turbovid", "M3U8 url not found in embed page")
+                // Opsional: Tambahkan logika regex alternatif jika pola 'file:' tidak ketemu
+            }
+
+        } catch (e: Exception) {
+            Log.e("Turbovid", "Error: ${e.message}")
+        }
+    }
+}
+
+// ==========================================
+// 2. UPDATE: P2P / CLOUD HOWNETWORK (API2.PHP)
 // ==========================================
 class Cloudhownetwork : ExtractorApi() {
     override val name = "CloudHownetwork"
@@ -26,20 +80,16 @@ class Cloudhownetwork : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        // url input example: https://cloud.hownetwork.xyz/video.php?id=KA07...
         val id = url.substringAfter("id=").substringBefore("&")
         
-        // Headers sesuai data Curl Anda
         val headers = mapOf(
             "Origin" to mainUrl,
-            "Referer" to url, // Referer saat request API adalah halaman video.php
+            "Referer" to url,
             "User-Agent" to "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
-            "X-Requested-With" to "XMLHttpRequest" // Biasanya diperlukan
+            "X-Requested-With" to "XMLHttpRequest"
         )
 
-        // Data Body sesuai Curl
-        // 'r' dalam data curl Anda adalah "https://playeriframe.sbs/"
-        // Kita gunakan referer yang dipassing jika ada, atau default ke playeriframe
+        // Menggunakan referer dari parameter atau default
         val rParam = if (referer != null && referer.contains("http")) referer else "https://playeriframe.sbs/"
         
         val postData = mapOf(
@@ -48,7 +98,7 @@ class Cloudhownetwork : ExtractorApi() {
         )
 
         try {
-            // Perhatikan: Menggunakan api2.php sesuai temuan baru
+            // Update: Menggunakan api2.php
             val response = app.post(
                 "$mainUrl/api2.php?id=$id",
                 headers = headers,
@@ -58,38 +108,13 @@ class Cloudhownetwork : ExtractorApi() {
             val json = JSONObject(response)
             val file = json.optString("file")
             
-            // Log untuk debug
-            Log.d("CloudHownetwork", "Response: $response")
-
             if (file.isNotBlank() && file != "null") {
-                
-                // M3U8 Helper untuk generate quality list (360, 480, 720, 1080)
-                val playlist = M3u8Helper.generateM3u8(
+                M3u8Helper.generateM3u8(
                     source = this.name,
                     streamUrl = file,
-                    referer = url, // Referer file m3u8 biasanya sama dengan referer API
+                    referer = url,
                     headers = headers
-                )
-
-                if (playlist.isNotEmpty()) {
-                    playlist.forEach(callback)
-                } else {
-                    // Fallback jika generateM3u8 gagal, kirim raw link
-                    callback(
-                        newExtractorLink(
-                            source = this.name,
-                            name = this.name,
-                            url = file,
-                            type = INFER_TYPE
-                        ).apply {
-                            this.headers = headers
-                            this.referer = url
-                            this.quality = Qualities.Unknown.value
-                        }
-                    )
-                }
-            } else {
-                 Log.e("CloudHownetwork", "File not found in API response")
+                ).forEach(callback)
             }
         } catch (e: Exception) {
             Log.e("CloudHownetwork", "Error: ${e.message}")
@@ -98,9 +123,9 @@ class Cloudhownetwork : ExtractorApi() {
 }
 
 // ==========================================
-// EXTRACTOR LAMA (Hownetwork Biasa)
-// Biarkan jika masih ada link lama yang pakai api.php
+// EXTRACTOR LAINNYA (LAMA)
 // ==========================================
+
 open class Hownetwork : ExtractorApi() {
     override val name = "Hownetwork"
     override val mainUrl = "https://stream.hownetwork.xyz"
@@ -114,7 +139,7 @@ open class Hownetwork : ExtractorApi() {
     ) {
         val id = url.substringAfter("id=").substringBefore("&")
         val response = app.post(
-                "$mainUrl/api.php?id=$id", // Masih pakai api.php lama
+                "$mainUrl/api.php?id=$id",
                 data = mapOf(
                         "r" to (referer ?: ""),
                         "d" to mainUrl,
@@ -139,7 +164,6 @@ open class Hownetwork : ExtractorApi() {
     }
 }
 
-// Extractor Simple Lainnya
 class Co4nxtrl : Filesim() {
     override val mainUrl = "https://co4nxtrl.com"
     override val name = "Co4nxtrl"
@@ -154,9 +178,4 @@ class Furher : Filesim() {
 class Furher2 : Filesim() {
     override val name = "Furher 2"
     override var mainUrl = "723qrh1p.fun"
-}
-
-class Turbovidhls : Filesim() {
-    override val name = "Turbovidhls"
-    override var mainUrl = "https://turbovidhls.com"
 }
