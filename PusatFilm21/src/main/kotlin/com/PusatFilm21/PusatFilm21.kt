@@ -1,7 +1,6 @@
 package com.PusatFilm21
 
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.fasterxml.jackson.annotation.JsonProperty
@@ -14,19 +13,36 @@ class PusatFilm21 : MainAPI() {
     override var lang = "id"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.AsianDrama)
 
+    // User-Agent yang lebih baru dan lengkap (Meniru Chrome Android asli)
+    private val userAgent = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+
+    // Header untuk Halaman Utama & Detail (Browser Mode)
     private val mainHeaders = mapOf(
-        "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
+        "User-Agent" to userAgent,
         "Referer" to "$mainUrl/",
-        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7"
+        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Upgrade-Insecure-Requests" to "1",
+        "Sec-Fetch-Dest" to "document",
+        "Sec-Fetch-Mode" to "navigate",
+        "Sec-Fetch-Site" to "none",
+        "Sec-Fetch-User" to "?1"
     )
 
-    private val ajaxHeaders = mainHeaders + mapOf(
+    // Header untuk Search & API (AJAX Mode)
+    private val ajaxHeaders = mapOf(
+        "User-Agent" to userAgent,
+        "Referer" to "$mainUrl/",
         "X-Requested-With" to "XMLHttpRequest",
-        "Accept" to "*/*"
+        "Accept" to "application/json, text/javascript, */*; q=0.01",
+        "Sec-Fetch-Dest" to "empty",
+        "Sec-Fetch-Mode" to "cors",
+        "Sec-Fetch-Site" to "same-origin"
     )
 
-    @Suppress("DEPRECATION")
+    // ==============================
+    // 1. MAIN PAGE
+    // ==============================
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
         val items = listOf(
             Pair("$mainUrl/trending/page/$page/", "Trending"),
@@ -42,21 +58,41 @@ class PusatFilm21 : MainAPI() {
 
         val homeSets = items.mapNotNull { (url, name) ->
             try {
-                val doc = app.get(url, headers = mainHeaders).document
+                // Request dengan header lengkap
+                val response = app.get(url, headers = mainHeaders)
+                val doc = response.document
+                
+                // Debugging: Cek apakah halaman benar-benar termuat
+                // Jika ingin melihat log, uncomment baris ini:
+                // System.out.println("PusatFilm21 Check: ${doc.title()}")
+
                 val movies = doc.select("div.ml-item").mapNotNull { element ->
                     toSearchResult(element)
                 }
+                
+                // Backup selector jika div.ml-item gagal
+                if (movies.isEmpty()) {
+                     val altMovies = doc.select("article.item-list").mapNotNull {
+                        toSearchResult(it)
+                     }
+                     if (altMovies.isNotEmpty()) return@mapNotNull HomePageList(name, altMovies)
+                }
+
                 if (movies.isNotEmpty()) HomePageList(name, movies) else null
             } catch (e: Exception) {
                 null
             }
         }
         
+        // PENTING: Gunakan newHomePageResponse (bukan konstruktor lama)
         return newHomePageResponse(homeSets)
     }
 
     private fun toSearchResult(element: Element): SearchResponse? {
-        val linkElement = element.selectFirst("a.ml-mask") ?: return null
+        val linkElement = element.selectFirst("a.ml-mask") 
+            ?: element.selectFirst("a") 
+            ?: return null
+            
         val href = linkElement.attr("href")
         val title = linkElement.attr("title").ifEmpty { 
              element.select("span.mli-info").text() 
@@ -67,8 +103,11 @@ class PusatFilm21 : MainAPI() {
             ?: imgElement?.attr("data-src")
             ?: imgElement?.attr("src")
 
-        // FIX: Tambahkan "/tv/" agar Avatar series terdeteksi sebagai Series
-        val isSeries = href.contains("/tv-show/") || href.contains("/drama-") || href.contains("series") || href.contains("/tv/")
+        val isSeries = href.contains("/tv-show/") || 
+                       href.contains("/drama-") || 
+                       href.contains("series") || 
+                       href.contains("/tv/") || 
+                       href.contains("/eps/")
 
         return if (isSeries) {
             newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
@@ -81,6 +120,9 @@ class PusatFilm21 : MainAPI() {
         }
     }
 
+    // ==============================
+    // 2. SEARCH
+    // ==============================
     data class SearchResponseJson(
         @JsonProperty("suggestions") val suggestions: List<Suggestion>?
     )
@@ -93,18 +135,26 @@ class PusatFilm21 : MainAPI() {
     )
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val url = "$mainUrl/wp-admin/admin-ajax.php?action=muvipro_core_ajax_search_movie&query=$query"
-        try {
+        // Encode spasi menjadi %20 (standar URL) bukan +
+        val cleanQuery = query.replace(" ", "%20") 
+        val url = "$mainUrl/wp-admin/admin-ajax.php?action=muvipro_core_ajax_search_movie&query=$cleanQuery"
+        
+        return try {
             val response = app.get(url, headers = ajaxHeaders).parsedSafe<SearchResponseJson>()
-            return response?.suggestions?.mapNotNull { item ->
+            
+            response?.suggestions?.mapNotNull { item ->
                 val title = item.value
                 val href = item.url
+                
                 val posterUrl = if (item.thumb != null) {
                     Regex("""src="([^"]+)"""").find(item.thumb)?.groupValues?.get(1)
                 } else null
 
-                // FIX: Tambahkan "/tv/" di sini juga
-                val isSeries = href.contains("/tv-show/") || href.contains("/drama-") || href.contains("/tv/")
+                val isSeries = href.contains("/tv-show/") || 
+                               href.contains("/drama-") || 
+                               href.contains("/tv/") || 
+                               href.contains("/eps/")
+
                 if (isSeries) {
                     newTvSeriesSearchResponse(title, href, TvType.TvSeries) { this.posterUrl = posterUrl }
                 } else {
@@ -112,10 +162,13 @@ class PusatFilm21 : MainAPI() {
                 }
             } ?: emptyList()
         } catch (e: Exception) {
-            return emptyList()
+            emptyList()
         }
     }
 
+    // ==============================
+    // 3. LOAD
+    // ==============================
     override suspend fun load(url: String): LoadResponse? {
         val doc = app.get(url, headers = mainHeaders).document
         
@@ -124,12 +177,15 @@ class PusatFilm21 : MainAPI() {
             ?: doc.selectFirst("div.mvic-thumb img")?.attr("src")
         val description = doc.select("div.entry-content p").text() 
             ?: doc.select("div.desc").text()
-
-        // FIX: Tambahkan "/tv/" di sini juga
-        val isSeries = url.contains("/tv-show/") || url.contains("/drama-") || url.contains("series") || url.contains("/tv/")
-
-        // Ambil Trailer YouTube jika ada
+        
+        // Ambil Trailer
         val trailerUrl = doc.select("iframe[src*='youtube.com']").attr("src")
+
+        val isSeries = url.contains("/tv-show/") || 
+                       url.contains("/drama-") || 
+                       url.contains("series") || 
+                       url.contains("/tv/") || 
+                       url.contains("/eps/")
 
         if (isSeries) {
             val episodes = ArrayList<Episode>()
@@ -153,17 +209,20 @@ class PusatFilm21 : MainAPI() {
             return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                 this.posterUrl = poster
                 this.plot = description
-                addTrailer(trailerUrl) // Menambahkan trailer
+                addTrailer(trailerUrl)
             }
         } else {
             return newMovieLoadResponse(title, url, TvType.Movie, url) {
                 this.posterUrl = poster
                 this.plot = description
-                addTrailer(trailerUrl) // Menambahkan trailer
+                addTrailer(trailerUrl)
             }
         }
     }
 
+    // ==============================
+    // 4. LOAD LINKS
+    // ==============================
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
