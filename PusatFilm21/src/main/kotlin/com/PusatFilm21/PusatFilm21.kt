@@ -23,7 +23,6 @@ class PusatFilm21 : MainAPI() {
     // ==============================
     // 1. MAIN PAGE (Halaman Depan)
     // ==============================
-    @Suppress("DEPRECATION") // Mencegah error build pada HomePageResponse
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
         val items = listOf(
             Pair("$mainUrl/trending/page/$page/", "Trending"),
@@ -49,7 +48,8 @@ class PusatFilm21 : MainAPI() {
             }
         }
         
-        return HomePageResponse(homeSets)
+        // PERBAIKAN DI SINI: Menggunakan fungsi baru 'newHomePageResponse'
+        return newHomePageResponse(homeSets)
     }
 
     private fun toSearchResult(element: Element): SearchResponse? {
@@ -131,15 +131,13 @@ class PusatFilm21 : MainAPI() {
         if (isSeries) {
             val episodes = ArrayList<Episode>()
             
-            // Mencoba selector episode (Priority 1)
-            // PERBAIKAN: Menggunakan newEpisode() bukan Episode()
+            // PERBAIKAN: Menggunakan newEpisode() sesuai standar baru
             doc.select("span.gmr-eps-list a").forEach { ep ->
                 episodes.add(newEpisode(ep.attr("href")) {
                     this.name = ep.text()
                 })
             }
             
-            // Mencoba selector episode (Priority 2)
             if (episodes.isEmpty()) {
                 doc.select("div.tv-eps a").forEach { ep ->
                     episodes.add(newEpisode(ep.attr("href")) {
@@ -173,15 +171,12 @@ class PusatFilm21 : MainAPI() {
     ): Boolean {
         val doc = app.get(data, headers = commonHeaders).document
         
-        // Target 1: Iframe dalam gmr-embed-responsive (KotakAjaib/TurboVid)
         doc.select("div.gmr-embed-responsive iframe").forEach { iframe ->
             var sourceUrl = iframe.attr("src")
             if (sourceUrl.startsWith("//")) sourceUrl = "https:$sourceUrl"
-            
             loadExtractor(sourceUrl, data, subtitleCallback, callback)
         }
         
-        // Target 2: Link direct player jika ada
         doc.select("a.gmr-player-link").forEach { link ->
              val sourceUrl = link.attr("href")
              loadExtractor(sourceUrl, data, subtitleCallback, callback)
