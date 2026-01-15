@@ -37,7 +37,6 @@ class HomeSpecially : MainAPI() {
         val posterUrl = element.selectFirst(".content-thumbnail img")?.attr("src")
         val quality = element.selectFirst(".gmr-quality-item a")?.text()
 
-        // Deteksi tipe berdasarkan URL atau label
         val type = if (href.contains("/tv/") || title.contains("Season", true)) TvType.TvSeries else TvType.Movie
 
         return newMovieSearchResponse(title, href, type) {
@@ -59,10 +58,14 @@ class HomeSpecially : MainAPI() {
         val plot = document.selectFirst(".entry-content p")?.text()
         val year = document.selectFirst(".gmr-movie-data:contains(Tahun) a")?.text()?.toIntOrNull()
 
-        // PERBAIKAN SERI: Jika URL mengandung '/tv/', buat sebagai TV Series
         return if (url.contains("/tv/")) {
+            // PERBAIKAN: Menggunakan newEpisode sesuai instruksi compiler
             val episodes = listOf(
-                Episode(url, "Play Episode", 1, 1) // Default episode pemicu player
+                newEpisode(url) {
+                    this.name = "Play Movie / Episode"
+                    this.episode = 1
+                    this.season = 1
+                }
             )
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                 this.posterUrl = poster
@@ -86,21 +89,18 @@ class HomeSpecially : MainAPI() {
     ): Boolean {
         val document = app.get(data, timeout = 30).document
         
-        // Ambil ID Postingan (Misal: 96555) dari container player
+        // Mengambil data-id dari container player (contoh: 96555)
         val postId = document.selectFirst("#muvipro_player_content_id")?.attr("data-id") 
                    ?: document.selectFirst(".muvipro_player_content")?.attr("data-id")
 
-        // Cari tab server (p1, p2, dst)
         document.select("ul#gmr-tab li a").forEach { tab ->
-            val tabHref = tab.attr("href") // #p1
-            val tabId = tabHref.removePrefix("#") // p1
+            val tabHref = tab.attr("href") 
+            val tabId = tabHref.removePrefix("#") 
             
-            // 1. Cek pemicu langsung (Server 1)
             val directIframe = document.selectFirst("div$tabHref iframe")
             if (directIframe != null) {
                 loadExtractor(fixUrl(directIframe.attr("src")), data, subtitleCallback, callback)
             } 
-            // 2. Gunakan AJAX untuk Server 2, 3, dst (Sesuai cara kerja MuviPro)
             else if (postId != null) {
                 try {
                     val ajaxUrl = "$mainUrl/wp-admin/admin-ajax.php"
@@ -112,14 +112,14 @@ class HomeSpecially : MainAPI() {
                             "tab" to tabId,
                             "post_id" to postId
                         ),
-                        timeout = 15
+                        timeout = 20
                     ).text
                     
                     val iframeSrc = Regex("""src=["'](.*?)["']""").find(response)?.groupValues?.get(1)
                     if (iframeSrc != null) {
                         loadExtractor(fixUrl(iframeSrc), data, subtitleCallback, callback)
                     }
-                } catch (e: Exception) { /* skip server error */ }
+                } catch (e: Exception) { }
             }
         }
         return true
