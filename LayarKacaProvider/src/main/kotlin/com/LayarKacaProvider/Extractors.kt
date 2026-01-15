@@ -9,6 +9,7 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.INFER_TYPE
 import com.lagradost.cloudstream3.utils.M3u8Helper
 import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.utils.newExtractorLink
 import org.json.JSONObject
 import java.net.URI
 
@@ -35,7 +36,6 @@ open class Hownetwork : ExtractorApi() {
         val apiHost = "https://$host"
         val id = url.substringAfter("id=").substringBefore("&")
         
-        // Data POST sesuai log terbaru (API2)
         val postData = mapOf(
             "r" to "https://playeriframe.sbs/",
             "d" to host
@@ -102,7 +102,6 @@ open class Turbovidhls : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        // Handle redirect berantai: playeriframe -> emturbovid -> turbovid
         var finalUrl = url
         if (url.contains("playeriframe") || url.contains("emturbovid")) {
             val response = app.get(url, referer = referer).document
@@ -112,10 +111,7 @@ open class Turbovidhls : ExtractorApi() {
             }
         }
 
-        // Request halaman asli Turbovid
         val document = app.get(finalUrl, referer = "https://playeriframe.sbs/").document
-        
-        // Cari Master M3U8 dalam script
         val script = document.select("script").find { it.data().contains("master.m3u8") }?.data()
         
         if (script != null) {
@@ -123,8 +119,8 @@ open class Turbovidhls : ExtractorApi() {
             
             if (m3u8Url != null) {
                 M3u8Helper.generateM3u8(
-                    name,
-                    m3u8Url,
+                    source = this.name,
+                    streamUrl = m3u8Url,
                     referer = "https://turbovidhls.com/", 
                     headers = mapOf(
                         "Origin" to "https://turbovidhls.com",
@@ -148,7 +144,6 @@ open class F16px : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        // Handle iframe redirect jika perlu
         val finalUrl = if (url.contains("playeriframe")) {
             val doc = app.get(url, referer = referer).document
             doc.select("iframe[src*='f16px']").attr("src").let { 
@@ -163,7 +158,6 @@ open class F16px : ExtractorApi() {
         val id = finalUrl.substringAfter("/e/").substringBefore("?")
         val apiUrl = "$mainUrl/api/videos/$id/embed/playback"
 
-        // Headers wajib berdasarkan Log
         val apiHeaders = mapOf(
             "Referer" to "$mainUrl/e/$id",
             "X-Requested-With" to "XMLHttpRequest",
@@ -187,8 +181,9 @@ open class F16px : ExtractorApi() {
                         "Referer" to "$mainUrl/",
                     )
 
+                    // PERBAIKAN: Menggunakan parameter 'source' yang benar
                     M3u8Helper.generateM3u8(
-                        name = this.name,
+                        source = this.name,
                         streamUrl = file,
                         referer = "$mainUrl/",
                         headers = videoHeaders
@@ -215,7 +210,6 @@ open class Hydrax : ExtractorApi() {
     ) {
         var targetUrl = url
         
-        // 1. Cek redirect dari playeriframe
         if (url.contains("playeriframe")) {
              val doc = app.get(url, referer = referer).document
              targetUrl = doc.select("iframe").attr("src").let {
@@ -223,17 +217,14 @@ open class Hydrax : ExtractorApi() {
              }
         }
 
-        // 2. Cek redirect dari short.icu
         if (targetUrl.contains("short.icu")) {
              targetUrl = app.get(targetUrl, referer = "https://playeriframe.sbs/").url
         }
         
         if (!targetUrl.contains("abysscdn")) return
 
-        // 3. Ambil HTML
         val response = app.get(targetUrl, referer = "https://playeriframe.sbs/").text
         
-        // 4. Cari link video (mp4/m3u8) di dalam script
         val regex = Regex("""["'](https?://[^"']+\.(?:mp4|m3u8)[^"']*)["']""")
         val matches = regex.findAll(response)
         
@@ -243,15 +234,17 @@ open class Hydrax : ExtractorApi() {
                 val isM3u8 = videoUrl.contains(".m3u8")
                 
                 if (isM3u8) {
+                    // PERBAIKAN: Menggunakan parameter 'source'
                     M3u8Helper.generateM3u8(
-                        name = this.name,
+                        source = this.name,
                         streamUrl = videoUrl,
                         referer = "https://abysscdn.com/",
                         headers = mapOf("Origin" to "https://abysscdn.com")
                     ).forEach(callback)
                 } else {
+                    // PERBAIKAN: Menggunakan newExtractorLink() alih-alih constructor
                     callback(
-                        ExtractorLink(
+                        newExtractorLink(
                             source = this.name,
                             name = this.name,
                             url = videoUrl,
