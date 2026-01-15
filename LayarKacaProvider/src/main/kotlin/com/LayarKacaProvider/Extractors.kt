@@ -8,8 +8,7 @@ import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.INFER_TYPE
 import com.lagradost.cloudstream3.utils.M3u8Helper
-import com.lagradost.cloudstream3.utils.Qualities
-import com.lagradost.cloudstream3.utils.newExtractorLink
+import com.lagradost.cloudstream3.utils.getPacked
 import org.json.JSONObject
 
 // --- Extractor Helper Classes ---
@@ -32,7 +31,6 @@ open class Hownetwork : ExtractorApi() {
             callback: (ExtractorLink) -> Unit
     ) {
         val id = url.substringAfter("id=").substringBefore("&")
-        // Default endpoint (old)
         val apiEndpoint = "$mainUrl/api.php?id=$id"
         invokeApi(url, apiEndpoint, id, referer, callback)
     }
@@ -94,7 +92,6 @@ class Cloudhownetwork : Hownetwork() {
         callback: (ExtractorLink) -> Unit
     ) {
         val id = url.substringAfter("id=").substringBefore("&")
-        // Endpoint baru untuk Cloudhownetwork (P2P)
         val apiEndpoint = "$mainUrl/api2.php?id=$id"
         invokeApi(url, apiEndpoint, id, referer, callback)
     }
@@ -110,7 +107,6 @@ class Furher2 : Filesim() {
     override var mainUrl = "723qrh1p.fun"
 }
 
-// --- UPDATE UTAMA DI SINI ---
 class Turbovidhls : ExtractorApi() {
     override val name = "Turbovidhls"
     override val mainUrl = "https://turbovidhls.com"
@@ -124,12 +120,11 @@ class Turbovidhls : ExtractorApi() {
     ) {
         val headers = mapOf(
             "User-Agent" to "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
-            "Origin" to "https://turbovidhls.com", // Safe fallback origin
+            "Origin" to "https://turbovidhls.com",
             "Sec-Ch-Ua-Mobile" to "?0",
             "Sec-Ch-Ua-Platform" to "\"Linux\""
         )
 
-        // Jika URL yang masuk sudah .m3u8 (seperti di CURL)
         if (url.contains(".m3u8")) {
             M3u8Helper.generateM3u8(
                 name,
@@ -138,10 +133,8 @@ class Turbovidhls : ExtractorApi() {
                 headers = headers
             ).forEach(callback)
         } else {
-            // Jika URL masih berupa link embed (html), kita coba ambil m3u8-nya
             try {
                 val res = app.get(url, headers = headers).text
-                // Regex mencari link .m3u8 di dalam source code halaman
                 val m3u8Link = Regex("""["']([^"']+\.m3u8[^"']*)["']""").find(res)?.groupValues?.get(1)
                 
                 if (!m3u8Link.isNullOrEmpty()) {
@@ -155,6 +148,69 @@ class Turbovidhls : ExtractorApi() {
             } catch (e: Exception) {
                 Log.e("Turbovidhls", "Error parsing embed: ${e.message}")
             }
+        }
+    }
+}
+
+// --- NEW F16PX EXTRACTOR (ATTACKING HTML SOURCE) ---
+class F16px : ExtractorApi() {
+    override val name = "F16px"
+    override val mainUrl = "https://f16px.com"
+    override val requiresReferer = true
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        try {
+            // 1. Ambil Source Code Halaman Embed
+            val response = app.get(url, referer = referer).text
+            
+            // 2. Cari kode "Packed" (eval(function(p,a,c,k,e,d)...))
+            // Ini biasanya memuat link asli tanpa perlu lewat API attest yang rumit
+            val packed = getPacked(response)
+            
+            if (packed != null) {
+                Log.d("F16px", "Packed JS found & decoded")
+                
+                // 3. Cari file .m3u8 atau .mp4 di dalam kode yang sudah di-unpack
+                val m3u8Regex = Regex("""file:\s*["']([^"']+\.m3u8[^"']*)["']""")
+                val mp4Regex = Regex("""file:\s*["']([^"']+\.mp4[^"']*)["']""")
+                
+                val m3u8Match = m3u8Regex.find(packed)?.groupValues?.get(1)
+                val mp4Match = mp4Regex.find(packed)?.groupValues?.get(1)
+
+                if (m3u8Match != null) {
+                    M3u8Helper.generateM3u8(
+                        name,
+                        m3u8Match,
+                        referer = url,
+                        headers = mapOf("Referer" to url) // Penting!
+                    ).forEach(callback)
+                } else if (mp4Match != null) {
+                    callback(
+                        ExtractorLink(
+                            name,
+                            name,
+                            mp4Match,
+                            referer = url,
+                            quality = Qualities.Unknown.value,
+                            type = INFER_TYPE
+                        )
+                    )
+                }
+            } else {
+                Log.d("F16px", "No packed JS found, trying raw regex")
+                // Fallback: Siapa tahu tidak dipacking
+                val rawLink = Regex("""["']([^"']+\.m3u8[^"']*)["']""").find(response)?.groupValues?.get(1)
+                if (rawLink != null) {
+                    M3u8Helper.generateM3u8(name, rawLink, url).forEach(callback)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("F16px", "Error: ${e.message}")
         }
     }
 }
