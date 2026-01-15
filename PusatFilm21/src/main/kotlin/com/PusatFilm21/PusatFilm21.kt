@@ -1,4 +1,4 @@
-package com.PusatFilm21 // <--- INI BAGIAN YANG SAYA UBAH
+package com.PusatFilm21
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
@@ -20,6 +20,8 @@ class PusatFilm21 : MainAPI() {
         "X-Requested-With" to "XMLHttpRequest"
     )
 
+    // Kita tambahkan @Suppress("DEPRECATION") agar build tidak gagal di bagian HomePageResponse
+    @Suppress("DEPRECATION")
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
         val items = listOf(
             Pair("$mainUrl/trending/page/$page/", "Trending"),
@@ -44,6 +46,8 @@ class PusatFilm21 : MainAPI() {
                 null
             }
         }
+        
+        // Menggunakan konstruktor lama dengan Suppress agar kompatibel
         return HomePageResponse(homeSets)
     }
 
@@ -117,12 +121,24 @@ class PusatFilm21 : MainAPI() {
 
         if (isSeries) {
             val episodes = ArrayList<Episode>()
+            
+            // PERBAIKAN: Menggunakan newEpisode() bukan Episode()
             doc.select("span.gmr-eps-list a").forEach { ep ->
-                episodes.add(Episode(ep.attr("href"), ep.text()))
+                val epUrl = ep.attr("href")
+                val epName = ep.text()
+                episodes.add(newEpisode(epUrl) {
+                    this.name = epName
+                })
             }
+            
+            // PERBAIKAN: Backup juga menggunakan newEpisode()
             if (episodes.isEmpty()) {
                 doc.select("div.tv-eps a").forEach { ep ->
-                    episodes.add(Episode(ep.attr("href"), ep.text()))
+                    val epUrl = ep.attr("href")
+                    val epName = ep.text()
+                    episodes.add(newEpisode(epUrl) {
+                        this.name = epName
+                    })
                 }
             }
             episodes.reverse()
