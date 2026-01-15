@@ -12,13 +12,95 @@ import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import org.json.JSONObject
 
-// Extractor Generik
-class Co4nxtrl : Filesim() {
-    override val mainUrl = "https://co4nxtrl.com"
-    override val name = "Co4nxtrl"
+// ==========================================
+// UPDATE: P2P / CLOUD HOWNETWORK (API2.PHP)
+// ==========================================
+class Cloudhownetwork : ExtractorApi() {
+    override val name = "CloudHownetwork"
+    override val mainUrl = "https://cloud.hownetwork.xyz"
     override val requiresReferer = true
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        // url input example: https://cloud.hownetwork.xyz/video.php?id=KA07...
+        val id = url.substringAfter("id=").substringBefore("&")
+        
+        // Headers sesuai data Curl Anda
+        val headers = mapOf(
+            "Origin" to mainUrl,
+            "Referer" to url, // Referer saat request API adalah halaman video.php
+            "User-Agent" to "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
+            "X-Requested-With" to "XMLHttpRequest" // Biasanya diperlukan
+        )
+
+        // Data Body sesuai Curl
+        // 'r' dalam data curl Anda adalah "https://playeriframe.sbs/"
+        // Kita gunakan referer yang dipassing jika ada, atau default ke playeriframe
+        val rParam = if (referer != null && referer.contains("http")) referer else "https://playeriframe.sbs/"
+        
+        val postData = mapOf(
+            "r" to rParam,
+            "d" to "cloud.hownetwork.xyz"
+        )
+
+        try {
+            // Perhatikan: Menggunakan api2.php sesuai temuan baru
+            val response = app.post(
+                "$mainUrl/api2.php?id=$id",
+                headers = headers,
+                data = postData
+            ).text
+
+            val json = JSONObject(response)
+            val file = json.optString("file")
+            
+            // Log untuk debug
+            Log.d("CloudHownetwork", "Response: $response")
+
+            if (file.isNotBlank() && file != "null") {
+                
+                // M3U8 Helper untuk generate quality list (360, 480, 720, 1080)
+                val playlist = M3u8Helper.generateM3u8(
+                    source = this.name,
+                    streamUrl = file,
+                    referer = url, // Referer file m3u8 biasanya sama dengan referer API
+                    headers = headers
+                )
+
+                if (playlist.isNotEmpty()) {
+                    playlist.forEach(callback)
+                } else {
+                    // Fallback jika generateM3u8 gagal, kirim raw link
+                    callback(
+                        newExtractorLink(
+                            source = this.name,
+                            name = this.name,
+                            url = file,
+                            type = INFER_TYPE
+                        ).apply {
+                            this.headers = headers
+                            this.referer = url
+                            this.quality = Qualities.Unknown.value
+                        }
+                    )
+                }
+            } else {
+                 Log.e("CloudHownetwork", "File not found in API response")
+            }
+        } catch (e: Exception) {
+            Log.e("CloudHownetwork", "Error: ${e.message}")
+        }
+    }
 }
 
+// ==========================================
+// EXTRACTOR LAMA (Hownetwork Biasa)
+// Biarkan jika masih ada link lama yang pakai api.php
+// ==========================================
 open class Hownetwork : ExtractorApi() {
     override val name = "Hownetwork"
     override val mainUrl = "https://stream.hownetwork.xyz"
@@ -30,77 +112,38 @@ open class Hownetwork : ExtractorApi() {
             subtitleCallback: (SubtitleFile) -> Unit,
             callback: (ExtractorLink) -> Unit
     ) {
-        // Membersihkan ID dari URL
         val id = url.substringAfter("id=").substringBefore("&")
-        
-        // Request API
         val response = app.post(
-                "$mainUrl/api.php?id=$id",
+                "$mainUrl/api.php?id=$id", // Masih pakai api.php lama
                 data = mapOf(
                         "r" to (referer ?: ""),
                         "d" to mainUrl,
                 ),
                 referer = url,
-                headers = mapOf(
-                        "X-Requested-With" to "XMLHttpRequest"
-                )
+                headers = mapOf("X-Requested-With" to "XMLHttpRequest")
         ).text
 
         try {
             val json = JSONObject(response)
             val file = json.optString("file")
-            
             if (file.isNotBlank() && file != "null") {
-                Log.d("Phisher-Success", "File Found: $file")
-                
-                val properReferer = url 
-                
-                val headers = mapOf(
-                    "Origin" to mainUrl,
-                    "Referer" to properReferer,
-                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                )
-
-                // Coba generate M3U8 standar
-                val playlist = M3u8Helper.generateM3u8(
+                M3u8Helper.generateM3u8(
                     source = this.name,
                     streamUrl = file,
-                    referer = properReferer,
-                    headers = headers
-                )
-
-                if (playlist.isNotEmpty()) {
-                    playlist.forEach(callback)
-                } else {
-                    // Fallback: Force link masuk jika M3u8Helper gagal
-                    Log.d("Phisher-Warn", "M3u8Helper failed, forcing link: $file")
-                    
-                    // PERBAIKAN DI SINI:
-                    // referer dan quality diatur di dalam .apply {}, bukan di dalam kurung newExtractorLink()
-                    callback(
-                        newExtractorLink(
-                            source = this.name,
-                            name = this.name,
-                            url = file,
-                            type = INFER_TYPE
-                        ).apply {
-                            this.headers = headers
-                            this.referer = properReferer
-                            this.quality = Qualities.Unknown.value
-                        }
-                    )
-                }
-            } else {
-                 Log.d("Phisher-Error", "File is empty in JSON")
+                    referer = url
+                ).forEach(callback)
             }
         } catch (e: Exception) {
-            Log.e("Phisher-Error", "Json parse error: ${e.message}")
+            Log.e("Hownetwork", "Error: ${e.message}")
         }
     }
 }
 
-class Cloudhownetwork : Hownetwork() {
-    override var mainUrl = "https://cloud.hownetwork.xyz"
+// Extractor Simple Lainnya
+class Co4nxtrl : Filesim() {
+    override val mainUrl = "https://co4nxtrl.com"
+    override val name = "Co4nxtrl"
+    override val requiresReferer = true
 }
 
 class Furher : Filesim() {
