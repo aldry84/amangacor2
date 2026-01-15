@@ -156,28 +156,42 @@ class JuraganFilm : MainAPI() {
                 val iframeDoc = app.get(src, headers = iframeHeaders).document
 
                 // 1.A: Cari Link Cloudbeta (Video Utama)
-                // Biasanya ada di iframe lain dengan src mengandung 'cloudbeta' atau 'postid'
-                // Contoh dari log: juragan.info/stream/cloudbeta-tiktok.php?url=...
                 val innerIframe = iframeDoc.select("iframe[src*='cloudbeta'], iframe[src*='url=']").firstOrNull()
                 val innerSrc = innerIframe?.attr("src")
 
                 if (innerSrc != null) {
-                    // Ekstrak parameter 'url' dari link tersebut (karena link m3u8 ada di dalamnya)
                     val rawUrl = innerSrc.substringAfter("url=").substringBefore("&")
                     val decodedUrl = URLDecoder.decode(rawUrl, "UTF-8")
 
-                    // Link ini butuh Referer: https://juragan.info/
                     if (decodedUrl.contains(".m3u8")) {
-                        // FIX: Menggunakan 'source' alih-alih 'name'
+                        val videoHeaders = mapOf(
+                            "Origin" to "https://juragan.info",
+                            "Referer" to "https://juragan.info/",
+                            "User-Agent" to commonHeaders["User-Agent"]!!
+                        )
+
+                        // METODE 1: M3u8Helper (Standard)
+                        // Menggunakan 'source' (sesuai update terbaru Cloudstream)
                         M3u8Helper.generateM3u8(
-                            source = "JuraganFilm (VIP)", // <-- Ganti parameter 'name' jadi 'source'
+                            source = "JuraganFilm (VIP)", 
                             streamUrl = decodedUrl,
                             referer = "https://juragan.info/",
-                            headers = mapOf(
-                                "Origin" to "https://juragan.info",
-                                "User-Agent" to commonHeaders["User-Agent"]!!
-                            )
+                            headers = videoHeaders
                         ).forEach(callback)
+
+                        // METODE 2: Direct Fallback (Cadangan jika M3u8Helper menolak link)
+                        // Ini akan muncul sebagai "JuraganFilm (Direct)"
+                        callback.invoke(
+                            ExtractorLink(
+                                source = "JuraganFilm (Direct)",
+                                name = "JuraganFilm (Direct)",
+                                url = decodedUrl,
+                                referer = "https://juragan.info/",
+                                quality = Qualities.Unknown.value,
+                                isM3u8 = true,
+                                headers = videoHeaders
+                            )
+                        )
                     }
                 }
 
