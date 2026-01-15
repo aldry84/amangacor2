@@ -7,7 +7,7 @@ import android.content.Context
 @CloudstreamPlugin
 class PusatFilm21Plugin: Plugin() {
     override fun load(context: Context) {
-        // Register provider kita
+        // Mendaftarkan Provider PusatFilm21 agar dikenali aplikasi
         registerMainAPI(PusatFilm21())
     }
 }
