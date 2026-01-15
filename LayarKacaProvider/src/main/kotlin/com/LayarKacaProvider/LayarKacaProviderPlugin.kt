@@ -9,22 +9,22 @@ class LayarKacaProviderPlugin: BasePlugin() {
     override fun load() {
         registerMainAPI(LayarKacaProvider())
         
-        // Register Router
+        // Router Utama
         registerExtractorAPI(PlayerIframe())
         
-        // Register Server Spesifik
+        // Extractor Server Spesifik
         registerExtractorAPI(Hownetwork())
         registerExtractorAPI(Cloudhownetwork())
         registerExtractorAPI(Turbovidhls())
         registerExtractorAPI(F16px())
-        registerExtractorAPI(Hydrax())
+        registerExtractorAPI(Hydrax()) // AbyssCDN
         
-        // Server Simple
+        // Extractor Simple
         registerExtractorAPI(Co4nxtrl())
         registerExtractorAPI(Furher())
         registerExtractorAPI(Furher2())
         
-        // Bawaan
+        // Extractor Bawaan
         registerExtractorAPI(VidHidePro6())
     }
 }
