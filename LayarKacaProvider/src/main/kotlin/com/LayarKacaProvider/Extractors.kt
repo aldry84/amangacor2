@@ -5,7 +5,7 @@ import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.Qualities
-// Kita tidak pakai newExtractorLink karena parameternya bermasalah di versimu
+import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.extractors.Filesim
 
 class Co4nxtrl : Filesim() {
@@ -24,9 +24,6 @@ class Turbovidhls : ExtractorApi() {
     override val mainUrl = "https://turbovidhls.com"
     override val requiresReferer = false
 
-    // Anotasi ini memerintahkan compiler untuk mengabaikan error "Deprecated"
-    // Ini solusi paling aman karena kita tahu Constructor-nya sebenarnya ada dan valid.
-    @Suppress("DEPRECATION")
     override suspend fun getUrl(
         url: String,
         referer: String?,
@@ -52,17 +49,19 @@ class Turbovidhls : ExtractorApi() {
                 }?.trim()
 
                 if (!nextUrl.isNullOrEmpty()) {
-                    // Panggil Constructor ExtractorLink secara langsung
+                    // TEKNIK COPY:
+                    // 1. Buat link dasar pakai newExtractorLink (resmi)
+                    // 2. Gunakan .copy() untuk menyuntikkan isM3u8 dan headers
                     callback(
-                        ExtractorLink(
+                        newExtractorLink(
                             source = this.name,
                             name = this.name,
                             url = nextUrl,
                             referer = "https://turbovidthis.com/",
-                            quality = Qualities.Unknown.value,
-                            isM3u8 = true, 
-                            headers = headers,
-                            extractorData = null // Parameter opsional terakhir sesuai pesan error
+                            quality = Qualities.Unknown.value
+                        ).copy(
+                            isM3u8 = true,
+                            headers = headers
                         )
                     )
                     return
@@ -71,15 +70,15 @@ class Turbovidhls : ExtractorApi() {
 
             // 3. Fallback: Jika URL awal ternyata sudah langsung playlist video
             callback(
-                ExtractorLink(
+                newExtractorLink(
                     source = this.name,
                     name = this.name,
                     url = url,
                     referer = "https://turbovidthis.com/",
-                    quality = Qualities.Unknown.value,
-                    isM3u8 = true, 
-                    headers = headers,
-                    extractorData = null
+                    quality = Qualities.Unknown.value
+                ).copy(
+                    isM3u8 = true,
+                    headers = headers
                 )
             )
 
