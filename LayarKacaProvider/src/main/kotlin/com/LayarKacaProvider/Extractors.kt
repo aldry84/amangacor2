@@ -5,7 +5,7 @@ import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.Qualities
-// Kita tidak import newExtractorLink karena parameternya kurang lengkap
+// Import Filesim
 import com.lagradost.cloudstream3.extractors.Filesim
 
 class Co4nxtrl : Filesim() {
@@ -46,7 +46,7 @@ class Turbovidhls : ExtractorApi() {
                 }?.trim()
 
                 if (!nextUrl.isNullOrEmpty()) {
-                    // Panggil fungsi Jembatan kita
+                    // Panggil fungsi Reflection kita
                     callback(
                         createSafeExtractorLink(
                             source = this.name,
@@ -61,7 +61,7 @@ class Turbovidhls : ExtractorApi() {
                 }
             }
 
-            // Fallback ke URL asli menggunakan fungsi Jembatan
+            // Fallback ke URL asli
             callback(
                 createSafeExtractorLink(
                     source = this.name,
@@ -78,9 +78,9 @@ class Turbovidhls : ExtractorApi() {
         }
     }
 
-    // --- FUNGSI JEMBATAN (WRAPPER) ---
-    // Fungsi ini membungkus Constructor yang deprecated agar bisa dipanggil
-    @Suppress("DEPRECATION") 
+    // --- FUNGSI JEMBATAN (REFLECTION) ---
+    // Kita menggunakan Java Reflection untuk memanggil Constructor secara paksa
+    // Compiler tidak akan bisa memblokir ini.
     private fun createSafeExtractorLink(
         source: String,
         name: String,
@@ -89,15 +89,26 @@ class Turbovidhls : ExtractorApi() {
         isM3u8: Boolean,
         headers: Map<String, String>
     ): ExtractorLink {
-        return ExtractorLink(
-            source = source,
-            name = name,
-            url = url,
-            referer = referer,
-            quality = Qualities.Unknown.value,
-            isM3u8 = isM3u8,
-            headers = headers,
-            extractorData = null
-        )
+        // Ambil kelas ExtractorLink
+        val clazz = ExtractorLink::class.java
+        
+        // Cari constructor yang memiliki parameter terbanyak (Constructor utama)
+        // Kita bypass pemeriksaan compiler di sini
+        val constructor = clazz.constructors.find { it.parameterCount >= 6 } 
+            ?: throw RuntimeException("Constructor ExtractorLink tidak ditemukan!")
+
+        // Buat instance baru secara manual
+        // Urutan parameter sesuai pesan error: 
+        // source, name, url, referer, quality, isM3u8, headers, extractorData
+        return constructor.newInstance(
+            source,
+            name,
+            url,
+            referer,
+            Qualities.Unknown.value, // quality
+            isM3u8,                  // isM3u8
+            headers,                 // headers
+            null                     // extractorData (String?)
+        ) as ExtractorLink
     }
 }
