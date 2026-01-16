@@ -20,7 +20,6 @@ class CustomEmturbovid : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        // Header wajib berdasarkan data curl agar file .png terbaca sebagai video
         val headers = mapOf(
             "Origin" to "https://turbovidhls.com",
             "Referer" to "https://turbovidhls.com/",
@@ -28,35 +27,38 @@ class CustomEmturbovid : ExtractorApi() {
             "Accept" to "*/*"
         )
 
-        // Mengambil isi file m3u8 untuk pengecekan
         val response = app.get(url, headers = headers)
         val m3uData = response.text
 
-        // Logika Jump: Jika link adalah Master Playlist (tidak ada tag #EXTINF)
+        // Logika Lompat untuk Nested M3U8 (Solusi Error 3001)
         if (m3uData.contains(".m3u8") && !m3uData.contains("#EXTINF")) {
-            val actualUrl = m3uData.split("\n").firstOrNull { 
+            val nextPath = m3uData.split("\n").firstOrNull { 
                 it.contains(".m3u8") && !it.startsWith("#") 
             }?.trim()
             
-            if (actualUrl != null) {
+            if (nextPath != null) {
+                val baseUrl = url.substringBeforeLast("/")
+                val actualUrl = if (nextPath.startsWith("http")) nextPath else "$baseUrl/$nextPath"
+                
+                // PERBAIKAN: Menggunakan blok lambda untuk properti
                 callback(
-                    newExtractorLink(
-                        source = this.name,
-                        name = this.name,
-                        url = actualUrl, // Link yang berisi segmen video asli
-                        referer = "https://turbovidhls.com/",
-                        quality = Qualities.Unknown.value,
-                        isM3u8 = true,
-                        headers = headers
-                    )
+                    newExtractorLink(this.name, this.name, actualUrl) {
+                        this.headers = headers
+                        this.referer = "https://turbovidhls.com/"
+                        this.quality = Qualities.Unknown.value
+                    }
                 )
                 return
             }
         }
 
-        // Jika link sudah berupa playlist langsung (seperti kategori Series)
+        // Link normal (Series)
         callback(
-            newExtractorLink(this.name, this.name, url, "https://turbovidhls.com/", Qualities.Unknown.value, true, headers)
+            newExtractorLink(this.name, this.name, url) {
+                this.headers = headers
+                this.referer = "https://turbovidhls.com/"
+                this.quality = Qualities.Unknown.value
+            }
         )
     }
 }
@@ -101,15 +103,24 @@ class Turbovidhls : ExtractorApi() {
             
             if (variantPath != null) {
                 val finalVariantUrl = if (variantPath.startsWith("http")) variantPath else "$baseUrl/$variantPath"
+                
                 callback(
-                    newExtractorLink(this.name, this.name, finalVariantUrl, "https://turbovidhls.com/", Qualities.Unknown.value, true, headers)
+                    newExtractorLink(this.name, this.name, finalVariantUrl) {
+                        this.headers = headers
+                        this.referer = "https://turbovidhls.com/"
+                        this.quality = Qualities.Unknown.value
+                    }
                 )
                 return
             }
         }
 
         callback(
-            newExtractorLink(this.name, this.name, url, "https://turbovidhls.com/", Qualities.Unknown.value, true, headers)
+            newExtractorLink(this.name, this.name, url) {
+                this.headers = headers
+                this.referer = "https://turbovidhls.com/"
+                this.quality = Qualities.Unknown.value
+            }
         )
     }
 }
