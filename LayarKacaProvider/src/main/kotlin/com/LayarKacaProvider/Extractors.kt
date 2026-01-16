@@ -1,4 +1,4 @@
-@file:Suppress("DEPRECATION") // <-- INI KUNCINYA. Baris ini wajib ada paling atas!
+@file:Suppress("DEPRECATION") 
 
 package com.layarKacaProvider
 
@@ -7,7 +7,6 @@ import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.Qualities
-// Hapus import newExtractorLink karena kita pakai Constructor langsung
 import com.lagradost.cloudstream3.extractors.Filesim
 
 class Co4nxtrl : Filesim() {
@@ -32,27 +31,21 @@ class Turbovidhls : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        // Header disesuaikan dengan hasil CURL yang berhasil
         val headers = mapOf(
             "User-Agent" to "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
             "Accept" to "*/*"
         )
 
         try {
-            // 1. Ambil konten dari URL awal (M3U8 Level 1)
             val response = app.get(url, headers = headers)
             val responseText = response.text
 
-            // 2. Cek apakah ini Playlist yang merujuk ke Playlist lain (Master Playlist)
             if (responseText.contains("#EXT-X-STREAM-INF") && responseText.contains("http")) {
-                
-                // Cari baris yang berisi URL http (biasanya master.m3u8)
                 val nextUrl = responseText.split('\n').firstOrNull { 
                     it.trim().startsWith("http") && it.contains(".m3u8") 
                 }?.trim()
 
                 if (!nextUrl.isNullOrEmpty()) {
-                    // MENGGUNAKAN CONSTRUCTOR DENGAN SUPPRESS DEPRECATION
                     callback(
                         ExtractorLink(
                             source = this.name,
@@ -60,7 +53,7 @@ class Turbovidhls : ExtractorApi() {
                             url = nextUrl,
                             referer = "https://turbovidthis.com/",
                             quality = Qualities.Unknown.value,
-                            isM3u8 = true, 
+                            isM3u8 = true,
                             headers = headers,
                             extractorData = null
                         )
@@ -69,7 +62,6 @@ class Turbovidhls : ExtractorApi() {
                 }
             }
 
-            // 3. Fallback: Jika URL awal ternyata sudah langsung playlist video
             callback(
                 ExtractorLink(
                     source = this.name,
@@ -77,7 +69,7 @@ class Turbovidhls : ExtractorApi() {
                     url = url,
                     referer = "https://turbovidthis.com/",
                     quality = Qualities.Unknown.value,
-                    isM3u8 = true, 
+                    isM3u8 = true,
                     headers = headers,
                     extractorData = null
                 )
