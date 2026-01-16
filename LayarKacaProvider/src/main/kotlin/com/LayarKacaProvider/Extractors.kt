@@ -1,5 +1,3 @@
-@file:Suppress("DEPRECATION") 
-
 package com.layarKacaProvider
 
 import com.lagradost.cloudstream3.SubtitleFile
@@ -39,54 +37,48 @@ class Turbovidhls : ExtractorApi() {
             "Accept" to "*/*"
         )
 
-        try {
-            val response = app.get(url, headers = headers)
-            val m3uData = response.text
-            val baseUrl = url.substringBeforeLast("/")
+        // Ambil isi M3U8 untuk deteksi Variant
+        val response = app.get(url, headers = headers)
+        val m3uData = response.text
+        val baseUrl = url.substringBeforeLast("/")
 
-            // Cek apakah ini Master Playlist (Nested M3U8)
-            if (m3uData.contains(".m3u8") && !m3uData.contains("#EXTINF")) {
-                val variantPath = m3uData.lines().firstOrNull { 
-                    it.trim().endsWith(".m3u8") && !it.startsWith("#") 
-                }?.trim()
+        // Jika ini adalah Master Playlist yang merujuk ke Playlist lain (Nested M3U8)
+        if (m3uData.contains(".m3u8") && !m3uData.contains("#EXTINF")) {
+            val variantPath = m3uData.split("\n").firstOrNull { 
+                it.contains(".m3u8") && !it.trim().startsWith("#") 
+            }?.trim()
+            
+            if (variantPath != null) {
+                val finalVariantUrl = if (variantPath.startsWith("http")) variantPath else "$baseUrl/$variantPath"
                 
-                if (variantPath != null) {
-                    val finalVariantUrl = if (variantPath.startsWith("http")) variantPath else "$baseUrl/$variantPath"
-                    
-                    // MENGGUNAKAN POSITIONAL ARGUMENTS (Urutan Standar)
-                    // newExtractorLink(source, name, url, referer, quality, isM3u8, headers, extractorData)
-                    callback(
-                        newExtractorLink(
-                            this.name,                 // source
-                            this.name,                 // name
-                            finalVariantUrl,           // url
-                            "https://turbovidhls.com/", // referer
-                            Qualities.Unknown.value,   // quality
-                            true,                      // isM3u8 (true)
-                            headers,                   // headers
-                            null                       // extractorData
-                        )
-                    )
-                    return
-                }
-            }
-
-            // Link Final - Positional Arguments
-            callback(
-                newExtractorLink(
-                    this.name,                 // source
-                    this.name,                 // name
-                    url,                       // url
-                    "https://turbovidhls.com/", // referer
-                    Qualities.Unknown.value,   // quality
-                    true,                      // isM3u8
-                    headers,                   // headers
-                    null                       // extractorData
+                callback(
+                    newExtractorLink(
+                        source = this.name,
+                        name = this.name,
+                        url = finalVariantUrl,
+                        referer = "https://turbovidhls.com/",
+                        quality = Qualities.Unknown.value,
+                        isM3u8 = true // PENTING: Menandakan ini stream HLS
+                    ).apply {
+                        this.headers = headers
+                    }
                 )
-            )
-
-        } catch (e: Exception) {
-            e.printStackTrace()
+                return
+            }
         }
+
+        // Link Final
+        callback(
+            newExtractorLink(
+                source = this.name,
+                name = this.name,
+                url = url,
+                referer = "https://turbovidhls.com/",
+                quality = Qualities.Unknown.value,
+                isM3u8 = true // PENTING: Menandakan ini stream HLS
+            ).apply {
+                this.headers = headers
+            }
+        )
     }
 }
