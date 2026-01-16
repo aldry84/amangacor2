@@ -1,11 +1,11 @@
 package com.layarKacaProvider
 
 import com.lagradost.cloudstream3.SubtitleFile
-import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.INFER_TYPE
 import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.extractors.Filesim
 
 class Co4nxtrl : Filesim() {
@@ -30,7 +30,6 @@ class Turbovidhls : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        // Headers wajib dari analisa curl kamu
         val headers = mapOf(
             "Origin" to "https://turbovidhls.com",
             "Referer" to "https://turbovidhls.com/",
@@ -38,19 +37,18 @@ class Turbovidhls : ExtractorApi() {
             "Accept" to "*/*"
         )
 
-        // Kita kirim link ke callback. 
-        // Cloudstream akan menangani playlist M3U8 dan melampirkan header ini 
-        // ke setiap segmen .png secara otomatis.
+        // PERBAIKAN: Gunakan blok {} untuk referer, quality, dan headers
         callback(
-            ExtractorLink(
+            newExtractorLink(
                 source = this.name,
                 name = this.name,
                 url = url,
-                referer = "https://turbovidhls.com/",
-                quality = Qualities.Unknown.value,
-                type = INFER_TYPE, 
-                headers = headers
-            )
+                type = INFER_TYPE,
+            ).apply {
+                this.headers = headers
+                this.referer = "https://turbovidhls.com/"
+                this.quality = Qualities.Unknown.value
+            }
         )
     }
 }
