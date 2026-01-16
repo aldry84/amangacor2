@@ -8,6 +8,58 @@ import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.extractors.Filesim
 
+// Extractor Kustom untuk menangani Error 3001 di Movie
+class CustomEmturbovid : ExtractorApi() {
+    override val name = "Emturbovid"
+    override val mainUrl = "https://turboviplay.com"
+    override val requiresReferer = true
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        // Header wajib dari data curl untuk menembus proteksi file .png
+        val headers = mapOf(
+            "Origin" to "https://turbovidhls.com",
+            "Referer" to "https://turbovidhls.com/",
+            "User-Agent" to "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
+            "Accept" to "*/*"
+        )
+
+        val response = app.get(url, headers = headers)
+        val m3uData = response.text
+
+        // Logika Jump: Jika Master Playlist tidak punya tag #EXTINF (ciri khas Movie yang Error)
+        if (m3uData.contains(".m3u8") && !m3uData.contains("#EXTINF")) {
+            val actualUrl = m3uData.split("\n").firstOrNull { 
+                it.contains(".m3u8") && !it.startsWith("#") 
+            }?.trim()
+            
+            if (actualUrl != null) {
+                callback(
+                    newExtractorLink(
+                        source = this.name,
+                        name = this.name,
+                        url = actualUrl, // Link video asli yang berisi segmen 0x47
+                        referer = "https://turbovidhls.com/",
+                        quality = Qualities.Unknown.value,
+                        isM3u8 = true,
+                        headers = headers
+                    )
+                )
+                return
+            }
+        }
+
+        // Jika link sudah berupa Variant Playlist (seperti di Series)
+        callback(
+            newExtractorLink(this.name, this.name, url, "https://turbovidhls.com/", Qualities.Unknown.value, true, headers)
+        )
+    }
+}
+
 class Co4nxtrl : Filesim() {
     override val mainUrl = "https://co4nxtrl.com"
     override val name = "Co4nxtrl"
@@ -37,12 +89,10 @@ class Turbovidhls : ExtractorApi() {
             "Accept" to "*/*"
         )
 
-        // Ambil isi M3U8 untuk deteksi Variant (Penyebab error 5 detik di Movie)
         val response = app.get(url, headers = headers)
         val m3uData = response.text
         val baseUrl = url.substringBeforeLast("/")
 
-        // Jika ini adalah Master Playlist yang merujuk ke Playlist lain (Nested M3U8)
         if (m3uData.contains(".m3u8") && !m3uData.contains("#EXTINF")) {
             val variantPath = m3uData.split("\n").firstOrNull { 
                 it.contains(".m3u8") && !it.startsWith("#") 
@@ -50,33 +100,15 @@ class Turbovidhls : ExtractorApi() {
             
             if (variantPath != null) {
                 val finalVariantUrl = if (variantPath.startsWith("http")) variantPath else "$baseUrl/$variantPath"
-                
                 callback(
-                    newExtractorLink(
-                        source = this.name,
-                        name = this.name,
-                        url = finalVariantUrl
-                    ).apply {
-                        this.headers = headers
-                        this.referer = "https://turbovidhls.com/"
-                        this.quality = Qualities.Unknown.value
-                    }
+                    newExtractorLink(this.name, this.name, finalVariantUrl, "https://turbovidhls.com/", Qualities.Unknown.value, true, headers)
                 )
                 return
             }
         }
 
-        // Link Final dengan header wajib
         callback(
-            newExtractorLink(
-                source = this.name,
-                name = this.name,
-                url = url
-            ).apply {
-                this.headers = headers
-                this.referer = "https://turbovidhls.com/"
-                this.quality = Qualities.Unknown.value
-            }
+            newExtractorLink(this.name, this.name, url, "https://turbovidhls.com/", Qualities.Unknown.value, true, headers)
         )
     }
 }
