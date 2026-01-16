@@ -44,20 +44,19 @@ class Turbovidhls : ExtractorApi() {
 
         // Jika ini Master Playlist (Nested)
         if (m3uData.contains(".m3u8") && !m3uData.contains("#EXTINF")) {
-            // Gunakan Regex agar lebih aman daripada split manual
+            // Gunakan Regex agar lebih aman
             val variantUrl = Regex("""(https?://.*\.m3u8|.*\.m3u8)""")
                 .find(m3uData)?.value
 
             if (variantUrl != null) {
-                // Perbaikan penggabungan URL Relatif vs Absolut yang aman
+                // Perbaikan penggabungan URL
                 val finalVariantUrl = if (variantUrl.startsWith("http")) {
                     variantUrl
                 } else {
-                    // Resolve relative URL terhadap URL induk
                     try {
                         URI(url).resolve(variantUrl).toString()
                     } catch (e: Exception) {
-                        "$mainUrl/$variantUrl" // Fallback manual
+                        "$mainUrl/$variantUrl"
                     }
                 }
                 
@@ -65,11 +64,11 @@ class Turbovidhls : ExtractorApi() {
                     newExtractorLink(
                         source = this.name,
                         name = this.name,
-                        url = finalVariantUrl,
-                        referer = "https://turbovidhls.com/",
-                        quality = Qualities.Unknown.value
+                        url = finalVariantUrl
                     ).apply {
                         this.headers = headers
+                        this.referer = "https://turbovidhls.com/"
+                        this.quality = Qualities.Unknown.value
                     }
                 )
                 return
@@ -81,11 +80,11 @@ class Turbovidhls : ExtractorApi() {
             newExtractorLink(
                 source = this.name,
                 name = this.name,
-                url = url,
-                referer = "https://turbovidhls.com/",
-                quality = Qualities.Unknown.value
+                url = url
             ).apply {
                 this.headers = headers
+                this.referer = "https://turbovidhls.com/"
+                this.quality = Qualities.Unknown.value
             }
         )
     }
