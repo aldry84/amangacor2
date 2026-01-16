@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION") // <- INI KUNCINYA. Membungkam error deprecated satu file penuh.
+
 package com.layarKacaProvider
 
 import com.lagradost.cloudstream3.SubtitleFile
@@ -50,34 +52,39 @@ class Turbovidhls : ExtractorApi() {
                 if (variantPath != null) {
                     val finalVariantUrl = if (variantPath.startsWith("http")) variantPath else "$baseUrl/$variantPath"
                     
-                    // Panggil fungsi helper buatan kita
-                    callback(createM3u8Link(this.name, finalVariantUrl, headers))
+                    // Kita pakai Constructor manual karena helper bawaan tidak support isM3u8
+                    callback(
+                        ExtractorLink(
+                            source = this.name,
+                            name = this.name,
+                            url = finalVariantUrl,
+                            referer = "https://turbovidhls.com/",
+                            quality = Qualities.Unknown.value,
+                            isM3u8 = true, 
+                            headers = headers,
+                            extractorData = null
+                        )
+                    )
                     return
                 }
             }
 
-            // Link Final - Panggil fungsi helper buatan kita
-            callback(createM3u8Link(this.name, url, headers))
+            // Link Final
+            callback(
+                ExtractorLink(
+                    source = this.name,
+                    name = this.name,
+                    url = url,
+                    referer = "https://turbovidhls.com/",
+                    quality = Qualities.Unknown.value,
+                    isM3u8 = true, 
+                    headers = headers,
+                    extractorData = null
+                )
+            )
 
         } catch (e: Exception) {
             e.printStackTrace()
         }
-    }
-
-    // --- FUNGSI HELPER (SOLUSI ERROR) ---
-    // Kita menaruh @Suppress di sini agar berlaku untuk seluruh blok fungsi ini.
-    // Ini membungkus constructor yang deprecated supaya bisa dipakai dengan aman.
-    @Suppress("DEPRECATION")
-    private fun createM3u8Link(sourceName: String, linkUrl: String, linkHeaders: Map<String, String>): ExtractorLink {
-        return ExtractorLink(
-            source = sourceName,
-            name = sourceName,
-            url = linkUrl,
-            referer = "https://turbovidhls.com/",
-            quality = Qualities.Unknown.value,
-            isM3u8 = true,
-            headers = linkHeaders,
-            extractorData = null
-        )
     }
 }
