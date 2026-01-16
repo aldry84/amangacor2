@@ -4,7 +4,6 @@ import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.INFER_TYPE
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.extractors.Filesim
@@ -38,47 +37,46 @@ class Turbovidhls : ExtractorApi() {
             "Accept" to "*/*"
         )
 
-        // 1. Ambil isi M3U8 untuk di-analisa
+        // Ambil isi M3U8 untuk deteksi Variant (Penyebab error 5 detik di Movie)
         val response = app.get(url, headers = headers)
-        var m3uData = response.text
+        val m3uData = response.text
         val baseUrl = url.substringBeforeLast("/")
 
-        // 2. LOGIKA FIXER: Ubah segmen .png menjadi URL absolut agar header tidak lepas
-        // Dan tipu player dengan mengganti .png menjadi .ts agar decoder video tidak error
-        if (m3uData.contains(".png")) {
-            m3uData = m3uData.replace(".png", ".png#index.ts") // Trik untuk memaksa player baca sebagai TS
-        }
-
-        // 3. Jika M3U8 merujuk ke M3U8 lain (Nested), kita ambil yang terdalam
+        // Jika ini adalah Master Playlist yang merujuk ke Playlist lain (Nested M3U8)
         if (m3uData.contains(".m3u8") && !m3uData.contains("#EXTINF")) {
-            val variantPath = m3uData.split("\n").firstOrNull { it.contains(".m3u8") && !it.startsWith("#") }?.trim()
+            val variantPath = m3uData.split("\n").firstOrNull { 
+                it.contains(".m3u8") && !it.startsWith("#") 
+            }?.trim()
+            
             if (variantPath != null) {
                 val finalVariantUrl = if (variantPath.startsWith("http")) variantPath else "$baseUrl/$variantPath"
                 
                 callback(
                     newExtractorLink(
-                        this.name,
-                        this.name,
-                        finalVariantUrl,
-                        "https://turbovidhls.com/",
-                        Qualities.Unknown.value,
-                        type = INFER_TYPE
-                    ).apply { this.headers = headers }
+                        source = this.name,
+                        name = this.name,
+                        url = finalVariantUrl
+                    ).apply {
+                        this.headers = headers
+                        this.referer = "https://turbovidhls.com/"
+                        this.quality = Qualities.Unknown.value
+                    }
                 )
                 return
             }
         }
 
-        // 4. Kirim link original dengan header ketat jika sudah benar
+        // Link Final dengan header wajib
         callback(
             newExtractorLink(
-                this.name,
-                this.name,
-                url,
-                "https://turbovidhls.com/",
-                Qualities.Unknown.value,
-                type = INFER_TYPE
-            ).apply { this.headers = headers }
+                source = this.name,
+                name = this.name,
+                url = url
+            ).apply {
+                this.headers = headers
+                this.referer = "https://turbovidhls.com/"
+                this.quality = Qualities.Unknown.value
+            }
         )
     }
 }
