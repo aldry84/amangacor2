@@ -1,6 +1,5 @@
 package com.layarKacaProvider
 
-import com.lagradost.cloudstream3.extractors.EmturbovidExtractor
 import com.lagradost.cloudstream3.extractors.VidHidePro6
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.BasePlugin
@@ -8,11 +7,11 @@ import com.lagradost.cloudstream3.plugins.BasePlugin
 @CloudstreamPlugin
 class LayarKacaProviderPlugin: BasePlugin() {
     override fun load() {
-        // Daftarkan Provider Utama
         registerMainAPI(LayarKacaProvider())
         
-        // Daftarkan Extractor yang ada di Extractors.kt
-        registerExtractorAPI(EmturbovidExtractor())
+        // Menggunakan extractor kustom untuk menangani proteksi m3u8 bertingkat
+        registerExtractorAPI(CustomEmturbovid())
+        
         registerExtractorAPI(Furher())
         registerExtractorAPI(Turbovidhls())
         registerExtractorAPI(VidHidePro6())
