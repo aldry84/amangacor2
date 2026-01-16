@@ -11,7 +11,7 @@ class LayarKacaProviderPlugin: BasePlugin() {
         // Daftarkan Provider Utama
         registerMainAPI(LayarKacaProvider())
         
-        // Daftarkan Extractor (Hanya panggil namanya, jangan buat class di sini!)
+        // Daftarkan Extractor yang ada di Extractors.kt
         registerExtractorAPI(EmturbovidExtractor())
         registerExtractorAPI(Furher())
         registerExtractorAPI(Turbovidhls())
