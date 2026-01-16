@@ -117,7 +117,7 @@ class LayarKacaProvider : MainAPI() {
         var document = response.documentLarge
         var finalUrl = response.url 
         
-        // Deteksi halaman redirect manual (interstitial page)
+        // Cek halaman dialihkan ke (Logika Aslimu)
         val bodyText = document.body().text()
         if (bodyText.contains("dialihkan ke", ignoreCase = true) || bodyText.contains("Nontondrama", ignoreCase = true)) {
             val redirectLink = document.select("a").firstOrNull { 
@@ -182,9 +182,7 @@ class LayarKacaProvider : MainAPI() {
             } else {
                 document.select("ul.episodios li a, div.list-episode a, a[href*=episode]").forEach { 
                     val epHref = fixUrl(it.attr("href"))
-                    if(epHref.contains(baseurl) || epHref.contains("episode")) {
-                        episodes.add(newEpisode(epHref) { this.name = it.text().trim() })
-                    }
+                    episodes.add(newEpisode(epHref) { this.name = it.text().trim() })
                 }
             }
 
@@ -233,21 +231,27 @@ class LayarKacaProvider : MainAPI() {
 
     private suspend fun String.getIframe(referer: String): String {
         val response = app.get(this, referer = referer)
+        val document = response.documentLarge
         val responseText = response.text
 
-        // Regex untuk menangkap link master m3u8 atau domain Turbovid
-        val regex = """["'](https?://[^"']+)["']""".toRegex()
-        val foundLinks = regex.findAll(responseText).map { it.groupValues[1] }.toList()
-        
-        // Filter: Hapus hownetwork, prioritaskan master.m3u8 dan domain Turbovid
-        var src = foundLinks.firstOrNull { link -> 
-            !link.contains(".js") && !link.contains(".css") && !link.contains(".png") &&
-            (link.contains("master.m3u8") || link.contains("turbosplayer") || 
-             link.contains("turboviplay") || link.contains("streaming"))
-        }
+        // Mencari iframe secara eksplisit dulu (Cara aslimu)
+        var src = document.selectFirst("div.embed-container iframe")?.attr("src")
 
         if (src.isNullOrEmpty()) {
-            src = response.documentLarge.selectFirst("div.embed-container iframe, iframe[src^=http]")?.attr("src")
+            src = document.selectFirst("iframe[src^=http]")?.attr("src")
+        }
+
+        // Jika gagal, baru gunakan regex (Hownetwork dihapus, Turbovid ditambahkan)
+        if (src.isNullOrEmpty()) {
+            val regex = """["'](https?://[^"']+)["']""".toRegex()
+            val foundLinks = regex.findAll(responseText).map { it.groupValues[1] }.toList()
+            
+            src = foundLinks.firstOrNull { link -> 
+                !link.contains(".js") && !link.contains(".css") && 
+                !link.contains(".png") && !link.contains(".jpg") &&
+                (link.contains("embed") || link.contains("player") || 
+                 link.contains("streaming") || link.contains("turbov") || link.contains("turbos"))
+            }
         }
 
         return fixUrl(src ?: "")
