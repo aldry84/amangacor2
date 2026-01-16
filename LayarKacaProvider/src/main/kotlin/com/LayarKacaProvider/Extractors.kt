@@ -5,6 +5,7 @@ import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.Qualities
+// import newExtractorLink tidak diperlukan jika kita menggunakan constructor langsung
 import com.lagradost.cloudstream3.extractors.Filesim
 
 class Co4nxtrl : Filesim() {
@@ -23,6 +24,8 @@ class Turbovidhls : ExtractorApi() {
     override val mainUrl = "https://turbovidhls.com"
     override val requiresReferer = true
 
+    // Anotasi ini memerintahkan compiler untuk mengabaikan peringatan "Deprecated"
+    @Suppress("DEPRECATION") 
     override suspend fun getUrl(
         url: String,
         referer: String?,
@@ -58,7 +61,8 @@ class Turbovidhls : ExtractorApi() {
                             referer = "https://turbovidhls.com/",
                             quality = Qualities.Unknown.value,
                             isM3u8 = true,
-                            headers = headers
+                            headers = headers,
+                            extractorData = null
                         )
                     )
                     return
@@ -74,7 +78,8 @@ class Turbovidhls : ExtractorApi() {
                     referer = "https://turbovidhls.com/",
                     quality = Qualities.Unknown.value,
                     isM3u8 = true,
-                    headers = headers
+                    headers = headers,
+                    extractorData = null
                 )
             )
         } catch (e: Exception) {
