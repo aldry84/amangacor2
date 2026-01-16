@@ -7,11 +7,13 @@ import com.lagradost.cloudstream3.plugins.BasePlugin
 @CloudstreamPlugin
 class LayarKacaProviderPlugin: BasePlugin() {
     override fun load() {
-        // Daftarkan Provider Utama
         registerMainAPI(LayarKacaProvider())
         
-        // Menggunakan extractor kustom yang sudah diperbaiki
-        registerExtractorAPI(CustomEmturbovid())
+        // Daftarkan Extractor kustom untuk domain Movie & Series
+        registerExtractorAPI(CustomEmturbovid()) 
+        registerExtractorAPI(object : CustomEmturbovid() { 
+            override val mainUrl = "https://turboviplay.com" 
+        })
         
         registerExtractorAPI(Furher())
         registerExtractorAPI(Turbovidhls())
