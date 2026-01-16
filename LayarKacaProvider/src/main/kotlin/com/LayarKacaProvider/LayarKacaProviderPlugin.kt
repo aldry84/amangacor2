@@ -10,7 +10,7 @@ class LayarKacaProviderPlugin: BasePlugin() {
         // Daftarkan Provider Utama
         registerMainAPI(LayarKacaProvider())
         
-        // Menggunakan extractor kustom untuk menangani Error 3001
+        // Menggunakan extractor kustom yang sudah diperbaiki
         registerExtractorAPI(CustomEmturbovid())
         
         registerExtractorAPI(Furher())
