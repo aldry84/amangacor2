@@ -1,73 +1,106 @@
 package com.layarKacaProvider
 
+import com.lagradost.api.Log
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
+import com.lagradost.cloudstream3.extractors.Filesim
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.INFER_TYPE
+import com.lagradost.cloudstream3.utils.M3u8Helper
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.newExtractorLink
-import com.lagradost.cloudstream3.extractors.Filesim
+import org.json.JSONObject
 
-// Tambahkan kata kunci 'open' agar bisa di-extend di Plugin
-open class CustomEmturbovid : ExtractorApi() {
-    override val name = "Emturbovid"
-    override val mainUrl = "https://emturbovid.com" 
-    override val requiresReferer = true
-
-    override suspend fun getUrl(
-        url: String,
-        referer: String?,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ) {
-        val headers = mapOf(
-            "Origin" to "https://turbovidhls.com",
-            "Referer" to "https://turbovidhls.com/",
-            "User-Agent" to "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
-            "Accept" to "*/*"
-        )
-
-        val response = app.get(url, headers = headers)
-        val m3uData = response.text
-
-        // Logika Lompat untuk Nested M3U8 (Solusi Error 3001 di Movie)
-        if (m3uData.contains(".m3u8") && !m3uData.contains("#EXTINF")) {
-            val nextPath = m3uData.split("\n").firstOrNull { 
-                it.contains(".m3u8") && !it.startsWith("#") 
-            }?.trim()
-            
-            if (nextPath != null) {
-                val baseUrl = url.substringBeforeLast("/")
-                val actualUrl = if (nextPath.startsWith("http")) nextPath else "$baseUrl/$nextPath"
-                
-                callback(
-                    newExtractorLink(this.name, this.name, actualUrl) {
-                        this.headers = headers
-                        this.referer = "https://turbovidhls.com/"
-                        this.quality = Qualities.Unknown.value
-                    }
-                )
-                return
-            }
-        }
-
-        // Link m3u8 langsung atau segmen .png
-        if (m3uData.contains("#EXTM3U") || url.contains(".m3u8")) {
-            callback(
-                newExtractorLink(this.name, this.name, url) {
-                    this.headers = headers
-                    this.referer = "https://turbovidhls.com/"
-                    this.quality = Qualities.Unknown.value
-                }
-            )
-        }
-    }
-}
-
+// Extractor Generik
 class Co4nxtrl : Filesim() {
     override val mainUrl = "https://co4nxtrl.com"
     override val name = "Co4nxtrl"
     override val requiresReferer = true
+}
+
+open class Hownetwork : ExtractorApi() {
+    override val name = "Hownetwork"
+    override val mainUrl = "https://stream.hownetwork.xyz"
+    override val requiresReferer = true
+
+    override suspend fun getUrl(
+            url: String,
+            referer: String?,
+            subtitleCallback: (SubtitleFile) -> Unit,
+            callback: (ExtractorLink) -> Unit
+    ) {
+        // Membersihkan ID dari URL
+        val id = url.substringAfter("id=").substringBefore("&")
+        
+        // Request API
+        val response = app.post(
+                "$mainUrl/api.php?id=$id",
+                data = mapOf(
+                        "r" to (referer ?: ""),
+                        "d" to mainUrl,
+                ),
+                referer = url,
+                headers = mapOf(
+                        "X-Requested-With" to "XMLHttpRequest"
+                )
+        ).text
+
+        try {
+            val json = JSONObject(response)
+            val file = json.optString("file")
+            
+            if (file.isNotBlank() && file != "null") {
+                Log.d("Phisher-Success", "File Found: $file")
+                
+                val properReferer = url 
+                
+                val headers = mapOf(
+                    "Origin" to mainUrl,
+                    "Referer" to properReferer,
+                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                )
+
+                // Coba generate M3U8 standar
+                val playlist = M3u8Helper.generateM3u8(
+                    source = this.name,
+                    streamUrl = file,
+                    referer = properReferer,
+                    headers = headers
+                )
+
+                if (playlist.isNotEmpty()) {
+                    playlist.forEach(callback)
+                } else {
+                    // Fallback: Force link masuk jika M3u8Helper gagal
+                    Log.d("Phisher-Warn", "M3u8Helper failed, forcing link: $file")
+                    
+                    // PERBAIKAN DI SINI:
+                    // referer dan quality diatur di dalam .apply {}, bukan di dalam kurung newExtractorLink()
+                    callback(
+                        newExtractorLink(
+                            source = this.name,
+                            name = this.name,
+                            url = file,
+                            type = INFER_TYPE
+                        ).apply {
+                            this.headers = headers
+                            this.referer = properReferer
+                            this.quality = Qualities.Unknown.value
+                        }
+                    )
+                }
+            } else {
+                 Log.d("Phisher-Error", "File is empty in JSON")
+            }
+        } catch (e: Exception) {
+            Log.e("Phisher-Error", "Json parse error: ${e.message}")
+        }
+    }
+}
+
+class Cloudhownetwork : Hownetwork() {
+    override var mainUrl = "https://cloud.hownetwork.xyz"
 }
 
 class Furher : Filesim() {
@@ -75,51 +108,12 @@ class Furher : Filesim() {
     override var mainUrl = "https://furher.in"
 }
 
-class Turbovidhls : ExtractorApi() {
-    override val name = "Turbovid"
-    override val mainUrl = "https://turbovidhls.com"
-    override val requiresReferer = true
+class Furher2 : Filesim() {
+    override val name = "Furher 2"
+    override var mainUrl = "723qrh1p.fun"
+}
 
-    override suspend fun getUrl(
-        url: String,
-        referer: String?,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ) {
-        val headers = mapOf(
-            "Origin" to "https://turbovidhls.com",
-            "Referer" to "https://turbovidhls.com/",
-            "User-Agent" to "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
-        )
-
-        val response = app.get(url, headers = headers)
-        val m3uData = response.text
-        val baseUrl = url.substringBeforeLast("/")
-
-        if (m3uData.contains(".m3u8") && !m3uData.contains("#EXTINF")) {
-            val variantPath = m3uData.split("\n").firstOrNull { 
-                it.contains(".m3u8") && !it.startsWith("#") 
-            }?.trim()
-            
-            if (variantPath != null) {
-                val finalVariantUrl = if (variantPath.startsWith("http")) variantPath else "$baseUrl/$variantPath"
-                callback(
-                    newExtractorLink(this.name, this.name, finalVariantUrl) {
-                        this.headers = headers
-                        this.referer = "https://turbovidhls.com/"
-                        this.quality = Qualities.Unknown.value
-                    }
-                )
-                return
-            }
-        }
-
-        callback(
-            newExtractorLink(this.name, this.name, url) {
-                this.headers = headers
-                this.referer = "https://turbovidhls.com/"
-                this.quality = Qualities.Unknown.value
-            }
-        )
-    }
+class Turbovidhls : Filesim() {
+    override val name = "Turbovidhls"
+    override var mainUrl = "https://turbovidhls.com"
 }
