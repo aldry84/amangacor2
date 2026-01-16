@@ -32,14 +32,9 @@ class LayarKacaProvider : MainAPI() {
         "$mainUrl/latest/page/" to "Film Upload Terbaru",
     )
 
-    override suspend fun getMainPage(
-        page: Int,
-        request: MainPageRequest
-    ): HomePageResponse {
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val document = app.get(request.data + page).documentLarge
-        val home = document.select("article figure").mapNotNull {
-            it.toSearchResult()
-        }
+        val home = document.select("article figure").mapNotNull { it.toSearchResult() }
         return newHomePageResponse(request.name, home)
     }
 
@@ -47,13 +42,11 @@ class LayarKacaProvider : MainAPI() {
         val title = this.selectFirst("h3")?.ownText()?.trim() ?: return null
         val rawHref = this.selectFirst("a")!!.attr("href")
         val href = fixUrl(rawHref) 
-        
         val posterUrl = fixUrlNull(this.selectFirst("img")?.getImageAttr())
         val type = if (this.selectFirst("span.episode") == null) TvType.Movie else TvType.TvSeries
         
         return if (type == TvType.TvSeries) {
-            val episode = this.selectFirst("span.episode strong")?.text()?.filter { it.isDigit() }
-                ?.toIntOrNull()
+            val episode = this.selectFirst("span.episode strong")?.text()?.filter { it.isDigit() }?.toIntOrNull()
             newAnimeSearchResponse(title, href, TvType.TvSeries) {
                 this.posterUrl = posterUrl
                 addSub(episode)
@@ -68,16 +61,8 @@ class LayarKacaProvider : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val res = app.get(
-            "$searchApiUrl/search.php?s=$query",
-            headers = mapOf(
-                "Origin" to mainUrl,
-                "Referer" to "$mainUrl/"
-            )
-        ).text
-        
+        val res = app.get("$searchApiUrl/search.php?s=$query", headers = mapOf("Origin" to mainUrl, "Referer" to "$mainUrl/")).text
         val results = mutableListOf<SearchResponse>()
-
         try {
             val root = JSONObject(res)
             if (root.has("data")) {
@@ -87,102 +72,49 @@ class LayarKacaProvider : MainAPI() {
                     val title = item.getString("title")
                     val slug = item.getString("slug")
                     val type = item.getString("type") 
-                    
                     var posterUrl = item.optString("poster")
-                    if (!posterUrl.startsWith("http")) {
-                        posterUrl = "https://poster.lk21.party/wp-content/uploads/$posterUrl"
-                    }
-
+                    if (!posterUrl.startsWith("http")) posterUrl = "https://poster.lk21.party/wp-content/uploads/$posterUrl"
                     val itemUrl = if (type == "series") "$seriesDomain/$slug" else "$mainUrl/$slug"
-
                     if (type == "series") {
-                        results.add(newTvSeriesSearchResponse(title, itemUrl, TvType.TvSeries) {
-                            this.posterUrl = posterUrl
-                        })
+                        results.add(newTvSeriesSearchResponse(title, itemUrl, TvType.TvSeries) { this.posterUrl = posterUrl })
                     } else {
-                        results.add(newMovieSearchResponse(title, itemUrl, TvType.Movie) {
-                            this.posterUrl = posterUrl
-                        })
+                        results.add(newMovieSearchResponse(title, itemUrl, TvType.Movie) { this.posterUrl = posterUrl })
                     }
                 }
             }
-        } catch (e: Exception) {
-            Log.e("LayarKacaSearch", "Error parsing JSON: ${e.message}")
-        }
+        } catch (e: Exception) { Log.e("LayarKacaSearch", "Error: ${e.message}") }
         return results
     }
 
     override suspend fun load(url: String): LoadResponse {
-        // 1. Request Halaman Awal
         var response = app.get(url)
         var document = response.documentLarge
-        var finalUrl = response.url // URL setelah redirect HTTP standar
+        var finalUrl = response.url
         
-        // --- PERBAIKAN UTAMA: DETEKSI HALAMAN REDIRECT MANUAL ---
-        // Cek teks "dialihkan ke" atau "Nontondrama" di body
         val bodyText = document.body().text()
         if (bodyText.contains("dialihkan ke", ignoreCase = true) && bodyText.contains("Nontondrama", ignoreCase = true)) {
-            Log.d("Phisher-Info", "Redirect page detected at $url")
-            
-            // Cari tombol "Buka Sekarang" atau link apapun yang mengandung nontondrama
             val redirectLink = document.select("a").firstOrNull { 
-                it.text().contains("Buka Sekarang", ignoreCase = true) ||
-                it.attr("href").contains("nontondrama", ignoreCase = true)
+                it.text().contains("Buka Sekarang", ignoreCase = true) || it.attr("href").contains("nontondrama", ignoreCase = true)
             }?.attr("href")
-            
             if (!redirectLink.isNullOrEmpty()) {
                 finalUrl = fixUrl(redirectLink)
-                Log.d("Phisher-Info", "Jumping to: $finalUrl")
-                // LOAD ULANG ke halaman tujuan yang sebenarnya
                 document = app.get(finalUrl).documentLarge
             }
         }
-        // ---------------------------------------------------------
 
         val baseurl = getBaseUrl(finalUrl)
-        
-        // Parsing Data (Sekarang aman karena sudah di halaman yang benar)
-        var title = document.selectFirst("div.movie-info h1")?.text()?.trim() 
-            ?: document.selectFirst("h1.entry-title")?.text()?.trim()
-            ?: document.selectFirst("header h1")?.text()?.trim()
-            ?: document.selectFirst("h1")?.text()?.trim() 
-            ?: "Unknown Title"
-
+        var title = document.selectFirst("div.movie-info h1")?.text()?.trim() ?: "Unknown Title"
         var poster = document.select("meta[property=og:image]").attr("content")
-        if (poster.isNullOrEmpty()) {
-             poster = document.selectFirst("div.poster img")?.getImageAttr() ?: ""
-        }
-        
         val tags = document.select("div.tag-list span").map { it.text() }
         val posterheaders = mapOf("Referer" to baseurl)
-
-        val year = Regex("\\d, (\\d+)").find(title)?.groupValues?.get(1)?.toIntOrNull()
-        
-        val description = document.selectFirst("div.meta-info")?.text()?.trim() 
-            ?: document.selectFirst("div.desc")?.text()?.trim()
-            ?: document.selectFirst("blockquote")?.text()?.trim()
-
+        val description = document.selectFirst("div.meta-info")?.text()?.trim()
         val trailer = document.selectFirst("ul.action-left > li:nth-child(3) > a")?.attr("href")
         val rating = document.selectFirst("div.info-tag strong")?.text()
 
-        val recommendations = document.select("li.slider article").map {
-            val recName = it.selectFirst("h3")?.text()?.trim().toString()
-            val recHref = fixUrl(it.selectFirst("a")!!.attr("href"))
-            val recPosterUrl = fixUrl(it.selectFirst("img")?.attr("src").toString())
-            newTvSeriesSearchResponse(recName, recHref, TvType.TvSeries) {
-                this.posterUrl = recPosterUrl
-                this.posterHeaders = posterheaders
-            }
-        }
-
-        // Deteksi Tipe (Nontondrama atau LK21)
-        val hasSeasonData = document.selectFirst("#season-data") != null
-        val tvType = if (finalUrl.contains("nontondrama") || hasSeasonData) TvType.TvSeries else TvType.Movie
+        val tvType = if (finalUrl.contains("nontondrama") || document.selectFirst("#season-data") != null) TvType.TvSeries else TvType.Movie
 
         return if (tvType == TvType.TvSeries) {
             val episodes = mutableListOf<Episode>()
-            
-            // Logic 1: JSON Season Data (LK21)
             val json = document.selectFirst("script#season-data")?.data()
             if (!json.isNullOrEmpty()) {
                 val root = JSONObject(json)
@@ -190,138 +122,51 @@ class LayarKacaProvider : MainAPI() {
                     val seasonArr = root.getJSONArray(seasonKey)
                     for (i in 0 until seasonArr.length()) {
                         val ep = seasonArr.getJSONObject(i)
-                        val slug = ep.getString("slug")
-                        val href = fixUrl(if (slug.startsWith("http")) slug else "$baseurl/$slug")
-                        val episodeNo = ep.optInt("episode_no")
-                        val seasonNo = ep.optInt("s")
+                        val href = fixUrl(ep.getString("slug"))
                         episodes.add(newEpisode(href) {
-                            this.name = "Episode $episodeNo"
-                            this.season = seasonNo
-                            this.episode = episodeNo
+                            this.name = "Episode ${ep.optInt("episode_no")}"
+                            this.season = ep.optInt("s")
+                            this.episode = ep.optInt("episode_no")
                         })
                     }
                 }
-            } 
-            // Logic 2: HTML List (Nontondrama) - PENTING
-            else {
-                // Selector untuk Nontondrama biasanya list link biasa
-                val episodeLinks = document.select("ul.episodios li a, div.list-episode a, a[href*=episode]")
-                episodeLinks.forEach { 
-                    val epHref = fixUrl(it.attr("href"))
-                    val epName = it.text().trim()
-                    // Filter agar tidak mengambil link sampah
-                    if(epHref.contains(baseurl) || epHref.contains("episode")) {
-                        episodes.add(newEpisode(epHref) {
-                            this.name = epName
-                        })
-                    }
+            } else {
+                document.select("ul.episodios li a").forEach { 
+                    episodes.add(newEpisode(fixUrl(it.attr("href"))) { this.name = it.text().trim() })
                 }
             }
-
             newTvSeriesLoadResponse(title, finalUrl, TvType.TvSeries, episodes) {
-                this.posterUrl = poster
-                this.posterHeaders = posterheaders
-                this.year = year
-                this.plot = description
-                this.tags = tags
-                this.score = Score.from10(rating)
-                this.recommendations = recommendations
-                addTrailer(trailer)
+                this.posterUrl = poster; this.plot = description; this.score = Score.from10(rating)
             }
         } else {
             newMovieLoadResponse(title, finalUrl, TvType.Movie, finalUrl) {
-                this.posterUrl = poster
-                this.posterHeaders = posterheaders
-                this.year = year
-                this.plot = description
-                this.tags = tags
-                this.score = Score.from10(rating)
-                this.recommendations = recommendations
-                addTrailer(trailer)
+                this.posterUrl = poster; this.plot = description; this.score = Score.from10(rating)
             }
         }
     }
 
-    override suspend fun loadLinks(
-        data: String,
-        isCasting: Boolean,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ): Boolean {
+    override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
         val document = app.get(data).documentLarge
-        
         var playerNodes = document.select("ul#player-list > li")
-        if (playerNodes.isEmpty()) {
-             playerNodes = document.select("div.player_nav ul li, ul.player-list li")
-        }
+        if (playerNodes.isEmpty()) playerNodes = document.select("div.player_nav ul li")
 
-        playerNodes.map {
-            fixUrl(it.select("a").attr("href"))
-        }.amap {
+        playerNodes.map { fixUrl(it.select("a").attr("href")) }.amap {
             val iframeUrl = it.getIframe(referer = data)
-            val extractorReferer = getBaseUrl(it)
-            
-            if(iframeUrl.isNotEmpty()) {
-                loadExtractor(iframeUrl, extractorReferer, subtitleCallback, callback)
-            }
+            if(iframeUrl.isNotEmpty()) loadExtractor(iframeUrl, getBaseUrl(it), subtitleCallback, callback)
         }
         return true
     }
 
     private suspend fun String.getIframe(referer: String): String {
         val response = app.get(this, referer = referer)
-        val document = response.documentLarge
-        val responseText = response.text
-
-        var src = document.selectFirst("div.embed-container iframe")?.attr("src")
-
-        if (src.isNullOrEmpty()) {
-            src = document.selectFirst("iframe[src^=http]")?.attr("src")
-        }
-
+        var src = response.documentLarge.selectFirst("div.embed-container iframe")?.attr("src")
         if (src.isNullOrEmpty()) {
             val regex = """["'](https?://[^"']+)["']""".toRegex()
-            val foundLinks = regex.findAll(responseText).map { it.groupValues[1] }.toList()
-            
-            src = foundLinks.firstOrNull { link -> 
-                !link.contains(".js") && 
-                !link.contains(".css") && 
-                !link.contains(".png") && 
-                !link.contains(".jpg") &&
-                (link.contains("embed") || link.contains("player") || link.contains("streaming") || link.contains("hownetwork"))
-            }
+            src = regex.findAll(response.text).map { it.groupValues[1] }.firstOrNull { it.contains("embed") || it.contains("player") }
         }
-
         return fixUrl(src ?: "")
     }
 
-    private suspend fun fetchURL(url: String): String {
-        val res = app.get(url, allowRedirects = false)
-        val href = res.headers["location"]
-
-        return if (href != null) {
-            val it = URI(href)
-            "${it.scheme}://${it.host}"
-        } else {
-            url
-        }
-    }
-
-    private fun Element.getImageAttr(): String {
-        return when {
-            this.hasAttr("src") -> this.attr("src")
-            this.hasAttr("data-src") -> this.attr("data-src")
-            else -> this.attr("src")
-        }
-    }
-
-    fun getBaseUrl(url: String?): String {
-        return try {
-            URI(url).let {
-                "${it.scheme}://${it.host}"
-            }
-        } catch (e: Exception) {
-            ""
-        }
-    }
+    private fun Element.getImageAttr(): String = if (this.hasAttr("data-src")) this.attr("data-src") else this.attr("src")
+    fun getBaseUrl(url: String?): String = try { URI(url).let { "${it.scheme}://${it.host}" } } catch (e: Exception) { "" }
 }
