@@ -5,7 +5,6 @@ import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.Qualities
-// Kita tidak import newExtractorLink karena akan pakai Constructor
 import com.lagradost.cloudstream3.extractors.Filesim
 
 class Co4nxtrl : Filesim() {
@@ -51,40 +50,34 @@ class Turbovidhls : ExtractorApi() {
                 if (variantPath != null) {
                     val finalVariantUrl = if (variantPath.startsWith("http")) variantPath else "$baseUrl/$variantPath"
                     
-                    // Kita suppress warning deprecated khusus di blok ini
-                    @Suppress("DEPRECATION")
-                    val link = ExtractorLink(
-                        source = this.name,
-                        name = this.name,
-                        url = finalVariantUrl,
-                        referer = "https://turbovidhls.com/",
-                        quality = Qualities.Unknown.value,
-                        isM3u8 = true,
-                        headers = headers,
-                        extractorData = null
-                    )
-                    callback(link)
+                    // Panggil fungsi helper buatan kita
+                    callback(createM3u8Link(this.name, finalVariantUrl, headers))
                     return
                 }
             }
 
-            // Link Final
-            // Suppress warning deprecated lagi disini
-            @Suppress("DEPRECATION")
-            val finalLink = ExtractorLink(
-                source = this.name,
-                name = this.name,
-                url = url,
-                referer = "https://turbovidhls.com/",
-                quality = Qualities.Unknown.value,
-                isM3u8 = true,
-                headers = headers,
-                extractorData = null
-            )
-            callback(finalLink)
+            // Link Final - Panggil fungsi helper buatan kita
+            callback(createM3u8Link(this.name, url, headers))
 
         } catch (e: Exception) {
             e.printStackTrace()
         }
+    }
+
+    // --- FUNGSI HELPER (SOLUSI ERROR) ---
+    // Kita menaruh @Suppress di sini agar berlaku untuk seluruh blok fungsi ini.
+    // Ini membungkus constructor yang deprecated supaya bisa dipakai dengan aman.
+    @Suppress("DEPRECATION")
+    private fun createM3u8Link(sourceName: String, linkUrl: String, linkHeaders: Map<String, String>): ExtractorLink {
+        return ExtractorLink(
+            source = sourceName,
+            name = sourceName,
+            url = linkUrl,
+            referer = "https://turbovidhls.com/",
+            quality = Qualities.Unknown.value,
+            isM3u8 = true,
+            headers = linkHeaders,
+            extractorData = null
+        )
     }
 }
