@@ -20,7 +20,7 @@ class CustomEmturbovid : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        // Header wajib dari data curl untuk menembus proteksi file .png
+        // Header wajib berdasarkan data curl agar file .png terbaca sebagai video
         val headers = mapOf(
             "Origin" to "https://turbovidhls.com",
             "Referer" to "https://turbovidhls.com/",
@@ -28,10 +28,11 @@ class CustomEmturbovid : ExtractorApi() {
             "Accept" to "*/*"
         )
 
+        // Mengambil isi file m3u8 untuk pengecekan
         val response = app.get(url, headers = headers)
         val m3uData = response.text
 
-        // Logika Jump: Jika Master Playlist tidak punya tag #EXTINF (ciri khas Movie yang Error)
+        // Logika Jump: Jika link adalah Master Playlist (tidak ada tag #EXTINF)
         if (m3uData.contains(".m3u8") && !m3uData.contains("#EXTINF")) {
             val actualUrl = m3uData.split("\n").firstOrNull { 
                 it.contains(".m3u8") && !it.startsWith("#") 
@@ -42,7 +43,7 @@ class CustomEmturbovid : ExtractorApi() {
                     newExtractorLink(
                         source = this.name,
                         name = this.name,
-                        url = actualUrl, // Link video asli yang berisi segmen 0x47
+                        url = actualUrl, // Link yang berisi segmen video asli
                         referer = "https://turbovidhls.com/",
                         quality = Qualities.Unknown.value,
                         isM3u8 = true,
@@ -53,7 +54,7 @@ class CustomEmturbovid : ExtractorApi() {
             }
         }
 
-        // Jika link sudah berupa Variant Playlist (seperti di Series)
+        // Jika link sudah berupa playlist langsung (seperti kategori Series)
         callback(
             newExtractorLink(this.name, this.name, url, "https://turbovidhls.com/", Qualities.Unknown.value, true, headers)
         )
