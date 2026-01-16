@@ -24,7 +24,7 @@ class LayarKacaProvider : MainAPI() {
     )
 
     override val mainPage = mainPageOf(
-        "$mainUrl/populer/page/" to "Film Terpopuler",
+        "$mainUrl/populer/page/" to "Film Terplopuler",
         "$mainUrl/rating/page/" to "Film Berdasarkan IMDb Rating",
         "$mainUrl/most-commented/page/" to "Film Dengan Komentar Terbanyak",
         "$mainUrl/latest-series/page/" to "Series Terbaru",
@@ -113,21 +113,55 @@ class LayarKacaProvider : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val response = app.get(url)
-        val document = response.documentLarge
-        val finalUrl = response.url 
+        // 1. Request Halaman Awal
+        var response = app.get(url)
+        var document = response.documentLarge
+        var finalUrl = response.url // URL setelah redirect HTTP standar
         
+        // --- PERBAIKAN UTAMA: DETEKSI HALAMAN REDIRECT MANUAL ---
+        // Cek teks "dialihkan ke" atau "Nontondrama" di body
+        val bodyText = document.body().text()
+        if (bodyText.contains("dialihkan ke", ignoreCase = true) && bodyText.contains("Nontondrama", ignoreCase = true)) {
+            Log.d("Phisher-Info", "Redirect page detected at $url")
+            
+            // Cari tombol "Buka Sekarang" atau link apapun yang mengandung nontondrama
+            val redirectLink = document.select("a").firstOrNull { 
+                it.text().contains("Buka Sekarang", ignoreCase = true) ||
+                it.attr("href").contains("nontondrama", ignoreCase = true)
+            }?.attr("href")
+            
+            if (!redirectLink.isNullOrEmpty()) {
+                finalUrl = fixUrl(redirectLink)
+                Log.d("Phisher-Info", "Jumping to: $finalUrl")
+                // LOAD ULANG ke halaman tujuan yang sebenarnya
+                document = app.get(finalUrl).documentLarge
+            }
+        }
+        // ---------------------------------------------------------
+
         val baseurl = getBaseUrl(finalUrl)
         
-        val title = document.selectFirst("div.movie-info h1, h1.entry-title, header h1, h1")?.text()?.trim() ?: "Unknown Title"
-        var poster = document.select("meta[property=og:image]").attr("content").ifEmpty {
-            document.selectFirst("div.poster img")?.getImageAttr() ?: ""
+        // Parsing Data (Sekarang aman karena sudah di halaman yang benar)
+        var title = document.selectFirst("div.movie-info h1")?.text()?.trim() 
+            ?: document.selectFirst("h1.entry-title")?.text()?.trim()
+            ?: document.selectFirst("header h1")?.text()?.trim()
+            ?: document.selectFirst("h1")?.text()?.trim() 
+            ?: "Unknown Title"
+
+        var poster = document.select("meta[property=og:image]").attr("content")
+        if (poster.isNullOrEmpty()) {
+             poster = document.selectFirst("div.poster img")?.getImageAttr() ?: ""
         }
         
         val tags = document.select("div.tag-list span").map { it.text() }
         val posterheaders = mapOf("Referer" to baseurl)
+
         val year = Regex("\\d, (\\d+)").find(title)?.groupValues?.get(1)?.toIntOrNull()
-        val description = document.selectFirst("div.meta-info, div.desc, blockquote")?.text()?.trim()
+        
+        val description = document.selectFirst("div.meta-info")?.text()?.trim() 
+            ?: document.selectFirst("div.desc")?.text()?.trim()
+            ?: document.selectFirst("blockquote")?.text()?.trim()
+
         val trailer = document.selectFirst("ul.action-left > li:nth-child(3) > a")?.attr("href")
         val rating = document.selectFirst("div.info-tag strong")?.text()
 
@@ -141,13 +175,15 @@ class LayarKacaProvider : MainAPI() {
             }
         }
 
+        // Deteksi Tipe (Nontondrama atau LK21)
         val hasSeasonData = document.selectFirst("#season-data") != null
         val tvType = if (finalUrl.contains("nontondrama") || hasSeasonData) TvType.TvSeries else TvType.Movie
 
         return if (tvType == TvType.TvSeries) {
             val episodes = mutableListOf<Episode>()
-            val json = document.selectFirst("script#season-data")?.data()
             
+            // Logic 1: JSON Season Data (LK21)
+            val json = document.selectFirst("script#season-data")?.data()
             if (!json.isNullOrEmpty()) {
                 val root = JSONObject(json)
                 root.keys().forEach { seasonKey ->
@@ -165,10 +201,20 @@ class LayarKacaProvider : MainAPI() {
                         })
                     }
                 }
-            } else {
-                document.select("ul.episodios li a, div.list-episode a, a[href*=episode]").forEach { 
+            } 
+            // Logic 2: HTML List (Nontondrama) - PENTING
+            else {
+                // Selector untuk Nontondrama biasanya list link biasa
+                val episodeLinks = document.select("ul.episodios li a, div.list-episode a, a[href*=episode]")
+                episodeLinks.forEach { 
                     val epHref = fixUrl(it.attr("href"))
-                    episodes.add(newEpisode(epHref) { this.name = it.text().trim() })
+                    val epName = it.text().trim()
+                    // Filter agar tidak mengambil link sampah
+                    if(epHref.contains(baseurl) || epHref.contains("episode")) {
+                        episodes.add(newEpisode(epHref) {
+                            this.name = epName
+                        })
+                    }
                 }
             }
 
@@ -203,12 +249,19 @@ class LayarKacaProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val document = app.get(data).documentLarge
-        val playerNodes = document.select("ul#player-list > li, div.player_nav ul li, ul.player-list li")
+        
+        var playerNodes = document.select("ul#player-list > li")
+        if (playerNodes.isEmpty()) {
+             playerNodes = document.select("div.player_nav ul li, ul.player-list li")
+        }
 
-        playerNodes.map { fixUrl(it.select("a").attr("href")) }.amap {
+        playerNodes.map {
+            fixUrl(it.select("a").attr("href"))
+        }.amap {
             val iframeUrl = it.getIframe(referer = data)
+            val extractorReferer = getBaseUrl(it)
+            
             if(iframeUrl.isNotEmpty()) {
-                val extractorReferer = getBaseUrl(it)
                 loadExtractor(iframeUrl, extractorReferer, subtitleCallback, callback)
             }
         }
@@ -231,21 +284,44 @@ class LayarKacaProvider : MainAPI() {
             val foundLinks = regex.findAll(responseText).map { it.groupValues[1] }.toList()
             
             src = foundLinks.firstOrNull { link -> 
-                !link.contains(".js") && !link.contains(".css") && !link.contains(".png") && !link.contains(".jpg") &&
-                (link.contains("embed") || link.contains("player") || link.contains("streaming") || link.contains("turbov") || link.contains("turbos"))
+                !link.contains(".js") && 
+                !link.contains(".css") && 
+                !link.contains(".png") && 
+                !link.contains(".jpg") &&
+                (link.contains("embed") || link.contains("player") || link.contains("streaming") || link.contains("hownetwork"))
             }
         }
 
         return fixUrl(src ?: "")
     }
 
-    private fun Element.getImageAttr(): String = when {
-        this.hasAttr("src") -> this.attr("src")
-        this.hasAttr("data-src") -> this.attr("data-src")
-        else -> this.attr("src")
+    private suspend fun fetchURL(url: String): String {
+        val res = app.get(url, allowRedirects = false)
+        val href = res.headers["location"]
+
+        return if (href != null) {
+            val it = URI(href)
+            "${it.scheme}://${it.host}"
+        } else {
+            url
+        }
     }
 
-    fun getBaseUrl(url: String?): String = try {
-        URI(url).let { "${it.scheme}://${it.host}" }
-    } catch (e: Exception) { "" }
+    private fun Element.getImageAttr(): String {
+        return when {
+            this.hasAttr("src") -> this.attr("src")
+            this.hasAttr("data-src") -> this.attr("data-src")
+            else -> this.attr("src")
+        }
+    }
+
+    fun getBaseUrl(url: String?): String {
+        return try {
+            URI(url).let {
+                "${it.scheme}://${it.host}"
+            }
+        } catch (e: Exception) {
+            ""
+        }
+    }
 }
