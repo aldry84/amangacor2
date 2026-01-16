@@ -8,10 +8,9 @@ import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.extractors.Filesim
 
-// Extractor Kustom untuk Emturbovid (Menangani Movie & Series)
-class CustomEmturbovid : ExtractorApi() {
+// Tambahkan kata kunci 'open' agar bisa di-extend di Plugin
+open class CustomEmturbovid : ExtractorApi() {
     override val name = "Emturbovid"
-    // Gunakan domain emturbovid agar link series tetap terbaca
     override val mainUrl = "https://emturbovid.com" 
     override val requiresReferer = true
 
@@ -31,7 +30,7 @@ class CustomEmturbovid : ExtractorApi() {
         val response = app.get(url, headers = headers)
         val m3uData = response.text
 
-        // Logika Jump untuk Movie (Master Playlist tanpa #EXTINF)
+        // Logika Lompat untuk Nested M3U8 (Solusi Error 3001 di Movie)
         if (m3uData.contains(".m3u8") && !m3uData.contains("#EXTINF")) {
             val nextPath = m3uData.split("\n").firstOrNull { 
                 it.contains(".m3u8") && !it.startsWith("#") 
@@ -41,7 +40,6 @@ class CustomEmturbovid : ExtractorApi() {
                 val baseUrl = url.substringBeforeLast("/")
                 val actualUrl = if (nextPath.startsWith("http")) nextPath else "$baseUrl/$nextPath"
                 
-                // Pastikan format lambda { ... } sesuai log error kamu
                 callback(
                     newExtractorLink(this.name, this.name, actualUrl) {
                         this.headers = headers
@@ -53,7 +51,7 @@ class CustomEmturbovid : ExtractorApi() {
             }
         }
 
-        // Jika link m3u8 langsung (Series) atau file video biasa
+        // Link m3u8 langsung atau segmen .png
         if (m3uData.contains("#EXTM3U") || url.contains(".m3u8")) {
             callback(
                 newExtractorLink(this.name, this.name, url) {
