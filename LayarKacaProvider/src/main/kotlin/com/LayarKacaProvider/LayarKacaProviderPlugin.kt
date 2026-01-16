@@ -11,11 +11,19 @@ class LayarKacaProviderPlugin: BasePlugin() {
         // Daftarkan Provider Utama
         registerMainAPI(LayarKacaProvider())
         
-        // Daftarkan Extractor yang ada di Extractors.kt
-        registerExtractorAPI(EmturbovidExtractor())
+        // Daftarkan Extractor Custom
         registerExtractorAPI(Furher())
         registerExtractorAPI(Turbovidhls())
-        registerExtractorAPI(VidHidePro6())
         registerExtractorAPI(Co4nxtrl())
+        
+        // Extractor bawaan core biasanya tidak perlu didaftarkan di sini
+        // kecuali kamu memang sengaja ingin memaksa versinya.
+        // Jika kode ini error "Unresolved reference", hapus baris di bawah ini.
+        try {
+            registerExtractorAPI(EmturbovidExtractor())
+            registerExtractorAPI(VidHidePro6())
+        } catch (e: Exception) {
+            // Abaikan jika extractor ini sudah ada di core dan tidak bisa diimport
+        }
     }
 }
