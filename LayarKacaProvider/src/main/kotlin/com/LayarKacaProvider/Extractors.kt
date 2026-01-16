@@ -5,6 +5,8 @@ import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.Qualities
+// PENTING: Import ExtractorLinkType agar dikenali
+import com.lagradost.cloudstream3.utils.ExtractorLinkType 
 import com.lagradost.cloudstream3.extractors.Filesim
 
 // --- CLASS TAMBAHAN UNTUK MENANGANI EMTURBOVID ---
@@ -26,7 +28,6 @@ class Furher : Filesim() {
     override var mainUrl = "https://furher.in"
 }
 
-// Open class supaya bisa diwariskan ke EmturboCustom
 open class Turbovidhls : ExtractorApi() {
     override val name = "Turbovid"
     override val mainUrl = "https://turbovidhls.com"
@@ -38,8 +39,7 @@ open class Turbovidhls : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        // Tentukan Referer berdasarkan URL yang masuk
-        // Jika dari emturbovid, pakai emturbovid. Jika turbovid, pakai turbovid.
+        // Tentukan domain untuk Header Origin/Referer
         val currentDomain = if (url.contains("emturbovid")) "https://emturbovid.com/" else "https://turbovidthis.com/"
         
         val headers = mapOf(
@@ -53,21 +53,20 @@ open class Turbovidhls : ExtractorApi() {
             val response = app.get(url, headers = headers)
             val responseText = response.text
 
-            // Logika untuk Nested M3U8 (Redirect di dalam file m3u8)
+            // 1. Cek apakah ini Nested M3U8 (Playlist di dalam Playlist)
             if (responseText.contains("#EXT-X-STREAM-INF") && responseText.contains("http")) {
                 val nextUrl = responseText.split('\n').firstOrNull { 
                     it.trim().startsWith("http") && it.contains(".m3u8") 
                 }?.trim()
 
                 if (!nextUrl.isNullOrEmpty()) {
-                    // Panggil fungsi Reflection
                     callback(
                         createSafeExtractorLink(
                             source = this.name,
                             name = this.name,
                             url = nextUrl,
                             referer = currentDomain,
-                            isM3u8 = true,
+                            isM3u8 = true, // Kirim true, fungsi di bawah akan ubah jadi Enum
                             headers = headers
                         )
                     )
@@ -75,7 +74,7 @@ open class Turbovidhls : ExtractorApi() {
                 }
             }
 
-            // Fallback ke URL asli jika tidak ada nested playlist
+            // 2. Fallback ke URL asli
             callback(
                 createSafeExtractorLink(
                     source = this.name,
@@ -92,8 +91,8 @@ open class Turbovidhls : ExtractorApi() {
         }
     }
 
-    // --- FUNGSI JEMBATAN (REFLECTION) ---
-    // Memaksa pembuatan ExtractorLink meskipun Constructor di-block compiler
+    // --- FUNGSI JEMBATAN (REFLECTION V2) ---
+    // Diperbarui untuk mendukung ExtractorLinkType
     private fun createSafeExtractorLink(
         source: String,
         name: String,
@@ -104,19 +103,23 @@ open class Turbovidhls : ExtractorApi() {
     ): ExtractorLink {
         val clazz = ExtractorLink::class.java
         
-        // Cari constructor dengan parameter terbanyak
+        // Cari constructor utama
         val constructor = clazz.constructors.find { it.parameterCount >= 6 } 
             ?: throw RuntimeException("Constructor ExtractorLink tidak ditemukan!")
+
+        // Konversi Boolean ke ExtractorLinkType (Enum)
+        // Ini adalah kunci perbaikan crash "IllegalArgumentException"
+        val type = if (isM3u8) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
 
         return constructor.newInstance(
             source,
             name,
             url,
             referer,
-            Qualities.Unknown.value, // quality
-            isM3u8,                  // isM3u8
-            headers,                 // headers
-            null                     // extractorData
+            Qualities.Unknown.value,
+            type, // <-- Masukkan Enum, bukan Boolean
+            headers,
+            null
         ) as ExtractorLink
     }
 }
