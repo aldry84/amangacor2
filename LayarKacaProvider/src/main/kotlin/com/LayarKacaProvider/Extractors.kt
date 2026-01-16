@@ -5,7 +5,6 @@ import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.Qualities
-import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.extractors.Filesim
 
 class Co4nxtrl : Filesim() {
@@ -52,16 +51,15 @@ class Turbovidhls : ExtractorApi() {
                     val finalVariantUrl = if (variantPath.startsWith("http")) variantPath else "$baseUrl/$variantPath"
                     
                     callback(
-                        newExtractorLink(
+                        ExtractorLink(
                             source = this.name,
                             name = this.name,
                             url = finalVariantUrl,
                             referer = "https://turbovidhls.com/",
                             quality = Qualities.Unknown.value,
-                            isM3u8 = true 
-                        ).apply {
-                            this.headers = headers
-                        }
+                            isM3u8 = true,
+                            headers = headers
+                        )
                     )
                     return
                 }
@@ -69,16 +67,15 @@ class Turbovidhls : ExtractorApi() {
 
             // Link Final
             callback(
-                newExtractorLink(
+                ExtractorLink(
                     source = this.name,
                     name = this.name,
                     url = url,
                     referer = "https://turbovidhls.com/",
                     quality = Qualities.Unknown.value,
-                    isM3u8 = true
-                ).apply {
-                    this.headers = headers
-                }
+                    isM3u8 = true,
+                    headers = headers
+                )
             )
         } catch (e: Exception) {
             e.printStackTrace()
