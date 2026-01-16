@@ -8,7 +8,7 @@ import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.extractors.Filesim
 
-// --- CLASS UTAMA UNTUK EMTURBOVID (REGEX AGRESIG) ---
+// --- CLASS UTAMA UNTUK EMTURBOVID ---
 class EmturboCustom : Turbovidhls() {
     override val name = "Emturbovid"
     override val mainUrl = "https://emturbovid.com"
@@ -29,30 +29,31 @@ class EmturboCustom : Turbovidhls() {
             // 1. Download halaman embed
             val response = app.get(url, headers = headers).text
             
-            var m3u8Url: String? = null
+            // 2. REGEX SAPU JAGAT (BRUTE FORCE)
+            // Mencari string apapun yang:
+            // - Dimulai dengan http atau https
+            // - Diakhiri dengan .m3u8
+            // - Mengizinkan karakter backslash (\) untuk antisipasi format JSON escaped
+            val regexBroad = """(https?://[a-zA-Z0-9/\\._-]+\.m3u8)""".toRegex()
             
-            // Pola 1: Mencari di dalam jwplayer sources
-            // file: "https://...m3u8"
-            val regex1 = """file:\s*["']([^"']+\.m3u8[^"']*)["']""".toRegex()
-            m3u8Url = regex1.find(response)?.groupValues?.get(1)
-
-            // Pola 2: Mencari string HTTPS apapun yang berakhiran .m3u8 di dalam kutip
-            if (m3u8Url == null) {
-                val regex2 = """["'](https?://[^"']+\.m3u8[^"']*)["']""".toRegex()
-                m3u8Url = regex2.find(response)?.groupValues?.get(1)
-            }
+            // Cari semua kemungkinan match
+            val matches = regexBroad.findAll(response)
             
-            // Pola 3: Mencari di dalam tag source src=...
-            if (m3u8Url == null) {
-                 val regex3 = """src=["']([^"']+\.m3u8[^"']*)["']""".toRegex()
-                 m3u8Url = regex3.find(response)?.groupValues?.get(1)
-            }
+            // Ambil match pertama yang valid
+            var m3u8Url = matches.map { it.value }.firstOrNull()
 
             if (m3u8Url != null) {
-                // 3. SUKSES!
-                super.getUrl(m3u8Url, referer, subtitleCallback, callback)
-            } 
-            // Jika gagal, diam saja (jangan fallback ke HTML agar tidak error 3002)
+                // PENTING: Bersihkan URL dari backslash (jika formatnya https:\/\/...)
+                m3u8Url = m3u8Url.replace("\\", "")
+
+                // 3. Kirim ke Turbovidhls
+                // Parameter ke-2 (referer) kita isi dengan URL Embed asli ($url)
+                // Ini KUNCI agar tidak error 403 / 3001
+                super.getUrl(m3u8Url, url, subtitleCallback, callback)
+            } else {
+                // Jika masih gagal, mungkin diproteksi JS Packed.
+                // Saat ini kita skip dulu agar tidak crash/error.
+            }
 
         } catch (e: Exception) {
             e.printStackTrace()
@@ -71,7 +72,7 @@ class Furher : Filesim() {
     override var mainUrl = "https://furher.in"
 }
 
-// --- CLASS BASE TURBOVID ---
+// --- CLASS BASE TURBOVID (LOGIKA PLAYER & HEADER) ---
 open class Turbovidhls : ExtractorApi() {
     override val name = "Turbovid"
     override val mainUrl = "https://turbovidhls.com"
@@ -83,20 +84,25 @@ open class Turbovidhls : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        val currentDomain = if (url.contains("emturbovid")) "https://emturbovid.com/" else "https://turbovidthis.com/"
+        // Tentukan domain base
+        val baseDomain = if (url.contains("emturbovid")) "https://emturbovid.com" else "https://turbovidthis.com"
         
-        // Perbaikan Header: Origin tanpa slash, Referer dengan slash (jika domain)
+        // GUNAKAN REFERER YANG DIKIRIM DARI PARAMETER (Link Embed)
+        // Jika null, fallback ke domain base
+        val safeReferer = referer ?: "$baseDomain/"
+
         val headers = mapOf(
             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept" to "*/*",
-            "Origin" to currentDomain.trimEnd('/'),
-            "Referer" to currentDomain
+            "Origin" to baseDomain, // Origin biasanya cuma domain (tanpa path)
+            "Referer" to safeReferer // Referer harus URL halaman embed
         )
 
         try {
             val response = app.get(url, headers = headers)
             val responseText = response.text
 
+            // 1. Cek apakah ini Nested M3U8 (Master Playlist berisi resolusi lain)
             if (responseText.contains("#EXT-X-STREAM-INF") && responseText.contains("http")) {
                 val nextUrl = responseText.split('\n').firstOrNull { 
                     it.trim().startsWith("http") && it.contains(".m3u8") 
@@ -108,7 +114,7 @@ open class Turbovidhls : ExtractorApi() {
                             source = this.name,
                             name = this.name,
                             url = nextUrl,
-                            referer = currentDomain,
+                            referer = safeReferer,
                             isM3u8 = true, 
                             headers = headers
                         )
@@ -117,12 +123,13 @@ open class Turbovidhls : ExtractorApi() {
                 }
             }
 
+            // 2. Fallback: Link Langsung (Single Stream)
             callback(
                 createSafeExtractorLink(
                     source = this.name,
                     name = this.name,
                     url = url,
-                    referer = currentDomain,
+                    referer = safeReferer,
                     isM3u8 = true,
                     headers = headers
                 )
@@ -134,6 +141,7 @@ open class Turbovidhls : ExtractorApi() {
     }
 
     // --- FUNGSI JEMBATAN (REFLECTION) ---
+    // Menggunakan Reflection untuk bypass validasi Constructor library
     private fun createSafeExtractorLink(
         source: String,
         name: String,
@@ -143,11 +151,10 @@ open class Turbovidhls : ExtractorApi() {
         headers: Map<String, String>
     ): ExtractorLink {
         val clazz = ExtractorLink::class.java
-        
-        // Cari constructor utama
         val constructor = clazz.constructors.find { it.parameterCount >= 6 } 
             ?: throw RuntimeException("Constructor ExtractorLink tidak ditemukan!")
 
+        // Konversi Boolean ke Enum (Wajib untuk Cloudstream versi baru)
         val type = if (isM3u8) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
 
         return constructor.newInstance(
