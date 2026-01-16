@@ -5,8 +5,15 @@ import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.Qualities
-// Import Filesim
 import com.lagradost.cloudstream3.extractors.Filesim
+
+// --- CLASS TAMBAHAN UNTUK MENANGANI EMTURBOVID ---
+class EmturboCustom : Turbovidhls() {
+    override val name = "Emturbovid"
+    override val mainUrl = "https://emturbovid.com"
+    override val requiresReferer = false
+}
+// --------------------------------------------------
 
 class Co4nxtrl : Filesim() {
     override val mainUrl = "https://co4nxtrl.com"
@@ -19,7 +26,8 @@ class Furher : Filesim() {
     override var mainUrl = "https://furher.in"
 }
 
-class Turbovidhls : ExtractorApi() {
+// Open class supaya bisa diwariskan ke EmturboCustom
+open class Turbovidhls : ExtractorApi() {
     override val name = "Turbovid"
     override val mainUrl = "https://turbovidhls.com"
     override val requiresReferer = false
@@ -30,29 +38,35 @@ class Turbovidhls : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
+        // Tentukan Referer berdasarkan URL yang masuk
+        // Jika dari emturbovid, pakai emturbovid. Jika turbovid, pakai turbovid.
+        val currentDomain = if (url.contains("emturbovid")) "https://emturbovid.com/" else "https://turbovidthis.com/"
+        
         val headers = mapOf(
-            "User-Agent" to "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
-            "Accept" to "*/*"
+            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept" to "*/*",
+            "Origin" to currentDomain.trimEnd('/'),
+            "Referer" to currentDomain
         )
 
         try {
             val response = app.get(url, headers = headers)
             val responseText = response.text
 
-            // Logika untuk Nested M3U8
+            // Logika untuk Nested M3U8 (Redirect di dalam file m3u8)
             if (responseText.contains("#EXT-X-STREAM-INF") && responseText.contains("http")) {
                 val nextUrl = responseText.split('\n').firstOrNull { 
                     it.trim().startsWith("http") && it.contains(".m3u8") 
                 }?.trim()
 
                 if (!nextUrl.isNullOrEmpty()) {
-                    // Panggil fungsi Reflection kita
+                    // Panggil fungsi Reflection
                     callback(
                         createSafeExtractorLink(
                             source = this.name,
                             name = this.name,
                             url = nextUrl,
-                            referer = "https://turbovidthis.com/",
+                            referer = currentDomain,
                             isM3u8 = true,
                             headers = headers
                         )
@@ -61,13 +75,13 @@ class Turbovidhls : ExtractorApi() {
                 }
             }
 
-            // Fallback ke URL asli
+            // Fallback ke URL asli jika tidak ada nested playlist
             callback(
                 createSafeExtractorLink(
                     source = this.name,
                     name = this.name,
                     url = url,
-                    referer = "https://turbovidthis.com/",
+                    referer = currentDomain,
                     isM3u8 = true,
                     headers = headers
                 )
@@ -79,8 +93,7 @@ class Turbovidhls : ExtractorApi() {
     }
 
     // --- FUNGSI JEMBATAN (REFLECTION) ---
-    // Kita menggunakan Java Reflection untuk memanggil Constructor secara paksa
-    // Compiler tidak akan bisa memblokir ini.
+    // Memaksa pembuatan ExtractorLink meskipun Constructor di-block compiler
     private fun createSafeExtractorLink(
         source: String,
         name: String,
@@ -89,17 +102,12 @@ class Turbovidhls : ExtractorApi() {
         isM3u8: Boolean,
         headers: Map<String, String>
     ): ExtractorLink {
-        // Ambil kelas ExtractorLink
         val clazz = ExtractorLink::class.java
         
-        // Cari constructor yang memiliki parameter terbanyak (Constructor utama)
-        // Kita bypass pemeriksaan compiler di sini
+        // Cari constructor dengan parameter terbanyak
         val constructor = clazz.constructors.find { it.parameterCount >= 6 } 
             ?: throw RuntimeException("Constructor ExtractorLink tidak ditemukan!")
 
-        // Buat instance baru secara manual
-        // Urutan parameter sesuai pesan error: 
-        // source, name, url, referer, quality, isM3u8, headers, extractorData
         return constructor.newInstance(
             source,
             name,
@@ -108,7 +116,7 @@ class Turbovidhls : ExtractorApi() {
             Qualities.Unknown.value, // quality
             isM3u8,                  // isM3u8
             headers,                 // headers
-            null                     // extractorData (String?)
+            null                     // extractorData
         ) as ExtractorLink
     }
 }
