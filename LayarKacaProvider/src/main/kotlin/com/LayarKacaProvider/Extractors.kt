@@ -42,7 +42,6 @@ class Turbovidhls : ExtractorApi() {
             val responseText = response.text
 
             // 2. Cek apakah ini Playlist yang merujuk ke Playlist lain (Master Playlist)
-            // Logika: Jika mengandung tag stream inf dan ada link http, berarti ini bukan video langsung
             if (responseText.contains("#EXT-X-STREAM-INF") && responseText.contains("http")) {
                 
                 // Cari baris yang berisi URL http (biasanya master.m3u8)
@@ -51,18 +50,17 @@ class Turbovidhls : ExtractorApi() {
                 }?.trim()
 
                 if (!nextUrl.isNullOrEmpty()) {
-                    // Jika ditemukan URL baru (master.m3u8), kirim link ini ke player
+                    // Jika ditemukan URL baru, masukkan parameter LANGSUNG di dalam kurung
                     callback(
                         newExtractorLink(
                             source = this.name,
                             name = this.name,
-                            url = nextUrl
-                        ).apply {
-                            this.referer = "https://turbovidthis.com/" // Default referer aman
-                            this.quality = Qualities.Unknown.value
-                            this.isM3u8 = true // PENTING: Wajib true agar player memproses list file_1.png sebagai video
-                            this.headers = headers
-                        }
+                            url = nextUrl,
+                            referer = "https://turbovidthis.com/",
+                            quality = Qualities.Unknown.value,
+                            isM3u8 = true, // Parameter isM3u8 dimasukkan di sini
+                            headers = headers
+                        )
                     )
                     return
                 }
@@ -73,17 +71,15 @@ class Turbovidhls : ExtractorApi() {
                 newExtractorLink(
                     source = this.name,
                     name = this.name,
-                    url = url
-                ).apply {
-                    this.referer = "https://turbovidthis.com/"
-                    this.quality = Qualities.Unknown.value
-                    this.isM3u8 = true // PENTING
-                    this.headers = headers
-                }
+                    url = url,
+                    referer = "https://turbovidthis.com/",
+                    quality = Qualities.Unknown.value,
+                    isM3u8 = true, // Parameter isM3u8 dimasukkan di sini
+                    headers = headers
+                )
             )
 
         } catch (e: Exception) {
-            // Cegah aplikasi force close jika request gagal
             e.printStackTrace()
         }
     }
