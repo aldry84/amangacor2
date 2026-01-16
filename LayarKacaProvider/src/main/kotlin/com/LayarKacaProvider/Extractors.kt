@@ -5,12 +5,10 @@ import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.Qualities
-// PENTING: Import ini wajib ada untuk mencegah crash "IllegalArgumentException"
 import com.lagradost.cloudstream3.utils.ExtractorLinkType 
 import com.lagradost.cloudstream3.extractors.Filesim
 
-// --- CLASS UTAMA UNTUK EMTURBOVID ---
-// Menggunakan logika scraping untuk mencari file m3u8 asli di dalam HTML
+// --- CLASS UTAMA UNTUK EMTURBOVID (REGEX YANG LEBIH KUAT) ---
 class EmturboCustom : Turbovidhls() {
     override val name = "Emturbovid"
     override val mainUrl = "https://emturbovid.com"
@@ -31,25 +29,28 @@ class EmturboCustom : Turbovidhls() {
             // 1. Download source code halaman embed
             val response = app.get(url, headers = headers).text
             
-            // 2. Cari link .m3u8 menggunakan Regex
-            // Pola 1: file: "https://..."
-            var m3u8Url = """file:\s*["']([^"']+\.m3u8[^"']*)["']""".toRegex()
-                .find(response)?.groupValues?.get(1)
+            // 2. STRATEGI REGEX BARU (LEBIH AGRESIF)
+            // Mencari URL apapun yang berakhiran .m3u8 di dalam tanda kutip
+            var m3u8Url: String? = null
+            
+            // Pola 1: Mencari di dalam variabel javascript sources: [{ file: "..." }]
+            val regex1 = """file:\s*["']([^"']+\.m3u8[^"']*)["']""".toRegex()
+            m3u8Url = regex1.find(response)?.groupValues?.get(1)
 
-            // Pola 2 (Fallback): Cari string apapun yang berakhiran .m3u8
+            // Pola 2: Jika Pola 1 gagal, cari link m3u8 apa saja yang ada di halaman
             if (m3u8Url == null) {
-                 m3u8Url = """["'](https?://[^"']+\.m3u8[^"']*)["']""".toRegex()
-                    .find(response)?.groupValues?.get(1)
+                val regex2 = """["'](https?://[^"']+\.m3u8[^"']*)["']""".toRegex()
+                m3u8Url = regex2.find(response)?.groupValues?.get(1)
             }
 
             if (m3u8Url != null) {
-                // 3. Jika link asli ditemukan, serahkan ke Turbovidhls untuk diputar
-                // super.getUrl akan menangani header Origin dan Reflection
+                // 3. SUKSES! Serahkan ke Turbovidhls untuk diputar
                 super.getUrl(m3u8Url, referer, subtitleCallback, callback)
             } else {
-                // Jika gagal scraping (mungkin diproteksi packed JS), coba metode lama
-                // tapi kemungkinan besar akan error 3002 jika server mengirim HTML
-                super.getUrl(url, referer, subtitleCallback, callback)
+                // 4. GAGAL! Jangan kirim URL Embed ke player (ini penyebab error 3001/3002)
+                // Kita diam saja (return) agar Cloudstream mencari source lain, 
+                // atau log error jika perlu.
+                System.out.println("EmturboCustom: Gagal menemukan m3u8 di $url")
             }
 
         } catch (e: Exception) {
@@ -69,7 +70,7 @@ class Furher : Filesim() {
     override var mainUrl = "https://furher.in"
 }
 
-// --- CLASS BASE TURBOVID & LOGIKA UTAMA ---
+// --- CLASS BASE TURBOVID ---
 open class Turbovidhls : ExtractorApi() {
     override val name = "Turbovid"
     override val mainUrl = "https://turbovidhls.com"
@@ -81,13 +82,14 @@ open class Turbovidhls : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        // Setup Header yang Valid
+        // Logika Header yang diperbaiki
         val currentDomain = if (url.contains("emturbovid")) "https://emturbovid.com/" else "https://turbovidthis.com/"
+        
         val headers = mapOf(
             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept" to "*/*",
-            "Origin" to currentDomain.trimEnd('/'),
-            "Referer" to currentDomain
+            "Origin" to currentDomain.trimEnd('/'), // Origin biasanya tanpa slash di akhir
+            "Referer" to currentDomain // Referer biasanya butuh slash (tapi amannya domain base aja)
         )
 
         try {
@@ -133,7 +135,6 @@ open class Turbovidhls : ExtractorApi() {
     }
 
     // --- FUNGSI JEMBATAN (REFLECTION) ---
-    // Memaksa pembuatan objek ExtractorLink meskipun Constructor di-block compiler
     private fun createSafeExtractorLink(
         source: String,
         name: String,
@@ -143,14 +144,9 @@ open class Turbovidhls : ExtractorApi() {
         headers: Map<String, String>
     ): ExtractorLink {
         val clazz = ExtractorLink::class.java
-        
-        // Cari constructor utama (yang parameternya paling banyak)
         val constructor = clazz.constructors.find { it.parameterCount >= 6 } 
             ?: throw RuntimeException("Constructor ExtractorLink tidak ditemukan!")
 
-        // PERBAIKAN PENTING:
-        // Konversi Boolean (isM3u8) menjadi ExtractorLinkType (Enum)
-        // Ini mencegah error "IllegalArgumentException" saat runtime
         val type = if (isM3u8) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
 
         return constructor.newInstance(
@@ -158,10 +154,10 @@ open class Turbovidhls : ExtractorApi() {
             name,
             url,
             referer,
-            Qualities.Unknown.value, // quality
-            type,                    // type (Enum) - Bukan Boolean!
-            headers,                 // headers
-            null                     // extractorData
+            Qualities.Unknown.value,
+            type,
+            headers,
+            null
         ) as ExtractorLink
     }
 }
