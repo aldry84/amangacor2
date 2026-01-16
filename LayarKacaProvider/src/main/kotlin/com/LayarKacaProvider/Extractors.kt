@@ -5,7 +5,7 @@ import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.Qualities
-// import newExtractorLink tidak diperlukan jika kita menggunakan constructor langsung
+import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.extractors.Filesim
 
 class Co4nxtrl : Filesim() {
@@ -24,8 +24,6 @@ class Turbovidhls : ExtractorApi() {
     override val mainUrl = "https://turbovidhls.com"
     override val requiresReferer = true
 
-    // Anotasi ini memerintahkan compiler untuk mengabaikan peringatan "Deprecated"
-    @Suppress("DEPRECATION") 
     override suspend fun getUrl(
         url: String,
         referer: String?,
@@ -53,16 +51,13 @@ class Turbovidhls : ExtractorApi() {
                 if (variantPath != null) {
                     val finalVariantUrl = if (variantPath.startsWith("http")) variantPath else "$baseUrl/$variantPath"
                     
+                    // Gunakan newExtractorLink + copy untuk bypass error deprecated & parameter
                     callback(
-                        ExtractorLink(
-                            source = this.name,
-                            name = this.name,
-                            url = finalVariantUrl,
+                        newExtractorLink(this.name, this.name, finalVariantUrl).copy(
                             referer = "https://turbovidhls.com/",
                             quality = Qualities.Unknown.value,
                             isM3u8 = true,
-                            headers = headers,
-                            extractorData = null
+                            headers = headers
                         )
                     )
                     return
@@ -71,15 +66,11 @@ class Turbovidhls : ExtractorApi() {
 
             // Link Final
             callback(
-                ExtractorLink(
-                    source = this.name,
-                    name = this.name,
-                    url = url,
+                newExtractorLink(this.name, this.name, url).copy(
                     referer = "https://turbovidhls.com/",
                     quality = Qualities.Unknown.value,
                     isM3u8 = true,
-                    headers = headers,
-                    extractorData = null
+                    headers = headers
                 )
             )
         } catch (e: Exception) {
