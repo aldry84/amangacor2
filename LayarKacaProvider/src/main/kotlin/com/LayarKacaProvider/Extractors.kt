@@ -5,7 +5,7 @@ import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.Qualities
-import com.lagradost.cloudstream3.utils.newExtractorLink
+// Kita tidak import newExtractorLink karena akan pakai Constructor
 import com.lagradost.cloudstream3.extractors.Filesim
 
 class Co4nxtrl : Filesim() {
@@ -51,28 +51,38 @@ class Turbovidhls : ExtractorApi() {
                 if (variantPath != null) {
                     val finalVariantUrl = if (variantPath.startsWith("http")) variantPath else "$baseUrl/$variantPath"
                     
-                    // Gunakan newExtractorLink + copy untuk bypass error deprecated & parameter
-                    callback(
-                        newExtractorLink(this.name, this.name, finalVariantUrl).copy(
-                            referer = "https://turbovidhls.com/",
-                            quality = Qualities.Unknown.value,
-                            isM3u8 = true,
-                            headers = headers
-                        )
+                    // Kita suppress warning deprecated khusus di blok ini
+                    @Suppress("DEPRECATION")
+                    val link = ExtractorLink(
+                        source = this.name,
+                        name = this.name,
+                        url = finalVariantUrl,
+                        referer = "https://turbovidhls.com/",
+                        quality = Qualities.Unknown.value,
+                        isM3u8 = true,
+                        headers = headers,
+                        extractorData = null
                     )
+                    callback(link)
                     return
                 }
             }
 
             // Link Final
-            callback(
-                newExtractorLink(this.name, this.name, url).copy(
-                    referer = "https://turbovidhls.com/",
-                    quality = Qualities.Unknown.value,
-                    isM3u8 = true,
-                    headers = headers
-                )
+            // Suppress warning deprecated lagi disini
+            @Suppress("DEPRECATION")
+            val finalLink = ExtractorLink(
+                source = this.name,
+                name = this.name,
+                url = url,
+                referer = "https://turbovidhls.com/",
+                quality = Qualities.Unknown.value,
+                isM3u8 = true,
+                headers = headers,
+                extractorData = null
             )
+            callback(finalLink)
+
         } catch (e: Exception) {
             e.printStackTrace()
         }
