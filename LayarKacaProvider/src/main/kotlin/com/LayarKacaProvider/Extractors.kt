@@ -5,10 +5,10 @@ import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.Qualities
-import com.lagradost.cloudstream3.utils.ExtractorLinkType 
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.extractors.Filesim
 
-// --- CLASS UTAMA UNTUK EMTURBOVID (REGEX YANG LEBIH KUAT) ---
+// --- CLASS EMTURBOVID ---
 class EmturboCustom : Turbovidhls() {
     override val name = "Emturbovid"
     override val mainUrl = "https://emturbovid.com"
@@ -26,32 +26,26 @@ class EmturboCustom : Turbovidhls() {
         )
 
         try {
-            // 1. Download source code halaman embed
             val response = app.get(url, headers = headers).text
             
-            // 2. STRATEGI REGEX BARU (LEBIH AGRESIF)
-            // Mencari URL apapun yang berakhiran .m3u8 di dalam tanda kutip
             var m3u8Url: String? = null
             
-            // Pola 1: Mencari di dalam variabel javascript sources: [{ file: "..." }]
+            // Regex 1: Mencari di sources: [{ file: "..." }]
             val regex1 = """file:\s*["']([^"']+\.m3u8[^"']*)["']""".toRegex()
             m3u8Url = regex1.find(response)?.groupValues?.get(1)
 
-            // Pola 2: Jika Pola 1 gagal, cari link m3u8 apa saja yang ada di halaman
+            // Regex 2: Fallback mencari string m3u8 apapun
             if (m3u8Url == null) {
                 val regex2 = """["'](https?://[^"']+\.m3u8[^"']*)["']""".toRegex()
                 m3u8Url = regex2.find(response)?.groupValues?.get(1)
             }
 
             if (m3u8Url != null) {
-                // 3. SUKSES! Serahkan ke Turbovidhls untuk diputar
-                super.getUrl(m3u8Url, referer, subtitleCallback, callback)
-            } else {
-                // 4. GAGAL! Jangan kirim URL Embed ke player (ini penyebab error 3001/3002)
-                // Kita diam saja (return) agar Cloudstream mencari source lain, 
-                // atau log error jika perlu.
-                System.out.println("EmturboCustom: Gagal menemukan m3u8 di $url")
-            }
+                // PENTING: Kita kirim 'url' (Link Embed) sebagai 'referer' ke parent class
+                // Agar server tidak menolak koneksi (Fix Error 3001)
+                super.getUrl(m3u8Url, url, subtitleCallback, callback)
+            } 
+            // Jika tidak ketemu, jangan lakukan apa-apa agar tidak error 3002
 
         } catch (e: Exception) {
             e.printStackTrace()
@@ -82,21 +76,26 @@ open class Turbovidhls : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        // Logika Header yang diperbaiki
-        val currentDomain = if (url.contains("emturbovid")) "https://emturbovid.com/" else "https://turbovidthis.com/"
+        // PERBAIKAN HEADER:
+        // Gunakan referer yang dikirim dari EmturboCustom (URL Embed) jika ada.
+        // Jika tidak ada, gunakan domain default.
+        val safeReferer = referer ?: if (url.contains("emturbovid")) "https://emturbovid.com/" else "https://turbovidthis.com/"
         
+        // Origin biasanya hanya domain dasarnya
+        val originUrl = if (url.contains("emturbovid")) "https://emturbovid.com" else "https://turbovidthis.com"
+
         val headers = mapOf(
             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept" to "*/*",
-            "Origin" to currentDomain.trimEnd('/'), // Origin biasanya tanpa slash di akhir
-            "Referer" to currentDomain // Referer biasanya butuh slash (tapi amannya domain base aja)
+            "Origin" to originUrl,
+            "Referer" to safeReferer // Ini yang krusial untuk mencegah 403 Forbidden
         )
 
         try {
-            // Cek konten M3U8 apakah nested (playlist di dalam playlist)
             val response = app.get(url, headers = headers)
             val responseText = response.text
 
+            // 1. Logika Nested M3U8 (Playlist di dalam Playlist)
             if (responseText.contains("#EXT-X-STREAM-INF") && responseText.contains("http")) {
                 val nextUrl = responseText.split('\n').firstOrNull { 
                     it.trim().startsWith("http") && it.contains(".m3u8") 
@@ -108,7 +107,7 @@ open class Turbovidhls : ExtractorApi() {
                             source = this.name,
                             name = this.name,
                             url = nextUrl,
-                            referer = currentDomain,
+                            referer = safeReferer, // Teruskan referer yang benar
                             isM3u8 = true, 
                             headers = headers
                         )
@@ -117,13 +116,13 @@ open class Turbovidhls : ExtractorApi() {
                 }
             }
 
-            // Fallback ke URL input jika bukan nested
+            // 2. Fallback: Link Langsung
             callback(
                 createSafeExtractorLink(
                     source = this.name,
                     name = this.name,
                     url = url,
-                    referer = currentDomain,
+                    referer = safeReferer, // Teruskan referer yang benar
                     isM3u8 = true,
                     headers = headers
                 )
@@ -144,6 +143,7 @@ open class Turbovidhls : ExtractorApi() {
         headers: Map<String, String>
     ): ExtractorLink {
         val clazz = ExtractorLink::class.java
+        
         val constructor = clazz.constructors.find { it.parameterCount >= 6 } 
             ?: throw RuntimeException("Constructor ExtractorLink tidak ditemukan!")
 
