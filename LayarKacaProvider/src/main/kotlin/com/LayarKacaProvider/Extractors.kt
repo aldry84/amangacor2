@@ -5,7 +5,7 @@ import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.Qualities
-// Hapus import newExtractorLink karena kita ganti pakai ExtractorLink langsung
+// Kita tidak pakai newExtractorLink karena parameternya bermasalah di versimu
 import com.lagradost.cloudstream3.extractors.Filesim
 
 class Co4nxtrl : Filesim() {
@@ -24,6 +24,9 @@ class Turbovidhls : ExtractorApi() {
     override val mainUrl = "https://turbovidhls.com"
     override val requiresReferer = false
 
+    // Anotasi ini memerintahkan compiler untuk mengabaikan error "Deprecated"
+    // Ini solusi paling aman karena kita tahu Constructor-nya sebenarnya ada dan valid.
+    @Suppress("DEPRECATION")
     override suspend fun getUrl(
         url: String,
         referer: String?,
@@ -44,14 +47,12 @@ class Turbovidhls : ExtractorApi() {
             // 2. Cek apakah ini Playlist yang merujuk ke Playlist lain (Master Playlist)
             if (responseText.contains("#EXT-X-STREAM-INF") && responseText.contains("http")) {
                 
-                // Cari baris yang berisi URL http (biasanya master.m3u8)
                 val nextUrl = responseText.split('\n').firstOrNull { 
                     it.trim().startsWith("http") && it.contains(".m3u8") 
                 }?.trim()
 
                 if (!nextUrl.isNullOrEmpty()) {
-                    // PENGGUNAAN CONSTRUCTOR LANGSUNG (ExtractorLink)
-                    // Bukan newExtractorLink
+                    // Panggil Constructor ExtractorLink secara langsung
                     callback(
                         ExtractorLink(
                             source = this.name,
@@ -59,8 +60,9 @@ class Turbovidhls : ExtractorApi() {
                             url = nextUrl,
                             referer = "https://turbovidthis.com/",
                             quality = Qualities.Unknown.value,
-                            isM3u8 = true, // Sekarang parameter ini pasti dikenali
-                            headers = headers
+                            isM3u8 = true, 
+                            headers = headers,
+                            extractorData = null // Parameter opsional terakhir sesuai pesan error
                         )
                     )
                     return
@@ -75,8 +77,9 @@ class Turbovidhls : ExtractorApi() {
                     url = url,
                     referer = "https://turbovidthis.com/",
                     quality = Qualities.Unknown.value,
-                    isM3u8 = true, // Sekarang parameter ini pasti dikenali
-                    headers = headers
+                    isM3u8 = true, 
+                    headers = headers,
+                    extractorData = null
                 )
             )
 
