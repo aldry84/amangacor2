@@ -7,6 +7,7 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.extractors.Filesim
+import java.net.URI
 
 class Co4nxtrl : Filesim() {
     override val mainUrl = "https://co4nxtrl.com"
@@ -37,19 +38,28 @@ class Turbovidhls : ExtractorApi() {
             "Accept" to "*/*"
         )
 
-        // Ambil isi M3U8 untuk deteksi Variant
+        // Ambil isi M3U8
         val response = app.get(url, headers = headers)
         val m3uData = response.text
-        val baseUrl = url.substringBeforeLast("/")
 
-        // Jika ini adalah Master Playlist yang merujuk ke Playlist lain (Nested M3U8)
+        // Jika ini Master Playlist (Nested)
         if (m3uData.contains(".m3u8") && !m3uData.contains("#EXTINF")) {
-            val variantPath = m3uData.split("\n").firstOrNull { 
-                it.contains(".m3u8") && !it.trim().startsWith("#") 
-            }?.trim()
-            
-            if (variantPath != null) {
-                val finalVariantUrl = if (variantPath.startsWith("http")) variantPath else "$baseUrl/$variantPath"
+            // Gunakan Regex agar lebih aman daripada split manual
+            val variantUrl = Regex("""(https?://.*\.m3u8|.*\.m3u8)""")
+                .find(m3uData)?.value
+
+            if (variantUrl != null) {
+                // Perbaikan penggabungan URL Relatif vs Absolut yang aman
+                val finalVariantUrl = if (variantUrl.startsWith("http")) {
+                    variantUrl
+                } else {
+                    // Resolve relative URL terhadap URL induk
+                    try {
+                        URI(url).resolve(variantUrl).toString()
+                    } catch (e: Exception) {
+                        "$mainUrl/$variantUrl" // Fallback manual
+                    }
+                }
                 
                 callback(
                     newExtractorLink(
@@ -57,8 +67,7 @@ class Turbovidhls : ExtractorApi() {
                         name = this.name,
                         url = finalVariantUrl,
                         referer = "https://turbovidhls.com/",
-                        quality = Qualities.Unknown.value,
-                        isM3u8 = true // PENTING: Menandakan ini stream HLS
+                        quality = Qualities.Unknown.value
                     ).apply {
                         this.headers = headers
                     }
@@ -74,8 +83,7 @@ class Turbovidhls : ExtractorApi() {
                 name = this.name,
                 url = url,
                 referer = "https://turbovidhls.com/",
-                quality = Qualities.Unknown.value,
-                isM3u8 = true // PENTING: Menandakan ini stream HLS
+                quality = Qualities.Unknown.value
             ).apply {
                 this.headers = headers
             }
