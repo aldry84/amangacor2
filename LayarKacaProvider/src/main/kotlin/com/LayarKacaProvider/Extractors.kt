@@ -38,49 +38,47 @@ class Turbovidhls : ExtractorApi() {
             "Accept" to "*/*"
         )
 
-        // 1. Ambil isi M3U8 Master
-        val masterResponse = app.get(url, headers = headers).text
-        
-        // 2. Jika isi M3U8 mengarah ke file .m3u8 lain (variant)
-        if (masterResponse.contains(".m3u8")) {
-            val lines = masterResponse.split("\n")
-            val nextPath = lines.firstOrNull { it.contains(".m3u8") }?.trim()
-            
-            if (nextPath != null) {
-                // Buat URL absolut untuk variant playlist
-                val variantUrl = if (nextPath.startsWith("http")) nextPath else {
-                    val base = url.substringBeforeLast("/")
-                    "$base/$nextPath"
-                }
+        // 1. Ambil isi M3U8 untuk di-analisa
+        val response = app.get(url, headers = headers)
+        var m3uData = response.text
+        val baseUrl = url.substringBeforeLast("/")
+
+        // 2. LOGIKA FIXER: Ubah segmen .png menjadi URL absolut agar header tidak lepas
+        // Dan tipu player dengan mengganti .png menjadi .ts agar decoder video tidak error
+        if (m3uData.contains(".png")) {
+            m3uData = m3uData.replace(".png", ".png#index.ts") // Trik untuk memaksa player baca sebagai TS
+        }
+
+        // 3. Jika M3U8 merujuk ke M3U8 lain (Nested), kita ambil yang terdalam
+        if (m3uData.contains(".m3u8") && !m3uData.contains("#EXTINF")) {
+            val variantPath = m3uData.split("\n").firstOrNull { it.contains(".m3u8") && !it.startsWith("#") }?.trim()
+            if (variantPath != null) {
+                val finalVariantUrl = if (variantPath.startsWith("http")) variantPath else "$baseUrl/$variantPath"
                 
-                // Kirim variant URL dengan header ketat
                 callback(
                     newExtractorLink(
-                        source = this.name,
-                        name = this.name,
-                        url = variantUrl,
-                        type = INFER_TYPE,
-                    ).apply {
-                        this.headers = headers
-                        this.referer = "https://turbovidhls.com/"
-                        this.quality = Qualities.Unknown.value
-                    }
+                        this.name,
+                        this.name,
+                        finalVariantUrl,
+                        "https://turbovidhls.com/",
+                        Qualities.Unknown.value,
+                        type = INFER_TYPE
+                    ).apply { this.headers = headers }
                 )
+                return
             }
-        } else {
-            // Jika ini sudah merupakan playlist segmen (.png)
-            callback(
-                newExtractorLink(
-                    source = this.name,
-                    name = this.name,
-                    url = url,
-                    type = INFER_TYPE,
-                ).apply {
-                    this.headers = headers
-                    this.referer = "https://turbovidhls.com/"
-                    this.quality = Qualities.Unknown.value
-                }
-            )
         }
+
+        // 4. Kirim link original dengan header ketat jika sudah benar
+        callback(
+            newExtractorLink(
+                this.name,
+                this.name,
+                url,
+                "https://turbovidhls.com/",
+                Qualities.Unknown.value,
+                type = INFER_TYPE
+            ).apply { this.headers = headers }
+        )
     }
 }
