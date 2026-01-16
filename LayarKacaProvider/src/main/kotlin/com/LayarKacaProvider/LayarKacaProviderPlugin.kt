@@ -8,6 +8,7 @@ import com.lagradost.cloudstream3.plugins.BasePlugin
 @CloudstreamPlugin
 class LayarKacaProviderPlugin: BasePlugin() {
     override fun load() {
+        // All providers should be added in this manner. Please don't edit the providers list directly.
         registerMainAPI(LayarKacaProvider())
         registerExtractorAPI(EmturbovidExtractor())
         registerExtractorAPI(Furher())
@@ -17,9 +18,5 @@ class LayarKacaProviderPlugin: BasePlugin() {
         registerExtractorAPI(Turbovidhls())
         registerExtractorAPI(Cloudhownetwork())
         registerExtractorAPI(Co4nxtrl())
-        registerExtractorAPI(F16px())
-        
-        // TAMBAHAN BARU:
-        registerExtractorAPI(AbyssCdn())
     }
 }
