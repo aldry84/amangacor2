@@ -8,10 +8,11 @@ import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.extractors.Filesim
 
-// Extractor Kustom untuk menangani Error 3001 di Movie
+// Extractor Kustom untuk Emturbovid (Menangani Movie & Series)
 class CustomEmturbovid : ExtractorApi() {
     override val name = "Emturbovid"
-    override val mainUrl = "https://turboviplay.com"
+    // Gunakan domain emturbovid agar link series tetap terbaca
+    override val mainUrl = "https://emturbovid.com" 
     override val requiresReferer = true
 
     override suspend fun getUrl(
@@ -30,7 +31,7 @@ class CustomEmturbovid : ExtractorApi() {
         val response = app.get(url, headers = headers)
         val m3uData = response.text
 
-        // Logika Lompat untuk Nested M3U8 (Solusi Error 3001)
+        // Logika Jump untuk Movie (Master Playlist tanpa #EXTINF)
         if (m3uData.contains(".m3u8") && !m3uData.contains("#EXTINF")) {
             val nextPath = m3uData.split("\n").firstOrNull { 
                 it.contains(".m3u8") && !it.startsWith("#") 
@@ -40,7 +41,7 @@ class CustomEmturbovid : ExtractorApi() {
                 val baseUrl = url.substringBeforeLast("/")
                 val actualUrl = if (nextPath.startsWith("http")) nextPath else "$baseUrl/$nextPath"
                 
-                // PERBAIKAN: Menggunakan blok lambda untuk properti
+                // Pastikan format lambda { ... } sesuai log error kamu
                 callback(
                     newExtractorLink(this.name, this.name, actualUrl) {
                         this.headers = headers
@@ -52,14 +53,16 @@ class CustomEmturbovid : ExtractorApi() {
             }
         }
 
-        // Link normal (Series)
-        callback(
-            newExtractorLink(this.name, this.name, url) {
-                this.headers = headers
-                this.referer = "https://turbovidhls.com/"
-                this.quality = Qualities.Unknown.value
-            }
-        )
+        // Jika link m3u8 langsung (Series) atau file video biasa
+        if (m3uData.contains("#EXTM3U") || url.contains(".m3u8")) {
+            callback(
+                newExtractorLink(this.name, this.name, url) {
+                    this.headers = headers
+                    this.referer = "https://turbovidhls.com/"
+                    this.quality = Qualities.Unknown.value
+                }
+            )
+        }
     }
 }
 
@@ -88,8 +91,7 @@ class Turbovidhls : ExtractorApi() {
         val headers = mapOf(
             "Origin" to "https://turbovidhls.com",
             "Referer" to "https://turbovidhls.com/",
-            "User-Agent" to "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
-            "Accept" to "*/*"
+            "User-Agent" to "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
         )
 
         val response = app.get(url, headers = headers)
@@ -103,7 +105,6 @@ class Turbovidhls : ExtractorApi() {
             
             if (variantPath != null) {
                 val finalVariantUrl = if (variantPath.startsWith("http")) variantPath else "$baseUrl/$variantPath"
-                
                 callback(
                     newExtractorLink(this.name, this.name, finalVariantUrl) {
                         this.headers = headers
