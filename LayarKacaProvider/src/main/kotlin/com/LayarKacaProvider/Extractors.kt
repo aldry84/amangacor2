@@ -8,6 +8,7 @@ import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.extractors.Filesim
 
+// Extractor sederhana
 class Co4nxtrl : Filesim() {
     override val mainUrl = "https://co4nxtrl.com"
     override val name = "Co4nxtrl"
@@ -19,6 +20,7 @@ class Furher : Filesim() {
     override var mainUrl = "https://furher.in"
 }
 
+// Extractor Turbovid dengan logika M3U8 yang lebih aman
 class Turbovidhls : ExtractorApi() {
     override val name = "Turbovid"
     override val mainUrl = "https://turbovidhls.com"
@@ -33,50 +35,56 @@ class Turbovidhls : ExtractorApi() {
         val headers = mapOf(
             "Origin" to "https://turbovidhls.com",
             "Referer" to "https://turbovidhls.com/",
-            "User-Agent" to "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
+            // Gunakan User Agent default agar lebih natural
+            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept" to "*/*"
         )
 
-        // Ambil isi M3U8 untuk deteksi Variant (Penyebab error 5 detik di Movie)
-        val response = app.get(url, headers = headers)
-        val m3uData = response.text
-        val baseUrl = url.substringBeforeLast("/")
+        try {
+            val response = app.get(url, headers = headers)
+            val m3uData = response.text
+            val baseUrl = url.substringBeforeLast("/")
 
-        // Jika ini adalah Master Playlist yang merujuk ke Playlist lain (Nested M3U8)
-        if (m3uData.contains(".m3u8") && !m3uData.contains("#EXTINF")) {
-            val variantPath = m3uData.split("\n").firstOrNull { 
-                it.contains(".m3u8") && !it.startsWith("#") 
-            }?.trim()
-            
-            if (variantPath != null) {
-                val finalVariantUrl = if (variantPath.startsWith("http")) variantPath else "$baseUrl/$variantPath"
+            // Cek apakah ini Master Playlist (Nested M3U8)
+            if (m3uData.contains(".m3u8") && !m3uData.contains("#EXTINF")) {
+                val variantPath = m3uData.lines().firstOrNull { 
+                    it.trim().endsWith(".m3u8") && !it.startsWith("#") 
+                }?.trim()
                 
-                callback(
-                    newExtractorLink(
-                        source = this.name,
-                        name = this.name,
-                        url = finalVariantUrl
-                    ).apply {
-                        this.headers = headers
-                        this.referer = "https://turbovidhls.com/"
-                        this.quality = Qualities.Unknown.value
-                    }
-                )
-                return
+                if (variantPath != null) {
+                    val finalVariantUrl = if (variantPath.startsWith("http")) variantPath else "$baseUrl/$variantPath"
+                    
+                    callback(
+                        newExtractorLink(
+                            source = this.name,
+                            name = this.name,
+                            url = finalVariantUrl
+                        ).apply {
+                            this.headers = headers
+                            this.referer = "https://turbovidhls.com/"
+                            this.quality = Qualities.Auto.value // Gunakan Auto untuk M3U8
+                            this.isM3u8 = true // Penting untuk player
+                        }
+                    )
+                    return
+                }
             }
-        }
 
-        // Link Final dengan header wajib
-        callback(
-            newExtractorLink(
-                source = this.name,
-                name = this.name,
-                url = url
-            ).apply {
-                this.headers = headers
-                this.referer = "https://turbovidhls.com/"
-                this.quality = Qualities.Unknown.value
-            }
-        )
+            // Link Final
+            callback(
+                newExtractorLink(
+                    source = this.name,
+                    name = this.name,
+                    url = url
+                ).apply {
+                    this.headers = headers
+                    this.referer = "https://turbovidhls.com/"
+                    this.quality = Qualities.Auto.value
+                    this.isM3u8 = true
+                }
+            )
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 }
