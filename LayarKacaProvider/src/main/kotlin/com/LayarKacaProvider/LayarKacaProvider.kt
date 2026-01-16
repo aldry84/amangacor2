@@ -113,24 +113,10 @@ class LayarKacaProvider : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        var response = app.get(url)
-        var document = response.documentLarge
-        var finalUrl = response.url 
+        val response = app.get(url)
+        val document = response.documentLarge
+        val finalUrl = response.url 
         
-        // Cek halaman dialihkan ke (Logika Aslimu)
-        val bodyText = document.body().text()
-        if (bodyText.contains("dialihkan ke", ignoreCase = true) || bodyText.contains("Nontondrama", ignoreCase = true)) {
-            val redirectLink = document.select("a").firstOrNull { 
-                it.text().contains("Buka Sekarang", ignoreCase = true) ||
-                it.attr("href").contains("nontondrama", ignoreCase = true)
-            }?.attr("href")
-            
-            if (!redirectLink.isNullOrEmpty()) {
-                finalUrl = fixUrl(redirectLink)
-                document = app.get(finalUrl).documentLarge
-            }
-        }
-
         val baseurl = getBaseUrl(finalUrl)
         
         val title = document.selectFirst("div.movie-info h1, h1.entry-title, header h1, h1")?.text()?.trim() ?: "Unknown Title"
@@ -234,23 +220,19 @@ class LayarKacaProvider : MainAPI() {
         val document = response.documentLarge
         val responseText = response.text
 
-        // Mencari iframe secara eksplisit dulu (Cara aslimu)
         var src = document.selectFirst("div.embed-container iframe")?.attr("src")
 
         if (src.isNullOrEmpty()) {
             src = document.selectFirst("iframe[src^=http]")?.attr("src")
         }
 
-        // Jika gagal, baru gunakan regex (Hownetwork dihapus, Turbovid ditambahkan)
         if (src.isNullOrEmpty()) {
             val regex = """["'](https?://[^"']+)["']""".toRegex()
             val foundLinks = regex.findAll(responseText).map { it.groupValues[1] }.toList()
             
             src = foundLinks.firstOrNull { link -> 
-                !link.contains(".js") && !link.contains(".css") && 
-                !link.contains(".png") && !link.contains(".jpg") &&
-                (link.contains("embed") || link.contains("player") || 
-                 link.contains("streaming") || link.contains("turbov") || link.contains("turbos"))
+                !link.contains(".js") && !link.contains(".css") && !link.contains(".png") && !link.contains(".jpg") &&
+                (link.contains("embed") || link.contains("player") || link.contains("streaming") || link.contains("turbov") || link.contains("turbos"))
             }
         }
 
