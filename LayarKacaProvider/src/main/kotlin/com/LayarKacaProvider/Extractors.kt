@@ -1,4 +1,4 @@
-@file:Suppress("DEPRECATION") // <- INI KUNCINYA. Membungkam error deprecated satu file penuh.
+@file:Suppress("DEPRECATION") 
 
 package com.layarKacaProvider
 
@@ -7,6 +7,7 @@ import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.extractors.Filesim
 
 class Co4nxtrl : Filesim() {
@@ -52,34 +53,35 @@ class Turbovidhls : ExtractorApi() {
                 if (variantPath != null) {
                     val finalVariantUrl = if (variantPath.startsWith("http")) variantPath else "$baseUrl/$variantPath"
                     
-                    // Kita pakai Constructor manual karena helper bawaan tidak support isM3u8
+                    // MENGGUNAKAN POSITIONAL ARGUMENTS (Urutan Standar)
+                    // newExtractorLink(source, name, url, referer, quality, isM3u8, headers, extractorData)
                     callback(
-                        ExtractorLink(
-                            source = this.name,
-                            name = this.name,
-                            url = finalVariantUrl,
-                            referer = "https://turbovidhls.com/",
-                            quality = Qualities.Unknown.value,
-                            isM3u8 = true, 
-                            headers = headers,
-                            extractorData = null
+                        newExtractorLink(
+                            this.name,                 // source
+                            this.name,                 // name
+                            finalVariantUrl,           // url
+                            "https://turbovidhls.com/", // referer
+                            Qualities.Unknown.value,   // quality
+                            true,                      // isM3u8 (true)
+                            headers,                   // headers
+                            null                       // extractorData
                         )
                     )
                     return
                 }
             }
 
-            // Link Final
+            // Link Final - Positional Arguments
             callback(
-                ExtractorLink(
-                    source = this.name,
-                    name = this.name,
-                    url = url,
-                    referer = "https://turbovidhls.com/",
-                    quality = Qualities.Unknown.value,
-                    isM3u8 = true, 
-                    headers = headers,
-                    extractorData = null
+                newExtractorLink(
+                    this.name,                 // source
+                    this.name,                 // name
+                    url,                       // url
+                    "https://turbovidhls.com/", // referer
+                    Qualities.Unknown.value,   // quality
+                    true,                      // isM3u8
+                    headers,                   // headers
+                    null                       // extractorData
                 )
             )
 
