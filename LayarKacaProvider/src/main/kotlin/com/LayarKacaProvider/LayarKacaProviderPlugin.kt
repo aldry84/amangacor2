@@ -7,9 +7,10 @@ import com.lagradost.cloudstream3.plugins.BasePlugin
 @CloudstreamPlugin
 class LayarKacaProviderPlugin: BasePlugin() {
     override fun load() {
+        // Daftarkan Provider Utama
         registerMainAPI(LayarKacaProvider())
         
-        // Menggunakan extractor kustom untuk menangani proteksi m3u8 bertingkat
+        // Menggunakan extractor kustom untuk menangani Error 3001
         registerExtractorAPI(CustomEmturbovid())
         
         registerExtractorAPI(Furher())
