@@ -1,6 +1,7 @@
 package com.layarKacaProvider
 
 import com.lagradost.cloudstream3.SubtitleFile
+import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.INFER_TYPE
@@ -37,18 +38,49 @@ class Turbovidhls : ExtractorApi() {
             "Accept" to "*/*"
         )
 
-        // PERBAIKAN: Gunakan blok {} untuk referer, quality, dan headers
-        callback(
-            newExtractorLink(
-                source = this.name,
-                name = this.name,
-                url = url,
-                type = INFER_TYPE,
-            ).apply {
-                this.headers = headers
-                this.referer = "https://turbovidhls.com/"
-                this.quality = Qualities.Unknown.value
+        // 1. Ambil isi M3U8 Master
+        val masterResponse = app.get(url, headers = headers).text
+        
+        // 2. Jika isi M3U8 mengarah ke file .m3u8 lain (variant)
+        if (masterResponse.contains(".m3u8")) {
+            val lines = masterResponse.split("\n")
+            val nextPath = lines.firstOrNull { it.contains(".m3u8") }?.trim()
+            
+            if (nextPath != null) {
+                // Buat URL absolut untuk variant playlist
+                val variantUrl = if (nextPath.startsWith("http")) nextPath else {
+                    val base = url.substringBeforeLast("/")
+                    "$base/$nextPath"
+                }
+                
+                // Kirim variant URL dengan header ketat
+                callback(
+                    newExtractorLink(
+                        source = this.name,
+                        name = this.name,
+                        url = variantUrl,
+                        type = INFER_TYPE,
+                    ).apply {
+                        this.headers = headers
+                        this.referer = "https://turbovidhls.com/"
+                        this.quality = Qualities.Unknown.value
+                    }
+                )
             }
-        )
+        } else {
+            // Jika ini sudah merupakan playlist segmen (.png)
+            callback(
+                newExtractorLink(
+                    source = this.name,
+                    name = this.name,
+                    url = url,
+                    type = INFER_TYPE,
+                ).apply {
+                    this.headers = headers
+                    this.referer = "https://turbovidhls.com/"
+                    this.quality = Qualities.Unknown.value
+                }
+            )
+        }
     }
 }
