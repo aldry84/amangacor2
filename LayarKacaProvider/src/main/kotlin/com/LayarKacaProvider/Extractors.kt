@@ -5,7 +5,7 @@ import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.Qualities
-import com.lagradost.cloudstream3.utils.newExtractorLink
+// Hapus import newExtractorLink karena kita ganti pakai ExtractorLink langsung
 import com.lagradost.cloudstream3.extractors.Filesim
 
 class Co4nxtrl : Filesim() {
@@ -50,15 +50,16 @@ class Turbovidhls : ExtractorApi() {
                 }?.trim()
 
                 if (!nextUrl.isNullOrEmpty()) {
-                    // Jika ditemukan URL baru, masukkan parameter LANGSUNG di dalam kurung
+                    // PENGGUNAAN CONSTRUCTOR LANGSUNG (ExtractorLink)
+                    // Bukan newExtractorLink
                     callback(
-                        newExtractorLink(
+                        ExtractorLink(
                             source = this.name,
                             name = this.name,
                             url = nextUrl,
                             referer = "https://turbovidthis.com/",
                             quality = Qualities.Unknown.value,
-                            isM3u8 = true, // Parameter isM3u8 dimasukkan di sini
+                            isM3u8 = true, // Sekarang parameter ini pasti dikenali
                             headers = headers
                         )
                     )
@@ -68,13 +69,13 @@ class Turbovidhls : ExtractorApi() {
 
             // 3. Fallback: Jika URL awal ternyata sudah langsung playlist video
             callback(
-                newExtractorLink(
+                ExtractorLink(
                     source = this.name,
                     name = this.name,
                     url = url,
                     referer = "https://turbovidthis.com/",
                     quality = Qualities.Unknown.value,
-                    isM3u8 = true, // Parameter isM3u8 dimasukkan di sini
+                    isM3u8 = true, // Sekarang parameter ini pasti dikenali
                     headers = headers
                 )
             )
