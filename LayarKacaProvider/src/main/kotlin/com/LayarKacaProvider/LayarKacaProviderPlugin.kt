@@ -8,15 +8,14 @@ import com.lagradost.cloudstream3.plugins.BasePlugin
 @CloudstreamPlugin
 class LayarKacaProviderPlugin: BasePlugin() {
     override fun load() {
-        // All providers should be added in this manner. Please don't edit the providers list directly.
+        // Daftarkan Provider Utama
         registerMainAPI(LayarKacaProvider())
+        
+        // Daftarkan Extractor yang ada di Extractors.kt
         registerExtractorAPI(EmturbovidExtractor())
         registerExtractorAPI(Furher())
-        registerExtractorAPI(Hownetwork())
-        registerExtractorAPI(VidHidePro6())
-        registerExtractorAPI(Furher2())
         registerExtractorAPI(Turbovidhls())
-        registerExtractorAPI(Cloudhownetwork())
+        registerExtractorAPI(VidHidePro6())
         registerExtractorAPI(Co4nxtrl())
     }
 }
