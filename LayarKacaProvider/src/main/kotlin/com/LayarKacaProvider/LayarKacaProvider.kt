@@ -2,7 +2,6 @@ package com.layarKacaProvider
 
 import com.lagradost.api.Log
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.*
 import org.json.JSONObject
 import org.jsoup.nodes.Element
@@ -14,7 +13,6 @@ class LayarKacaProvider : MainAPI() {
     private var seriesDomain = "https://tv3.nontondrama.my"
     private var searchApiUrl = "https://gudangvape.com"
 
-    // --- PERUBAHAN NAMA SESUAI REQUEST ---
     override var name = "LayarKaca2"
     
     override val hasMainPage = true
@@ -47,12 +45,12 @@ class LayarKacaProvider : MainAPI() {
             val href = it.selectFirst("h2.entry-title a")?.attr("href") ?: return@mapNotNull null
             val posterUrl = it.selectFirst("img")?.getImageAttr()
             val quality = it.selectFirst("span.quality")?.text()
-            val rating = it.selectFirst("div.rating")?.text()?.replace("IMDb", "")?.trim()
+            // Rating di MainPage sering error di API baru, jadi kita hapus dulu biar aman
+            // val rating = it.selectFirst("div.rating")?.text()?.replace("IMDb", "")?.trim()
 
             newMovieSearchResponse(title, href, TvType.Movie) {
                 this.posterUrl = posterUrl
                 this.quality = getQualityFromString(quality)
-                this.rating = rating?.toDoubleOrNull()
             }
         }
         return newHomePageResponse(request.name, items)
@@ -61,7 +59,6 @@ class LayarKacaProvider : MainAPI() {
     override suspend fun search(query: String): List<SearchResponse> {
         val url = "$searchApiUrl/search.php?s=${query}"
         val response = app.get(url).text
-        // Parsing JSON manual karena respon mungkin array
         val json = try {
             JSONObject("{\"results\": $response}").getJSONArray("results")
         } catch (e: Exception) {
@@ -73,7 +70,7 @@ class LayarKacaProvider : MainAPI() {
             val item = json.getJSONObject(i)
             val title = item.getString("title")
             val id = item.getString("id")
-            val href = "$mainUrl/$id" // Asumsi format link
+            val href = "$mainUrl/$id"
             val poster = item.optString("poster")
             val type = if (item.optString("type") == "series") TvType.TvSeries else TvType.Movie
             
@@ -91,9 +88,17 @@ class LayarKacaProvider : MainAPI() {
         val title = document.selectFirst("h1.entry-title")?.text()?.trim() ?: "Unknown"
         val poster = document.selectFirst("div.thumb img")?.getImageAttr()
         val desc = document.selectFirst("div.entry-content p")?.text()?.trim()
-        val rating = document.selectFirst("div.gmr-movie-rating")?.text()?.trim()
+        
+        // Fix Rating: Ambil string, ubah ke Double, dikali 10, lalu ubah ke Int (Skala 0-100)
+        val ratingText = document.selectFirst("div.gmr-movie-rating")?.text()?.replace("IMDb", "")?.trim()
+        val ratingInt = ratingText?.toDoubleOrNull()?.times(10)?.toInt()
+
         val year = document.selectFirst("span.year")?.text()?.trim()?.toIntOrNull()
         
+        // Fix Trailer: Cari URL Youtube, jangan kirim document mentah
+        val trailerUrl = document.selectFirst("iframe[src*='youtube']")?.attr("src")
+            ?: document.selectFirst("div.gmr-trailer-popup iframe")?.attr("src")
+
         val tvType = if (url.contains("series") || document.select("div.gmr-listseries").isNotEmpty()) 
             TvType.TvSeries else TvType.Movie
 
@@ -110,26 +115,30 @@ class LayarKacaProvider : MainAPI() {
             val episodes = document.select("div.gmr-listseries a").map {
                 val epHref = it.attr("href")
                 val epTitle = it.text()
-                // Logika sederhana ekstrak episode, bisa disesuaikan
-                val episodeNum = epTitle.filter { char -> char.isDigit() }.toIntOrNull() ?: 0
-                Episode(epHref, epTitle, episode = episodeNum)
+                val episodeNum = epTitle.filter { char -> char.isDigit() }.toIntOrNull()
+                
+                // Fix Episode: Gunakan newEpisode() bukan constructor Episode()
+                newEpisode(epHref) {
+                    this.name = epTitle
+                    this.episode = episodeNum
+                }
             }
             return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                 this.posterUrl = poster
                 this.plot = desc
-                this.rating = rating?.toDoubleOrNull()
+                this.rating = ratingInt // Masukkan Int yang sudah dikonversi
                 this.year = year
                 this.recommendations = recommendations
-                addTrailer(document)
+                addTrailer(trailerUrl) // Masukkan URL String
             }
         } else {
             return newMovieLoadResponse(title, url, TvType.Movie, url) {
                 this.posterUrl = poster
                 this.plot = desc
-                this.rating = rating?.toDoubleOrNull()
+                this.rating = ratingInt // Masukkan Int yang sudah dikonversi
                 this.year = year
                 this.recommendations = recommendations
-                addTrailer(document)
+                addTrailer(trailerUrl) // Masukkan URL String
             }
         }
     }
@@ -140,28 +149,20 @@ class LayarKacaProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // Ambil iframe menggunakan helper di bawah
-        // Parameter 'data' dikirim sebagai referer agar server tidak menolak
         val iframe = data.getIframe(data)
-        
-        // Panggil Extractor (Otomatis akan mencari Turbovid, F16Px, dll yang sudah didaftarkan)
         return loadExtractor(iframe, data, subtitleCallback, callback)
     }
-
-    // --- HELPER FUNCTIONS (Diperkuat untuk menangkap link F16Px/CAST) ---
 
     private suspend fun String.getIframe(referer: String): String {
         val response = app.get(this, referer = referer)
         val document = response.documentLarge
         val responseText = response.text
 
-        // 1. Cek Iframe Standar
         var src = document.selectFirst("div.embed-container iframe")?.attr("src")
         if (src.isNullOrEmpty()) {
             src = document.selectFirst("iframe[src^=http]")?.attr("src")
         }
 
-        // 2. Cek Regex (Untuk menangkap link tersembunyi/JavaScript)
         if (src.isNullOrEmpty()) {
             val regex = """["'](https?://[^"']+)["']""".toRegex()
             val foundLinks = regex.findAll(responseText).map { it.groupValues[1] }.toList()
@@ -174,13 +175,12 @@ class LayarKacaProvider : MainAPI() {
                 (link.contains("embed") || 
                  link.contains("player") || 
                  link.contains("streaming") || 
-                 link.contains("cast.box") || // Deteksi CAST
-                 link.contains("f16px") ||    // Deteksi F16Px
-                 link.contains("turbovid"))   // Deteksi Turbovid
+                 link.contains("cast.box") || 
+                 link.contains("f16px") ||    
+                 link.contains("turbovid"))   
             }
         }
 
-        // 3. (PENTING) Jika halaman ini sendiri adalah halaman player (bukan halaman detail film)
         if (src.isNullOrEmpty()) {
              if (this.contains("cast.box") || this.contains("turbovid") || this.contains("f16px")) {
                 return this
