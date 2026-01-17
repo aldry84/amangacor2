@@ -28,14 +28,17 @@ class Turbovidhls : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        // Headers ini penting agar server tidak menolak request (Error 403)
+        // Header lengkap untuk menipu server agar dikira browser asli
         val headers = mapOf(
             "Origin" to "https://turbovidhls.com",
             "Referer" to "https://turbovidhls.com/",
             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36"
         )
 
-        // Helper otomatis menarik semua varian kualitas
+        // Helper ini otomatis menangani:
+        // 1. Download Playlist
+        // 2. Parsing resolusi (360, 720, 1080)
+        // 3. Inject Headers ke setiap segmen video (Anti-Buffer)
         M3u8Helper.generateM3u8(
             source = this.name,
             streamUrl = url,
