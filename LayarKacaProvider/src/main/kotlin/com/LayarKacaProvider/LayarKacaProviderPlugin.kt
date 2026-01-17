@@ -11,11 +11,9 @@ class LayarKacaProviderPlugin: BasePlugin() {
         registerMainAPI(LayarKacaProvider())
         
         // 2. Daftarkan Extractor Custom
-        // HAPUS 'EmturbovidExtractor()' agar tidak bentrok dengan Turbovidhls
-        // registerExtractorAPI(EmturbovidExtractor()) 
-        
+        // PENTING: EmturbovidExtractor DIHAPUS agar tidak bentrok
         registerExtractorAPI(Furher())
-        registerExtractorAPI(Turbovidhls()) // Ini yang akan diprioritaskan sekarang
+        registerExtractorAPI(Turbovidhls()) // Extractor ini yang akan dipakai
         registerExtractorAPI(VidHidePro6())
         registerExtractorAPI(Co4nxtrl())
     }
