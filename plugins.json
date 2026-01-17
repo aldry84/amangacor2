@@ -1,0 +1,159 @@
+[
+    {
+        "iconUrl": "https://cdn.discordapp.com/attachments/1109266606292488297/1193122096159674448/2-modified.png?ex=65ec2a0a&is=65d9b50a&hm=f1e0b0165e71101e5440b47592d9e15727a6c00cdeb3512108067bfbdbef1af7&",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/aldry84/amangacor2",
+        "fileSize": 140736,
+        "status": 1,
+        "language": "en",
+        "authors": [
+            "Adicinemax21",
+            "Sora"
+        ],
+        "tvTypes": [
+            "AsianDrama",
+            "TvSeries",
+            "Anime",
+            "Movie"
+        ],
+        "version": 247,
+        "internalName": "Adicinemax21",
+        "description": "#1 best extention based on MultiAPI",
+        "url": "https://raw.githubusercontent.com/aldry84/amangacor2/builds/Adicinemax21.cs3",
+        "name": "Adicinemax21"
+    },
+    {
+        "iconUrl": "https://cekstatusgizi.linisehat.com/assets/img/icon/dewasa.png",
+        "jarFileSize": 76568,
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/aldry84/amangacor2",
+        "fileSize": 21708,
+        "status": 1,
+        "language": "en",
+        "authors": [
+            "AdiDewasa"
+        ],
+        "tvTypes": [
+            "AsianDrama",
+            "TvSeries",
+            "Movie"
+        ],
+        "version": 1,
+        "internalName": "AdiDewasa",
+        "jarUrl": "https://raw.githubusercontent.com/aldry84/amangacor2/builds/AdiDewasa.jar",
+        "description": "Film Semi Dewasa",
+        "url": "https://raw.githubusercontent.com/aldry84/amangacor2/builds/AdiDewasa.cs3",
+        "name": "AdiDewasa"
+    },
+    {
+        "iconUrl": "https://cdn.discordapp.com/attachments/1109266606292488297/1193122096159674448/2-modified.png?ex=65ec2a0a&is=65d9b50a&hm=f1e0b0165e71101e5440b47592d9e15727a6c00cdeb3512108067bfbdbef1af7&",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/aldry84/amangacor2",
+        "fileSize": 139424,
+        "status": 1,
+        "language": "en",
+        "authors": [
+            "AdiDrakor",
+            "Trinity"
+        ],
+        "tvTypes": [
+            "AsianDrama",
+            "TvSeries",
+            "Anime",
+            "Movie"
+        ],
+        "version": 247,
+        "internalName": "AdiDrakor",
+        "description": "#1 AdiManu extention based on MultiAPI",
+        "url": "https://raw.githubusercontent.com/aldry84/amangacor2/builds/AdiDrakor.cs3",
+        "name": "AdiDrakor"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=moviebox.ph&sz=%size%",
+        "jarFileSize": 128259,
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/aldry84/amangacor2",
+        "fileSize": 28512,
+        "status": 1,
+        "language": "en",
+        "authors": [
+            "AdimovieboxUser"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "Anime",
+            "AsianDrama"
+        ],
+        "version": 2,
+        "internalName": "Adimoviebox",
+        "jarUrl": "https://raw.githubusercontent.com/aldry84/amangacor2/builds/Adimoviebox.jar",
+        "description": "Adimoviebox (moviebox.ph)",
+        "url": "https://raw.githubusercontent.com/aldry84/amangacor2/builds/Adimoviebox.cs3",
+        "name": "Adimoviebox"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=freepornvideos.xxx&sz=%size%",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/aldry84/amangacor2",
+        "fileSize": 13413,
+        "status": 1,
+        "language": "en",
+        "authors": [
+            "Phisher98"
+        ],
+        "tvTypes": [
+            "NSFW"
+        ],
+        "version": 5,
+        "internalName": "FreePornVideos",
+        "description": "Premium porn with 4K support",
+        "url": "https://raw.githubusercontent.com/aldry84/amangacor2/builds/FreePornVideos.cs3",
+        "name": "FreePornVideos"
+    },
+    {
+        "iconUrl": "https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://idlixian.com&size=16",
+        "jarFileSize": 95112,
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/aldry84/amangacor2",
+        "fileSize": 24524,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "Hexated,Phisher98"
+        ],
+        "tvTypes": [
+            "TvSeries",
+            "Movie",
+            "Anime",
+            "AsianDrama"
+        ],
+        "version": 3,
+        "internalName": "IdlixProvider",
+        "jarUrl": "https://raw.githubusercontent.com/aldry84/amangacor2/builds/IdlixProvider.jar",
+        "url": "https://raw.githubusercontent.com/aldry84/amangacor2/builds/IdlixProvider.cs3",
+        "name": "IdlixProvider"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=tv7.lk21.am.in&sz=%size%",
+        "jarFileSize": 97480,
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/aldry84/amangacor2",
+        "fileSize": 23915,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "aldry84"
+        ],
+        "tvTypes": [
+            "AsianDrama",
+            "TvSeries",
+            "Movie"
+        ],
+        "version": 9,
+        "internalName": "LayarKacaProvider",
+        "jarUrl": "https://raw.githubusercontent.com/aldry84/amangacor2/builds/LayarKacaProvider.jar",
+        "url": "https://raw.githubusercontent.com/aldry84/amangacor2/builds/LayarKacaProvider.cs3",
+        "name": "LayarKacaProvider"
+    }
+]
