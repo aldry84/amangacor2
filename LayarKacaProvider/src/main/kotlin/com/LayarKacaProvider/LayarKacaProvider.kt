@@ -243,6 +243,14 @@ class LayarKacaProvider : MainAPI() {
              playerNodes = document.select("div.player_nav ul li, ul.player-list li")
         }
 
+        // Kalau tidak ada tombol player, coba cari di halaman itu sendiri
+        if (playerNodes.isEmpty()) {
+             val iframeUrl = data.getIframe(data)
+             if(iframeUrl.isNotEmpty()) {
+                 return loadExtractor(iframeUrl, data, subtitleCallback, callback)
+             }
+        }
+
         playerNodes.map {
             fixUrl(it.select("a").attr("href"))
         }.amap {
@@ -256,20 +264,21 @@ class LayarKacaProvider : MainAPI() {
         return true
     }
 
-    // --- MODIFIKASI DIMULAI DARI SINI ---
+    // --- FUNGSI GETIFRAME YANG SUDAH DIPERKUAT ---
+    // Fungsi ini dimodifikasi untuk menangkap f16px (CAST) dan Turbovid
     private suspend fun String.getIframe(referer: String): String {
         val response = app.get(this, referer = referer)
         val document = response.documentLarge
         val responseText = response.text
 
-        // 1. Cek Standard Iframe (Div/Tag)
+        // 1. Cek Iframe Standar
         var src = document.selectFirst("div.embed-container iframe")?.attr("src")
         if (src.isNullOrEmpty()) {
             src = document.selectFirst("iframe[src^=http]")?.attr("src")
         }
 
         // 2. Cek Regex (Menangkap link tersembunyi di JavaScript)
-        // Diperluas untuk menangkap link CAST (f16px) dan Turbovid
+        // Diperluas untuk menangkap link CAST (f16px) dan Turbovid yang sering terlewat
         if (src.isNullOrEmpty()) {
             val regex = """["'](https?://[^"']+)["']""".toRegex()
             val foundLinks = regex.findAll(responseText).map { it.groupValues[1] }.toList()
@@ -282,15 +291,14 @@ class LayarKacaProvider : MainAPI() {
                 (link.contains("embed") || 
                  link.contains("player") || 
                  link.contains("streaming") || 
-                 link.contains("hownetwork") || // Original
-                 link.contains("cast.box") ||   // Tambahan untuk CAST
-                 link.contains("f16px") ||      // Tambahan untuk CAST (Server Asli)
-                 link.contains("turbovid"))     // Tambahan untuk Turbovid
+                 link.contains("hownetwork") ||
+                 link.contains("cast.box") || // Deteksi CAST
+                 link.contains("f16px") ||    // Deteksi f16px (Server Asli CAST)
+                 link.contains("turbovid"))   // Deteksi Turbovid
             }
         }
 
         // 3. Fallback: Jika halaman ini sendiri adalah halaman player
-        // Kadang link yang diklik di 'playerNodes' sudah langsung mengarah ke server video (bukan wrapper)
         if (src.isNullOrEmpty()) {
              if (this.contains("cast.box") || this.contains("turbovid") || this.contains("f16px")) {
                 return this
@@ -299,7 +307,6 @@ class LayarKacaProvider : MainAPI() {
 
         return fixUrl(src ?: "")
     }
-    // --- MODIFIKASI BERAKHIR DI SINI ---
 
     private suspend fun fetchURL(url: String): String {
         val res = app.get(url, allowRedirects = false)
