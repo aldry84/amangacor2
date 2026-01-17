@@ -28,17 +28,25 @@ class Turbovidhls : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        // Header lengkap untuk menipu server agar dikira browser asli
+        // --- HASIL ANALISA CURL ---
+        // Kita meniru Header dari 'Curl dan Respon2.txt' yang sukses (HTTP 200).
+        // Error 1020 terjadi jika User-Agent salah atau Origin tidak ada.
+        
         val headers = mapOf(
+            "Host" to "turbovidhls.com",
+            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
+            "Accept" to "*/*",
+            "Accept-Language" to "en-US,en;q=0.9",
             "Origin" to "https://turbovidhls.com",
             "Referer" to "https://turbovidhls.com/",
-            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36"
+            "Sec-Fetch-Dest" to "empty",
+            "Sec-Fetch-Mode" to "cors",
+            "Sec-Fetch-Site" to "cross-site",
+            "Pragma" to "no-cache",
+            "Cache-Control" to "no-cache"
         )
 
-        // Helper ini otomatis menangani:
-        // 1. Download Playlist
-        // 2. Parsing resolusi (360, 720, 1080)
-        // 3. Inject Headers ke setiap segmen video (Anti-Buffer)
+        // Menggunakan M3u8Helper dengan headers yang sudah "kebal" Cloudflare
         M3u8Helper.generateM3u8(
             source = this.name,
             streamUrl = url,
