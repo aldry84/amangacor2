@@ -1,4 +1,4 @@
-package com.layarKacaProvider
+package com.layarKacaProvide
 
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.utils.ExtractorApi
