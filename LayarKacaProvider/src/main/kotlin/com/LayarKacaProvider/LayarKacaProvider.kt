@@ -2,6 +2,7 @@ package com.layarKacaProvider
 
 import com.lagradost.api.Log
 import com.lagradost.cloudstream3.*
+import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.*
 import org.json.JSONObject
 import org.jsoup.nodes.Element
@@ -13,7 +14,7 @@ class LayarKacaProvider : MainAPI() {
     private var seriesDomain = "https://tv3.nontondrama.my"
     private var searchApiUrl = "https://gudangvape.com"
 
-    override var name = "LayarKaca2"
+    override var name = "LayarKaca"
     
     override val hasMainPage = true
     override var lang = "id"
@@ -45,10 +46,12 @@ class LayarKacaProvider : MainAPI() {
             val href = it.selectFirst("h2.entry-title a")?.attr("href") ?: return@mapNotNull null
             val posterUrl = it.selectFirst("img")?.getImageAttr()
             val quality = it.selectFirst("span.quality")?.text()
-            
+            val rating = it.selectFirst("div.rating")?.text()?.replace("IMDb", "")?.trim()
+
             newMovieSearchResponse(title, href, TvType.Movie) {
                 this.posterUrl = posterUrl
                 this.quality = getQualityFromString(quality)
+                this.rating = rating?.toDoubleOrNull()
             }
         }
         return newHomePageResponse(request.name, items)
@@ -86,11 +89,9 @@ class LayarKacaProvider : MainAPI() {
         val title = document.selectFirst("h1.entry-title")?.text()?.trim() ?: "Unknown"
         val poster = document.selectFirst("div.thumb img")?.getImageAttr()
         val desc = document.selectFirst("div.entry-content p")?.text()?.trim()
+        val rating = document.selectFirst("div.gmr-movie-rating")?.text()?.trim()
         val year = document.selectFirst("span.year")?.text()?.trim()?.toIntOrNull()
         
-        // CATATAN: Rating & Trailer dihapus sementara karena menyebabkan Error Build di server GitHub.
-        // Fokus kita sekarang adalah agar Aplikasi BISA DI-BUILD dan VIDEO BISA DIPUTAR.
-
         val tvType = if (url.contains("series") || document.select("div.gmr-listseries").isNotEmpty()) 
             TvType.TvSeries else TvType.Movie
 
@@ -108,24 +109,24 @@ class LayarKacaProvider : MainAPI() {
                 val epHref = it.attr("href")
                 val epTitle = it.text()
                 val episodeNum = epTitle.filter { char -> char.isDigit() }.toIntOrNull()
-                
-                newEpisode(epHref) {
-                    this.name = epTitle
-                    this.episode = episodeNum
-                }
+                Episode(epHref, epTitle, episode = episodeNum)
             }
             return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                 this.posterUrl = poster
                 this.plot = desc
+                this.rating = rating?.toDoubleOrNull()
                 this.year = year
                 this.recommendations = recommendations
+                addTrailer(document)
             }
         } else {
             return newMovieLoadResponse(title, url, TvType.Movie, url) {
                 this.posterUrl = poster
                 this.plot = desc
+                this.rating = rating?.toDoubleOrNull()
                 this.year = year
                 this.recommendations = recommendations
+                addTrailer(document)
             }
         }
     }
@@ -136,21 +137,26 @@ class LayarKacaProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
+        // MENGGUNAKAN GETIFRAME YANG SUDAH DIPERKUAT
         val iframe = data.getIframe(data)
         return loadExtractor(iframe, data, subtitleCallback, callback)
     }
 
+    // --- FUNGSI GETIFRAME YANG SUDAH DI-UPGRADE (SUPORT F16Px/CAST) ---
     private suspend fun String.getIframe(referer: String): String {
         val response = app.get(this, referer = referer)
         val document = response.documentLarge
         val responseText = response.text
 
+        // 1. Cek Standard Iframe
         var src = document.selectFirst("div.embed-container iframe")?.attr("src")
         if (src.isNullOrEmpty()) {
             src = document.selectFirst("iframe[src^=http]")?.attr("src")
         }
 
+        // 2. Cek Regex (Menangkap link yang disembunyikan di JavaScript)
         if (src.isNullOrEmpty()) {
+            // Regex diperluas untuk menangkap pola http/https apapun di dalam tanda kutip
             val regex = """["'](https?://[^"']+)["']""".toRegex()
             val foundLinks = regex.findAll(responseText).map { it.groupValues[1] }.toList()
             
@@ -162,12 +168,14 @@ class LayarKacaProvider : MainAPI() {
                 (link.contains("embed") || 
                  link.contains("player") || 
                  link.contains("streaming") || 
-                 link.contains("cast.box") || 
-                 link.contains("f16px") ||    
-                 link.contains("turbovid"))   
+                 link.contains("cast.box") || // Deteksi CAST
+                 link.contains("f16px") ||    // Deteksi F16Px (Link Asli CAST)
+                 link.contains("turbovid"))   // Deteksi Turbovid
             }
         }
 
+        // 3. Fallback: Jika halaman ini sendiri adalah halaman player
+        // (Kadang tombol "Play" langsung mengarah ke URL embed, bukan ke halaman detail)
         if (src.isNullOrEmpty()) {
              if (this.contains("cast.box") || this.contains("turbovid") || this.contains("f16px")) {
                 return this
