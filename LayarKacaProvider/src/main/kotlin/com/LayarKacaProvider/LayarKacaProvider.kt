@@ -45,9 +45,7 @@ class LayarKacaProvider : MainAPI() {
             val href = it.selectFirst("h2.entry-title a")?.attr("href") ?: return@mapNotNull null
             val posterUrl = it.selectFirst("img")?.getImageAttr()
             val quality = it.selectFirst("span.quality")?.text()
-            // Rating di MainPage sering error di API baru, jadi kita hapus dulu biar aman
-            // val rating = it.selectFirst("div.rating")?.text()?.replace("IMDb", "")?.trim()
-
+            
             newMovieSearchResponse(title, href, TvType.Movie) {
                 this.posterUrl = posterUrl
                 this.quality = getQualityFromString(quality)
@@ -88,16 +86,10 @@ class LayarKacaProvider : MainAPI() {
         val title = document.selectFirst("h1.entry-title")?.text()?.trim() ?: "Unknown"
         val poster = document.selectFirst("div.thumb img")?.getImageAttr()
         val desc = document.selectFirst("div.entry-content p")?.text()?.trim()
-        
-        // Fix Rating: Ambil string, ubah ke Double, dikali 10, lalu ubah ke Int (Skala 0-100)
-        val ratingText = document.selectFirst("div.gmr-movie-rating")?.text()?.replace("IMDb", "")?.trim()
-        val ratingInt = ratingText?.toDoubleOrNull()?.times(10)?.toInt()
-
         val year = document.selectFirst("span.year")?.text()?.trim()?.toIntOrNull()
         
-        // Fix Trailer: Cari URL Youtube, jangan kirim document mentah
-        val trailerUrl = document.selectFirst("iframe[src*='youtube']")?.attr("src")
-            ?: document.selectFirst("div.gmr-trailer-popup iframe")?.attr("src")
+        // CATATAN: Rating & Trailer dihapus sementara karena menyebabkan Error Build di server GitHub.
+        // Fokus kita sekarang adalah agar Aplikasi BISA DI-BUILD dan VIDEO BISA DIPUTAR.
 
         val tvType = if (url.contains("series") || document.select("div.gmr-listseries").isNotEmpty()) 
             TvType.TvSeries else TvType.Movie
@@ -117,7 +109,6 @@ class LayarKacaProvider : MainAPI() {
                 val epTitle = it.text()
                 val episodeNum = epTitle.filter { char -> char.isDigit() }.toIntOrNull()
                 
-                // Fix Episode: Gunakan newEpisode() bukan constructor Episode()
                 newEpisode(epHref) {
                     this.name = epTitle
                     this.episode = episodeNum
@@ -126,19 +117,15 @@ class LayarKacaProvider : MainAPI() {
             return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                 this.posterUrl = poster
                 this.plot = desc
-                this.rating = ratingInt // Masukkan Int yang sudah dikonversi
                 this.year = year
                 this.recommendations = recommendations
-                addTrailer(trailerUrl) // Masukkan URL String
             }
         } else {
             return newMovieLoadResponse(title, url, TvType.Movie, url) {
                 this.posterUrl = poster
                 this.plot = desc
-                this.rating = ratingInt // Masukkan Int yang sudah dikonversi
                 this.year = year
                 this.recommendations = recommendations
-                addTrailer(trailerUrl) // Masukkan URL String
             }
         }
     }
