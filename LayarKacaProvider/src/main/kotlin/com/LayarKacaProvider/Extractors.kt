@@ -1,6 +1,5 @@
 package com.layarKacaProvider
 
-import android.util.Base64
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.ExtractorApi
@@ -8,6 +7,7 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.extractors.Filesim
 import com.lagradost.cloudstream3.utils.M3u8Helper
 import org.json.JSONObject
+import java.util.Base64 // <-- GANTI: Pakai Java util, bukan Android util
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
@@ -70,19 +70,17 @@ class F16Px : ExtractorApi() {
         callback: (ExtractorLink) -> Unit
     ) {
         // 1. Ambil ID Code dari URL
-        // Contoh URL: https://f16px.com/e/kf1hjso1wu4t atau https://cast.box/.../kf1hjso1wu4t
         val code = url.substringAfterLast("/").substringBefore("?")
         
-        // 2. Siapkan API URL (Sesuai Curl Terakhir)
+        // 2. Siapkan API URL
         val apiUrl = "https://f16px.com/api/videos/$code/embed/playback"
 
-        // 3. Headers Wajib (Sesuai Curl Terakhir)
+        // 3. Headers Wajib
         val headers = mapOf(
             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
             "Accept" to "*/*",
             "Origin" to "https://f16px.com",
             "Referer" to "https://f16px.com/e/$code",
-            // Header Rahasia
             "x-embed-origin" to "playeriframe.sbs",
             "x-embed-parent" to "https://f16px.com/e/$code",
             "x-embed-referer" to "https://playeriframe.sbs/"
@@ -99,8 +97,6 @@ class F16Px : ExtractorApi() {
                 val encryptedPayload = playback.getString("payload")
                 val ivString = playback.getString("iv")
                 
-                // Ambil Key dari 'decrypt_keys' -> 'legacy_fallback'
-                // Ini sesuai analisa data: "zCy5sagnszqKqBXOYfuy4GY7EtEK5rHm"
                 val keys = json.optJSONObject("decrypt_keys")
                 val keyString = keys?.optString("legacy_fallback") ?: ""
 
@@ -113,7 +109,7 @@ class F16Px : ExtractorApi() {
                         M3u8Helper.generateM3u8(
                             source = "CAST",
                             streamUrl = decryptedUrl,
-                            referer = "https://f16px.com/", // Referer untuk streaming file .ts
+                            referer = "https://f16px.com/",
                             headers = mapOf(
                                 "User-Agent" to headers["User-Agent"]!!,
                                 "Origin" to "https://f16px.com"
@@ -127,12 +123,15 @@ class F16Px : ExtractorApi() {
         }
     }
 
-    // Fungsi Dekripsi AES-256-GCM
+    // Fungsi Dekripsi AES-256-GCM (Versi Java Standard - Support Cross Platform)
     private fun decryptAesGcm(encryptedBase64: String, keyString: String, ivBase64: String): String {
         return try {
-            val decodedKey = keyString.toByteArray(Charsets.UTF_8) // Key biasanya raw string
-            val decodedIv = Base64.decode(ivBase64, Base64.DEFAULT)
-            val decodedPayload = Base64.decode(encryptedBase64, Base64.DEFAULT)
+            val decodedKey = keyString.toByteArray(Charsets.UTF_8)
+            
+            // PERUBAHAN DI SINI: Menggunakan Java util Base64
+            val decoder = Base64.getDecoder()
+            val decodedIv = decoder.decode(ivBase64)
+            val decodedPayload = decoder.decode(encryptedBase64)
 
             val spec = GCMParameterSpec(128, decodedIv)
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
@@ -141,23 +140,10 @@ class F16Px : ExtractorApi() {
             val decryptedBytes = cipher.doFinal(decodedPayload)
             String(decryptedBytes, Charsets.UTF_8)
         } catch (e: Exception) {
-            "" // Gagal dekripsi
+            e.printStackTrace() // Print error ke log jika gagal
+            "" 
         }
     }
 }
 
-// Class CastBox dibuang/di-merge ke F16Px saja karena sistemnya sama
-class CastBox : ExtractorApi() {
-    override val name = "CastBox"
-    override val mainUrl = "https://cast.box"
-    override val requiresReferer = true
-     override suspend fun getUrl(
-        url: String,
-        referer: String?,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ) {
-        // Redirect logic ke F16Px
-        F16Px().getUrl(url, referer, subtitleCallback, callback)
-    }
-}
+// Class CastBox redirect ke F16
