@@ -7,7 +7,7 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.extractors.Filesim
 import com.lagradost.cloudstream3.utils.M3u8Helper
 import org.json.JSONObject
-import java.util.Base64 // <-- GANTI: Pakai Java util, bukan Android util
+import java.util.Base64
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
@@ -57,7 +57,7 @@ class Turbovidhls : ExtractorApi() {
     }
 }
 
-// === EXTRACTOR CANGGIH UNTUK CAST/F16PX ===
+// === EXTRACTOR CANGGIH UNTUK F16PX ===
 class F16Px : ExtractorApi() {
     override val name = "F16Px"
     override val mainUrl = "https://f16px.com" 
@@ -128,7 +128,7 @@ class F16Px : ExtractorApi() {
         return try {
             val decodedKey = keyString.toByteArray(Charsets.UTF_8)
             
-            // PERUBAHAN DI SINI: Menggunakan Java util Base64
+            // Menggunakan Java util Base64 agar kompatibel
             val decoder = Base64.getDecoder()
             val decodedIv = decoder.decode(ivBase64)
             val decodedPayload = decoder.decode(encryptedBase64)
@@ -140,10 +140,25 @@ class F16Px : ExtractorApi() {
             val decryptedBytes = cipher.doFinal(decodedPayload)
             String(decryptedBytes, Charsets.UTF_8)
         } catch (e: Exception) {
-            e.printStackTrace() // Print error ke log jika gagal
+            e.printStackTrace()
             "" 
         }
     }
 }
 
-// Class CastBox redirect ke F16
+// === INI YANG HILANG DI BUILD SEBELUMNYA ===
+// Class CastBox: Mengarahkan link cast.box ke logika F16Px
+class CastBox : ExtractorApi() {
+    override val name = "CastBox"
+    override val mainUrl = "https://cast.box"
+    override val requiresReferer = true
+     override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        // Redirect logic ke F16Px karena sistemnya sama
+        F16Px().getUrl(url, referer, subtitleCallback, callback)
+    }
+}
