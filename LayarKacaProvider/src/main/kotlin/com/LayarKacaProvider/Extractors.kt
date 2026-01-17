@@ -17,6 +17,43 @@ class Furher : Filesim() {
     override var mainUrl = "https://furher.in"
 }
 
+// Extractor baru untuk CAST (cast.box) berdasarkan analisa Curl
+class CastBox : ExtractorApi() {
+    override val name = "Cast"
+    override val mainUrl = "https://cast.box"
+    override val requiresReferer = true
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        // Headers ketat sesuai log curl yang sukses (HTTP 200)
+        val headers = mapOf(
+            "Host" to "cast.box",
+            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
+            "Accept" to "*/*",
+            // Gunakan referer dari parameter jika ada, jika null pakai default dari log analisa
+            "Origin" to (referer ?: "https://tv3.nontondrama.my"),
+            "Referer" to (referer ?: "https://tv3.nontondrama.my/"),
+            "Sec-Fetch-Dest" to "empty",
+            "Sec-Fetch-Mode" to "cors",
+            "Sec-Fetch-Site" to "cross-site",
+            "Pragma" to "no-cache",
+            "Cache-Control" to "no-cache"
+        )
+
+        // M3u8Helper otomatis menangani playlist 720p/480p/360p yang ada di respon
+        M3u8Helper.generateM3u8(
+            source = this.name,
+            streamUrl = url,
+            referer = referer ?: "https://tv3.nontondrama.my/",
+            headers = headers
+        ).forEach(callback)
+    }
+}
+
 class Turbovidhls : ExtractorApi() {
     override val name = "Turbovid"
     override val mainUrl = "https://turbovidhls.com"
@@ -28,9 +65,6 @@ class Turbovidhls : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        // --- KONFIGURASI HEADERS ANTI-CLOUDFLARE ---
-        // Berdasarkan analisa log sukses (Curl dan Respon2.txt).
-        // Header ini membuat request terlihat identik dengan Browser Chrome asli.
         val headers = mapOf(
             "Host" to "turbovidhls.com",
             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
@@ -45,10 +79,6 @@ class Turbovidhls : ExtractorApi() {
             "Cache-Control" to "no-cache"
         )
 
-        // Menggunakan M3u8Helper:
-        // 1. Otomatis parsing semua kualitas video yang ada di playlist.
-        // 2. Otomatis menyuntikkan headers di atas ke setiap request segmen (.ts).
-        // 3. Ini mencegah video macet atau error 403 saat diputar.
         M3u8Helper.generateM3u8(
             source = this.name,
             streamUrl = url,
