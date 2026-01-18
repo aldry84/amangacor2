@@ -9,14 +9,29 @@ import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.nicehttp.RequestBodyTypes
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.net.URI
 
 class Adimoviebox : MainAPI() {
-    // KITA PINDAH SEMUA KE LOK-LOK.CC AGAR PENCARIAN "MAMASAN" MUNCUL
-    override var mainUrl = "https://lok-lok.cc"
-    private val apiUrl = "https://lok-lok.cc"
+    // Tampilan Web Tetap Moviebox
+    override var mainUrl = "https://moviebox.ph"
 
-    // Header disesuaikan total dengan LOK-LOK
-    private val commonHeaders = mapOf(
+    // API 1: KHUSUS HOME PAGE (Pakai Aoneroom karena ranking-list nya stabil)
+    private val homeApiUrl = "https://h5-api.aoneroom.com"
+
+    // API 2: KHUSUS SEARCH & PLAY (Pakai Lok-lok agar NO SENSOR & Video Jalan)
+    private val contentApiUrl = "https://lok-lok.cc"
+
+    // Header Home (Menyamar jadi Moviebox)
+    private val homeHeaders = mapOf(
+        "Authority" to "h5-api.aoneroom.com",
+        "Accept" to "application/json",
+        "Origin" to "https://moviebox.ph",
+        "Referer" to "https://moviebox.ph/",
+        "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36"
+    )
+
+    // Header Content (Menyamar jadi Lok-lok)
+    private val contentHeaders = mapOf(
         "Authority" to "lok-lok.cc",
         "Accept" to "application/json",
         "Origin" to "https://lok-lok.cc",
@@ -38,7 +53,7 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
-    // --- KATEGORI (MENGGUNAKAN API LOK-LOK) ---
+    // --- 1. BAGIAN HOME (BALIK KE AONEROOM - PASTI MUNCUL) ---
     
     override val mainPage: List<MainPageData> = mainPageOf(
         "5283462032510044280" to "Indonesian Drama",
@@ -58,10 +73,11 @@ class Adimoviebox : MainAPI() {
         request: MainPageRequest,
     ): HomePageResponse {
         val id = request.data
-        // Path Loklok menggunakan 'wefeed-h5-bff' (bukan h5api)
-        val targetUrl = "$apiUrl/wefeed-h5-bff/ranking-list/content?id=$id&page=$page&perPage=12"
+        
+        // Perhatikan: Aoneroom pakai 'wefeed-h5api-bff' (ada api-nya)
+        val targetUrl = "$homeApiUrl/wefeed-h5api-bff/ranking-list/content?id=$id&page=$page&perPage=12"
 
-        val responseData = app.get(targetUrl, headers = commonHeaders).parsedSafe<Media>()?.data
+        val responseData = app.get(targetUrl, headers = homeHeaders).parsedSafe<Media>()?.data
         val listFilm = responseData?.subjectList ?: responseData?.items
 
         val home = listFilm?.map {
@@ -73,33 +89,36 @@ class Adimoviebox : MainAPI() {
 
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
+    // --- 2. BAGIAN SEARCH (PAKAI LOK-LOK - MAMASAN MUNCUL) ---
+
     override suspend fun search(query: String): List<SearchResponse> {
-        // PERBAIKAN UTAMA: Search sekarang menggunakan LOK-LOK.CC
-        // Path: wefeed-h5-bff (tanpa 'api' di tengah, sesuai struktur loklok)
-        val url = "$apiUrl/wefeed-h5-bff/web/subject/search"
+        // Loklok pakai 'wefeed-h5-bff' (gak ada api-nya)
+        val url = "$contentApiUrl/wefeed-h5-bff/web/subject/search"
         
         val body = mapOf(
             "keyword" to query,
             "page" to "1",
             "perPage" to "20",
-            // Tanpa subjectType agar hasil tidak disensor
+            // Tanpa subjectType
         )
 
         return app.post(
             url,
-            headers = commonHeaders,
+            headers = contentHeaders,
             requestBody = body.toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
         ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
             ?: throw ErrorLoadingException("Pencarian tidak ditemukan.")
     }
 
+    // --- 3. BAGIAN DETAIL & PLAY (PAKAI LOK-LOK - VIDEO JALAN) ---
+
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfterLast("/")
 
-        // Detail menggunakan LOK-LOK.CC
-        val detailUrl = "$apiUrl/wefeed-h5-bff/web/subject/detail?subjectId=$id"
+        // Detail ke Loklok
+        val detailUrl = "$contentApiUrl/wefeed-h5-bff/web/subject/detail?subjectId=$id"
         
-        val document = app.get(detailUrl, headers = commonHeaders)
+        val document = app.get(detailUrl, headers = contentHeaders)
             .parsedSafe<MediaDetail>()?.data
 
         val subject = document?.subject
@@ -123,8 +142,8 @@ class Adimoviebox : MainAPI() {
 
         val recommendations =
             app.get(
-                "$apiUrl/wefeed-h5-bff/web/subject/detail-rec?subjectId=$id&page=1&perPage=12", 
-                headers = commonHeaders
+                "$contentApiUrl/wefeed-h5-bff/web/subject/detail-rec?subjectId=$id&page=1&perPage=12", 
+                headers = contentHeaders
             ).parsedSafe<Media>()?.data?.items?.map {
                 it.toSearchResponse(this)
             }
@@ -185,18 +204,17 @@ class Adimoviebox : MainAPI() {
 
         val media = parseJson<LoadData>(data)
         
-        // Referer LOK-LOK.CC + parameter utm_source
-        val specificReferer = "$apiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&utm_source=app-search"
+        // Referer LOK-LOK.CC + parameter utm_source (WAJIB)
+        val specificReferer = "$contentApiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&utm_source=app-search"
 
-        // Tambahan header x-source sesuai CURL
-        val playHeaders = commonHeaders + mapOf(
+        val playHeaders = contentHeaders + mapOf(
             "Referer" to specificReferer,
             "Sec-Fetch-Mode" to "cors",
             "Sec-Fetch-Site" to "same-origin",
-            "x-source" to "app-search"
+            "x-source" to "app-search" // Header sakti
         )
 
-        val targetUrl = "$apiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}&detail_path=${media.detailPath}"
+        val targetUrl = "$contentApiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}&detail_path=${media.detailPath}"
 
         val streams = app.get(targetUrl, headers = playHeaders).parsedSafe<Media>()?.data?.streams
 
@@ -218,7 +236,7 @@ class Adimoviebox : MainAPI() {
         val format = streams?.firstOrNull()?.format
         if (id != null) {
             app.get(
-                "$apiUrl/wefeed-h5-bff/web/subject/caption?format=$format&id=$id&subjectId=${media.id}",
+                "$contentApiUrl/wefeed-h5-bff/web/subject/caption?format=$format&id=$id&subjectId=${media.id}",
                 headers = playHeaders
             ).parsedSafe<Media>()?.data?.captions?.map { subtitle ->
                 subtitleCallback.invoke(
@@ -234,7 +252,7 @@ class Adimoviebox : MainAPI() {
     }
 }
 
-// --- DATA CLASSES (SAMA SEPERTI SEBELUMNYA) ---
+// --- DATA CLASSES (TETAP SAMA) ---
 
 data class LoadData(
     val id: String? = null,
