@@ -38,25 +38,46 @@ class MissAVProvider : MainAPI() {
             }
     }
 
-    private fun Element.toSearchResult(): SearchResponse {
-        val status = this.select(".bg-blue-800").text()
-        val rawTitle = this.select(".text-secondary").text()
-        // Format judul: Tambahkan status [Uncensored] dsb jika ada
-        val title = if(status.isNotBlank()) "[$status] $rawTitle" else rawTitle
-        
-        val href = this.select(".text-secondary").attr("href")
-        val posterUrl = this.selectFirst(".w-full")?.attr("data-src")
-        
-        return newMovieSearchResponse(title, href, TvType.NSFW) {
-            this.posterUrl = posterUrl
+    // --- FUNGSI PENCARI DATA YANG SUDAH DIPERBAIKI (LEBIH PINTAR) ---
+    private fun Element.toSearchResult(): SearchResponse? {
+        try {
+            // 1. Ambil Link
+            val linkElement = this.selectFirst("a") ?: return null
+            val href = linkElement.attr("href")
+            if (href.isBlank()) return null
+
+            // 2. Ambil Status (Uncensored, dll)
+            // Mencari badge status dengan beberapa kemungkinan class
+            val status = this.select(".bg-blue-800, .absolute.top-2.right-2, span.absolute").text()
+
+            // 3. Ambil Judul (Dengan Fallback/Cadangan)
+            var rawTitle = this.select(".text-secondary").text() // Coba cari di text biasa
+            if (rawTitle.isBlank()) {
+                rawTitle = this.select("img").attr("alt") // Fallback 1: Alt gambar
+            }
+            if (rawTitle.isBlank()) {
+                rawTitle = linkElement.attr("title") // Fallback 2: Title link
+            }
+            if (rawTitle.isBlank()) rawTitle = "Unknown Title" // Fallback terakhir
+
+            val title = if(status.isNotBlank()) "[$status] $rawTitle" else rawTitle
+            
+            // 4. Ambil Gambar (Dengan Fallback)
+            var posterUrl = this.select("img").attr("data-src") // Coba cari data-src (lazy load)
+            if (posterUrl.isNullOrBlank()) {
+                posterUrl = this.select("img").attr("src") // Fallback: src biasa
+            }
+            
+            return newMovieSearchResponse(title, href, TvType.NSFW) {
+                this.posterUrl = posterUrl
+            }
+        } catch (e: Exception) {
+            return null
         }
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
         val searchResponse = mutableListOf<SearchResponse>()
-        
-        // PERBAIKAN: Menghapus loop 7 halaman agar tidak berat/spam. 
-        // Cukup ambil halaman 1 saja untuk responsivitas maksimal.
         try {
             val document = app.get("$mainUrl/en/search/$query").document
             val results = document.select(".thumbnail").mapNotNull { it.toSearchResult() }
@@ -64,29 +85,28 @@ class MissAVProvider : MainAPI() {
         } catch (e: Exception) {
             e.printStackTrace()
         }
-
         return searchResponse
     }
 
+    // --- FUNGSI LOAD DENGAN SELECTOR SAPU JAGAT ---
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url).document
 
-        // 1. Ambil Metadata Utama
+        // Metadata Utama
         val title = document.selectFirst("meta[property=og:title]")?.attr("content")?.trim() ?: "Unknown"
         val poster = fixUrlNull(document.selectFirst("[property='og:image']")?.attr("content"))
         val description = document.selectFirst("meta[property=og:description]")?.attr("content")?.trim()
 
-        // 2. LOGIKA BARU REKOMENDASI (Sapu Jagat)
-        // Mencari elemen berdasarkan judul film (text-secondary) lalu mengambil parent-nya (kartu film)
-        // Ini mengatasi masalah di mana class CSS berbeda antara Home dan Detail page.
-        val recommendations = document.select("div.grid a.text-secondary").mapNotNull { element ->
-             var card = element.parent()
-             // Naik ke atas sampai ketemu pembungkus utamanya
-             if (card != null && !card.className().contains("group") && !card.className().contains("thumbnail")) {
-                 card = card.parent()
+        // Logika Rekomendasi (Universal Selector)
+        // Kita cari DIV apapun di dalam Grid yang memiliki IMG dan Link (A)
+        // Ini menghindari masalah salah nama class CSS
+        val recommendations = document.select("div.grid div, div.w-full div.relative").mapNotNull { element ->
+             if (element.select("img").isNotEmpty() && element.select("a").isNotEmpty()) {
+                 element.toSearchResult()
+             } else {
+                 null
              }
-             card?.toSearchResult()
-        }.distinctBy { it.url } // Hapus duplikat
+        }.distinctBy { it.url }
 
         return newMovieLoadResponse(title, url, TvType.NSFW, url) {
             this.posterUrl = poster
@@ -96,11 +116,10 @@ class MissAVProvider : MainAPI() {
     }
 
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
-            // PERBAIKAN: Mengganti nama variabel response agar tidak bentrok dengan parameter 'data'
             val response = app.get(data)
             val doc = response.document
             
-            // Logic Video (M3U8 Unpacker)
+            // 1. Ekstrak Video (M3U8)
             try {
                 getAndUnpack(response.text).let { unpackedText ->
                     if (!unpackedText.isNullOrBlank()) {
@@ -124,10 +143,9 @@ class MissAVProvider : MainAPI() {
                 }
             } catch (e: Exception) { e.printStackTrace() }
 
-        // Logic Subtitle (SubtitleCat)
+        // 2. Ekstrak Subtitle (SubtitleCat)
         try {
             val title = doc.selectFirst("meta[property=og:title]")?.attr("content")?.trim().toString()
-            // Ekstrak kode JAV (misal: ABD-123) dari judul
             val javCode = "([a-zA-Z]+-\\d+)".toRegex().find(title)?.groups?.get(1)?.value
             
             if(!javCode.isNullOrEmpty())
@@ -153,7 +171,6 @@ class MissAVProvider : MainAPI() {
                                 if(textElement.isNotEmpty() && textElement[0].text() == "Download")
                                 {
                                     val url = "$subtitleCatUrl${textElement[0].attr("href")}"
-                                    
                                     subtitleCallback.invoke(
                                         newSubtitleFile(
                                             language.replace("\uD83D\uDC4D \uD83D\uDC4E","").trim(),
@@ -163,7 +180,6 @@ class MissAVProvider : MainAPI() {
                                 }
                             } catch (e: Exception) { }
                         }
-                        // Opsional: break jika sudah ketemu 1 match yang pas, tapi lanjut juga oke
                     }
                 }
             }
