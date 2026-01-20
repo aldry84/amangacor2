@@ -13,12 +13,11 @@ class JavHey : MainAPI() {
     override val hasDownloadSupport = true
     override val supportedTypes = setOf(TvType.NSFW)
 
-    // Konfigurasi Halaman Utama
+    // Konfigurasi Halaman Utama (Sudah dihapus kategori 'JAV Sub Indo')
     override val mainPage = mainPageOf(
         "$mainUrl/videos/paling-baru/page=" to "Paling Baru",
         "$mainUrl/videos/paling-dilihat/page=" to "Paling Dilihat",
-        "$mainUrl/videos/top-rating/page=" to "Top Rating",
-        "$mainUrl/videos/jav-sub-indo/page=" to "JAV Sub Indo"
+        "$mainUrl/videos/top-rating/page=" to "Top Rating"
     )
 
     // Fungsi Pengambil Halaman Utama
@@ -150,9 +149,9 @@ class JavHey : MainAPI() {
             }
         }
 
-        // METODE 4: Brute Force Regex (Jurus Terakhir)
+        // METODE 4: Brute Force Regex (Jurus Terakhir - Updated Host List)
         // Mencari pola URL host populer di seluruh halaman (termasuk di dalam <script>)
-        val regex = Regex("""https?://(streamwish|dood|d000d|vidhide|vidhidepro|mixdrop|filelions|voe|streamtape)[\w./?=&%-]+""")
+        val regex = Regex("""https?://(streamwish|dood|d000d|vidhide|vidhidepro|mixdrop|filelions|voe|streamtape|advertape|myvidplay|lelebakar|bysebuho|minochinos|cavanhabg|kr21|turtle4up)[\w./?=&%-]+""")
         regex.findAll(html).forEach { match ->
             val url = match.value
             loadExtractor(url, subtitleCallback, callback)
