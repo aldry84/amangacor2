@@ -7,7 +7,7 @@ import android.content.Context
 @CloudstreamPlugin
 class JavHeyPlugin: Plugin() {
     override fun load(context: Context) {
-        // Mendaftarkan class JavHey yang kita buat di file sebelah
+        // Mendaftarkan API JavHey
         registerMainAPI(JavHey())
     }
 }
