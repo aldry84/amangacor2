@@ -54,12 +54,18 @@ class JavHey : MainAPI() {
     }
 
     // ==========================================
-    // BAGIAN DETAIL VIDEO (UPDATE: LEBIH PINTAR CARI GAMBAR)
+    // BAGIAN DETAIL VIDEO (FIX GAMBAR & PLOT)
     // ==========================================
     override suspend fun load(url: String): LoadResponse? {
         val doc = app.get(url).document
 
-        // 1. Ambil Judul & Bersihkan
+        // 1. AMBIL GAMBAR (PENTING: Pakai cara lama dulu yaitu ambil dari Player)
+        val poster = doc.select("div.video_player img").attr("src") // Prioritas 1: Gambar di Player (Terbukti Work)
+            .ifEmpty { doc.select("div.fp-player img").attr("src") } // Cadangan
+            .ifEmpty { doc.select("link[rel='image_src']").attr("href") }
+            .ifEmpty { doc.select("meta[property='og:image']").attr("content") }
+
+        // 2. AMBIL JUDUL (Pakai cara baru biar bersih)
         var title = doc.select("meta[property='og:title']").attr("content").trim()
         if (title.isEmpty()) title = doc.select("h1").text().trim()
         
@@ -69,14 +75,7 @@ class JavHey : MainAPI() {
             .replace("- JAVHEY", "")
             .trim()
 
-        // 2. Ambil Poster (Coba cari di 5 tempat berbeda sampai ketemu)
-        val poster = doc.select("meta[property='og:image']").attr("content")
-            .ifEmpty { doc.select("link[rel='image_src']").attr("href") }
-            .ifEmpty { doc.select("div.video_player img").attr("src") }
-            .ifEmpty { doc.select("div.main_content img").attr("src") }
-            .ifEmpty { doc.select("article img").attr("src") }
-
-        // 3. Ambil Deskripsi
+        // 3. AMBIL DESKRIPSI (Pakai cara baru biar keisi)
         val description = doc.select("meta[name='description']").attr("content")
             .ifEmpty { doc.select("div.video-description").text() }
             .ifEmpty { doc.select("div.entry-content").text() }
@@ -98,7 +97,6 @@ class JavHey : MainAPI() {
     ): Boolean {
         val doc = app.get(data).document
         
-        // Cari iframe player (biasanya ke bysebuho)
         val iframeSrc = doc.select("iframe").attr("src")
         
         if (iframeSrc.contains("bysebuho")) {
@@ -114,11 +112,7 @@ class JavHey : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        // Ambil Kode Video dari URL
-        // Contoh: https://bysebuho.com/e/KODE_VIDEO/...
         val code = iframeUrl.substringAfter("/e/").substringBefore("/")
-        
-        // Panggil API Rahasia untuk dapat link asli
         val apiUrl = "https://bysebuho.com/api/videos/$code/embed/details"
         
         val headers = mapOf(
@@ -131,12 +125,9 @@ class JavHey : MainAPI() {
         try {
             val jsonText = app.get(apiUrl, headers = headers).text
             val json = parseJson<BysebuhoResponse>(jsonText)
-            
-            // Link asli ada di sini (biasanya domain 9n8o.com)
             val nextUrl = json.embed_frame_url
             
             if (!nextUrl.isNullOrEmpty()) {
-                // Cloudstream akan mengekstrak link ini secara otomatis
                 loadExtractor(nextUrl, subtitleCallback, callback)
             }
         } catch (e: Exception) {
