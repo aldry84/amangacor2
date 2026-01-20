@@ -13,9 +13,7 @@ class JavHey : MainAPI() {
     override val hasDownloadSupport = true
     override val supportedTypes = setOf(TvType.NSFW)
 
-    // PERBAIKAN 1: Header Lebih Aman (Anti-Cancel)
-    // Menghapus 'Sec-Fetch-*' yang sering bentrok dengan WebViewResolver Cloudstream
-    // Menambahkan 'Referer' agar tidak ditolak server
+    // Header Global untuk JavHey (Biar bisa masuk halaman utama)
     private val commonHeaders = mapOf(
         "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
         "Referer" to "$mainUrl/"
@@ -39,7 +37,7 @@ class JavHey : MainAPI() {
             }
             newHomePageResponse(request.name, home)
         } catch (e: Exception) {
-            null // Mencegah crash jika halaman gagal load
+            null
         }
     }
 
@@ -50,12 +48,9 @@ class JavHey : MainAPI() {
         val linkElement = header.selectFirst("a") ?: return null
         val href = fixUrl(linkElement.attr("href"))
         
-        // PERBAIKAN 2: Safe Image Loading (Anti-Coil Crash)
-        // Memastikan posterUrl valid sebelum dikirim
         val imgElement = header.selectFirst("img")
         var posterUrl = imgElement?.attr("src")
-        
-        // Cek lazy load attributes jika src kosong atau placeholder
+        // Fix untuk lazy load images
         if (posterUrl.isNullOrEmpty() || posterUrl.contains("data:image")) {
             posterUrl = imgElement?.attr("data-src") ?: imgElement?.attr("data-original")
         }
@@ -64,7 +59,7 @@ class JavHey : MainAPI() {
         val title = titleElement.text().trim()
 
         return newMovieSearchResponse(title, href, TvType.NSFW) {
-            this.posterUrl = posterUrl // Cloudstream handle null gracefully, as long as logic above is sound
+            this.posterUrl = posterUrl
         }
     }
 
@@ -87,7 +82,6 @@ class JavHey : MainAPI() {
             ?: document.selectFirst("h1")?.text()?.trim() 
             ?: "Unknown Title"
 
-        // Ambil poster resolusi tinggi dengan fallback
         val poster = document.selectFirst(".images a.magnificPopupImage")?.attr("href")
             ?: document.selectFirst(".images img")?.attr("src")
             ?: document.selectFirst("article.item img")?.attr("src")
@@ -122,52 +116,99 @@ class JavHey : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // PERBAIKAN 3: Network Robustness
-        // Menggunakan text langsung untuk mempercepat parsing regex
+        // Ambil text HTML untuk parsing manual (lebih cepat & hemat memori)
         val text = app.get(data, headers = commonHeaders).text 
-        val document = org.jsoup.Jsoup.parse(text) // Parse manual dari text agar hemat resource
+        val document = org.jsoup.Jsoup.parse(text)
 
-        // METODE 1: Decode Base64 Hidden Input
+        val foundUrls = mutableListOf<String>()
+
+        // 1. Decode Base64 Hidden Input
         val hiddenLinks = document.selectFirst("#links")?.attr("value")
         if (!hiddenLinks.isNullOrEmpty()) {
             try {
                 val decodedString = String(Base64.decode(hiddenLinks, Base64.DEFAULT))
-                val urls = decodedString.split(",,,")
-                urls.forEach { rawUrl ->
-                    val url = rawUrl.trim()
-                    if (url.isNotEmpty() && url.startsWith("http")) {
-                        loadExtractor(url, subtitleCallback, callback)
-                    }
-                }
+                foundUrls.addAll(decodedString.split(",,,").map { it.trim() })
             } catch (e: Exception) {
                 e.printStackTrace()
             }
         }
 
-        // METODE 2: Scan Tombol Download
-        val downloadSelectors = ".links-download a, a.btn, .download a, a[href*='streamwish'], a[href*='dood'], a[href*='vidhide']"
-        document.select(downloadSelectors).forEach { link ->
-            val href = link.attr("href")
-            if (href.isNotEmpty() && href.startsWith("http") && !href.contains("javascript")) {
-                loadExtractor(href, subtitleCallback, callback)
-            }
-        }
-
-        // METODE 3: Scan Iframe
-        document.select("iframe").forEach { iframe ->
-            val src = iframe.attr("src")
-            if (src.isNotEmpty() && src.startsWith("http")) {
-                loadExtractor(src, subtitleCallback, callback)
-            }
-        }
-
-        // METODE 4: Brute Force Regex (Host List Lengkap dari analisa HTML terakhir)
+        // 2. Scan Regex Agresif (Mencari semua link host di source code)
         val regex = Regex("""https?://(streamwish|dood|d000d|vidhide|vidhidepro|mixdrop|filelions|voe|streamtape|advertape|myvidplay|lelebakar|bysebuho|minochinos|cavanhabg|kr21|turtle4up)[\w./?=&%-]+""")
         regex.findAll(text).forEach { match ->
-            val url = match.value
-            loadExtractor(url, subtitleCallback, callback)
+            foundUrls.add(match.value)
+        }
+
+        // 3. Scan Element HTML
+        document.select("iframe[src], .links-download a[href]").forEach { 
+            foundUrls.add(it.attr("src").ifEmpty { it.attr("href") }) 
+        }
+
+        // PROSES LINK
+        foundUrls.distinct().forEach { url ->
+            if (url.isNotBlank() && url.startsWith("http")) {
+                // HANDLER KHUSUS LELEBAKAR (Sesuai CURL Terbaru)
+                if (url.contains("lelebakar.xyz") || url.contains("lelebakar")) {
+                    LeleBakarExtractor().getUrl(url, null, subtitleCallback, callback)
+                } 
+                // HANDLER DEFAULT (Cloudstream Standard)
+                else {
+                    loadExtractor(url, subtitleCallback, callback)
+                }
+            }
         }
 
         return true
+    }
+}
+
+// --- CUSTOM EXTRACTOR: LELEBAKAR ---
+class LeleBakarExtractor : ExtractorApi() {
+    override val name = "LeleBakar"
+    override val mainUrl = "https://lelebakar.xyz"
+    override val requiresReferer = true 
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        try {
+            // Header Super Spesifik (Berdasarkan Data Curl User)
+            val headers = mapOf(
+                "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
+                "Referer" to url, // Referer wajib halaman embed itu sendiri
+                "Origin" to "https://lelebakar.xyz",
+                "Accept" to "*/*",
+                "Sec-Fetch-Mode" to "cors",
+                "Sec-Fetch-Site" to "same-origin"
+            )
+
+            // 1. Ambil Source Code Halaman Embed
+            val response = app.get(url, headers = headers).text
+            
+            // 2. Cari file .m3u8 menggunakan Regex yang lebih fleksibel
+            // Mencari pola: "https://....master.m3u8" atau file m3u8 lainnya
+            val m3u8Regex = Regex("""["'](https?://[^"']+\.m3u8[^"']*)["']""")
+            val match = m3u8Regex.find(response)
+            
+            match?.groupValues?.get(1)?.let { m3u8Url ->
+                // 3. Kirim Link ke Player dengan Header yang Benar
+                callback.invoke(
+                    ExtractorLink(
+                        name,
+                        name,
+                        m3u8Url,
+                        url, // Referer yang dikirim ke player adalah halaman embed
+                        Qualities.Unknown.value,
+                        true, // Video tipe HLS (m3u8) - Penting untuk file master.m3u8!
+                        headers = headers // Header disematkan ke player agar tidak 403 Forbidden
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 }
