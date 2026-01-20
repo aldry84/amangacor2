@@ -9,6 +9,9 @@ class LeleBakarExtractor : ExtractorApi() {
     override val mainUrl = "https://lelebakar.xyz"
     override val requiresReferer = true 
 
+    // PERBAIKAN FINAL: Menambahkan @Suppress("DEPRECATION") di level fungsi
+    // Ini akan memaksa compiler mengabaikan warning constructor ExtractorLink
+    @Suppress("DEPRECATION")
     override suspend fun getUrl(
         url: String,
         referer: String?,
@@ -32,10 +35,8 @@ class LeleBakarExtractor : ExtractorApi() {
             val match = m3u8Regex.find(response)
             
             match?.groupValues?.get(1)?.let { m3u8Url ->
-                // PERBAIKAN FINAL:
-                // 1. Menggunakan Constructor Klasik (Urutan Parameter Standar)
-                // 2. Menambahkan Suppress Warning agar Build TIDAK GAGAL karena Deprecation
-                @Suppress("DEPRECATION")
+                // Menggunakan Constructor Lama (Klasik)
+                // Karena ada @Suppress di atas, error "Deprecated" tidak akan muncul lagi
                 callback.invoke(
                     ExtractorLink(
                         name,           // source
