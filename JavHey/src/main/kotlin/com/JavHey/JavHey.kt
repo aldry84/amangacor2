@@ -56,13 +56,13 @@ class JavHey : MainAPI() {
     override suspend fun load(url: String): LoadResponse? {
         val doc = app.get(url).document
 
-        // 1. AMBIL GAMBAR
+        // Ambil Poster (Prioritas dari HTML terbaru)
         val poster = doc.select("div.product div.images img").attr("src")
             .ifEmpty { doc.select("div.video_player img").attr("src") }
             .ifEmpty { doc.select("meta[property='og:image']").attr("content") }
             .ifEmpty { doc.select("article.post img").attr("src") }
 
-        // 2. AMBIL JUDUL
+        // Ambil Judul
         var title = doc.select("header.post_header h1").text().trim()
         if (title.isEmpty()) title = doc.select("meta[property='og:title']").attr("content")
         
@@ -71,7 +71,7 @@ class JavHey : MainAPI() {
             .replace("JAVHEY", "")
             .trim()
 
-        // 3. AMBIL DESKRIPSI
+        // Ambil Deskripsi
         val description = doc.select("meta[name='description']").attr("content")
             .ifEmpty { doc.select("div.video-description").text() }
 
@@ -89,21 +89,20 @@ class JavHey : MainAPI() {
     ): Boolean {
         val doc = app.get(data).document
 
-        // CARA SIMPEL: Ambil Base64 -> Decode -> Langsung Load
+        // 1. CARI DARI LIST YANG DIENKRIPSI (BASE64)
         val linksBase64 = doc.select("input#links").attr("value")
         
         if (linksBase64.isNotEmpty()) {
             try {
-                // Decode Value Base64
+                // Decode teks rahasia
                 val decodedLinks = String(Base64.decode(linksBase64, Base64.DEFAULT))
                 
-                // Pisahkan link berdasarkan koma
+                // Pisahkan daftar link (biasanya dipisah dengan tiga koma)
                 val urls = decodedLinks.split(",,,")
                 
                 urls.forEach { link ->
                     if (link.isNotBlank()) {
-                        // LANGSUNG TEMBAK! Biarkan Cloudstream yang bekerja.
-                        // Tidak ada perlakuan khusus lagi buat Bysebuho.
+                        // LANGSUNG PROSES TANPA EMBEL-EMBEL APAPUN
                         loadExtractor(link, subtitleCallback, callback)
                     }
                 }
@@ -113,7 +112,7 @@ class JavHey : MainAPI() {
             }
         }
 
-        // Fallback: Cek Iframe manual kalau Base64 gagal
+        // 2. CADANGAN: AMBIL DARI IFRAME BIASA
         val iframeSrc = doc.select("iframe#iframe-link").attr("src")
         if (iframeSrc.isNotEmpty()) {
             loadExtractor(iframeSrc, subtitleCallback, callback)
