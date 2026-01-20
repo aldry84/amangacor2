@@ -13,15 +13,12 @@ class JavHey : MainAPI() {
     override val hasDownloadSupport = true
     override val supportedTypes = setOf(TvType.NSFW)
 
-    // ANTI-BLOCK: Header untuk menyamar sebagai Browser Asli
+    // PERBAIKAN 1: Header Lebih Aman (Anti-Cancel)
+    // Menghapus 'Sec-Fetch-*' yang sering bentrok dengan WebViewResolver Cloudstream
+    // Menambahkan 'Referer' agar tidak ditolak server
     private val commonHeaders = mapOf(
         "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
-        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language" to "en-US,en;q=0.5",
-        "Sec-Fetch-Dest" to "document",
-        "Sec-Fetch-Mode" to "navigate",
-        "Sec-Fetch-Site" to "none",
-        "Sec-Fetch-User" to "?1"
+        "Referer" to "$mainUrl/"
     )
 
     override val mainPage = mainPageOf(
@@ -35,12 +32,15 @@ class JavHey : MainAPI() {
         request: MainPageRequest
     ): HomePageResponse? {
         val url = request.data + page
-        // Gunakan headers saat request
-        val doc = app.get(url, headers = commonHeaders).document
-        val home = doc.select("article.item").mapNotNull {
-            toSearchResult(it)
+        return try {
+            val doc = app.get(url, headers = commonHeaders).document
+            val home = doc.select("article.item").mapNotNull {
+                toSearchResult(it)
+            }
+            newHomePageResponse(request.name, home)
+        } catch (e: Exception) {
+            null // Mencegah crash jika halaman gagal load
         }
-        return newHomePageResponse(request.name, home)
     }
 
     private fun toSearchResult(element: Element): SearchResponse? {
@@ -50,42 +50,50 @@ class JavHey : MainAPI() {
         val linkElement = header.selectFirst("a") ?: return null
         val href = fixUrl(linkElement.attr("href"))
         
+        // PERBAIKAN 2: Safe Image Loading (Anti-Coil Crash)
+        // Memastikan posterUrl valid sebelum dikirim
         val imgElement = header.selectFirst("img")
-        val posterUrl = imgElement?.attr("src") ?: imgElement?.attr("data-src")
+        var posterUrl = imgElement?.attr("src")
+        
+        // Cek lazy load attributes jika src kosong atau placeholder
+        if (posterUrl.isNullOrEmpty() || posterUrl.contains("data:image")) {
+            posterUrl = imgElement?.attr("data-src") ?: imgElement?.attr("data-original")
+        }
 
         val titleElement = content.selectFirst("h3 a") ?: return null
         val title = titleElement.text().trim()
 
         return newMovieSearchResponse(title, href, TvType.NSFW) {
-            this.posterUrl = posterUrl
+            this.posterUrl = posterUrl // Cloudstream handle null gracefully, as long as logic above is sound
         }
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
         val url = "$mainUrl/search?s=$query"
-        // Gunakan headers saat request
-        val document = app.get(url, headers = commonHeaders).document
-        
-        return document.select("article.item").mapNotNull {
-            toSearchResult(it)
+        return try {
+            val document = app.get(url, headers = commonHeaders).document
+            document.select("article.item").mapNotNull {
+                toSearchResult(it)
+            }
+        } catch (e: Exception) {
+            emptyList()
         }
     }
 
     override suspend fun load(url: String): LoadResponse {
-        // Gunakan headers saat request detail
         val document = app.get(url, headers = commonHeaders).document
 
-        // Ambil Judul
         val title = document.selectFirst("h1.product_title")?.text()?.trim() 
             ?: document.selectFirst("h1")?.text()?.trim() 
             ?: "Unknown Title"
 
-        // FIX COIL ERROR: Ambil Poster dengan beberapa selector cadangan
+        // Ambil poster resolusi tinggi dengan fallback
         val poster = document.selectFirst(".images a.magnificPopupImage")?.attr("href")
             ?: document.selectFirst(".images img")?.attr("src")
-            ?: document.selectFirst("article.post img")?.attr("src") // Cadangan untuk layout lama
+            ?: document.selectFirst("article.item img")?.attr("src")
 
-        val description = document.selectFirst(".video-description")?.text()?.replace("Description: ", "")?.trim()
+        val description = document.selectFirst(".video-description")?.text()
+            ?.replace("Description:", "", true)?.trim()
             ?: document.select("meta[name=description]").attr("content")
 
         val tags = document.select(".product_meta a[href*='/tag/'], .product_meta a[href*='/category/']").map { it.text() }
@@ -114,9 +122,10 @@ class JavHey : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // Gunakan headers saat request loadLinks
-        val document = app.get(data, headers = commonHeaders).document
-        val html = document.html()
+        // PERBAIKAN 3: Network Robustness
+        // Menggunakan text langsung untuk mempercepat parsing regex
+        val text = app.get(data, headers = commonHeaders).text 
+        val document = org.jsoup.Jsoup.parse(text) // Parse manual dari text agar hemat resource
 
         // METODE 1: Decode Base64 Hidden Input
         val hiddenLinks = document.selectFirst("#links")?.attr("value")
@@ -152,9 +161,9 @@ class JavHey : MainAPI() {
             }
         }
 
-        // METODE 4: Brute Force Regex (Host List Lengkap)
+        // METODE 4: Brute Force Regex (Host List Lengkap dari analisa HTML terakhir)
         val regex = Regex("""https?://(streamwish|dood|d000d|vidhide|vidhidepro|mixdrop|filelions|voe|streamtape|advertape|myvidplay|lelebakar|bysebuho|minochinos|cavanhabg|kr21|turtle4up)[\w./?=&%-]+""")
-        regex.findAll(html).forEach { match ->
+        regex.findAll(text).forEach { match ->
             val url = match.value
             loadExtractor(url, subtitleCallback, callback)
         }
