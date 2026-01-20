@@ -14,5 +14,5 @@ cloudstream {
     **/
     status  = 1 // will be 3 if unspecified
     tvTypes = listOf("NSFW")
-    iconUrl = // "kosong"
+    iconUrl = "https://javhey.com/favicon.png"
 }
