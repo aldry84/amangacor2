@@ -32,14 +32,16 @@ class LeleBakarExtractor : ExtractorApi() {
             val match = m3u8Regex.find(response)
             
             match?.groupValues?.get(1)?.let { m3u8Url ->
-                // KEMBALI KE KONSTRUKTOR KLASIK (Tanpa Named Arguments)
-                // Urutan: source, name, url, referer, quality, isM3u8, headers, extractorData
+                // PERBAIKAN FINAL:
+                // 1. Menggunakan Constructor Klasik (Urutan Parameter Standar)
+                // 2. Menambahkan Suppress Warning agar Build TIDAK GAGAL karena Deprecation
+                @Suppress("DEPRECATION")
                 callback.invoke(
                     ExtractorLink(
                         name,           // source
                         name,           // name
                         m3u8Url,        // url
-                        url,            // referer (halaman embed)
+                        url,            // referer
                         Qualities.Unknown.value, // quality
                         true,           // isM3u8
                         headers,        // headers map
