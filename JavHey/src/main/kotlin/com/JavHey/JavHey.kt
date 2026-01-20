@@ -1,160 +1,155 @@
-package com.JavHey
-
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.utils.*
+import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.AppUtils.parseJson
+import com.lagradost.cloudstream3.utils.loadExtractor
 import org.jsoup.nodes.Element
 
-class JavHey : MainAPI() {
+class JavHeyProvider : MainAPI() {
     override var mainUrl = "https://javhey.com"
     override var name = "JavHey"
-    
-    // Sinkron dengan gradle: hasMainPage = true
     override val hasMainPage = true
-    
-    // Sinkron dengan gradle: language = "id"
-    override var lang = "id"
-    
-    // Sinkron dengan gradle: tvTypes = listOf("NSFW")
+    override var lang = "id" // Karena situsnya Subtitle Indonesia
+    override val hasDownloadSupport = true
     override val supportedTypes = setOf(TvType.NSFW)
 
-    // Header Global (Anti-Blokir)
-    private val globalHeaders = mapOf(
-        "Authority" to "javhey.com",
-        "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
-        "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
-        "Sec-Ch-Ua" to "\"Chromium\";v=\"137\", \"Not/A)Brand\";v=\"24\"",
-        "Sec-Ch-Ua-Mobile" to "?1",
-        "Sec-Ch-Ua-Platform" to "\"Android\"",
-        "Sec-Fetch-Dest" to "document",
-        "Sec-Fetch-Mode" to "navigate",
-        "Sec-Fetch-Site" to "none",
-        "Upgrade-Insecure-Requests" to "1"
-    )
-
-    // =========================================================================
-    // 1. MAIN PAGE
-    // =========================================================================
+    // Mengatur Kategori Halaman Utama
     override val mainPage = mainPageOf(
-        "$mainUrl/page/" to "Latest Updates",
-        "$mainUrl/best/" to "Best Videos"
+        "$mainUrl/videos/paling-baru/page=" to "Paling Baru",
+        "$mainUrl/videos/paling-dilihat/page=" to "Paling Dilihat",
+        "$mainUrl/videos/top-rating/page=" to "Top Rating",
+        "$mainUrl/videos/jav-sub-indo/page=" to "JAV Sub Indo"
     )
 
-    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val document = app.get(request.data + page, headers = globalHeaders).document
+    // ==========================================
+    // BAGIAN 1: MENGAMBIL DAFTAR VIDEO
+    // ==========================================
+    override suspend fun getMainPage(
+        page: Int,
+        request: MainPageRequest
+    ): HomePageResponse? {
+        // Membentuk URL halaman (misal: .../page=1)
+        val url = request.data + page
+        val doc = app.get(url).document
         
-        // Mengambil semua elemen div di dalam row (struktur Bootstrap JavHey)
-        val targetElements = document.select("div.container.mt-5 div.row > div")
-        
-        val home = targetElements.mapNotNull { element ->
-            val linkTag = element.selectFirst("a") ?: return@mapNotNull null
-            val imgTag = element.selectFirst("img") ?: return@mapNotNull null
-            
-            val title = linkTag.attr("title").ifEmpty { imgTag.attr("alt") }
-            val link = linkTag.attr("href")
-            val img = imgTag.attr("src").ifEmpty { imgTag.attr("data-src") }
-
-            if (link.isBlank() || title.isBlank()) return@mapNotNull null
-
-            MovieSearchResponse(
-                title,
-                link,
-                this.name,
-                TvType.NSFW,
-                img,
-                null
-            )
+        val home = doc.select("article.item").mapNotNull {
+            toSearchResult(it)
         }
+
         return newHomePageResponse(request.name, home)
     }
 
-    // =========================================================================
-    // 2. SEARCH
-    // =========================================================================
-    override suspend fun search(query: String): List<SearchResponse> {
-        val url = "$mainUrl/?s=$query"
-        val document = app.get(url, headers = globalHeaders).document
+    // Fungsi pembantu untuk mengubah HTML menjadi Data Video Cloudstream
+    private fun toSearchResult(element: Element): SearchResponse? {
+        // Mengambil Judul
+        val title = element.selectFirst("h3 > a")?.text()?.trim() 
+            ?: element.selectFirst("img")?.attr("alt") 
+            ?: return null
 
-        return document.select("div.container div.row > div").mapNotNull {
-            val linkTag = it.selectFirst("a") ?: return@mapNotNull null
-            val imgTag = it.selectFirst("img") ?: return@mapNotNull null
-            
-            val title = linkTag.attr("title")
-            val link = linkTag.attr("href")
-            val img = imgTag.attr("src").ifEmpty { imgTag.attr("data-src") }
-
-            MovieSearchResponse(
-                title,
-                link,
-                this.name,
-                TvType.NSFW,
-                img,
-                null
-            )
-        }
-    }
-
-    // =========================================================================
-    // 3. LOAD (Detail Video)
-    // =========================================================================
-    override suspend fun load(url: String): LoadResponse {
-        val document = app.get(url, headers = globalHeaders).document
+        // Mengambil Link Halaman Detail
+        val href = element.selectFirst("div.item_header > a")?.attr("href") ?: return null
         
-        val title = document.selectFirst("h1")?.text()?.trim() ?: "No Title"
-        val poster = document.selectFirst("meta[property=og:image]")?.attr("content") 
-                    ?: document.selectFirst("div.content_banner img")?.attr("src")
+        // Mengambil Gambar Poster
+        val posterUrl = element.selectFirst("img")?.attr("src")
 
-        val iframeSrc = document.select("iframe").attr("src")
-        val plot = document.selectFirst("meta[name=description]")?.attr("content")
-
-        return newMovieLoadResponse(title, url, TvType.NSFW, iframeSrc) {
-            this.posterUrl = poster
-            this.plot = plot
+        return newMovieSearchResponse(title, href, TvType.NSFW) {
+            this.posterUrl = posterUrl
         }
     }
 
-    // =========================================================================
-    // 4. LOAD LINKS (Extractor Bysebuho)
-    // =========================================================================
-    override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
-        if (data.contains("bysebuho.com")) {
-            val id = data.substringAfter("/e/").substringBefore("/")
-            val apiUrl = "https://bysebuho.com/api/videos/$id/embed/details"
-            
-            val apiHeaders = mapOf(
-                "Authority" to "bysebuho.com",
-                "Referer" to data,
-                "X-Embed-Origin" to "javhey.com",
-                "X-Embed-Parent" to data,
-                "X-Embed-Referer" to "https://javhey.com/",
-                "User-Agent" to globalHeaders["User-Agent"]!!,
-                "Accept" to "*/*"
-            )
-
-            try {
-                val jsonResponse = app.get(apiUrl, headers = apiHeaders).parsedSafe<BysebuhoResponse>()
-                val finalUrl = jsonResponse?.embed_frame_url
-                
-                if (finalUrl != null) {
-                    callback.invoke(
-                        ExtractorLink(
-                            this.name,
-                            "Bysebuho",
-                            finalUrl, 
-                            data, 
-                            Qualities.Unknown.value,
-                            isM3u8 = finalUrl.contains(".m3u8")
-                        )
-                    )
-                    return true
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+    // ==========================================
+    // BAGIAN 2: PENCARIAN (SEARCH)
+    // ==========================================
+    override suspend fun search(query: String): List<SearchResponse> {
+        // URL Search: https://javhey.com/search?s=kata-kunci
+        val url = "$mainUrl/search?s=$query"
+        val doc = app.get(url).document
+        
+        return doc.select("article.item").mapNotNull {
+            toSearchResult(it)
         }
+    }
+
+    // ==========================================
+    // BAGIAN 3: MEMUAT DETAIL VIDEO
+    // ==========================================
+    override suspend fun load(url: String): LoadResponse? {
+        val doc = app.get(url).document
+
+        // Mengambil info detail lagi untuk memastikan akurasi
+        val title = doc.selectFirst("h1")?.text()?.trim() ?: "Unknown Title"
+        val poster = doc.selectFirst("div.video_player img")?.attr("src") 
+            ?: doc.selectFirst("article.item img")?.attr("src")
+        
+        // Mengambil Deskripsi (jika ada)
+        val description = doc.select("div.video-description").text()
+
+        return newMovieLoadResponse(title, url, TvType.NSFW, url) {
+            this.posterUrl = poster
+            this.plot = description
+        }
+    }
+
+    // ==========================================
+    // BAGIAN 4: LOAD LINKS (Logika Bysebuho)
+    // ==========================================
+    override suspend fun loadLinks(
+        data: String,
+        isCasting: Boolean,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        val doc = app.get(data).document
+        
+        // 1. Cari iframe embed (Bysebuho)
+        // Biasanya ada di dalam div.video_player atau langsung iframe
+        val iframeSrc = doc.select("iframe").attr("src")
+        
+        if (iframeSrc.contains("bysebuho")) {
+            invokeBysebuho(iframeSrc, data, callback)
+            return true
+        }
+        
         return false
     }
 
+    // Fungsi khusus menangani API Bysebuho yang kamu temukan tadi
+    private suspend fun invokeBysebuho(iframeUrl: String, referer: String, callback: (ExtractorLink) -> Unit) {
+        // Ubah URL embed: https://bysebuho.com/e/CODE/judul -> jadi CODE
+        val code = iframeUrl.substringAfter("/e/").substringBefore("/")
+        
+        // Panggil API JSON yang kamu temukan di cURL
+        val apiUrl = "https://bysebuho.com/api/videos/$code/embed/details"
+        
+        val headers = mapOf(
+            "Referer" to iframeUrl,
+            "x-embed-origin" to mainUrl,
+            "x-embed-parent" to iframeUrl,
+            "x-embed-referer" to mainUrl
+        )
+
+        try {
+            val jsonText = app.get(apiUrl, headers = headers).text
+            val json = parseJson<BysebuhoResponse>(jsonText)
+
+            // Link rahasia ada di 'embed_frame_url' (biasanya domain 9n8o.com)
+            val nextUrl = json.embed_frame_url
+            
+            if (!nextUrl.isNullOrEmpty()) {
+                // Cloudstream punya ekstraktor bawaan yang canggih,
+                // kita suruh dia ekstrak link dari 9n8o.com ini.
+                loadExtractor(nextUrl, callback)
+            }
+        } catch (e: Exception) {
+            // Error handling ringan
+            e.printStackTrace()
+        }
+    }
+
+    // Data Class untuk parsing JSON Bysebuho
     data class BysebuhoResponse(
+        val id: Int? = null,
+        val code: String? = null,
+        val title: String? = null,
         val embed_frame_url: String? = null
     )
 }
