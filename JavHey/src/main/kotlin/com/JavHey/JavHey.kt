@@ -6,45 +6,38 @@ import com.lagradost.cloudstream3.utils.*
 import org.jsoup.nodes.Element
 
 class JavHey : MainAPI() {
+    // --- Bagian Kode Dari Kamu (Start) ---
     override var mainUrl = "https://javhey.com"
     override var name = "JavHey"
     override val hasMainPage = true
     override var lang = "id"
+    override val hasDownloadSupport = true
     override val supportedTypes = setOf(TvType.NSFW)
 
-    // PERBAIKAN: Definisi Manual & Eksplisit
-    // Kita tidak pakai 'mainPageOf' untuk menghindari kesalahan deteksi tipe oleh compiler.
-    // Kita pakai 'listOf' dan konstruktor 'MainPageData' langsung.
-    override val mainPage: List<MainPageData> = listOf(
-        MainPageData("$mainUrl/videos/paling-baru/page=", "Paling Baru", true),
-        MainPageData("$mainUrl/videos/paling-dilihat/page=", "Paling Dilihat", true),
-        MainPageData("$mainUrl/videos/top-rating/page=", "Top Rating", true),
-        MainPageData("$mainUrl/videos/jav-sub-indo/page=", "JAV Sub Indo", true)
+    override val mainPage = mainPageOf(
+        "$mainUrl/videos/paling-baru/page=" to "Paling Baru",
+        "$mainUrl/videos/paling-dilihat/page=" to "Paling Dilihat",
+        "$mainUrl/videos/top-rating/page=" to "Top Rating",
+        "$mainUrl/videos/jav-sub-indo/page=" to "JAV Sub Indo"
     )
 
-    override suspend fun mainPage(page: Int, request: MainPageRequest): HomePageResponse {
+    override suspend fun getMainPage(
+        page: Int,
+        request: MainPageRequest
+    ): HomePageResponse? {
         val url = request.data + page
-        val document = app.get(url).document
-        
-        val home = document.select("div.article_standard_view article.item").mapNotNull {
-            it.toSearchResult()
+        val doc = app.get(url).document
+        val home = doc.select("article.item").mapNotNull {
+            toSearchResult(it)
         }
-        
         return newHomePageResponse(request.name, home)
     }
+    // --- Bagian Kode Dari Kamu (End) ---
 
-    override suspend fun search(query: String): List<SearchResponse> {
-        val url = "$mainUrl/search?s=$query"
-        val document = app.get(url).document
-        
-        return document.select("div.article_standard_view article.item").mapNotNull {
-            it.toSearchResult()
-        }
-    }
-
-    private fun Element.toSearchResult(): SearchResponse? {
-        val header = this.selectFirst("div.item_header") ?: return null
-        val content = this.selectFirst("div.item_content") ?: return null
+    // --- Helper Function (Wajib ada untuk support getMainPage di atas) ---
+    private fun toSearchResult(element: Element): SearchResponse? {
+        val header = element.selectFirst("div.item_header") ?: return null
+        val content = element.selectFirst("div.item_content") ?: return null
         
         val linkElement = header.selectFirst("a") ?: return null
         val href = fixUrl(linkElement.attr("href"))
@@ -60,6 +53,17 @@ class JavHey : MainAPI() {
         }
     }
 
+    // --- Fungsi Search ---
+    override suspend fun search(query: String): List<SearchResponse> {
+        val url = "$mainUrl/search?s=$query"
+        val document = app.get(url).document
+        
+        return document.select("article.item").mapNotNull {
+            toSearchResult(it)
+        }
+    }
+
+    // --- Fungsi Load Metadata ---
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url).document
 
@@ -93,6 +97,7 @@ class JavHey : MainAPI() {
         }
     }
 
+    // --- Fungsi Load Links (Extractor) ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -101,7 +106,7 @@ class JavHey : MainAPI() {
     ): Boolean {
         val document = app.get(data).document
 
-        // Decode Base64 Hidden Input
+        // Decode Base64 dari input hidden
         val hiddenLinks = document.selectFirst("#links")?.attr("value")
         
         if (!hiddenLinks.isNullOrEmpty()) {
@@ -120,7 +125,7 @@ class JavHey : MainAPI() {
             }
         }
 
-        // Backup
+        // Backup dari tombol download
         document.select(".links-download a").forEach { link ->
             val href = link.attr("href")
             if (href.isNotEmpty()) {
