@@ -13,7 +13,7 @@ class JavHey : MainAPI() {
     override val hasDownloadSupport = true
     override val supportedTypes = setOf(TvType.NSFW)
 
-    // Header Global untuk JavHey (Biar bisa masuk halaman utama)
+    // Header Global
     private val commonHeaders = mapOf(
         "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
         "Referer" to "$mainUrl/"
@@ -50,7 +50,6 @@ class JavHey : MainAPI() {
         
         val imgElement = header.selectFirst("img")
         var posterUrl = imgElement?.attr("src")
-        // Fix untuk lazy load images
         if (posterUrl.isNullOrEmpty() || posterUrl.contains("data:image")) {
             posterUrl = imgElement?.attr("data-src") ?: imgElement?.attr("data-original")
         }
@@ -116,13 +115,12 @@ class JavHey : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // Ambil text HTML untuk parsing manual (lebih cepat & hemat memori)
         val text = app.get(data, headers = commonHeaders).text 
         val document = org.jsoup.Jsoup.parse(text)
 
         val foundUrls = mutableListOf<String>()
 
-        // 1. Decode Base64 Hidden Input
+        // 1. Decode Base64
         val hiddenLinks = document.selectFirst("#links")?.attr("value")
         if (!hiddenLinks.isNullOrEmpty()) {
             try {
@@ -133,7 +131,7 @@ class JavHey : MainAPI() {
             }
         }
 
-        // 2. Scan Regex Agresif (Mencari semua link host di source code)
+        // 2. Scan Regex Agresif (Ditambah BySebuho dan lainnya)
         val regex = Regex("""https?://(streamwish|dood|d000d|vidhide|vidhidepro|mixdrop|filelions|voe|streamtape|advertape|myvidplay|lelebakar|bysebuho|minochinos|cavanhabg|kr21|turtle4up)[\w./?=&%-]+""")
         regex.findAll(text).forEach { match ->
             foundUrls.add(match.value)
@@ -147,68 +145,25 @@ class JavHey : MainAPI() {
         // PROSES LINK
         foundUrls.distinct().forEach { url ->
             if (url.isNotBlank() && url.startsWith("http")) {
-                // HANDLER KHUSUS LELEBAKAR (Sesuai CURL Terbaru)
-                if (url.contains("lelebakar.xyz") || url.contains("lelebakar")) {
-                    LeleBakarExtractor().getUrl(url, null, subtitleCallback, callback)
-                } 
-                // HANDLER DEFAULT (Cloudstream Standard)
-                else {
-                    loadExtractor(url, subtitleCallback, callback)
+                when {
+                    // SERVER 1: LELEBAKAR
+                    url.contains("lelebakar.xyz") || url.contains("lelebakar") -> {
+                        LeleBakarExtractor().getUrl(url, null, subtitleCallback, callback)
+                    }
+                    // SERVER 2: BYSEBUHO (Placeholder Logic)
+                    url.contains("bysebuho.com") -> {
+                        // Nanti kita aktifkan ini kalau BySebuhoExtractor sudah jadi
+                        // BySebuhoExtractor().getUrl(url, null, subtitleCallback, callback)
+                        loadExtractor(url, subtitleCallback, callback) // Sementara pake default dulu
+                    }
+                    // DEFAULT HANDLER
+                    else -> {
+                        loadExtractor(url, subtitleCallback, callback)
+                    }
                 }
             }
         }
 
         return true
-    }
-}
-
-// --- CUSTOM EXTRACTOR: LELEBAKAR ---
-class LeleBakarExtractor : ExtractorApi() {
-    override val name = "LeleBakar"
-    override val mainUrl = "https://lelebakar.xyz"
-    override val requiresReferer = true 
-
-    override suspend fun getUrl(
-        url: String,
-        referer: String?,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ) {
-        try {
-            // Header Super Spesifik (Berdasarkan Data Curl User)
-            val headers = mapOf(
-                "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
-                "Referer" to url, // Referer wajib halaman embed itu sendiri
-                "Origin" to "https://lelebakar.xyz",
-                "Accept" to "*/*",
-                "Sec-Fetch-Mode" to "cors",
-                "Sec-Fetch-Site" to "same-origin"
-            )
-
-            // 1. Ambil Source Code Halaman Embed
-            val response = app.get(url, headers = headers).text
-            
-            // 2. Cari file .m3u8 menggunakan Regex yang lebih fleksibel
-            // Mencari pola: "https://....master.m3u8" atau file m3u8 lainnya
-            val m3u8Regex = Regex("""["'](https?://[^"']+\.m3u8[^"']*)["']""")
-            val match = m3u8Regex.find(response)
-            
-            match?.groupValues?.get(1)?.let { m3u8Url ->
-                // 3. Kirim Link ke Player dengan Header yang Benar
-                callback.invoke(
-                    ExtractorLink(
-                        name,
-                        name,
-                        m3u8Url,
-                        url, // Referer yang dikirim ke player adalah halaman embed
-                        Qualities.Unknown.value,
-                        true, // Video tipe HLS (m3u8) - Penting untuk file master.m3u8!
-                        headers = headers // Header disematkan ke player agar tidak 403 Forbidden
-                    )
-                )
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
     }
 }
