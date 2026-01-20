@@ -7,11 +7,17 @@ import org.jsoup.nodes.Element
 class JavHey : MainAPI() {
     override var mainUrl = "https://javhey.com"
     override var name = "JavHey"
+    
+    // Sinkron dengan gradle: hasMainPage = true
     override val hasMainPage = true
+    
+    // Sinkron dengan gradle: language = "id"
     override var lang = "id"
+    
+    // Sinkron dengan gradle: tvTypes = listOf("NSFW")
     override val supportedTypes = setOf(TvType.NSFW)
 
-    // Header Global (Wajib ada biar gak dikira bot)
+    // Header Global (Anti-Blokir)
     private val globalHeaders = mapOf(
         "Authority" to "javhey.com",
         "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -26,7 +32,7 @@ class JavHey : MainAPI() {
     )
 
     // =========================================================================
-    // 1. MAIN PAGE (Daftar Video)
+    // 1. MAIN PAGE
     // =========================================================================
     override val mainPage = mainPageOf(
         "$mainUrl/page/" to "Latest Updates",
@@ -36,7 +42,7 @@ class JavHey : MainAPI() {
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val document = app.get(request.data + page, headers = globalHeaders).document
         
-        // SELECTOR FINAL: Ambil semua anak langsung dari div.row di dalam container
+        // Mengambil semua elemen div di dalam row (struktur Bootstrap JavHey)
         val targetElements = document.select("div.container.mt-5 div.row > div")
         
         val home = targetElements.mapNotNull { element ->
@@ -62,7 +68,7 @@ class JavHey : MainAPI() {
     }
 
     // =========================================================================
-    // 2. SEARCH (Pencarian)
+    // 2. SEARCH
     // =========================================================================
     override suspend fun search(query: String): List<SearchResponse> {
         val url = "$mainUrl/?s=$query"
@@ -88,7 +94,7 @@ class JavHey : MainAPI() {
     }
 
     // =========================================================================
-    // 3. LOAD (Detail Halaman)
+    // 3. LOAD (Detail Video)
     // =========================================================================
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url, headers = globalHeaders).document
@@ -97,9 +103,7 @@ class JavHey : MainAPI() {
         val poster = document.selectFirst("meta[property=og:image]")?.attr("content") 
                     ?: document.selectFirst("div.content_banner img")?.attr("src")
 
-        // Ambil link iframe (sumber video)
         val iframeSrc = document.select("iframe").attr("src")
-
         val plot = document.selectFirst("meta[name=description]")?.attr("content")
 
         return newMovieLoadResponse(title, url, TvType.NSFW, iframeSrc) {
@@ -109,11 +113,9 @@ class JavHey : MainAPI() {
     }
 
     // =========================================================================
-    // 4. LOAD LINKS (Extractor API Bysebuho)
+    // 4. LOAD LINKS (Extractor Bysebuho)
     // =========================================================================
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
-        // data = link iframe
-        
         if (data.contains("bysebuho.com")) {
             val id = data.substringAfter("/e/").substringBefore("/")
             val apiUrl = "https://bysebuho.com/api/videos/$id/embed/details"
