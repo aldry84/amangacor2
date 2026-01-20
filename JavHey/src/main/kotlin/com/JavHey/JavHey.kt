@@ -54,13 +54,16 @@ class JavHey : MainAPI() {
         }
     }
 
-    // ==========================================
-    // LOAD DETAIL (SESUAI HTML ASLI)
-    // ==========================================
     override suspend fun load(url: String): LoadResponse? {
         val doc = app.get(url).document
 
-        // 1. Ambil Judul & Bersihkan
+        // 1. AMBIL GAMBAR (Prioritas dari player dan struktur HTML baru)
+        val poster = doc.select("div.product div.images img").attr("src")
+            .ifEmpty { doc.select("div.video_player img").attr("src") }
+            .ifEmpty { doc.select("meta[property='og:image']").attr("content") }
+            .ifEmpty { doc.select("article.post img").attr("src") }
+
+        // 2. AMBIL JUDUL
         var title = doc.select("header.post_header h1").text().trim()
         if (title.isEmpty()) title = doc.select("meta[property='og:title']").attr("content")
         
@@ -69,12 +72,7 @@ class JavHey : MainAPI() {
             .replace("JAVHEY", "")
             .trim()
 
-        // 2. Ambil Poster (Prioritas dari div.product img yang ada di HTML kamu)
-        val poster = doc.select("div.product div.images img").attr("src")
-            .ifEmpty { doc.select("meta[property='og:image']").attr("content") }
-            .ifEmpty { doc.select("article.post img").attr("src") }
-
-        // 3. Ambil Deskripsi
+        // 3. AMBIL DESKRIPSI
         val description = doc.select("meta[name='description']").attr("content")
             .ifEmpty { doc.select("div.video-description").text() }
 
@@ -84,9 +82,6 @@ class JavHey : MainAPI() {
         }
     }
 
-    // ==========================================
-    // LOAD LINKS (HARTA KARUN BASE64)
-    // ==========================================
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -95,21 +90,25 @@ class JavHey : MainAPI() {
     ): Boolean {
         val doc = app.get(data).document
 
-        // CARA 1: Ambil dari Hidden Input Base64 (Paling Akurat sesuai HTML)
+        // CARA 1: HARTA KARUN BASE64 (Decode Link Tersembunyi)
         val linksBase64 = doc.select("input#links").attr("value")
         
         if (linksBase64.isNotEmpty()) {
             try {
-                // Decode Base64
-                // Hasil decode: "https://bysebuho.com/e/...,,,https://minochinos.com/..."
+                // Decode: "https://bysebuho.com/...,,,https://streamwish..."
                 val decodedLinks = String(Base64.decode(linksBase64, Base64.DEFAULT))
-                
-                // Pecah berdasarkan koma (,,,)
                 val urls = decodedLinks.split(",,,")
                 
                 urls.forEach { link ->
                     if (link.isNotBlank()) {
-                        loadExtractor(link, subtitleCallback, callback)
+                        // LOGIKA BARU: Cek jenis linknya
+                        if (link.contains("bysebuho")) {
+                            // Kalau link bysebuho, kita bedah manual (Khusus Paling Baru)
+                            invokeBysebuho(link, subtitleCallback, callback)
+                        } else {
+                            // Kalau server lain (Streamwish, dll), serahkan ke Cloudstream
+                            loadExtractor(link, subtitleCallback, callback)
+                        }
                     }
                 }
                 return true
@@ -118,13 +117,55 @@ class JavHey : MainAPI() {
             }
         }
 
-        // CARA 2: Cadangan (Cari Iframe manual)
+        // CARA 2: Cadangan jika Base64 kosong (Iframe Manual)
         val iframeSrc = doc.select("iframe#iframe-link").attr("src")
         if (iframeSrc.isNotEmpty()) {
-            loadExtractor(iframeSrc, subtitleCallback, callback)
+            if (iframeSrc.contains("bysebuho")) {
+                invokeBysebuho(iframeSrc, subtitleCallback, callback)
+            } else {
+                loadExtractor(iframeSrc, subtitleCallback, callback)
+            }
             return true
         }
 
         return false
     }
+
+    // FUNGSI KHUSUS MEMBEDAH BYSEBUHO (KUNCI UTAMA)
+    private suspend fun invokeBysebuho(
+        iframeUrl: String, 
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        // Ambil Kode: https://bysebuho.com/e/KODE/...
+        val code = iframeUrl.substringAfter("/e/").substringBefore("/")
+        
+        // Panggil API
+        val apiUrl = "https://bysebuho.com/api/videos/$code/embed/details"
+        
+        val headers = mapOf(
+            "Referer" to iframeUrl,
+            "x-embed-origin" to mainUrl,
+            "x-embed-parent" to iframeUrl,
+            "x-embed-referer" to mainUrl
+        )
+
+        try {
+            val jsonText = app.get(apiUrl, headers = headers).text
+            val json = parseJson<BysebuhoResponse>(jsonText)
+            
+            // Dapat link asli (biasanya 9n8o.com atau redirector lain)
+            val nextUrl = json.embed_frame_url
+            
+            if (!nextUrl.isNullOrEmpty()) {
+                loadExtractor(nextUrl, subtitleCallback, callback)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    data class BysebuhoResponse(
+        val embed_frame_url: String? = null
+    )
 }
