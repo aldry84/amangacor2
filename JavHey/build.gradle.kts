@@ -1,13 +1,9 @@
-// use an integer for version numbers
 version = 1
 
-
 cloudstream {
-    language = "id"
-    // All of these properties are optional, you can safely remove them
-
-    // description = "Lorem Ipsum"
-    authors = listOf("aldry84")
+    authors     = listOf("aldry88")
+    language    = "en"
+    description = "feleng japang bahasa indonesia"
 
     /**
      * Status int as the following:
@@ -15,12 +11,8 @@ cloudstream {
      * 1: Ok
      * 2: Slow
      * 3: Beta only
-     * */
-    status = 1 // will be 3 if unspecified
+    **/
+    status  = 1 // will be 3 if unspecified
     tvTypes = listOf("NSFW")
-
-
-    iconUrl = "https://javhey.com/favicon.ico"
-
-    isCrossPlatform = true
+    iconUrl = // "kosong"
 }
