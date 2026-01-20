@@ -54,22 +54,32 @@ class JavHey : MainAPI() {
     }
 
     // ==========================================
-    // PERBAIKAN BAGIAN DETAIL VIDEO
+    // BAGIAN DETAIL VIDEO (UPDATE: LEBIH PINTAR CARI GAMBAR)
     // ==========================================
     override suspend fun load(url: String): LoadResponse? {
         val doc = app.get(url).document
 
-        // Menggunakan Meta Tags (Lebih Aman & Akurat)
-        val title = doc.select("meta[property='og:title']").attr("content").trim()
-            .ifEmpty { doc.select("h1").text().trim() } // Backup kalau meta kosong
+        // 1. Ambil Judul & Bersihkan
+        var title = doc.select("meta[property='og:title']").attr("content").trim()
+        if (title.isEmpty()) title = doc.select("h1").text().trim()
         
+        val cleanTitle = title
+            .replace("JAV Subtitle Indonesia -", "")
+            .replace("JAVHEY", "")
+            .replace("- JAVHEY", "")
+            .trim()
+
+        // 2. Ambil Poster (Coba cari di 5 tempat berbeda sampai ketemu)
         val poster = doc.select("meta[property='og:image']").attr("content")
-        
+            .ifEmpty { doc.select("link[rel='image_src']").attr("href") }
+            .ifEmpty { doc.select("div.video_player img").attr("src") }
+            .ifEmpty { doc.select("div.main_content img").attr("src") }
+            .ifEmpty { doc.select("article img").attr("src") }
+
+        // 3. Ambil Deskripsi
         val description = doc.select("meta[name='description']").attr("content")
             .ifEmpty { doc.select("div.video-description").text() }
-
-        // Bersihkan judul dari tulisan "JAV Subtitle Indonesia -" biar rapi
-        val cleanTitle = title.replace("JAV Subtitle Indonesia -", "").trim()
+            .ifEmpty { doc.select("div.entry-content").text() }
 
         return newMovieLoadResponse(cleanTitle, url, TvType.NSFW, url) {
             this.posterUrl = poster
@@ -78,7 +88,7 @@ class JavHey : MainAPI() {
     }
 
     // ==========================================
-    // PERBAIKAN BAGIAN LINK STREAMING
+    // BAGIAN LINK STREAMING
     // ==========================================
     override suspend fun loadLinks(
         data: String,
@@ -88,8 +98,7 @@ class JavHey : MainAPI() {
     ): Boolean {
         val doc = app.get(data).document
         
-        // Cari iframe player
-        // Biasanya: <iframe src="https://bysebuho.com/e/...">
+        // Cari iframe player (biasanya ke bysebuho)
         val iframeSrc = doc.select("iframe").attr("src")
         
         if (iframeSrc.contains("bysebuho")) {
@@ -105,11 +114,11 @@ class JavHey : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        // iframeUrl contoh: https://bysebuho.com/e/wj3t2az4zpal/jur-547...
-        // Kita butuh ID: wj3t2az4zpal
+        // Ambil Kode Video dari URL
+        // Contoh: https://bysebuho.com/e/KODE_VIDEO/...
         val code = iframeUrl.substringAfter("/e/").substringBefore("/")
         
-        // API URL sesuai cURL kamu
+        // Panggil API Rahasia untuk dapat link asli
         val apiUrl = "https://bysebuho.com/api/videos/$code/embed/details"
         
         val headers = mapOf(
@@ -123,11 +132,11 @@ class JavHey : MainAPI() {
             val jsonText = app.get(apiUrl, headers = headers).text
             val json = parseJson<BysebuhoResponse>(jsonText)
             
-            // Link dari JSON: "https://9n8o.com/f143m/wj3t2az4zpal"
+            // Link asli ada di sini (biasanya domain 9n8o.com)
             val nextUrl = json.embed_frame_url
             
             if (!nextUrl.isNullOrEmpty()) {
-                // Cloudstream akan otomatis menangani 9n8o.com (biasanya redirect ke m3u8)
+                // Cloudstream akan mengekstrak link ini secara otomatis
                 loadExtractor(nextUrl, subtitleCallback, callback)
             }
         } catch (e: Exception) {
