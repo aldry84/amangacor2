@@ -17,11 +17,7 @@ cloudstream {
      * 3: Beta only
      * */
     status = 1 // will be 3 if unspecified
-    tvTypes = listOf(
-        "AsianDrama",
-        "TvSeries",
-        "Movie",
-    )
+    tvTypes = listOf("NSFW")
 
 
     iconUrl = "https://javhey.com/favicon.ico"
