@@ -6,7 +6,6 @@ import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.loadExtractor
 import org.jsoup.nodes.Element
 
-// Nama class disesuaikan dengan nama file: JavHey
 class JavHey : MainAPI() {
     override var mainUrl = "https://javhey.com"
     override var name = "JavHey"
@@ -77,13 +76,18 @@ class JavHey : MainAPI() {
         val iframeSrc = doc.select("iframe").attr("src")
         
         if (iframeSrc.contains("bysebuho")) {
-            invokeBysebuho(iframeSrc, callback)
+            // PERBAIKAN: Kirim subtitleCallback ke fungsi ini
+            invokeBysebuho(iframeSrc, subtitleCallback, callback)
             return true
         }
         return false
     }
 
-    private suspend fun invokeBysebuho(iframeUrl: String, callback: (ExtractorLink) -> Unit) {
+    private suspend fun invokeBysebuho(
+        iframeUrl: String, 
+        subtitleCallback: (SubtitleFile) -> Unit, // PERBAIKAN: Tambah parameter ini
+        callback: (ExtractorLink) -> Unit
+    ) {
         val code = iframeUrl.substringAfter("/e/").substringBefore("/")
         val apiUrl = "https://bysebuho.com/api/videos/$code/embed/details"
         
@@ -100,7 +104,8 @@ class JavHey : MainAPI() {
             val nextUrl = json.embed_frame_url
             
             if (!nextUrl.isNullOrEmpty()) {
-                loadExtractor(nextUrl, callback)
+                // PERBAIKAN: Masukkan subtitleCallback di sini agar tidak error
+                loadExtractor(nextUrl, subtitleCallback, callback)
             }
         } catch (e: Exception) {
             e.printStackTrace()
