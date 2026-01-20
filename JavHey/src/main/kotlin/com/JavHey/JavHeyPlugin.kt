@@ -7,7 +7,15 @@ import android.content.Context
 @CloudstreamPlugin
 class JavHeyPlugin: Plugin() {
     override fun load(context: Context) {
-        // Mendaftarkan class JavHey yang ada di file JavHey.kt
+        // 1. Daftarkan Provider Utama
         registerMainAPI(JavHey())
+
+        // 2. Daftarkan Custom Extractor
+        // Ini penting agar Cloudstream "kenal" dengan LeleBakarExtractor
+        // dan bisa digunakan otomatis oleh sistem jika diperlukan.
+        registerExtractorAPI(LeleBakarExtractor())
+        
+        // Nanti kalau BySebuho sudah jadi, daftarkan juga di sini:
+        // registerExtractorAPI(BySebuhoExtractor())
     }
 }
