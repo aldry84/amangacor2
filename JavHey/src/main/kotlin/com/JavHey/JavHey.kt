@@ -12,14 +12,14 @@ class JavHey : MainAPI() {
     override var lang = "id"
     override val supportedTypes = setOf(TvType.NSFW)
 
-    // PERBAIKAN FINAL: Wajib pakai 'override val'
-    // 'override' diperlukan karena MainAPI memilikinya.
-    // 'val' diperlukan karena di MainAPI properti ini bersifat read-only (bukan var).
-    override val mainPage = mainPageOf(
-        "$mainUrl/videos/paling-baru/page=" to "Paling Baru",
-        "$mainUrl/videos/paling-dilihat/page=" to "Paling Dilihat",
-        "$mainUrl/videos/top-rating/page=" to "Top Rating",
-        "$mainUrl/videos/jav-sub-indo/page=" to "JAV Sub Indo"
+    // PERBAIKAN: Definisi Manual & Eksplisit
+    // Kita tidak pakai 'mainPageOf' untuk menghindari kesalahan deteksi tipe oleh compiler.
+    // Kita pakai 'listOf' dan konstruktor 'MainPageData' langsung.
+    override val mainPage: List<MainPageData> = listOf(
+        MainPageData("$mainUrl/videos/paling-baru/page=", "Paling Baru", true),
+        MainPageData("$mainUrl/videos/paling-dilihat/page=", "Paling Dilihat", true),
+        MainPageData("$mainUrl/videos/top-rating/page=", "Top Rating", true),
+        MainPageData("$mainUrl/videos/jav-sub-indo/page=", "JAV Sub Indo", true)
     )
 
     override suspend fun mainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -75,7 +75,6 @@ class JavHey : MainAPI() {
 
         val tags = document.select(".product_meta a[href*='/tag/'], .product_meta a[href*='/category/']").map { it.text() }
         
-        // Perbaikan ActorData tetap dipertahankan
         val actors = document.select(".product_meta a[href*='/actor/']").map { 
             ActorData(Actor(it.text(), null))
         }
@@ -102,7 +101,7 @@ class JavHey : MainAPI() {
     ): Boolean {
         val document = app.get(data).document
 
-        // Decode Base64
+        // Decode Base64 Hidden Input
         val hiddenLinks = document.selectFirst("#links")?.attr("value")
         
         if (!hiddenLinks.isNullOrEmpty()) {
@@ -113,7 +112,6 @@ class JavHey : MainAPI() {
                 urls.forEach { rawUrl ->
                     val url = rawUrl.trim()
                     if (url.isNotEmpty() && url.startsWith("http")) {
-                        // Perbaikan urutan parameter loadExtractor tetap dipertahankan
                         loadExtractor(url, subtitleCallback, callback)
                     }
                 }
