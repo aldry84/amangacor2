@@ -1,5 +1,6 @@
 package com.JavHey
 
+import android.util.Base64
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
@@ -54,31 +55,28 @@ class JavHey : MainAPI() {
     }
 
     // ==========================================
-    // BAGIAN DETAIL VIDEO (FIX GAMBAR & PLOT)
+    // LOAD DETAIL (SESUAI HTML ASLI)
     // ==========================================
     override suspend fun load(url: String): LoadResponse? {
         val doc = app.get(url).document
 
-        // 1. AMBIL GAMBAR (PENTING: Pakai cara lama dulu yaitu ambil dari Player)
-        val poster = doc.select("div.video_player img").attr("src") // Prioritas 1: Gambar di Player (Terbukti Work)
-            .ifEmpty { doc.select("div.fp-player img").attr("src") } // Cadangan
-            .ifEmpty { doc.select("link[rel='image_src']").attr("href") }
-            .ifEmpty { doc.select("meta[property='og:image']").attr("content") }
-
-        // 2. AMBIL JUDUL (Pakai cara baru biar bersih)
-        var title = doc.select("meta[property='og:title']").attr("content").trim()
-        if (title.isEmpty()) title = doc.select("h1").text().trim()
+        // 1. Ambil Judul & Bersihkan
+        var title = doc.select("header.post_header h1").text().trim()
+        if (title.isEmpty()) title = doc.select("meta[property='og:title']").attr("content")
         
         val cleanTitle = title
             .replace("JAV Subtitle Indonesia -", "")
             .replace("JAVHEY", "")
-            .replace("- JAVHEY", "")
             .trim()
 
-        // 3. AMBIL DESKRIPSI (Pakai cara baru biar keisi)
+        // 2. Ambil Poster (Prioritas dari div.product img yang ada di HTML kamu)
+        val poster = doc.select("div.product div.images img").attr("src")
+            .ifEmpty { doc.select("meta[property='og:image']").attr("content") }
+            .ifEmpty { doc.select("article.post img").attr("src") }
+
+        // 3. Ambil Deskripsi
         val description = doc.select("meta[name='description']").attr("content")
             .ifEmpty { doc.select("div.video-description").text() }
-            .ifEmpty { doc.select("div.entry-content").text() }
 
         return newMovieLoadResponse(cleanTitle, url, TvType.NSFW, url) {
             this.posterUrl = poster
@@ -87,7 +85,7 @@ class JavHey : MainAPI() {
     }
 
     // ==========================================
-    // BAGIAN LINK STREAMING
+    // LOAD LINKS (HARTA KARUN BASE64)
     // ==========================================
     override suspend fun loadLinks(
         data: String,
@@ -96,46 +94,37 @@ class JavHey : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val doc = app.get(data).document
+
+        // CARA 1: Ambil dari Hidden Input Base64 (Paling Akurat sesuai HTML)
+        val linksBase64 = doc.select("input#links").attr("value")
         
-        val iframeSrc = doc.select("iframe").attr("src")
-        
-        if (iframeSrc.contains("bysebuho")) {
-            invokeBysebuho(iframeSrc, subtitleCallback, callback)
+        if (linksBase64.isNotEmpty()) {
+            try {
+                // Decode Base64
+                // Hasil decode: "https://bysebuho.com/e/...,,,https://minochinos.com/..."
+                val decodedLinks = String(Base64.decode(linksBase64, Base64.DEFAULT))
+                
+                // Pecah berdasarkan koma (,,,)
+                val urls = decodedLinks.split(",,,")
+                
+                urls.forEach { link ->
+                    if (link.isNotBlank()) {
+                        loadExtractor(link, subtitleCallback, callback)
+                    }
+                }
+                return true
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
+        // CARA 2: Cadangan (Cari Iframe manual)
+        val iframeSrc = doc.select("iframe#iframe-link").attr("src")
+        if (iframeSrc.isNotEmpty()) {
+            loadExtractor(iframeSrc, subtitleCallback, callback)
             return true
         }
-        
+
         return false
     }
-
-    private suspend fun invokeBysebuho(
-        iframeUrl: String, 
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ) {
-        val code = iframeUrl.substringAfter("/e/").substringBefore("/")
-        val apiUrl = "https://bysebuho.com/api/videos/$code/embed/details"
-        
-        val headers = mapOf(
-            "Referer" to iframeUrl,
-            "x-embed-origin" to mainUrl,
-            "x-embed-parent" to iframeUrl,
-            "x-embed-referer" to mainUrl
-        )
-
-        try {
-            val jsonText = app.get(apiUrl, headers = headers).text
-            val json = parseJson<BysebuhoResponse>(jsonText)
-            val nextUrl = json.embed_frame_url
-            
-            if (!nextUrl.isNullOrEmpty()) {
-                loadExtractor(nextUrl, subtitleCallback, callback)
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    data class BysebuhoResponse(
-        val embed_frame_url: String? = null
-    )
 }
