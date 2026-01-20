@@ -32,17 +32,18 @@ class LeleBakarExtractor : ExtractorApi() {
             val match = m3u8Regex.find(response)
             
             match?.groupValues?.get(1)?.let { m3u8Url ->
-                // PERBAIKAN: Menggunakan 'newExtractorLink' (Bukan Constructor Class)
-                // Ini adalah cara standar terbaru di CloudStream
+                // KEMBALI KE KONSTRUKTOR KLASIK (Tanpa Named Arguments)
+                // Urutan: source, name, url, referer, quality, isM3u8, headers, extractorData
                 callback.invoke(
-                    newExtractorLink(
-                        source = name,
-                        name = name,
-                        url = m3u8Url,
-                        referer = url,
-                        quality = Qualities.Unknown.value,
-                        isM3u8 = true,
-                        headers = headers
+                    ExtractorLink(
+                        name,           // source
+                        name,           // name
+                        m3u8Url,        // url
+                        url,            // referer (halaman embed)
+                        Qualities.Unknown.value, // quality
+                        true,           // isM3u8
+                        headers,        // headers map
+                        null            // extractorData
                     )
                 )
             }
