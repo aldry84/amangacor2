@@ -5,15 +5,16 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import org.jsoup.nodes.Element
 
-class JavHey : MainAPI() { 
+class JavHey : MainAPI() {
     override var mainUrl = "https://javhey.com"
     override var name = "JavHey"
     override val hasMainPage = true
     override var lang = "id"
     override val supportedTypes = setOf(TvType.NSFW)
 
-    // PERBAIKAN 1: Gunakan 'override var' bukan 'override val'
-    override var mainPage = mainPageOf(
+    // PERBAIKAN UTAMA: Menghapus 'override' karena menyebabkan error "overrides nothing"
+    // Juga kembalikan ke 'val' karena ini konfigurasi statis
+    val mainPage = mainPageOf(
         "$mainUrl/videos/paling-baru/page=" to "Paling Baru",
         "$mainUrl/videos/paling-dilihat/page=" to "Paling Dilihat",
         "$mainUrl/videos/top-rating/page=" to "Top Rating",
@@ -73,7 +74,7 @@ class JavHey : MainAPI() {
 
         val tags = document.select(".product_meta a[href*='/tag/'], .product_meta a[href*='/category/']").map { it.text() }
         
-        // PERBAIKAN 2: Konversi List<String> ke List<ActorData>
+        // Memastikan Aktor menggunakan format ActorData yang benar
         val actors = document.select(".product_meta a[href*='/actor/']").map { 
             ActorData(Actor(it.text(), null))
         }
@@ -88,7 +89,7 @@ class JavHey : MainAPI() {
             this.plot = description
             this.tags = tags
             this.year = year
-            this.actors = actors // Sekarang tipe datanya sudah benar
+            this.actors = actors
         }
     }
 
@@ -100,6 +101,7 @@ class JavHey : MainAPI() {
     ): Boolean {
         val document = app.get(data).document
 
+        // Metode 1: Decode Base64 Hidden Input
         val hiddenLinks = document.selectFirst("#links")?.attr("value")
         
         if (!hiddenLinks.isNullOrEmpty()) {
@@ -110,8 +112,7 @@ class JavHey : MainAPI() {
                 urls.forEach { rawUrl ->
                     val url = rawUrl.trim()
                     if (url.isNotEmpty() && url.startsWith("http")) {
-                        // PERBAIKAN 3: Menukar posisi callback dan subtitleCallback
-                        // Format yang benar: (url, subtitleCallback, callback)
+                        // Memastikan urutan parameter: url, subtitleCallback, callback
                         loadExtractor(url, subtitleCallback, callback)
                     }
                 }
@@ -120,10 +121,10 @@ class JavHey : MainAPI() {
             }
         }
 
+        // Metode 2: Backup dari tombol download
         document.select(".links-download a").forEach { link ->
             val href = link.attr("href")
             if (href.isNotEmpty()) {
-                // PERBAIKAN 3: Menukar posisi callback dan subtitleCallback di sini juga
                 loadExtractor(href, subtitleCallback, callback)
             }
         }
