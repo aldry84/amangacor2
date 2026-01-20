@@ -12,9 +12,10 @@ class JavHey : MainAPI() {
     override var lang = "id"
     override val supportedTypes = setOf(TvType.NSFW)
 
-    // PERBAIKAN UTAMA: Menghapus 'override' karena menyebabkan error "overrides nothing"
-    // Juga kembalikan ke 'val' karena ini konfigurasi statis
-    val mainPage = mainPageOf(
+    // PERBAIKAN FINAL: Wajib pakai 'override val'
+    // 'override' diperlukan karena MainAPI memilikinya.
+    // 'val' diperlukan karena di MainAPI properti ini bersifat read-only (bukan var).
+    override val mainPage = mainPageOf(
         "$mainUrl/videos/paling-baru/page=" to "Paling Baru",
         "$mainUrl/videos/paling-dilihat/page=" to "Paling Dilihat",
         "$mainUrl/videos/top-rating/page=" to "Top Rating",
@@ -74,7 +75,7 @@ class JavHey : MainAPI() {
 
         val tags = document.select(".product_meta a[href*='/tag/'], .product_meta a[href*='/category/']").map { it.text() }
         
-        // Memastikan Aktor menggunakan format ActorData yang benar
+        // Perbaikan ActorData tetap dipertahankan
         val actors = document.select(".product_meta a[href*='/actor/']").map { 
             ActorData(Actor(it.text(), null))
         }
@@ -101,7 +102,7 @@ class JavHey : MainAPI() {
     ): Boolean {
         val document = app.get(data).document
 
-        // Metode 1: Decode Base64 Hidden Input
+        // Decode Base64
         val hiddenLinks = document.selectFirst("#links")?.attr("value")
         
         if (!hiddenLinks.isNullOrEmpty()) {
@@ -112,7 +113,7 @@ class JavHey : MainAPI() {
                 urls.forEach { rawUrl ->
                     val url = rawUrl.trim()
                     if (url.isNotEmpty() && url.startsWith("http")) {
-                        // Memastikan urutan parameter: url, subtitleCallback, callback
+                        // Perbaikan urutan parameter loadExtractor tetap dipertahankan
                         loadExtractor(url, subtitleCallback, callback)
                     }
                 }
@@ -121,7 +122,7 @@ class JavHey : MainAPI() {
             }
         }
 
-        // Metode 2: Backup dari tombol download
+        // Backup
         document.select(".links-download a").forEach { link ->
             val href = link.attr("href")
             if (href.isNotEmpty()) {
