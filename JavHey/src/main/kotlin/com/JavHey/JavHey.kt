@@ -78,9 +78,9 @@ class JavHey : MainAPI() {
         }
     }
 
-    // ==========================================
-    // LOGIKA PENERJEMAH LINK (MIRROR UNMASKING)
-    // ==========================================
+    // =========================================================
+    // LOGIKA PENYELAMAT: UBAH LINK SAMARAN JADI LINK ASLI
+    // =========================================================
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -89,21 +89,23 @@ class JavHey : MainAPI() {
     ): Boolean {
         val doc = app.get(data).document
 
+        // 1. Ambil Kode Rahasia Base64
         val linksBase64 = doc.select("input#links").attr("value")
         
         if (linksBase64.isNotEmpty()) {
             try {
-                // Decode teks rahasia
+                // Decode jadi teks biasa
                 val decodedLinks = String(Base64.decode(linksBase64, Base64.DEFAULT))
-                // Pisahkan daftar link
+                // Pisahkan daftar link (dipisah dengan 3 koma)
                 val urls = decodedLinks.split(",,,")
                 
                 urls.forEach { rawLink ->
                     val link = rawLink.trim()
                     if (link.isNotBlank()) {
                         
-                        // 1. Turtle4Up (alias StreamWish)
-                        // Format: https://turtle4up.top/#KODE
+                        // --- SERVER 2, 3, 4, 5 (Mirror yang Kita Mau) ---
+
+                        // Server: Turtle4Up / T4 -> StreamWish
                         if (link.contains("turtle4up.top") || link.contains("t4.top")) {
                             val code = link.substringAfter("#")
                             if (code.isNotEmpty() && code != link) {
@@ -111,30 +113,32 @@ class JavHey : MainAPI() {
                             }
                         }
                         
-                        // 2. KR21 (alias MixDrop)
-                        // Format: https://kr21.click/e/KODE
+                        // Server: KR21 -> MixDrop
                         else if (link.contains("kr21.click")) {
                             val code = link.substringAfter("/e/").substringBefore("/")
                             loadExtractor("https://mixdrop.co/e/$code", subtitleCallback, callback)
                         } 
                         
-                        // 3. Minochinos (alias LuluStream)
-                        // Format: https://minochinos.com/v/KODE
+                        // Server: Minochinos -> LuluStream
                         else if (link.contains("minochinos.com")) {
                             val code = link.substringAfter("/v/").substringBefore("/")
-                            // LuluStream butuh domain asli agar Cloudstream mendeteksinya
                             loadExtractor("https://lulustream.com/e/$code", subtitleCallback, callback)
                         }
 
-                        // 4. Cavanhabg (alias StreamWish)
-                        // Format: https://cavanhabg.com/e/KODE
+                        // Server: Cavanhabg -> StreamWish / FileLions
                         else if (link.contains("cavanhabg.com")) {
                             val code = link.substringAfter("/e/").substringBefore("/")
                             loadExtractor("https://streamwish.com/e/$code", subtitleCallback, callback)
                         }
 
-                        // 5. Link Asli Lainnya (Kecuali Bysebuho)
-                        else if (!link.contains("bysebuho") && !link.contains("9n8o")) {
+                        // --- SERVER 1 (Bysebuho) ---
+                        // Kita Skip Server 1 karena butuh fingerprint (bikin error)
+                        else if (link.contains("bysebuho") || link.contains("9n8o")) {
+                            // SKIP: Jangan lakukan apa-apa, biarkan lanjut ke link berikutnya
+                        }
+
+                        // Server Lain (Jika ada link normal)
+                        else {
                             loadExtractor(link, subtitleCallback, callback)
                         }
                     }
@@ -145,7 +149,7 @@ class JavHey : MainAPI() {
             }
         }
 
-        // CADANGAN IFRAME MANUAL
+        // 2. Cadangan Iframe (Hanya jika bukan Bysebuho)
         val iframeSrc = doc.select("iframe#iframe-link").attr("src")
         if (iframeSrc.isNotEmpty() && !iframeSrc.contains("bysebuho")) {
             loadExtractor(iframeSrc, subtitleCallback, callback)
