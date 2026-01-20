@@ -12,11 +12,11 @@ buildscript {
     }
 
     dependencies {
-        // AGP Versi Stabil
+        // Alat pembangun Android
         classpath("com.android.tools.build:gradle:8.2.2")
-        // Cloudstream Plugin
+        // Alat pembangun Cloudstream
         classpath("com.github.recloudstream:gradle:master-SNAPSHOT")
-        // UPDATE PENTING: Menggunakan Kotlin 2.1.0 untuk mengatasi error metadata
+        // KOTLIN VERSI BARU (2.1.0) supaya error hilang
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.1.0")
     }
 }
@@ -39,22 +39,21 @@ subprojects {
     apply(plugin = "com.lagradost.cloudstream3.gradle")
 
     cloudstream {
-        // Ganti URL repo ini sesuai repo GitHub kamu yang sebenarnya
+        // Ganti link ini dengan link Github kamu kalau sudah punya
         setRepo(System.getenv("GITHUB_REPOSITORY") ?: "https://github.com/aldry84/amangacor2")
         authors = listOf("PartnerCoding") 
     }
 
     android {
-        // Namespace sementara (akan ditimpa oleh plugin masing-masing)
-        namespace = "com.phisher98" 
+        namespace = "com.phisher98"
 
         defaultConfig {
             minSdk = 21
-            compileSdkVersion(34) // Android 14
+            compileSdkVersion(34)
             targetSdk = 34
         }
 
-        // WAJIB JAVA 11 (Standard Cloudstream Terbaru)
+        // Kita atur supaya pakai Java 11 (Wajib buat Cloudstream jaman now)
         compileOptions {
             sourceCompatibility = JavaVersion.VERSION_11
             targetCompatibility = JavaVersion.VERSION_11
@@ -62,12 +61,15 @@ subprojects {
 
         tasks.withType<KotlinJvmCompile> {
             compilerOptions {
-                // WAJIB JVM 11
                 jvmTarget.set(JvmTarget.JVM_11)
+                
+                // INI BAGIAN PALING PENTING!
+                // Kode ini memaksa komputer untuk MENGABAIKAN error beda versi
                 freeCompilerArgs.addAll(
                     "-Xno-call-assertions",
                     "-Xno-param-assertions",
-                    "-Xno-receiver-assertions"
+                    "-Xno-receiver-assertions",
+                    "-Xskip-metadata-version-check" 
                 )
             }
         }
@@ -77,10 +79,10 @@ subprojects {
         val implementation by configurations
         val cloudstream by configurations
         
-        // Library Cloudstream (Pre-release)
+        // Mengambil Cloudstream versi terbaru (Pre-release)
         cloudstream("com.lagradost:cloudstream3:pre-release")
 
-        // Dependencies Standar
+        // Bahan-bahan standar lainnya
         implementation(kotlin("stdlib"))
         implementation("com.github.Blatzar:NiceHttp:0.4.13")
         implementation("org.jsoup:jsoup:1.17.2") 
@@ -89,8 +91,6 @@ subprojects {
         implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0")
         implementation("org.mozilla:rhino:1.7.14")
         implementation("me.xdrop:fuzzywuzzy:1.4.0")
-        
-        // Library tambahan
         implementation("com.google.code.gson:gson:2.10.1")
         implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
         implementation("app.cash.quickjs:quickjs-android:0.9.2")
