@@ -56,13 +56,11 @@ class JavHey : MainAPI() {
     override suspend fun load(url: String): LoadResponse? {
         val doc = app.get(url).document
 
-        // Ambil Poster (Prioritas dari HTML terbaru)
         val poster = doc.select("div.product div.images img").attr("src")
             .ifEmpty { doc.select("div.video_player img").attr("src") }
             .ifEmpty { doc.select("meta[property='og:image']").attr("content") }
             .ifEmpty { doc.select("article.post img").attr("src") }
 
-        // Ambil Judul
         var title = doc.select("header.post_header h1").text().trim()
         if (title.isEmpty()) title = doc.select("meta[property='og:title']").attr("content")
         
@@ -71,7 +69,6 @@ class JavHey : MainAPI() {
             .replace("JAVHEY", "")
             .trim()
 
-        // Ambil Deskripsi
         val description = doc.select("meta[name='description']").attr("content")
             .ifEmpty { doc.select("div.video-description").text() }
 
@@ -81,6 +78,9 @@ class JavHey : MainAPI() {
         }
     }
 
+    // =========================================================
+    // INI DIA RAHASIANYA: PENERJEMAH LINK OTOMATIS
+    // =========================================================
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -89,21 +89,53 @@ class JavHey : MainAPI() {
     ): Boolean {
         val doc = app.get(data).document
 
-        // 1. CARI DARI LIST YANG DIENKRIPSI (BASE64)
+        // 1. Ambil Harta Karun Base64
         val linksBase64 = doc.select("input#links").attr("value")
         
         if (linksBase64.isNotEmpty()) {
             try {
-                // Decode teks rahasia
+                // Decode menjadi teks biasa
                 val decodedLinks = String(Base64.decode(linksBase64, Base64.DEFAULT))
-                
-                // Pisahkan daftar link (biasanya dipisah dengan tiga koma)
+                // Contoh: "https://bysebuho...,,,https://turtle4up.top/#kode,,,"
                 val urls = decodedLinks.split(",,,")
                 
                 urls.forEach { link ->
                     if (link.isNotBlank()) {
-                        // LANGSUNG PROSES TANPA EMBEL-EMBEL APAPUN
-                        loadExtractor(link, subtitleCallback, callback)
+                        // 2. CEK & TERJEMAHKAN LINK TOPENG
+                        
+                        // KASUS A: Turtle4Up adalah StreamWish
+                        if (link.contains("turtle4up.top") || link.contains("t4.top")) {
+                            val code = link.substringAfter("#") // Ambil kode unik setelah pagar
+                            if (code.isNotEmpty() && code != link) {
+                                val realLink = "https://streamwish.com/e/$code"
+                                loadExtractor(realLink, subtitleCallback, callback)
+                            }
+                        }
+                        
+                        // KASUS B: KR21 adalah MixDrop
+                        else if (link.contains("kr21.click")) {
+                            val code = link.substringAfter("/e/").substringBefore("/")
+                            if (code.isNotEmpty()) {
+                                val realLink = "https://mixdrop.co/e/$code"
+                                loadExtractor(realLink, subtitleCallback, callback)
+                            }
+                        }
+
+                        // KASUS C: Minochinos adalah LuluStream
+                        else if (link.contains("minochinos.com")) {
+                             val code = link.substringAfter("/v/").substringBefore("/")
+                             if (code.isNotEmpty()) {
+                                 val realLink = "https://lulustream.com/e/$code"
+                                 loadExtractor(realLink, subtitleCallback, callback)
+                             }
+                        }
+
+                        // KASUS D: Link Asli (Langsung Tembak)
+                        else if (!link.contains("bysebuho")) { 
+                            // Kita abaikan Bysebuho karena butuh fingerprint
+                            // Load yang lain saja
+                            loadExtractor(link, subtitleCallback, callback)
+                        }
                     }
                 }
                 return true
@@ -112,9 +144,9 @@ class JavHey : MainAPI() {
             }
         }
 
-        // 2. CADANGAN: AMBIL DARI IFRAME BIASA
+        // 3. Cadangan Iframe Manual (Kalau Base64 gagal)
         val iframeSrc = doc.select("iframe#iframe-link").attr("src")
-        if (iframeSrc.isNotEmpty()) {
+        if (iframeSrc.isNotEmpty() && !iframeSrc.contains("bysebuho")) {
             loadExtractor(iframeSrc, subtitleCallback, callback)
             return true
         }
