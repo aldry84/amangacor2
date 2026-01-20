@@ -53,19 +53,33 @@ class JavHey : MainAPI() {
         }
     }
 
+    // ==========================================
+    // PERBAIKAN BAGIAN DETAIL VIDEO
+    // ==========================================
     override suspend fun load(url: String): LoadResponse? {
         val doc = app.get(url).document
-        val title = doc.selectFirst("h1")?.text()?.trim() ?: "Unknown Title"
-        val poster = doc.selectFirst("div.video_player img")?.attr("src") 
-            ?: doc.selectFirst("article.item img")?.attr("src")
-        val description = doc.select("div.video-description").text()
 
-        return newMovieLoadResponse(title, url, TvType.NSFW, url) {
+        // Menggunakan Meta Tags (Lebih Aman & Akurat)
+        val title = doc.select("meta[property='og:title']").attr("content").trim()
+            .ifEmpty { doc.select("h1").text().trim() } // Backup kalau meta kosong
+        
+        val poster = doc.select("meta[property='og:image']").attr("content")
+        
+        val description = doc.select("meta[name='description']").attr("content")
+            .ifEmpty { doc.select("div.video-description").text() }
+
+        // Bersihkan judul dari tulisan "JAV Subtitle Indonesia -" biar rapi
+        val cleanTitle = title.replace("JAV Subtitle Indonesia -", "").trim()
+
+        return newMovieLoadResponse(cleanTitle, url, TvType.NSFW, url) {
             this.posterUrl = poster
             this.plot = description
         }
     }
 
+    // ==========================================
+    // PERBAIKAN BAGIAN LINK STREAMING
+    // ==========================================
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -73,22 +87,29 @@ class JavHey : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val doc = app.get(data).document
+        
+        // Cari iframe player
+        // Biasanya: <iframe src="https://bysebuho.com/e/...">
         val iframeSrc = doc.select("iframe").attr("src")
         
         if (iframeSrc.contains("bysebuho")) {
-            // PERBAIKAN: Kirim subtitleCallback ke fungsi ini
             invokeBysebuho(iframeSrc, subtitleCallback, callback)
             return true
         }
+        
         return false
     }
 
     private suspend fun invokeBysebuho(
         iframeUrl: String, 
-        subtitleCallback: (SubtitleFile) -> Unit, // PERBAIKAN: Tambah parameter ini
+        subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
+        // iframeUrl contoh: https://bysebuho.com/e/wj3t2az4zpal/jur-547...
+        // Kita butuh ID: wj3t2az4zpal
         val code = iframeUrl.substringAfter("/e/").substringBefore("/")
+        
+        // API URL sesuai cURL kamu
         val apiUrl = "https://bysebuho.com/api/videos/$code/embed/details"
         
         val headers = mapOf(
@@ -101,10 +122,12 @@ class JavHey : MainAPI() {
         try {
             val jsonText = app.get(apiUrl, headers = headers).text
             val json = parseJson<BysebuhoResponse>(jsonText)
+            
+            // Link dari JSON: "https://9n8o.com/f143m/wj3t2az4zpal"
             val nextUrl = json.embed_frame_url
             
             if (!nextUrl.isNullOrEmpty()) {
-                // PERBAIKAN: Masukkan subtitleCallback di sini agar tidak error
+                // Cloudstream akan otomatis menangani 9n8o.com (biasanya redirect ke m3u8)
                 loadExtractor(nextUrl, subtitleCallback, callback)
             }
         } catch (e: Exception) {
