@@ -2,14 +2,13 @@ package com.JavHey
 
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.app
-import com.lagradost.cloudstream3.SubtitleFile // Import Wajib!
+import com.lagradost.cloudstream3.SubtitleFile
 
 class LeleBakarExtractor : ExtractorApi() {
     override val name = "LeleBakar"
     override val mainUrl = "https://lelebakar.xyz"
     override val requiresReferer = true 
 
-    // Signature yang benar sesuai log error
     override suspend fun getUrl(
         url: String,
         referer: String?,
@@ -33,15 +32,16 @@ class LeleBakarExtractor : ExtractorApi() {
             val match = m3u8Regex.find(response)
             
             match?.groupValues?.get(1)?.let { m3u8Url ->
+                // PERBAIKAN: Menggunakan Named Arguments untuk mengatasi Deprecation Error
                 callback.invoke(
                     ExtractorLink(
-                        name,
-                        name,
-                        m3u8Url,
-                        url, 
-                        Qualities.Unknown.value,
-                        true, // isM3u8
-                        headers = headers 
+                        source = name,
+                        name = name,
+                        url = m3u8Url,
+                        referer = url,
+                        quality = Qualities.Unknown.value,
+                        isM3u8 = true,
+                        headers = headers
                     )
                 )
             }
