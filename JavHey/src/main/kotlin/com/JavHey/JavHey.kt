@@ -56,13 +56,11 @@ class JavHey : MainAPI() {
     override suspend fun load(url: String): LoadResponse? {
         val doc = app.get(url).document
 
-        // Ambil Poster (Prioritas dari HTML terbaru)
         val poster = doc.select("div.product div.images img").attr("src")
             .ifEmpty { doc.select("div.video_player img").attr("src") }
             .ifEmpty { doc.select("meta[property='og:image']").attr("content") }
             .ifEmpty { doc.select("article.post img").attr("src") }
 
-        // Ambil Judul
         var title = doc.select("header.post_header h1").text().trim()
         if (title.isEmpty()) title = doc.select("meta[property='og:title']").attr("content")
         
@@ -71,7 +69,6 @@ class JavHey : MainAPI() {
             .replace("JAVHEY", "")
             .trim()
 
-        // Ambil Deskripsi
         val description = doc.select("meta[name='description']").attr("content")
             .ifEmpty { doc.select("div.video-description").text() }
 
@@ -82,7 +79,7 @@ class JavHey : MainAPI() {
     }
 
     // ==========================================
-    // LOGIKA PENERJEMAH LINK (JALAN TIKUS)
+    // LOGIKA PENERJEMAH LINK (MIRROR UNMASKING)
     // ==========================================
     override suspend fun loadLinks(
         data: String,
@@ -92,7 +89,6 @@ class JavHey : MainAPI() {
     ): Boolean {
         val doc = app.get(data).document
 
-        // 1. Ambil Harta Karun Base64
         val linksBase64 = doc.select("input#links").attr("value")
         
         if (linksBase64.isNotEmpty()) {
@@ -106,40 +102,38 @@ class JavHey : MainAPI() {
                     val link = rawLink.trim()
                     if (link.isNotBlank()) {
                         
-                        // --- MULAI PENERJEMAHAN ---
-                        
-                        // 1. KR21 -> MixDrop
-                        if (link.contains("kr21.click")) {
-                            val code = link.substringAfter("/e/").substringBefore("/")
-                            // Ubah jadi link Mixdrop asli yang dikenali Cloudstream
-                            loadExtractor("https://mixdrop.co/e/$code", subtitleCallback, callback)
-                        } 
-                        
-                        // 2. Turtle4Up -> StreamWish
-                        else if (link.contains("turtle4up.top") || link.contains("t4.top")) {
+                        // 1. Turtle4Up (alias StreamWish)
+                        // Format: https://turtle4up.top/#KODE
+                        if (link.contains("turtle4up.top") || link.contains("t4.top")) {
                             val code = link.substringAfter("#")
                             if (code.isNotEmpty() && code != link) {
-                                // Ubah jadi link StreamWish asli
                                 loadExtractor("https://streamwish.com/e/$code", subtitleCallback, callback)
                             }
                         }
                         
-                        // 3. Minochinos -> LuluStream
+                        // 2. KR21 (alias MixDrop)
+                        // Format: https://kr21.click/e/KODE
+                        else if (link.contains("kr21.click")) {
+                            val code = link.substringAfter("/e/").substringBefore("/")
+                            loadExtractor("https://mixdrop.co/e/$code", subtitleCallback, callback)
+                        } 
+                        
+                        // 3. Minochinos (alias LuluStream)
+                        // Format: https://minochinos.com/v/KODE
                         else if (link.contains("minochinos.com")) {
                             val code = link.substringAfter("/v/").substringBefore("/")
-                            // Ubah jadi link LuluStream asli
+                            // LuluStream butuh domain asli agar Cloudstream mendeteksinya
                             loadExtractor("https://lulustream.com/e/$code", subtitleCallback, callback)
                         }
 
-                        // 4. Cavanhabg -> StreamWish / FileLions
+                        // 4. Cavanhabg (alias StreamWish)
+                        // Format: https://cavanhabg.com/e/KODE
                         else if (link.contains("cavanhabg.com")) {
                             val code = link.substringAfter("/e/").substringBefore("/")
-                            // Coba tembak sebagai Streamwish
                             loadExtractor("https://streamwish.com/e/$code", subtitleCallback, callback)
                         }
 
-                        // 5. Link Asli (Langsung Tembak)
-                        // Kita ABAIKAN Bysebuho karena ada 'Challenge' security
+                        // 5. Link Asli Lainnya (Kecuali Bysebuho)
                         else if (!link.contains("bysebuho") && !link.contains("9n8o")) {
                             loadExtractor(link, subtitleCallback, callback)
                         }
@@ -149,6 +143,13 @@ class JavHey : MainAPI() {
             } catch (e: Exception) {
                 e.printStackTrace()
             }
+        }
+
+        // CADANGAN IFRAME MANUAL
+        val iframeSrc = doc.select("iframe#iframe-link").attr("src")
+        if (iframeSrc.isNotEmpty() && !iframeSrc.contains("bysebuho")) {
+            loadExtractor(iframeSrc, subtitleCallback, callback)
+            return true
         }
 
         return false
