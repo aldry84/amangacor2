@@ -56,11 +56,13 @@ class JavHey : MainAPI() {
     override suspend fun load(url: String): LoadResponse? {
         val doc = app.get(url).document
 
+        // Mengambil Poster dari struktur produk yang sudah kita verifikasi
         val poster = doc.select("div.product div.images img").attr("src")
             .ifEmpty { doc.select("div.video_player img").attr("src") }
             .ifEmpty { doc.select("meta[property='og:image']").attr("content") }
             .ifEmpty { doc.select("article.post img").attr("src") }
 
+        // Mengambil Judul dan membersihkan embel-embel JAVHEY
         var title = doc.select("header.post_header h1").text().trim()
         if (title.isEmpty()) title = doc.select("meta[property='og:title']").attr("content")
         
@@ -69,6 +71,7 @@ class JavHey : MainAPI() {
             .replace("JAVHEY", "")
             .trim()
 
+        // Mengambil Deskripsi dari meta tag
         val description = doc.select("meta[name='description']").attr("content")
             .ifEmpty { doc.select("div.video-description").text() }
 
@@ -86,19 +89,22 @@ class JavHey : MainAPI() {
     ): Boolean {
         val doc = app.get(data).document
 
+        // 1. Mendekode Harta Karun Base64 berisi daftar server
         val linksBase64 = doc.select("input#links").attr("value")
         
         if (linksBase64.isNotEmpty()) {
             try {
                 val decodedLinks = String(Base64.decode(linksBase64, Base64.DEFAULT))
-                // Contoh: "https://bysebuho...,,,https://minochinos...,,,https://kr21..."
+                // Memisahkan link (Server 1, Server 2, dst)
                 val urls = decodedLinks.split(",,,")
                 
                 urls.forEach { rawLink ->
                     val link = rawLink.trim()
                     if (link.isNotBlank()) {
                         
-                        // 1. TURTLE4UP -> STREAMWISH (Work)
+                        // --- FILTER JALUR BELAKANG (MIRROR) ---
+
+                        // Server 5: Turtle4Up (StreamWish asli)
                         if (link.contains("turtle4up.top") || link.contains("t4.top")) {
                             val code = link.substringAfter("#")
                             if (code.isNotEmpty() && code != link) {
@@ -106,22 +112,20 @@ class JavHey : MainAPI() {
                             }
                         }
                         
-                        // 2. MINOCHINOS -> LULUSTREAM (Work)
+                        // Server 2: Minochinos (LuluStream asli - TERBUKTI JALAN)
                         else if (link.contains("minochinos.com")) {
                             val code = link.substringAfter("/v/").substringBefore("/")
                             loadExtractor("https://lulustream.com/e/$code", subtitleCallback, callback)
                         }
 
-                        // 3. CAVANHABG -> STREAMWISH (Work)
+                        // Server 3: Cavanhabg (StreamWish asli - TERBUKTI JALAN)
                         else if (link.contains("cavanhabg.com")) {
                             val code = link.substringAfter("/e/").substringBefore("/")
                             loadExtractor("https://streamwish.com/e/$code", subtitleCallback, callback)
                         }
 
-                        // CATATAN:
-                        // - Bysebuho (Server 1) kita skip karena butuh fingerprint.
-                        // - KR21 (Server 4) kita skip karena ternyata itu Bysebuho juga (Link Palsu).
-                        // - Sisanya (Server 2, 3, 5) adalah Mirror yang aman.
+                        // ABAIKAN Server 1 (Bysebuho) & Server 4 (KR21)
+                        // Karena mereka menggunakan tantangan sidik jari yang rumit
                     }
                 }
                 return true
@@ -130,7 +134,7 @@ class JavHey : MainAPI() {
             }
         }
 
-        // Cadangan Iframe
+        // 2. Cadangan Iframe (Hanya jika bukan Bysebuho)
         val iframeSrc = doc.select("iframe#iframe-link").attr("src")
         if (iframeSrc.isNotEmpty() && !iframeSrc.contains("bysebuho")) {
             loadExtractor(iframeSrc, subtitleCallback, callback)
