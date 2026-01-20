@@ -12,12 +12,12 @@ buildscript {
     }
 
     dependencies {
-        // AGP Stabil
+        // AGP Versi Stabil
         classpath("com.android.tools.build:gradle:8.2.2")
-        // Plugin Cloudstream Helper
+        // Cloudstream Plugin
         classpath("com.github.recloudstream:gradle:master-SNAPSHOT")
-        // KOTLIN 2.0.0 (Wajib untuk Cloudstream terbaru)
-        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.0.0")
+        // UPDATE PENTING: Menggunakan Kotlin 2.1.0 untuk mengatasi error metadata
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.1.0")
     }
 }
 
@@ -39,22 +39,22 @@ subprojects {
     apply(plugin = "com.lagradost.cloudstream3.gradle")
 
     cloudstream {
-        // Ganti dengan link repo GitHub kamu yang asli
-        setRepo(System.getenv("GITHUB_REPOSITORY") ?: "https://github.com/User/RepoName")
+        // Ganti URL repo ini sesuai repo GitHub kamu yang sebenarnya
+        setRepo(System.getenv("GITHUB_REPOSITORY") ?: "https://github.com/aldry84/amangacor2")
         authors = listOf("PartnerCoding") 
     }
 
     android {
-        // Namespace default, nanti akan ditimpa oleh build.gradle.kts di masing-masing plugin
+        // Namespace sementara (akan ditimpa oleh plugin masing-masing)
         namespace = "com.phisher98" 
 
         defaultConfig {
             minSdk = 21
-            compileSdkVersion(34) // Level API Stabil Android 14
+            compileSdkVersion(34) // Android 14
             targetSdk = 34
         }
 
-        // WAJIB JAVA 11 UNTUK CLOUDSTREAM TERBARU
+        // WAJIB JAVA 11 (Standard Cloudstream Terbaru)
         compileOptions {
             sourceCompatibility = JavaVersion.VERSION_11
             targetCompatibility = JavaVersion.VERSION_11
@@ -77,7 +77,7 @@ subprojects {
         val implementation by configurations
         val cloudstream by configurations
         
-        // Library Utama Cloudstream
+        // Library Cloudstream (Pre-release)
         cloudstream("com.lagradost:cloudstream3:pre-release")
 
         // Dependencies Standar
@@ -90,7 +90,7 @@ subprojects {
         implementation("org.mozilla:rhino:1.7.14")
         implementation("me.xdrop:fuzzywuzzy:1.4.0")
         
-        // Library tambahan kamu
+        // Library tambahan
         implementation("com.google.code.gson:gson:2.10.1")
         implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
         implementation("app.cash.quickjs:quickjs-android:0.9.2")
