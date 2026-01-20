@@ -32,9 +32,10 @@ class LeleBakarExtractor : ExtractorApi() {
             val match = m3u8Regex.find(response)
             
             match?.groupValues?.get(1)?.let { m3u8Url ->
-                // PERBAIKAN: Menggunakan Named Arguments untuk mengatasi Deprecation Error
+                // PERBAIKAN: Menggunakan 'newExtractorLink' (Bukan Constructor Class)
+                // Ini adalah cara standar terbaru di CloudStream
                 callback.invoke(
-                    ExtractorLink(
+                    newExtractorLink(
                         source = name,
                         name = name,
                         url = m3u8Url,
