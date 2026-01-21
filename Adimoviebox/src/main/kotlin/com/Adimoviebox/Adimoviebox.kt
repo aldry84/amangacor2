@@ -1,5 +1,3 @@
-@file:Suppress("DEPRECATION") // MEMBUNGKAM SEMUA ERROR VERSI USANG
-
 package com.Adimoviebox
 
 import com.lagradost.cloudstream3.*
@@ -16,14 +14,17 @@ class Adimoviebox : MainAPI() {
     override var lang = "id"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.AsianDrama)
 
+    // API Backend Pusat
     private val apiUrl = "https://h5-api.aoneroom.com/wefeed-h5api-bff"
 
+    // Header Dasar
     private val baseHeaders = mapOf(
         "Accept" to "application/json",
         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
         "x-client-info" to "{\"timezone\":\"Asia/Jakarta\"}"
     )
 
+    // Helper Header Dinamis (Bunglon Mode 🦎)
     private fun getDynamicHeaders(isLokLok: Boolean): Map<String, String> {
         return baseHeaders + if (isLokLok) {
             mapOf("Origin" to "https://lok-lok.cc", "Referer" to "https://lok-lok.cc/")
@@ -52,11 +53,11 @@ class Adimoviebox : MainAPI() {
                 homeData.add(HomePageList(sectionName, movies))
             }
         }
-        return newHomePageResponse(homeData)
+        return HomePageResponse(homeData)
     }
 
     // ==========================================
-    // 3. LOAD DETAIL
+    // 3. LOAD DETAIL (Support Movie & Series!)
     // ==========================================
     override suspend fun load(url: String): LoadResponse? {
         val isLokLok = url.contains("lok-lok.cc")
@@ -69,29 +70,34 @@ class Adimoviebox : MainAPI() {
         val headers = getDynamicHeaders(isLokLok)
         
         val response = app.get(targetUrl, headers = headers).parsedSafe<MovieBoxDetailResponse>()
-            ?: throw ErrorLoadingException("Gagal mengambil data dari server")
+            ?: throw ErrorLoadingException("Gagal mengambil data")
 
-        val data = response.data ?: throw ErrorLoadingException("Data detail kosong")
-        val subject = data.subject ?: throw ErrorLoadingException("Metadata film tidak ditemukan")
-        val resource = data.resource
+        val subject = response.data?.subject ?: throw ErrorLoadingException("Film tidak ditemukan")
+        val resource = response.data.resource
 
+        // Cek apakah ini Series atau Movie
+        // Logic: Kalau ada season dengan maxEp > 1, berarti Series
         val isSeries = resource?.seasons?.any { (it.maxEp ?: 0) > 1 } == true
+
+        // Simpan data untuk loadLinks (Format: subjectId | detailPath | sourceFlag)
         val sourceFlag = if (isLokLok) "LOKLOK" else "MBOX"
         val dataId = "${subject.subjectId}|$detailPath|$sourceFlag"
 
-        val ratingInt = subject.imdbRatingValue?.toFloatOrNull()?.times(10)?.toInt()
-
         if (isSeries) {
+            // === LOGIKA SERIES ===
             val episodes = ArrayList<Episode>()
+            
+            // Loop setiap Season (biasanya cuma 1)
             resource?.seasons?.forEach { season ->
                 val seasonNum = season.se ?: 1
                 val maxEpisode = season.maxEp ?: 0
                 
+                // Karena API tidak memberikan list episode satu per satu,
+                // Kita generate list episode dari 1 sampai Max Episode
                 for (i in 1..maxEpisode) {
-                    // MENGGUNAKAN CONSTRUCTOR LAMA (KARENA PASTI DIKENALI)
                     episodes.add(
                         Episode(
-                            data = "$dataId|$seasonNum|$i",
+                            data = "$dataId|$seasonNum|$i", // Tambah info Season|Episode ke ID
                             name = "Episode $i",
                             season = seasonNum,
                             episode = i
@@ -104,28 +110,31 @@ class Adimoviebox : MainAPI() {
                 this.posterUrl = subject.cover?.url
                 this.plot = subject.description
                 this.year = subject.releaseDate?.take(4)?.toIntOrNull()
-                this.rating = ratingInt // IGNORE DEPRECATED ERROR
+                this.rating = subject.imdbRatingValue?.toIntOrNull()
             }
 
         } else {
-            return newMovieLoadResponse(subject.title ?: "No Title", url, TvType.Movie, "$dataId|0|0") {
+            // === LOGIKA MOVIE ===
+            return newMovieLoadResponse(subject.title ?: "No Title", url, TvType.Movie, "$dataId|0|0") { // 0|0 = Movie
                 this.posterUrl = subject.cover?.url
                 this.plot = subject.description
                 this.year = subject.releaseDate?.take(4)?.toIntOrNull()
-                this.rating = ratingInt // IGNORE DEPRECATED ERROR
+                this.rating = subject.imdbRatingValue?.toIntOrNull()
             }
         }
     }
 
     // ==========================================
-    // 4. LOAD LINKS
+    // 4. LOAD LINKS (Pemutar Video)
     // ==========================================
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
+        subtitleCallback: SubtitleCallback,
+        callback: ExtractorLinkCallback
     ): Boolean {
+        // Bongkar Data ID
+        // Format: subjectId | detailPath | sourceFlag | seasonNum | episodeNum
         val args = data.split("|")
         val subjectId = args.getOrNull(0) ?: return false
         val detailPath = args.getOrNull(1) ?: ""
@@ -136,6 +145,7 @@ class Adimoviebox : MainAPI() {
         val isLokLok = sourceFlag == "LOKLOK"
         val headers = getDynamicHeaders(isLokLok)
 
+        // Panggil API Play dengan Season & Episode yang sesuai
         val playUrl = "$apiUrl/subject/play?subjectId=$subjectId&se=$seasonNum&ep=$episodeNum&detailPath=$detailPath"
 
         val response = app.get(playUrl, headers = headers).parsedSafe<MovieBoxPlayResponse>()
@@ -148,11 +158,10 @@ class Adimoviebox : MainAPI() {
                 val qualityStr = stream.resolutions ?: "0"
                 val quality = qualityStr.toIntOrNull() ?: Qualities.Unknown.value
                 
-                // MENGGUNAKAN CONSTRUCTOR LAMA AGAR TIDAK ERROR PARAMETER
                 callback.invoke(
                     ExtractorLink(
                         source = name,
-                        name = "Adimoviebox ${qualityStr}p",
+                        name = "Adimoviebox ${qualityStr}p", // Nama source di player
                         url = stream.url,
                         referer = headers["Referer"] ?: "https://filmboom.top/",
                         quality = quality,
@@ -166,15 +175,50 @@ class Adimoviebox : MainAPI() {
 }
 
 // ==========================================
-// DATA CLASSES
+// DATA CLASSES (JSON Parsing)
 // ==========================================
 
-data class MovieBoxDetailResponse(@JsonProperty("data") val data: MBDetailData?)
-data class MBDetailData(@JsonProperty("subject") val subject: MBSubject?, @JsonProperty("resource") val resource: MBResource?)
-data class MBSubject(@JsonProperty("subjectId") val subjectId: String?, @JsonProperty("title") val title: String?, @JsonProperty("description") val description: String?, @JsonProperty("cover") val cover: MBImage?, @JsonProperty("releaseDate") val releaseDate: String?, @JsonProperty("imdbRatingValue") val imdbRatingValue: String?)
-data class MBResource(@JsonProperty("seasons") val seasons: List<MBSeason>?)
-data class MBSeason(@JsonProperty("se") val se: Int?, @JsonProperty("maxEp") val maxEp: Int?)
-data class MBImage(@JsonProperty("url") val url: String?)
-data class MovieBoxPlayResponse(@JsonProperty("data") val data: MBPlayData?)
-data class MBPlayData(@JsonProperty("streams") val streams: List<MBStream>?)
-data class MBStream(@JsonProperty("url") val url: String?, @JsonProperty("resolutions") val resolutions: String?, @JsonProperty("format") val format: String?)
+data class MovieBoxDetailResponse(
+    @JsonProperty("data") val data: MBDetailData?
+)
+
+data class MBDetailData(
+    @JsonProperty("subject") val subject: MBSubject?,
+    @JsonProperty("resource") val resource: MBResource?
+)
+
+data class MBSubject(
+    @JsonProperty("subjectId") val subjectId: String?,
+    @JsonProperty("title") val title: String?,
+    @JsonProperty("description") val description: String?,
+    @JsonProperty("cover") val cover: MBImage?,
+    @JsonProperty("releaseDate") val releaseDate: String?,
+    @JsonProperty("imdbRatingValue") val imdbRatingValue: String?
+)
+
+data class MBResource(
+    @JsonProperty("seasons") val seasons: List<MBSeason>?
+)
+
+data class MBSeason(
+    @JsonProperty("se") val se: Int?,
+    @JsonProperty("maxEp") val maxEp: Int?
+)
+
+data class MBImage(
+    @JsonProperty("url") val url: String?
+)
+
+data class MovieBoxPlayResponse(
+    @JsonProperty("data") val data: MBPlayData?
+)
+
+data class MBPlayData(
+    @JsonProperty("streams") val streams: List<MBStream>?
+)
+
+data class MBStream(
+    @JsonProperty("url") val url: String?,
+    @JsonProperty("resolutions") val resolutions: String?,
+    @JsonProperty("format") val format: String?
+)
