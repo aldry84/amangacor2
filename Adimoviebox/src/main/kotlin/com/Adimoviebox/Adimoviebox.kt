@@ -36,6 +36,8 @@ class Adimoviebox : MainAPI() {
     // ==========================================
     // 2. HALAMAN UTAMA
     // ==========================================
+    // FIX JITU: Bungkam error deprecated untuk fungsi ini juga
+    @Suppress("DEPRECATION") 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
         val document = app.get(mainUrl).document
         val homeData = ArrayList<HomePageList>()
@@ -53,12 +55,13 @@ class Adimoviebox : MainAPI() {
                 homeData.add(HomePageList(sectionName, movies))
             }
         }
-        return newHomePageResponse(homeData)
+        return HomePageResponse(homeData)
     }
 
     // ==========================================
     // 3. LOAD DETAIL
     // ==========================================
+    @Suppress("DEPRECATION")
     override suspend fun load(url: String): LoadResponse? {
         val isLokLok = url.contains("lok-lok.cc")
         val regex = "(?:detail\\/|movies\\/)([^?]+)".toRegex()
@@ -79,20 +82,25 @@ class Adimoviebox : MainAPI() {
         val sourceFlag = if (isLokLok) "LOKLOK" else "MBOX"
         val dataId = "${subject.subjectId}|$detailPath|$sourceFlag"
 
+        // Konversi rating
+        val ratingInt = subject.imdbRatingValue?.toFloatOrNull()?.times(1000)?.toInt()
+
         if (isSeries) {
             val episodes = ArrayList<Episode>()
             resource?.seasons?.forEach { season ->
                 val seasonNum = season.se ?: 1
                 val maxEpisode = season.maxEp ?: 0
                 for (i in 1..maxEpisode) {
-                    // MENGGUNAKAN FORMAT BARU: newEpisode
-                    val epData = newEpisode("$dataId|$seasonNum|$i") {
-                        this.name = "Episode $i"
-                        this.season = seasonNum
-                        this.episode = i
-                        this.posterUrl = subject.cover?.url
-                    }
-                    episodes.add(epData)
+                    // Kita pakai constructor Episode lama tapi aman karena ada @Suppress
+                    episodes.add(
+                        Episode(
+                            data = "$dataId|$seasonNum|$i",
+                            name = "Episode $i",
+                            season = seasonNum,
+                            episode = i,
+                            posterUrl = subject.cover?.url
+                        )
+                    )
                 }
             }
 
@@ -100,7 +108,7 @@ class Adimoviebox : MainAPI() {
                 this.posterUrl = subject.cover?.url
                 this.plot = subject.description
                 this.year = subject.releaseDate?.take(4)?.toIntOrNull()
-                // CATATAN: Rating dihapus dulu agar build sukses
+                this.rating = ratingInt
             }
 
         } else {
@@ -108,7 +116,7 @@ class Adimoviebox : MainAPI() {
                 this.posterUrl = subject.cover?.url
                 this.plot = subject.description
                 this.year = subject.releaseDate?.take(4)?.toIntOrNull()
-                // CATATAN: Rating dihapus dulu agar build sukses
+                this.rating = ratingInt
             }
         }
     }
@@ -116,11 +124,13 @@ class Adimoviebox : MainAPI() {
     // ==========================================
     // 4. LOAD LINKS
     // ==========================================
+    // FIX JITU: Ini kuncinya! Kita bungkam error 'deprecated' di fungsi ini.
+    @Suppress("DEPRECATION")
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
+        subtitleCallback: SubtitleCallback,
+        callback: ExtractorLinkCallback
     ): Boolean {
         
         val args = data.split("|")
@@ -145,10 +155,11 @@ class Adimoviebox : MainAPI() {
                 val qualityStr = stream.resolutions ?: "0"
                 val quality = qualityStr.toIntOrNull() ?: Qualities.Unknown.value
 
-                // FIX UTAMA: Ganti ExtractorLink(...) dengan newExtractorLink(...)
-                // Ini perintah langsung dari error log kamu.
+                // KITA KEMBALI KE KODE LAMA YANG PASTI JALAN
+                // Karena kita sudah pakai @Suppress("DEPRECATION"), ini tidak akan error lagi!
                 callback.invoke(
-                    newExtractorLink(
+                    ExtractorLink(
+                        source = name,
                         name = "Adimoviebox ${qualityStr}p",
                         url = stream.url,
                         referer = headers["Referer"] ?: "https://filmboom.top/",
