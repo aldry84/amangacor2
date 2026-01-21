@@ -24,7 +24,7 @@ class Adimoviebox : MainAPI() {
         "x-client-info" to "{\"timezone\":\"Asia/Jakarta\"}"
     )
 
-    // Helper Header Dinamis (Bunglon Mode 🦎)
+    // Helper Header Dinamis
     private fun getDynamicHeaders(isLokLok: Boolean): Map<String, String> {
         return baseHeaders + if (isLokLok) {
             mapOf("Origin" to "https://lok-lok.cc", "Referer" to "https://lok-lok.cc/")
@@ -34,7 +34,7 @@ class Adimoviebox : MainAPI() {
     }
 
     // ==========================================
-    // 2. HALAMAN UTAMA
+    // 2. HALAMAN UTAMA (FIXED: newHomePageResponse)
     // ==========================================
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
         val document = app.get(mainUrl).document
@@ -53,11 +53,12 @@ class Adimoviebox : MainAPI() {
                 homeData.add(HomePageList(sectionName, movies))
             }
         }
-        return HomePageResponse(homeData)
+        // FIX: Menggunakan newHomePageResponse untuk menghindari error deprecated
+        return newHomePageResponse(homeData)
     }
 
     // ==========================================
-    // 3. LOAD DETAIL (Support Movie & Series!)
+    // 3. LOAD DETAIL (FIXED: this.rating)
     // ==========================================
     override suspend fun load(url: String): LoadResponse? {
         val isLokLok = url.contains("lok-lok.cc")
@@ -74,29 +75,22 @@ class Adimoviebox : MainAPI() {
 
         val subject = response.data?.subject ?: throw ErrorLoadingException("Film tidak ditemukan")
         val resource = response.data.resource
-
-        // Cek apakah ini Series atau Movie
         val isSeries = resource?.seasons?.any { (it.maxEp ?: 0) > 1 } == true
-
-        // Simpan data untuk loadLinks (Format: subjectId | detailPath | sourceFlag)
+        
         val sourceFlag = if (isLokLok) "LOKLOK" else "MBOX"
         val dataId = "${subject.subjectId}|$detailPath|$sourceFlag"
 
-        // Konversi rating string ke int (0-10) untuk addRating
-        val ratingVal = subject.imdbRatingValue?.toFloatOrNull()?.times(10)?.toInt()
+        // Hitung rating manual (0-1000 scale biasanya, atau 0-100)
+        // Kita ambil int safe
+        val ratingInt = subject.imdbRatingValue?.toFloatOrNull()?.times(1000)?.toInt()
 
         if (isSeries) {
-            // === LOGIKA SERIES (FIXED EPISODE CONSTRUCTOR) ===
             val episodes = ArrayList<Episode>()
-
-            // Loop setiap Season
             resource?.seasons?.forEach { season ->
                 val seasonNum = season.se ?: 1
                 val maxEpisode = season.maxEp ?: 0
-
-                // Generate list episode
                 for (i in 1..maxEpisode) {
-                    // FIX: Menggunakan newEpisode { ... } (Bukan constructor lama)
+                    // FIX: Menggunakan newEpisode builder
                     episodes.add(
                         newEpisode("$dataId|$seasonNum|$i") {
                             this.name = "Episode $i"
@@ -112,32 +106,32 @@ class Adimoviebox : MainAPI() {
                 this.posterUrl = subject.cover?.url
                 this.plot = subject.description
                 this.year = subject.releaseDate?.take(4)?.toIntOrNull()
-                // FIX: Menggunakan addRating (Bukan this.rating =)
-                addRating(ratingVal)
+                // FIX: Pakai this.rating, jangan addRating (karena unresolved)
+                this.rating = ratingInt
             }
 
         } else {
-            // === LOGIKA MOVIE ===
             return newMovieLoadResponse(subject.title ?: "No Title", url, TvType.Movie, "$dataId|0|0") {
                 this.posterUrl = subject.cover?.url
                 this.plot = subject.description
                 this.year = subject.releaseDate?.take(4)?.toIntOrNull()
-                // FIX: Menggunakan addRating (Bukan this.rating =)
-                addRating(ratingVal)
+                // FIX: Pakai this.rating
+                this.rating = ratingInt
             }
         }
     }
 
     // ==========================================
-    // 4. LOAD LINKS (Pemutar Video)
+    // 4. LOAD LINKS (FIXED: Signature & ExtractorLink)
     // ==========================================
+    // FIX: Mengubah tipe parameter callback agar sesuai dengan Cloudstream terbaru
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
-        subtitleCallback: SubtitleCallback,
-        callback: ExtractorLinkCallback
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // Bongkar Data ID
+        
         val args = data.split("|")
         val subjectId = args.getOrNull(0) ?: return false
         val detailPath = args.getOrNull(1) ?: ""
@@ -160,16 +154,17 @@ class Adimoviebox : MainAPI() {
                 val qualityStr = stream.resolutions ?: "0"
                 val quality = qualityStr.toIntOrNull() ?: Qualities.Unknown.value
 
-                // FIX: Menggunakan SourceUrl(...).toExtractorLink(this)
-                // Ini cara modern untuk menghindari error deprecated ExtractorLink constructor
+                // FIX: Menggunakan ExtractorLink constructor manual
+                // Menghindari penggunaan SourceUrl yang error (unresolved)
                 callback.invoke(
-                    SourceUrl(
-                        url = stream.url,
+                    ExtractorLink(
+                        source = name,
                         name = "Adimoviebox ${qualityStr}p",
+                        url = stream.url,
                         referer = headers["Referer"] ?: "https://filmboom.top/",
                         quality = quality,
                         isM3u8 = stream.url.contains(".m3u8")
-                    ).toExtractorLink(this)
+                    )
                 )
             }
         }
@@ -178,7 +173,7 @@ class Adimoviebox : MainAPI() {
 }
 
 // ==========================================
-// DATA CLASSES (JSON Parsing)
+// DATA CLASSES
 // ==========================================
 
 data class MovieBoxDetailResponse(
