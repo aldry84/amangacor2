@@ -24,7 +24,7 @@ class Adimoviebox : MainAPI() {
         "x-client-info" to "{\"timezone\":\"Asia/Jakarta\"}"
     )
 
-    // Helper Header Dinamis (Bunglon Mode 🦎)
+    // Helper Header Dinamis
     private fun getDynamicHeaders(isLokLok: Boolean): Map<String, String> {
         return baseHeaders + if (isLokLok) {
             mapOf("Origin" to "https://lok-lok.cc", "Referer" to "https://lok-lok.cc/")
@@ -53,11 +53,12 @@ class Adimoviebox : MainAPI() {
                 homeData.add(HomePageList(sectionName, movies))
             }
         }
-        return HomePageResponse(homeData)
+        // FIX: Menggunakan newHomePageResponse bukan constructor langsung
+        return newHomePageResponse(homeData)
     }
 
     // ==========================================
-    // 3. LOAD DETAIL (Support Movie & Series!)
+    // 3. LOAD DETAIL
     // ==========================================
     override suspend fun load(url: String): LoadResponse? {
         val isLokLok = url.contains("lok-lok.cc")
@@ -70,38 +71,30 @@ class Adimoviebox : MainAPI() {
         val headers = getDynamicHeaders(isLokLok)
         
         val response = app.get(targetUrl, headers = headers).parsedSafe<MovieBoxDetailResponse>()
-            ?: throw ErrorLoadingException("Gagal mengambil data")
+            ?: throw ErrorLoadingException("Gagal mengambil data dari server")
 
-        val subject = response.data?.subject ?: throw ErrorLoadingException("Film tidak ditemukan")
-        val resource = response.data.resource
+        val data = response.data ?: throw ErrorLoadingException("Data detail kosong")
+        val subject = data.subject ?: throw ErrorLoadingException("Metadata film tidak ditemukan")
+        val resource = data.resource
 
-        // Cek apakah ini Series atau Movie
-        // Logic: Kalau ada season dengan maxEp > 1, berarti Series
         val isSeries = resource?.seasons?.any { (it.maxEp ?: 0) > 1 } == true
-
-        // Simpan data untuk loadLinks (Format: subjectId | detailPath | sourceFlag)
         val sourceFlag = if (isLokLok) "LOKLOK" else "MBOX"
         val dataId = "${subject.subjectId}|$detailPath|$sourceFlag"
 
         if (isSeries) {
-            // === LOGIKA SERIES ===
             val episodes = ArrayList<Episode>()
-            
-            // Loop setiap Season (biasanya cuma 1)
             resource?.seasons?.forEach { season ->
                 val seasonNum = season.se ?: 1
                 val maxEpisode = season.maxEp ?: 0
                 
-                // Karena API tidak memberikan list episode satu per satu,
-                // Kita generate list episode dari 1 sampai Max Episode
                 for (i in 1..maxEpisode) {
+                    // FIX: Menggunakan newEpisode builder
                     episodes.add(
-                        Episode(
-                            data = "$dataId|$seasonNum|$i", // Tambah info Season|Episode ke ID
-                            name = "Episode $i",
-                            season = seasonNum,
-                            episode = i
-                        )
+                        newEpisode("$dataId|$seasonNum|$i") {
+                            this.name = "Episode $i"
+                            this.season = seasonNum
+                            this.episode = i
+                        }
                     )
                 }
             }
@@ -110,31 +103,31 @@ class Adimoviebox : MainAPI() {
                 this.posterUrl = subject.cover?.url
                 this.plot = subject.description
                 this.year = subject.releaseDate?.take(4)?.toIntOrNull()
-                this.rating = subject.imdbRatingValue?.toIntOrNull()
+                // FIX: Menggunakan addRating (Score class) bukan rating Int
+                addRating(subject.imdbRatingValue)
             }
 
         } else {
-            // === LOGIKA MOVIE ===
-            return newMovieLoadResponse(subject.title ?: "No Title", url, TvType.Movie, "$dataId|0|0") { // 0|0 = Movie
+            return newMovieLoadResponse(subject.title ?: "No Title", url, TvType.Movie, "$dataId|0|0") {
                 this.posterUrl = subject.cover?.url
                 this.plot = subject.description
                 this.year = subject.releaseDate?.take(4)?.toIntOrNull()
-                this.rating = subject.imdbRatingValue?.toIntOrNull()
+                // FIX: Menggunakan addRating (Score class) bukan rating Int
+                addRating(subject.imdbRatingValue)
             }
         }
     }
 
     // ==========================================
-    // 4. LOAD LINKS (Pemutar Video)
+    // 4. LOAD LINKS
     // ==========================================
+    // FIX: Mengubah tipe parameter callback agar sesuai dengan CloudStream terbaru
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
-        subtitleCallback: SubtitleCallback,
-        callback: ExtractorLinkCallback
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // Bongkar Data ID
-        // Format: subjectId | detailPath | sourceFlag | seasonNum | episodeNum
         val args = data.split("|")
         val subjectId = args.getOrNull(0) ?: return false
         val detailPath = args.getOrNull(1) ?: ""
@@ -145,7 +138,6 @@ class Adimoviebox : MainAPI() {
         val isLokLok = sourceFlag == "LOKLOK"
         val headers = getDynamicHeaders(isLokLok)
 
-        // Panggil API Play dengan Season & Episode yang sesuai
         val playUrl = "$apiUrl/subject/play?subjectId=$subjectId&se=$seasonNum&ep=$episodeNum&detailPath=$detailPath"
 
         val response = app.get(playUrl, headers = headers).parsedSafe<MovieBoxPlayResponse>()
@@ -158,10 +150,11 @@ class Adimoviebox : MainAPI() {
                 val qualityStr = stream.resolutions ?: "0"
                 val quality = qualityStr.toIntOrNull() ?: Qualities.Unknown.value
                 
+                // FIX: Menggunakan ExtractorLink constructor standar
                 callback.invoke(
                     ExtractorLink(
                         source = name,
-                        name = "Adimoviebox ${qualityStr}p", // Nama source di player
+                        name = "Adimoviebox ${qualityStr}p",
                         url = stream.url,
                         referer = headers["Referer"] ?: "https://filmboom.top/",
                         quality = quality,
@@ -175,7 +168,7 @@ class Adimoviebox : MainAPI() {
 }
 
 // ==========================================
-// DATA CLASSES (JSON Parsing)
+// DATA CLASSES
 // ==========================================
 
 data class MovieBoxDetailResponse(
