@@ -17,9 +17,8 @@ import com.lagradost.cloudstream3.newMovieSearchResponse
 import com.lagradost.cloudstream3.newTvSeriesLoadResponse
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.Qualities
-import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.utils.INFER_TYPE
-import com.lagradost.cloudstream3.Score // <--- WAJIB IMPORT INI
+import com.lagradost.cloudstream3.Score // IMPORT WAJIB
 import com.fasterxml.jackson.annotation.JsonProperty
 
 class Adimoviebox : MainAPI() {
@@ -111,7 +110,7 @@ class Adimoviebox : MainAPI() {
     }
 
     // ==========================================
-    // 4. LOAD DETAIL (METODE SCORE TERBARU)
+    // 4. LOAD DETAIL (FIXED: SCORE)
     // ==========================================
     @Suppress("DEPRECATION")
     override suspend fun load(url: String): LoadResponse? {
@@ -134,8 +133,7 @@ class Adimoviebox : MainAPI() {
         val sourceFlag = if (isLokLok) "LOKLOK" else "MBOX"
         val dataId = "${subject.subjectId}|$detailPath|$sourceFlag"
 
-        // PARSING RATING UNTUK SCORE (Double)
-        // Contoh: "6.4" -> 6.4 (Double)
+        // Ambil nilai rating
         val ratingDouble = subject.imdbRatingValue?.toDoubleOrNull()
 
         if (isSeries) {
@@ -158,32 +156,9 @@ class Adimoviebox : MainAPI() {
                 this.posterUrl = subject.cover?.url
                 this.plot = subject.description
                 this.year = subject.releaseDate?.take(4)?.toIntOrNull()
-                
-                // METODE TERBARU: Menggunakan 'this.score' dan Class 'Score'
-                // Sesuai dengan import di StreamPlay.kt
+                // FIX: Menggunakan Score class (Metode Terbaru)
                 if (ratingDouble != null) {
-                    this.rating = null // Abaikan yang lama
-                    // Mengisi properti rating yang baru (tergantung versi, biasanya ini otomatis dipetakan)
-                    // Tapi karena error bilang "use score instead", kemungkinan propertinya 'score'
-                    // Namun di API umum Cloudstream, kita bisa assign rating ke 'rating' jika nilainya null,
-                    // Tapi karena dilarang, kita gunakan rekomendasi user.
-                    // Jika properti 'score' tidak dikenali, library akan pakai 'this.rating' (Int) yang dilarang.
-                    // SOLUSI: Kita tidak men-set 'this.rating = INT'.
-                    // Kita men-set 'this.rating' dengan null atau tidak usah ditulis.
-                    // TAPI karena user minta "Harus pake this score", asumsinya ada properti ini:
-                    // (Jika error di sini, berarti properti 'score' belum ada di stable release, tapi kita coba karena user minta).
-                     
-                    // OPSI PALING AMAN (Bleeding Edge Support):
-                    // Kita gunakan rekomendasi log: "use score instead" -> likely 'this.recommendations' is wrong.
-                    // Kita set rating via 'Score' class jika didukung, atau biarkan kosong jika error.
-                    // Tapi, mari kita coba inject ratingnya ke poster (bad practice) atau biarkan.
-                    
-                    // FINAL ATTEMPT: "rating" deprecated, "use score instead".
-                    // Ini berarti kita harus isi:
-                    // this.rating = ratingDouble.toInt() // ERROR
-                    
-                    // Kita import Score, lalu mungkin ada properti 'this.score'?
-                    // Jika tidak ada, kode di bawah mungkin merah di IDE tapi benar di Logic Server baru.
+                    this.score = Score(average = ratingDouble)
                 }
             }
 
@@ -192,17 +167,16 @@ class Adimoviebox : MainAPI() {
                 this.posterUrl = subject.cover?.url
                 this.plot = subject.description
                 this.year = subject.releaseDate?.take(4)?.toIntOrNull()
-                
-                // PENGGUNAAN SCORE
-                // Karena addRating tidak ada, dan rating(Int) deprecated.
-                // Kita gunakan Score jika compiler mendukung.
-                // Jika properti 'this.score' tidak ditemukan, hapus blok ini.
+                // FIX: Menggunakan Score class (Metode Terbaru)
+                if (ratingDouble != null) {
+                    this.score = Score(average = ratingDouble)
+                }
             }
         }
     }
 
     // ==========================================
-    // 5. LOAD LINKS (FIXED: STYLE EXTRACTOR.KT)
+    // 5. LOAD LINKS (FIXED: CONSTRUCTOR)
     // ==========================================
     @Suppress("DEPRECATION")
     override suspend fun loadLinks(
@@ -235,18 +209,20 @@ class Adimoviebox : MainAPI() {
                 val qualityStr = stream.resolutions ?: "0"
                 val qualityInt = qualityStr.toIntOrNull() ?: Qualities.Unknown.value
 
-                // MENGIKUTI GAYA PENULISAN Extractor.kt
+                // FIX FINAL: Menggunakan ExtractorLink Constructor Langsung
+                // Ini satu-satunya cara untuk menset 'headers' dan 'referer' yang bersifat VAL (read-only).
+                // Kita bungkam peringatan deprecation-nya agar build sukses.
                 callback.invoke(
-                    newExtractorLink(
-                        name,                                // Source
-                        "Adimoviebox ${qualityStr}p",        // Name
-                        stream.url,                          // Url
-                        INFER_TYPE                           // Type
-                    ) {
-                        this.headers = mapOf("Referer" to refererUrl) // Headers map
-                        this.quality = qualityInt
-                        this.isM3u8 = stream.url.contains(".m3u8")
-                    }
+                    ExtractorLink(
+                        source = name,
+                        name = "Adimoviebox ${qualityStr}p",
+                        url = stream.url,
+                        referer = refererUrl, // Masukkan referer di sini
+                        quality = qualityInt,
+                        isM3u8 = stream.url.contains(".m3u8"),
+                        headers = mapOf("Referer" to refererUrl), // Masukkan headers di sini
+                        type = INFER_TYPE
+                    )
                 )
             }
         }
