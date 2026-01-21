@@ -46,7 +46,7 @@ class Adimoviebox : MainAPI() {
                 val title = element.select("p").text().trim()
                 val href = fixUrl(element.attr("href"))
                 newMovieSearchResponse(title, href, TvType.Movie) {
-                    this.posterUrl = null 
+                    this.posterUrl = null
                 }
             }
             if (movies.isNotEmpty()) {
@@ -63,12 +63,12 @@ class Adimoviebox : MainAPI() {
         val isLokLok = url.contains("lok-lok.cc")
         val regex = "(?:detail\\/|movies\\/)([^?]+)".toRegex()
         val matchResult = regex.find(url)
-        val detailPath = matchResult?.groupValues?.get(1) 
+        val detailPath = matchResult?.groupValues?.get(1)
             ?: throw ErrorLoadingException("Link tidak valid")
 
         val targetUrl = "$apiUrl/detail?detailPath=$detailPath"
         val headers = getDynamicHeaders(isLokLok)
-        
+
         val response = app.get(targetUrl, headers = headers).parsedSafe<MovieBoxDetailResponse>()
             ?: throw ErrorLoadingException("Gagal mengambil data")
 
@@ -76,32 +76,34 @@ class Adimoviebox : MainAPI() {
         val resource = response.data.resource
 
         // Cek apakah ini Series atau Movie
-        // Logic: Kalau ada season dengan maxEp > 1, berarti Series
         val isSeries = resource?.seasons?.any { (it.maxEp ?: 0) > 1 } == true
 
         // Simpan data untuk loadLinks (Format: subjectId | detailPath | sourceFlag)
         val sourceFlag = if (isLokLok) "LOKLOK" else "MBOX"
         val dataId = "${subject.subjectId}|$detailPath|$sourceFlag"
 
+        // Konversi rating string ke int (0-10) untuk addRating
+        val ratingVal = subject.imdbRatingValue?.toFloatOrNull()?.times(10)?.toInt()
+
         if (isSeries) {
-            // === LOGIKA SERIES ===
+            // === LOGIKA SERIES (FIXED EPISODE CONSTRUCTOR) ===
             val episodes = ArrayList<Episode>()
-            
-            // Loop setiap Season (biasanya cuma 1)
+
+            // Loop setiap Season
             resource?.seasons?.forEach { season ->
                 val seasonNum = season.se ?: 1
                 val maxEpisode = season.maxEp ?: 0
-                
-                // Karena API tidak memberikan list episode satu per satu,
-                // Kita generate list episode dari 1 sampai Max Episode
+
+                // Generate list episode
                 for (i in 1..maxEpisode) {
+                    // FIX: Menggunakan newEpisode { ... } (Bukan constructor lama)
                     episodes.add(
-                        Episode(
-                            data = "$dataId|$seasonNum|$i", // Tambah info Season|Episode ke ID
-                            name = "Episode $i",
-                            season = seasonNum,
-                            episode = i
-                        )
+                        newEpisode("$dataId|$seasonNum|$i") {
+                            this.name = "Episode $i"
+                            this.season = seasonNum
+                            this.episode = i
+                            this.posterUrl = subject.cover?.url
+                        }
                     )
                 }
             }
@@ -110,16 +112,18 @@ class Adimoviebox : MainAPI() {
                 this.posterUrl = subject.cover?.url
                 this.plot = subject.description
                 this.year = subject.releaseDate?.take(4)?.toIntOrNull()
-                this.rating = subject.imdbRatingValue?.toIntOrNull()
+                // FIX: Menggunakan addRating (Bukan this.rating =)
+                addRating(ratingVal)
             }
 
         } else {
             // === LOGIKA MOVIE ===
-            return newMovieLoadResponse(subject.title ?: "No Title", url, TvType.Movie, "$dataId|0|0") { // 0|0 = Movie
+            return newMovieLoadResponse(subject.title ?: "No Title", url, TvType.Movie, "$dataId|0|0") {
                 this.posterUrl = subject.cover?.url
                 this.plot = subject.description
                 this.year = subject.releaseDate?.take(4)?.toIntOrNull()
-                this.rating = subject.imdbRatingValue?.toIntOrNull()
+                // FIX: Menggunakan addRating (Bukan this.rating =)
+                addRating(ratingVal)
             }
         }
     }
@@ -134,7 +138,6 @@ class Adimoviebox : MainAPI() {
         callback: ExtractorLinkCallback
     ): Boolean {
         // Bongkar Data ID
-        // Format: subjectId | detailPath | sourceFlag | seasonNum | episodeNum
         val args = data.split("|")
         val subjectId = args.getOrNull(0) ?: return false
         val detailPath = args.getOrNull(1) ?: ""
@@ -145,7 +148,6 @@ class Adimoviebox : MainAPI() {
         val isLokLok = sourceFlag == "LOKLOK"
         val headers = getDynamicHeaders(isLokLok)
 
-        // Panggil API Play dengan Season & Episode yang sesuai
         val playUrl = "$apiUrl/subject/play?subjectId=$subjectId&se=$seasonNum&ep=$episodeNum&detailPath=$detailPath"
 
         val response = app.get(playUrl, headers = headers).parsedSafe<MovieBoxPlayResponse>()
@@ -157,16 +159,17 @@ class Adimoviebox : MainAPI() {
             if (!stream.url.isNullOrEmpty()) {
                 val qualityStr = stream.resolutions ?: "0"
                 val quality = qualityStr.toIntOrNull() ?: Qualities.Unknown.value
-                
+
+                // FIX: Menggunakan SourceUrl(...).toExtractorLink(this)
+                // Ini cara modern untuk menghindari error deprecated ExtractorLink constructor
                 callback.invoke(
-                    ExtractorLink(
-                        source = name,
-                        name = "Adimoviebox ${qualityStr}p", // Nama source di player
+                    SourceUrl(
                         url = stream.url,
+                        name = "Adimoviebox ${qualityStr}p",
                         referer = headers["Referer"] ?: "https://filmboom.top/",
                         quality = quality,
                         isM3u8 = stream.url.contains(".m3u8")
-                    )
+                    ).toExtractorLink(this)
                 )
             }
         }
