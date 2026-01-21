@@ -56,6 +56,7 @@ class Adimoviebox : MainAPI() {
     // ==========================================
     // 3. LOAD DETAIL
     // ==========================================
+    @Suppress("DEPRECATION") // Membungkam error rating deprecated
     override suspend fun load(url: String): LoadResponse? {
         val isLokLok = url.contains("lok-lok.cc")
         val regex = "(?:detail\\/|movies\\/)([^?]+)".toRegex()
@@ -77,7 +78,6 @@ class Adimoviebox : MainAPI() {
         val sourceFlag = if (isLokLok) "LOKLOK" else "MBOX"
         val dataId = "${subject.subjectId}|$detailPath|$sourceFlag"
 
-        // Helper untuk parsing rating (misal "8.5" -> 85)
         val ratingInt = subject.imdbRatingValue?.toFloatOrNull()?.times(10)?.toInt()
 
         if (isSeries) {
@@ -101,9 +101,7 @@ class Adimoviebox : MainAPI() {
                 this.posterUrl = subject.cover?.url
                 this.plot = subject.description
                 this.year = subject.releaseDate?.take(4)?.toIntOrNull()
-                // Kembali ke 'rating' karena 'addRating' tidak ditemukan.
-                // Abaikan warning deprecated, yang penting jalan.
-                this.rating = ratingInt
+                this.rating = ratingInt // Suppressed
             }
 
         } else {
@@ -111,7 +109,7 @@ class Adimoviebox : MainAPI() {
                 this.posterUrl = subject.cover?.url
                 this.plot = subject.description
                 this.year = subject.releaseDate?.take(4)?.toIntOrNull()
-                this.rating = ratingInt
+                this.rating = ratingInt // Suppressed
             }
         }
     }
@@ -119,6 +117,7 @@ class Adimoviebox : MainAPI() {
     // ==========================================
     // 4. LOAD LINKS
     // ==========================================
+    @Suppress("DEPRECATION") // Membungkam error ExtractorLink deprecated
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -147,17 +146,17 @@ class Adimoviebox : MainAPI() {
                 val qualityStr = stream.resolutions ?: "0"
                 val quality = qualityStr.toIntOrNull() ?: Qualities.Unknown.value
                 
-                // FIX: Menggunakan newExtractorLink untuk menghindari error deprecated
+                // KITA PAKAI CARA MANUAL YANG PASTI BERHASIL
+                // Walaupun deprecated, ini lebih stabil daripada helper yang error
                 callback.invoke(
-                    newExtractorLink(
+                    ExtractorLink(
                         source = name,
                         name = "Adimoviebox ${qualityStr}p",
                         url = stream.url,
                         referer = headers["Referer"] ?: "https://filmboom.top/",
-                        quality = quality
-                    ) {
-                        this.isM3u8 = stream.url.contains(".m3u8")
-                    }
+                        quality = quality,
+                        isM3u8 = stream.url.contains(".m3u8")
+                    )
                 )
             }
         }
