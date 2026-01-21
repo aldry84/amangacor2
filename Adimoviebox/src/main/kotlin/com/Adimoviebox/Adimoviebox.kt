@@ -14,17 +14,14 @@ class Adimoviebox : MainAPI() {
     override var lang = "id"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.AsianDrama)
 
-    // API Backend Pusat
     private val apiUrl = "https://h5-api.aoneroom.com/wefeed-h5api-bff"
 
-    // Header Dasar
     private val baseHeaders = mapOf(
         "Accept" to "application/json",
         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
         "x-client-info" to "{\"timezone\":\"Asia/Jakarta\"}"
     )
 
-    // Helper Header Dinamis
     private fun getDynamicHeaders(isLokLok: Boolean): Map<String, String> {
         return baseHeaders + if (isLokLok) {
             mapOf("Origin" to "https://lok-lok.cc", "Referer" to "https://lok-lok.cc/")
@@ -53,7 +50,6 @@ class Adimoviebox : MainAPI() {
                 homeData.add(HomePageList(sectionName, movies))
             }
         }
-        // FIX: Menggunakan newHomePageResponse bukan constructor langsung
         return newHomePageResponse(homeData)
     }
 
@@ -81,6 +77,9 @@ class Adimoviebox : MainAPI() {
         val sourceFlag = if (isLokLok) "LOKLOK" else "MBOX"
         val dataId = "${subject.subjectId}|$detailPath|$sourceFlag"
 
+        // Helper untuk parsing rating (misal "8.5" -> 85)
+        val ratingInt = subject.imdbRatingValue?.toFloatOrNull()?.times(10)?.toInt()
+
         if (isSeries) {
             val episodes = ArrayList<Episode>()
             resource?.seasons?.forEach { season ->
@@ -88,7 +87,6 @@ class Adimoviebox : MainAPI() {
                 val maxEpisode = season.maxEp ?: 0
                 
                 for (i in 1..maxEpisode) {
-                    // FIX: Menggunakan newEpisode builder
                     episodes.add(
                         newEpisode("$dataId|$seasonNum|$i") {
                             this.name = "Episode $i"
@@ -103,8 +101,9 @@ class Adimoviebox : MainAPI() {
                 this.posterUrl = subject.cover?.url
                 this.plot = subject.description
                 this.year = subject.releaseDate?.take(4)?.toIntOrNull()
-                // FIX: Menggunakan addRating (Score class) bukan rating Int
-                addRating(subject.imdbRatingValue)
+                // Kembali ke 'rating' karena 'addRating' tidak ditemukan.
+                // Abaikan warning deprecated, yang penting jalan.
+                this.rating = ratingInt
             }
 
         } else {
@@ -112,8 +111,7 @@ class Adimoviebox : MainAPI() {
                 this.posterUrl = subject.cover?.url
                 this.plot = subject.description
                 this.year = subject.releaseDate?.take(4)?.toIntOrNull()
-                // FIX: Menggunakan addRating (Score class) bukan rating Int
-                addRating(subject.imdbRatingValue)
+                this.rating = ratingInt
             }
         }
     }
@@ -121,7 +119,6 @@ class Adimoviebox : MainAPI() {
     // ==========================================
     // 4. LOAD LINKS
     // ==========================================
-    // FIX: Mengubah tipe parameter callback agar sesuai dengan CloudStream terbaru
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -150,16 +147,17 @@ class Adimoviebox : MainAPI() {
                 val qualityStr = stream.resolutions ?: "0"
                 val quality = qualityStr.toIntOrNull() ?: Qualities.Unknown.value
                 
-                // FIX: Menggunakan ExtractorLink constructor standar
+                // FIX: Menggunakan newExtractorLink untuk menghindari error deprecated
                 callback.invoke(
-                    ExtractorLink(
+                    newExtractorLink(
                         source = name,
                         name = "Adimoviebox ${qualityStr}p",
                         url = stream.url,
                         referer = headers["Referer"] ?: "https://filmboom.top/",
-                        quality = quality,
-                        isM3u8 = stream.url.contains(".m3u8")
-                    )
+                        quality = quality
+                    ) {
+                        this.isM3u8 = stream.url.contains(".m3u8")
+                    }
                 )
             }
         }
