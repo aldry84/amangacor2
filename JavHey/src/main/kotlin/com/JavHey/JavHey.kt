@@ -2,15 +2,8 @@ package com.JavHey
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
-import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
-import com.lagradost.cloudstream3.plugins.Plugin
-import android.content.Context
 import org.jsoup.nodes.Element
 import java.util.Base64
-
-// ============================================================================
-//  BAGIAN 1: LOGIKA UTAMA (PROVIDER)
-// ============================================================================
 
 class JavHey : MainAPI() {
     override var mainUrl = "https://javhey.com"
@@ -101,7 +94,8 @@ class JavHey : MainAPI() {
                 
                 urls.forEach { sourceUrl ->
                     if (sourceUrl.isNotBlank()) {
-                        loadExtractor(sourceUrl, callback, subtitleCallback)
+                        // FIX: Urutan parameter dibalik (subtitleCallback dulu, baru callback)
+                        loadExtractor(sourceUrl, subtitleCallback, callback)
                     }
                 }
             } catch (e: Exception) {
@@ -113,23 +107,11 @@ class JavHey : MainAPI() {
         document.select("div.links-download a").forEach { linkTag ->
             val downloadUrl = linkTag.attr("href")
             if (downloadUrl.isNotBlank()) {
-                loadExtractor(downloadUrl, callback, subtitleCallback)
+                // FIX: Urutan parameter dibalik (subtitleCallback dulu, baru callback)
+                loadExtractor(downloadUrl, subtitleCallback, callback)
             }
         }
 
         return true
-    }
-}
-
-// ============================================================================
-//  BAGIAN 2: REGISTRASI PLUGIN
-//  (Ini agar Cloudstream mengenali Provider JavHey)
-// ============================================================================
-
-@CloudstreamPlugin
-class JavHeyPlugin : Plugin() {
-    override fun load(context: Context) {
-        // Mendaftarkan API JavHey ke aplikasi
-        registerMainAPI(JavHey())
     }
 }
