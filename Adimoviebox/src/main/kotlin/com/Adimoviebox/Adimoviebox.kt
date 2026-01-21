@@ -12,7 +12,11 @@ import okhttp3.RequestBody.Companion.toRequestBody
 
 class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
+    
+    // API LAMA (Data Lengkap)
     private val apiUrl = "https://filmboom.top" 
+    
+    // API BARU (Poster HD)
     private val homeApiUrl = "https://h5-api.aoneroom.com"
 
     override var name = "Adimoviebox"
@@ -25,6 +29,7 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
+    // KATEGORI (Sama seperti kode lama)
     override val mainPage = mainPageOf(
         "5283462032510044280" to "Indonesian Drama",
         "6528093688173053896" to "Indonesian Movies",
@@ -89,7 +94,7 @@ class Adimoviebox : MainAPI() {
         val tags = subject.genre?.split(",")?.map { it.trim() }
         val trailerUrl = subject.trailer?.videoAddress?.url
         
-        // SCORE AMAN
+        // SCORE: Pakai Score.from10 (Cara Lama) -> Aman
         val scoreObj = Score.from10(subject.imdbRatingValue)
         
         val recommendations = app.get("$apiUrl/wefeed-h5-bff/web/subject/detail-rec?subjectId=$id&page=1&perPage=12")
@@ -164,18 +169,20 @@ class Adimoviebox : MainAPI() {
             val qualityStr = source.resolutions ?: "Unknown"
             val qualityInt = getQualityFromName(qualityStr)
             
-            // FIX FINAL: Menggunakan newExtractorLink dengan POSITIONAL ARGUMENTS
-            // Urutan: Source, Name, Url, Referer, Quality, Type
-            // Kita gunakan INFER_TYPE untuk type-nya agar aman.
+            // FIX PENULISAN (Menghindari Error Argument Mismatch):
+            // 1. Parameter kurung (): Cuma (Source, Name, Url, Type)
+            // 2. Parameter kurawal {}: Referer (via Headers) & Quality
             callback.invoke(
                 newExtractorLink(
                     this.name,                      // 1. Source
                     "Adimoviebox $qualityStr",      // 2. Name
                     videoUrl,                       // 3. Url
-                    "$apiUrl/",                     // 4. Referer
-                    qualityInt,                     // 5. Quality
-                    INFER_TYPE                      // 6. Type (INFER_TYPE)
-                )
+                    INFER_TYPE                      // 4. Type (Aman)
+                ) {
+                    // Masukkan Referer & Quality di sini (Seperti Kode Lama, tapi pakai Headers map)
+                    this.headers = mapOf("Referer" to "$apiUrl/")
+                    this.quality = qualityInt
+                }
             )
         }
 
