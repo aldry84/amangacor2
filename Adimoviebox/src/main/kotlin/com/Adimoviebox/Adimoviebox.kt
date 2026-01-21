@@ -11,8 +11,13 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 
 class Adimoviebox : MainAPI() {
-    override var mainUrl = "https://lok-lok.cc" 
-    private val apiUrl = "https://h5-api.aoneroom.com"
+    override var mainUrl = "https://moviebox.ph"
+    
+    // API LAMA (Gudang): Untuk Search, Detail, dan Playback (Video)
+    private val apiUrl = "https://filmboom.top" 
+    
+    // API BARU (Etalase): Khusus untuk Halaman Depan / Kategori
+    private val homeApiUrl = "https://h5-api.aoneroom.com"
 
     override val instantLinkLoading = true
     override var name = "Adimoviebox"
@@ -26,21 +31,7 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
-    // Header Global
-    private val apiHeaders = mapOf(
-        "authority" to "lok-lok.cc",
-        "accept" to "application/json",
-        "origin" to "https://lok-lok.cc",
-        "referer" to "https://lok-lok.cc/",
-        "x-source" to "app-search",
-        "user-agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36"
-    )
-
-    // Header khusus Poster (Jaga-jaga jika CDN butuh UA)
-    private val imageHeaders = mapOf(
-        "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36"
-    )
-
+    // --- BAGIAN KATEGORI LENGKAP ---
     override val mainPage: List<MainPageData> = mainPageOf(
         "5283462032510044280" to "Indonesian Drama",
         "6528093688173053896" to "Indonesian Movies",
@@ -51,43 +42,25 @@ class Adimoviebox : MainAPI() {
         "3058742380078711608" to "Disney",
         "8449223314756747760" to "Pinoy Drama",
         "606779077307122552" to "Pinoy Movie",
-        "872031290915189720" to "Bad Ending Romance",
-        "filter_pinoy_romance" to "Pinoy Romance (Filter)"
+        "872031290915189720" to "Bad Ending Romance" 
     )
 
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse {
-        val id = request.data
+        val id = request.data 
         
-        val responseData = if (id == "filter_pinoy_romance") {
-            // POST untuk Filter
-            val postBody = mapOf(
-                "page" to page,
-                "perPage" to 24,
-                "channelId" to 2,
-                "genre" to "Romance",
-                "country" to "Philippines"
-            )
-            
-            app.post(
-                "$apiUrl/wefeed-h5api-bff/subject/filter",
-                headers = apiHeaders,
-                json = postBody
-            ).parsedSafe<Media>()?.data
-            
-        } else {
-            // GET untuk Ranking
-            val targetUrl = "$apiUrl/wefeed-h5api-bff/ranking-list/content?id=$id&page=$page&perPage=12"
-            app.get(targetUrl, headers = apiHeaders).parsedSafe<Media>()?.data
-        }
+        // Request ke API Baru (aoneroom)
+        val targetUrl = "$homeApiUrl/wefeed-h5api-bff/ranking-list/content?id=$id&page=$page&perPage=12"
 
+        // Logika Hybrid: Coba ambil 'subjectList' (API Baru), kalau null coba 'items' (Jaga-jaga)
+        val responseData = app.get(targetUrl).parsedSafe<Media>()?.data
         val listFilm = responseData?.subjectList ?: responseData?.items
 
         val home = listFilm?.map {
             it.toSearchResponse(this)
-        } ?: throw ErrorLoadingException("Gagal memuat kategori.")
+        } ?: throw ErrorLoadingException("Gagal memuat kategori. Data kosong.")
 
         return newHomePageResponse(request.name, home)
     }
@@ -95,91 +68,71 @@ class Adimoviebox : MainAPI() {
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val searchUrl = "$apiUrl/wefeed-h5api-bff/search/content?keyword=$query&page=1&perPage=20"
-        
-        val response = app.get(searchUrl, headers = apiHeaders).parsedSafe<Media>()
-        val listFilm = response?.data?.subjectList ?: response?.data?.items
-
-        if (!listFilm.isNullOrEmpty()) {
-            return listFilm.map { it.toSearchResponse(this) }
-        }
-        return emptyList()
+        // API Lama masih menggunakan wadah "items"
+        return app.post(
+            "$apiUrl/wefeed-h5-bff/web/subject/search", 
+            requestBody = mapOf(
+                "keyword" to query,
+                "page" to "1",
+                "perPage" to "0",
+                "subjectType" to "0",
+            ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
+        ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
+            ?: throw ErrorLoadingException("Pencarian tidak ditemukan.")
     }
 
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfterLast("/")
-        val isNumericId = id.all { it.isDigit() }
         
-        val targetDetailUrl = if (isNumericId) {
-            "$apiUrl/wefeed-h5api-bff/subject/detail?subjectId=$id"
-        } else {
-            "$apiUrl/wefeed-h5api-bff/detail?detailPath=$id"
-        }
+        val document = app.get("$apiUrl/wefeed-h5-bff/web/subject/detail?subjectId=$id")
+            .parsedSafe<MediaDetail>()?.data
+        
+        val subject = document?.subject
+        val title = subject?.title ?: ""
+        val poster = subject?.cover?.url
+        val tags = subject?.genre?.split(",")?.map { it.trim() }
 
-        val detailData = app.get(targetDetailUrl, headers = apiHeaders).parsedSafe<MediaDetail>()?.data
-        val subject = detailData?.subject ?: throw ErrorLoadingException("Gagal memuat detail film.")
-        
-        val realId = subject.subjectId ?: id 
-        val detailPath = subject.detailPath ?: id
-
-        val title = subject.title ?: ""
-        val poster = subject.cover?.url
-        val tags = subject.genre?.split(",")?.map { it.trim() }
-        val year = subject.releaseDate?.substringBefore("-")?.toIntOrNull()
-        val tvType = if (subject.subjectType == 2) TvType.TvSeries else TvType.Movie
-        val description = subject.description
-        val trailer = subject.trailer?.videoAddress?.url
-        val score = Score.from10(subject.imdbRatingValue?.toString())
-        
-        val actors = detailData.stars?.mapNotNull { cast ->
+        val year = subject?.releaseDate?.substringBefore("-")?.toIntOrNull()
+        val tvType = if (subject?.subjectType == 2) TvType.TvSeries else TvType.Movie
+        val description = subject?.description
+        val trailer = subject?.trailer?.videoAddress?.url
+        val score = Score.from10(subject?.imdbRatingValue?.toString()) 
+        val actors = document?.stars?.mapNotNull { cast ->
             ActorData(
-                Actor(cast.name ?: return@mapNotNull null, cast.avatarUrl),
+                Actor(
+                    cast.name ?: return@mapNotNull null,
+                    cast.avatarUrl
+                ),
                 roleString = cast.character
             )
         }?.distinctBy { it.actor }
 
-        val recommendations = app.get(
-            "$apiUrl/wefeed-h5api-bff/subject/detail-rec?subjectId=$realId&page=1&perPage=12", 
-            headers = apiHeaders
-        ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
-
-        // --- PERBAIKAN LOGIKA EPISODE ---
-        val episodeList = detailData.resource?.seasons?.map { season ->
-            // Prioritas 1: Ambil dari string "allEp" (misal: "1,2,3")
-            // Prioritas 2: Ambil dari maxEp (Looping 1 sampai maxEp)
-            // HAPUS LOGIKA "resolutions" yang membatasi episode
-            
-            val eps = if (!season.allEp.isNullOrEmpty()) {
-                season.allEp.split(",").map { it.toInt() }
-            } else {
-                // Fix: Gunakan maxEp untuk generate list episode jika allEp kosong
-                (1..(season.maxEp ?: 1)).toList()
-            }
-            
-            eps.map { epNum ->
-                newEpisode(
-                    LoadData(
-                        id = realId, 
-                        season = season.se,
-                        episode = epNum,
-                        detailPath = detailPath
-                    ).toJson()
-                ) {
-                    this.season = season.se
-                    this.episode = epNum
-                    this.name = if (tvType == TvType.Movie) title else "Episode $epNum"
-                    // Deskripsi resolusi opsional
-                    this.description = season.resolutions?.joinToString(", ") { "${it.resolution}p" }
-                    // Tambahkan poster episode jika ada di resource (opsional, ambil dari main poster)
-                    this.posterUrl = poster 
+        val recommendations =
+            app.get("$apiUrl/wefeed-h5-bff/web/subject/detail-rec?subjectId=$id&page=1&perPage=12")
+                .parsedSafe<Media>()?.data?.items?.map {
+                    it.toSearchResponse(this)
                 }
-            }
-        }?.flatten() ?: emptyList()
 
         return if (tvType == TvType.TvSeries) {
-            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodeList) {
+            val episode = document?.resource?.seasons?.map { seasons ->
+                (if (seasons.allEp.isNullOrEmpty()) (1..(seasons.maxEp ?: 1)) else seasons.allEp.split(",")
+                    .map { it.toInt() })
+                    .map { episode ->
+                        newEpisode(
+                            LoadData(
+                                id,
+                                seasons.se,
+                                episode,
+                                subject?.detailPath
+                            ).toJson()
+                        ) {
+                            this.season = seasons.se
+                            this.episode = episode
+                        }
+                    }
+            }?.flatten() ?: emptyList()
+            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episode) {
                 this.posterUrl = poster
-                this.posterHeaders = imageHeaders // Fix Poster Detail
                 this.year = year
                 this.plot = description
                 this.tags = tags
@@ -189,9 +142,13 @@ class Adimoviebox : MainAPI() {
                 addTrailer(trailer, addRaw = true)
             }
         } else {
-            newMovieLoadResponse(title, url, TvType.Movie, LoadData(realId, 0, 1, detailPath).toJson()) {
+            newMovieLoadResponse(
+                title,
+                url,
+                TvType.Movie,
+                LoadData(id, detailPath = subject?.detailPath).toJson()
+            ) {
                 this.posterUrl = poster
-                this.posterHeaders = imageHeaders // Fix Poster Detail
                 this.year = year
                 this.plot = description
                 this.tags = tags
@@ -211,26 +168,23 @@ class Adimoviebox : MainAPI() {
     ): Boolean {
 
         val media = parseJson<LoadData>(data)
-        val refererUrl = "$mainUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&utm_source=app-search"
-        
-        val playHeaders = apiHeaders.toMutableMap().apply {
-            put("referer", refererUrl)
-        }
+        val referer = "$apiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&lang=en"
 
-        val playUrl = "$apiUrl/wefeed-h5api-bff/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}&detailPath=${media.detailPath}"
+        val streams = app.get(
+            "$apiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}",
+            referer = referer
+        ).parsedSafe<Media>()?.data?.streams
 
-        val streams = app.get(playUrl, headers = playHeaders).parsedSafe<Media>()?.data?.streams
-
-        streams?.forEach { source ->
+        streams?.reversed()?.distinctBy { it.url }?.map { source ->
             callback.invoke(
                 newExtractorLink(
                     this.name,
                     this.name,
-                    source.url ?: return@forEach,
+                    source.url ?: return@map,
                     INFER_TYPE
                 ) {
-                    this.referer = mainUrl
-                    this.quality = source.resolutions?.toIntOrNull() ?: Qualities.Unknown.value
+                    this.referer = "$apiUrl/"
+                    this.quality = getQualityFromName(source.resolutions)
                 }
             )
         }
@@ -239,9 +193,9 @@ class Adimoviebox : MainAPI() {
         val format = streams?.firstOrNull()?.format
 
         if (id != null && format != null) {
-             app.get(
-                "$apiUrl/wefeed-h5api-bff/subject/caption?format=$format&id=$id&subjectId=${media.id}",
-                headers = playHeaders
+            app.get(
+                "$apiUrl/wefeed-h5-bff/web/subject/caption?format=$format&id=$id&subjectId=${media.id}",
+                referer = referer
             ).parsedSafe<Media>()?.data?.captions?.map { subtitle ->
                 subtitleCallback.invoke(
                     newSubtitleFile(
@@ -310,17 +264,51 @@ data class MediaDetail(
                 @JsonProperty("se") val se: Int? = null,
                 @JsonProperty("maxEp") val maxEp: Int? = null,
                 @JsonProperty("allEp") val allEp: String? = null,
-                @JsonProperty("resolutions") val resolutions: ArrayList<Resolutions>? = arrayListOf()
-            ) {
-                data class Resolutions(
-                    @JsonProperty("resolution") val resolution: Int? = null,
-                    @JsonProperty("epNum") val epNum: Int? = null
-                )
-            }
+            )
         }
     }
 }
 
 data class Items(
     @JsonProperty("subjectId") val subjectId: String? = null,
-    @JsonProperty("subjectType
+    @JsonProperty("subjectType") val subjectType: Int? = null,
+    @JsonProperty("title") val title: String? = null,
+    @JsonProperty("description") val description: String? = null,
+    @JsonProperty("releaseDate") val releaseDate: String? = null,
+    @JsonProperty("duration") val duration: Long? = null,
+    @JsonProperty("genre") val genre: String? = null,
+    @JsonProperty("cover") val cover: Cover? = null,
+    @JsonProperty("imdbRatingValue") val imdbRatingValue: String? = null,
+    @JsonProperty("countryName") val countryName: String? = null,
+    @JsonProperty("trailer") val trailer: Trailer? = null,
+    @JsonProperty("detailPath") val detailPath: String? = null,
+) {
+    fun toSearchResponse(provider: Adimoviebox): SearchResponse {
+        val url = "${provider.mainUrl}/detail/${subjectId}"
+        
+        val posterImage = cover?.url
+
+        return provider.newMovieSearchResponse(
+            title ?: "No Title",
+            url,
+            if (subjectType == 1) TvType.Movie else TvType.TvSeries,
+            false
+        ) {
+            this.posterUrl = posterImage
+            this.score = Score.from10(imdbRatingValue?.toString())
+            this.year = releaseDate?.substringBefore("-")?.toIntOrNull()
+        }
+    }
+
+    data class Cover(
+        @JsonProperty("url") val url: String? = null,
+    )
+
+    data class Trailer(
+        @JsonProperty("videoAddress") val videoAddress: VideoAddress? = null,
+    ) {
+        data class VideoAddress(
+            @JsonProperty("url") val url: String? = null,
+        )
+    }
+}
