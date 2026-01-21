@@ -33,6 +33,7 @@ class Adimoviebox : MainAPI() {
     // ==========================================
     // 2. HALAMAN UTAMA
     // ==========================================
+    @Suppress("DEPRECATION") // Membungkam error warning di fungsi ini
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
         val document = app.get(mainUrl).document
         val homeData = ArrayList<HomePageList>()
@@ -56,7 +57,7 @@ class Adimoviebox : MainAPI() {
     // ==========================================
     // 3. LOAD DETAIL
     // ==========================================
-    @Suppress("DEPRECATION") // Membungkam error rating deprecated
+    @Suppress("DEPRECATION") // Membungkam error 'rating' deprecated
     override suspend fun load(url: String): LoadResponse? {
         val isLokLok = url.contains("lok-lok.cc")
         val regex = "(?:detail\\/|movies\\/)([^?]+)".toRegex()
@@ -87,12 +88,14 @@ class Adimoviebox : MainAPI() {
                 val maxEpisode = season.maxEp ?: 0
                 
                 for (i in 1..maxEpisode) {
+                    // Constructor Episode manual agar aman
                     episodes.add(
-                        newEpisode("$dataId|$seasonNum|$i") {
-                            this.name = "Episode $i"
-                            this.season = seasonNum
-                            this.episode = i
-                        }
+                        Episode(
+                            data = "$dataId|$seasonNum|$i",
+                            name = "Episode $i",
+                            season = seasonNum,
+                            episode = i
+                        )
                     )
                 }
             }
@@ -101,7 +104,7 @@ class Adimoviebox : MainAPI() {
                 this.posterUrl = subject.cover?.url
                 this.plot = subject.description
                 this.year = subject.releaseDate?.take(4)?.toIntOrNull()
-                this.rating = ratingInt // Suppressed
+                this.rating = ratingInt // Suppressed Error
             }
 
         } else {
@@ -109,7 +112,7 @@ class Adimoviebox : MainAPI() {
                 this.posterUrl = subject.cover?.url
                 this.plot = subject.description
                 this.year = subject.releaseDate?.take(4)?.toIntOrNull()
-                this.rating = ratingInt // Suppressed
+                this.rating = ratingInt // Suppressed Error
             }
         }
     }
@@ -117,7 +120,7 @@ class Adimoviebox : MainAPI() {
     // ==========================================
     // 4. LOAD LINKS
     // ==========================================
-    @Suppress("DEPRECATION") // Membungkam error ExtractorLink deprecated
+    @Suppress("DEPRECATION") // Membungkam error 'ExtractorLink' deprecated
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -146,8 +149,8 @@ class Adimoviebox : MainAPI() {
                 val qualityStr = stream.resolutions ?: "0"
                 val quality = qualityStr.toIntOrNull() ?: Qualities.Unknown.value
                 
-                // KITA PAKAI CARA MANUAL YANG PASTI BERHASIL
-                // Walaupun deprecated, ini lebih stabil daripada helper yang error
+                // Menggunakan Constructor lama yang stabil
+                // Error "Deprecated" akan diabaikan karena ada @Suppress
                 callback.invoke(
                     ExtractorLink(
                         source = name,
