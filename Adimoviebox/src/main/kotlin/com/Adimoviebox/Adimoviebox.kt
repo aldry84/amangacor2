@@ -1,6 +1,5 @@
 package com.Adimoviebox
 
-// --- IMPORT EKSPLISIT (Sesuai Referensi Filmyfiy & Extractor) ---
 import com.lagradost.cloudstream3.ErrorLoadingException
 import com.lagradost.cloudstream3.HomePageList
 import com.lagradost.cloudstream3.HomePageResponse
@@ -18,7 +17,8 @@ import com.lagradost.cloudstream3.newMovieSearchResponse
 import com.lagradost.cloudstream3.newTvSeriesLoadResponse
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.Qualities
-import com.lagradost.cloudstream3.utils.newExtractorLink // <--- INI PENTING BANGET
+import com.lagradost.cloudstream3.utils.newExtractorLink
+import com.lagradost.cloudstream3.utils.INFER_TYPE // <--- WAJIB ADA
 import com.fasterxml.jackson.annotation.JsonProperty
 
 class Adimoviebox : MainAPI() {
@@ -51,15 +51,53 @@ class Adimoviebox : MainAPI() {
     }
 
     // ==========================================
-    // 2. HALAMAN UTAMA
+    // 2. DAFTAR KATEGORI
     // ==========================================
-    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
-        val document = app.get(mainUrl).document
-        val homeData = ArrayList<HomePageList>()
+    override val mainPage = com.lagradost.cloudstream3.mainPageOf(
+        "home" to "Home",
+        "5283462032510044280" to "Indonesian Drama",
+        "6528093688173053896" to "Indonesian Movies",
+        "5848753831881965888" to "Indo Horror",
+        "997144265920760504" to "Hollywood Movies",
+        "4380734070238626200" to "K-Drama",
+        "8624142774394406504" to "C-Drama",
+        "3058742380078711608" to "Disney",
+        "8449223314756747760" to "Pinoy Drama",
+        "606779077307122552" to "Pinoy Movie",
+        "872031290915189720" to "Bad Ending Romance"
+    )
 
-        document.select("div.movie-card-list-box").forEach { section ->
-            val sectionName = section.select(".top-title-action .title").text().trim()
-            val movies = section.select("div.movie-card-list a.movie-card").mapNotNull { element ->
+    // ==========================================
+    // 3. HALAMAN UTAMA & KATEGORI
+    // ==========================================
+    @Suppress("DEPRECATION")
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
+        val homeData = ArrayList<HomePageList>()
+        
+        val targetUrl = if (request.name == "Home") {
+            mainUrl
+        } else {
+            "$mainUrl/ranking-list/category?id=${request.data}"
+        }
+
+        val document = app.get(targetUrl).document
+
+        if (request.name == "Home") {
+            document.select("div.movie-card-list-box").forEach { section ->
+                val sectionName = section.select(".top-title-action .title").text().trim()
+                val movies = section.select("div.movie-card-list a.movie-card").mapNotNull { element ->
+                    val title = element.select("p").text().trim()
+                    val href = fixUrl(element.attr("href"))
+                    newMovieSearchResponse(title, href, TvType.Movie) {
+                        this.posterUrl = null
+                    }
+                }
+                if (movies.isNotEmpty()) {
+                    homeData.add(HomePageList(sectionName, movies))
+                }
+            }
+        } else {
+            val movies = document.select("a.movie-card").mapNotNull { element ->
                 val title = element.select("p").text().trim()
                 val href = fixUrl(element.attr("href"))
                 newMovieSearchResponse(title, href, TvType.Movie) {
@@ -67,15 +105,17 @@ class Adimoviebox : MainAPI() {
                 }
             }
             if (movies.isNotEmpty()) {
-                homeData.add(HomePageList(sectionName, movies))
+                homeData.add(HomePageList(request.name, movies))
             }
         }
+        
         return newHomePageResponse(homeData)
     }
 
     // ==========================================
-    // 3. LOAD DETAIL
+    // 4. LOAD DETAIL
     // ==========================================
+    @Suppress("DEPRECATION")
     override suspend fun load(url: String): LoadResponse? {
         val isLokLok = url.contains("lok-lok.cc")
         val regex = "(?:detail\\/|movies\\/)([^?]+)".toRegex()
@@ -96,13 +136,14 @@ class Adimoviebox : MainAPI() {
         val sourceFlag = if (isLokLok) "LOKLOK" else "MBOX"
         val dataId = "${subject.subjectId}|$detailPath|$sourceFlag"
 
+        val ratingInt = subject.imdbRatingValue?.toFloatOrNull()?.times(1000)?.toInt()
+
         if (isSeries) {
             val episodes = ArrayList<com.lagradost.cloudstream3.Episode>()
             resource?.seasons?.forEach { season ->
                 val seasonNum = season.se ?: 1
                 val maxEpisode = season.maxEp ?: 0
                 for (i in 1..maxEpisode) {
-                    // MENGGUNAKAN FORMAT BARU: newEpisode
                     val epData = newEpisode("$dataId|$seasonNum|$i") {
                         this.name = "Episode $i"
                         this.season = seasonNum
@@ -117,6 +158,7 @@ class Adimoviebox : MainAPI() {
                 this.posterUrl = subject.cover?.url
                 this.plot = subject.description
                 this.year = subject.releaseDate?.take(4)?.toIntOrNull()
+                this.rating = ratingInt
             }
 
         } else {
@@ -124,13 +166,15 @@ class Adimoviebox : MainAPI() {
                 this.posterUrl = subject.cover?.url
                 this.plot = subject.description
                 this.year = subject.releaseDate?.take(4)?.toIntOrNull()
+                this.rating = ratingInt
             }
         }
     }
 
     // ==========================================
-    // 4. LOAD LINKS (FIXED: Sesuai Extractor.kt)
+    // 5. LOAD LINKS (FIXED FINAL)
     // ==========================================
+    @Suppress("DEPRECATION")
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -161,19 +205,18 @@ class Adimoviebox : MainAPI() {
                 val qualityStr = stream.resolutions ?: "0"
                 val qualityInt = qualityStr.toIntOrNull() ?: Qualities.Unknown.value
 
-                // --- BAGIAN INI SAMA PERSIS DENGAN GAYA PENULISAN DI EXTRACTOR.KT ---
+                // FIX JITU: Mengikuti gaya Extractor.kt + INFER_TYPE
                 callback.invoke(
                     newExtractorLink(
-                        source = name,                  // Param 1: Source
-                        name = "Adimoviebox ${qualityStr}p", // Param 2: Name
-                        url = stream.url                // Param 3: Url
+                        name,                                // 1. source
+                        "Adimoviebox ${qualityStr}p",        // 2. name
+                        stream.url,                          // 3. url
+                        INFER_TYPE                           // 4. type (WAJIB ADA)
                     ) {
-                        this.referer = refererUrl
+                        this.headers = mapOf("Referer" to refererUrl) // Referer masuk sini!
                         this.quality = qualityInt
-                        this.isM3u8 = stream.url.contains(".m3u8")
                     }
                 )
-                // -------------------------------------------------------------------
             }
         }
         return true
