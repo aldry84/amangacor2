@@ -17,8 +17,10 @@ import com.lagradost.cloudstream3.newMovieSearchResponse
 import com.lagradost.cloudstream3.newTvSeriesLoadResponse
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.utils.INFER_TYPE
-import com.lagradost.cloudstream3.Score // IMPORT WAJIB
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
+import com.lagradost.cloudstream3.Score
 import com.fasterxml.jackson.annotation.JsonProperty
 
 class Adimoviebox : MainAPI() {
@@ -110,7 +112,7 @@ class Adimoviebox : MainAPI() {
     }
 
     // ==========================================
-    // 4. LOAD DETAIL (FIXED: SCORE)
+    // 4. LOAD DETAIL (SCORE FIXED)
     // ==========================================
     @Suppress("DEPRECATION")
     override suspend fun load(url: String): LoadResponse? {
@@ -133,8 +135,8 @@ class Adimoviebox : MainAPI() {
         val sourceFlag = if (isLokLok) "LOKLOK" else "MBOX"
         val dataId = "${subject.subjectId}|$detailPath|$sourceFlag"
 
-        // Ambil nilai rating
-        val ratingDouble = subject.imdbRatingValue?.toDoubleOrNull()
+        // SOLUSI UTAMA 1: Menggunakan Score.from10 sesuai kode lama
+        val scoreObj = Score.from10(subject.imdbRatingValue)
 
         if (isSeries) {
             val episodes = ArrayList<com.lagradost.cloudstream3.Episode>()
@@ -156,10 +158,7 @@ class Adimoviebox : MainAPI() {
                 this.posterUrl = subject.cover?.url
                 this.plot = subject.description
                 this.year = subject.releaseDate?.take(4)?.toIntOrNull()
-                // FIX: Menggunakan Score class (Metode Terbaru)
-                if (ratingDouble != null) {
-                    this.score = Score(average = ratingDouble)
-                }
+                this.score = scoreObj // Assign Score object
             }
 
         } else {
@@ -167,16 +166,13 @@ class Adimoviebox : MainAPI() {
                 this.posterUrl = subject.cover?.url
                 this.plot = subject.description
                 this.year = subject.releaseDate?.take(4)?.toIntOrNull()
-                // FIX: Menggunakan Score class (Metode Terbaru)
-                if (ratingDouble != null) {
-                    this.score = Score(average = ratingDouble)
-                }
+                this.score = scoreObj // Assign Score object
             }
         }
     }
 
     // ==========================================
-    // 5. LOAD LINKS (FIXED: CONSTRUCTOR)
+    // 5. LOAD LINKS (FIXED: TYPE & REFERER HEADER)
     // ==========================================
     @Suppress("DEPRECATION")
     override suspend fun loadLinks(
@@ -208,21 +204,22 @@ class Adimoviebox : MainAPI() {
             if (!stream.url.isNullOrEmpty()) {
                 val qualityStr = stream.resolutions ?: "0"
                 val qualityInt = qualityStr.toIntOrNull() ?: Qualities.Unknown.value
+                
+                // Tentukan tipe file
+                val type = if (stream.url.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
 
-                // FIX FINAL: Menggunakan ExtractorLink Constructor Langsung
-                // Ini satu-satunya cara untuk menset 'headers' dan 'referer' yang bersifat VAL (read-only).
-                // Kita bungkam peringatan deprecation-nya agar build sukses.
+                // SOLUSI UTAMA 2: Menggunakan newExtractorLink + Lambda Headers
                 callback.invoke(
-                    ExtractorLink(
-                        source = name,
-                        name = "Adimoviebox ${qualityStr}p",
-                        url = stream.url,
-                        referer = refererUrl, // Masukkan referer di sini
-                        quality = qualityInt,
-                        isM3u8 = stream.url.contains(".m3u8"),
-                        headers = mapOf("Referer" to refererUrl), // Masukkan headers di sini
-                        type = INFER_TYPE
-                    )
+                    newExtractorLink(
+                        name,                                // Source
+                        "Adimoviebox ${qualityStr}p",        // Name
+                        stream.url,                          // Url
+                        type                                 // Type (M3U8/VIDEO)
+                    ) {
+                        // Kunci: Masukkan Referer ke Headers Map, bukan this.referer = ...
+                        this.headers = mapOf("Referer" to refererUrl) 
+                        this.quality = qualityInt
+                    }
                 )
             }
         }
