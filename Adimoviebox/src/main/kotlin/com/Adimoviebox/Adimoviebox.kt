@@ -13,10 +13,8 @@ import okhttp3.RequestBody.Companion.toRequestBody
 class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
     
-    // API LAMA (Data Lengkap)
+    // API DEFAULT
     private val apiUrl = "https://filmboom.top" 
-    
-    // API BARU (Poster HD)
     private val homeApiUrl = "https://h5-api.aoneroom.com"
 
     override var name = "Adimoviebox"
@@ -29,8 +27,24 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
-    // KATEGORI (Sama seperti kode lama)
+    // Header Dasar
+    private val baseHeaders = mapOf(
+        "Accept" to "application/json",
+        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
+        "x-client-info" to "{\"timezone\":\"Asia/Jakarta\"}"
+    )
+
+    // FUNGSI SAKTI: Switch Header Otomatis (LokLok vs FilmBoom)
+    private fun getDynamicHeaders(isLokLok: Boolean): Map<String, String> {
+        return baseHeaders + if (isLokLok) {
+            mapOf("Origin" to "https://lok-lok.cc", "Referer" to "https://lok-lok.cc/")
+        } else {
+            mapOf("Origin" to "https://filmboom.top", "Referer" to "https://filmboom.top/")
+        }
+    }
+
     override val mainPage = mainPageOf(
+        "home" to "Home", // Tambahkan Home default
         "5283462032510044280" to "Indonesian Drama",
         "6528093688173053896" to "Indonesian Movies",
         "5848753831881965888" to "Indo Horror",
@@ -46,7 +60,13 @@ class Adimoviebox : MainAPI() {
     @Suppress("DEPRECATION")
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
         val id = request.data
-        val targetUrl = "$homeApiUrl/wefeed-h5api-bff/ranking-list/content?id=$id&page=$page&perPage=12"
+        
+        // Logika: Jika Home, pakai URL default, jika kategori pakai ID
+        val targetUrl = if (request.name == "Home") {
+            "$homeApiUrl/wefeed-h5api-bff/ranking-list/content?id=5283462032510044280&page=$page&perPage=12" // Default ke Indo Drama dulu biar rame
+        } else {
+            "$homeApiUrl/wefeed-h5api-bff/ranking-list/content?id=$id&page=$page&perPage=12"
+        }
         
         val response = app.get(targetUrl).parsedSafe<Media>()
         val data = response?.data
@@ -81,8 +101,17 @@ class Adimoviebox : MainAPI() {
 
     @Suppress("DEPRECATION")
     override suspend fun load(url: String): LoadResponse? {
-        val id = url.substringAfterLast("/")
-        val response = app.get("$apiUrl/wefeed-h5-bff/web/subject/detail?subjectId=$id")
+        // DETEKSI LOKLOK
+        val isLokLok = url.contains("lok-lok.cc")
+        val headers = getDynamicHeaders(isLokLok)
+        
+        // Regex untuk ambil ID dari URL yang aneh-aneh
+        val regex = "(?:detail\\/|movies\\/)([^?]+)".toRegex()
+        val matchResult = regex.find(url)
+        val idFromUrl = matchResult?.groupValues?.get(1) ?: url.substringAfterLast("/")
+
+        // Panggil API Detail dengan Header yang Sesuai
+        val response = app.get("$apiUrl/wefeed-h5-bff/web/subject/detail?subjectId=$idFromUrl", headers = headers)
             .parsedSafe<MediaDetail>()?.data
         
         val subject = response?.subject ?: throw ErrorLoadingException("Detail Kosong")
@@ -93,14 +122,15 @@ class Adimoviebox : MainAPI() {
         val year = subject.releaseDate?.substringBefore("-")?.toIntOrNull()
         val tags = subject.genre?.split(",")?.map { it.trim() }
         val trailerUrl = subject.trailer?.videoAddress?.url
-        
-        // SCORE: Pakai Score.from10 (Cara Lama) -> Aman
         val scoreObj = Score.from10(subject.imdbRatingValue)
         
-        val recommendations = app.get("$apiUrl/wefeed-h5-bff/web/subject/detail-rec?subjectId=$id&page=1&perPage=12")
+        val recommendations = app.get("$apiUrl/wefeed-h5-bff/web/subject/detail-rec?subjectId=$idFromUrl&page=1&perPage=12", headers = headers)
             .parsedSafe<Media>()?.data?.items?.mapNotNull { it.toSearchResponse(this) }
 
         val isSeries = subject.subjectType == 2
+        
+        // Simpan Source Flag (LOKLOK/MBOX)
+        val sourceFlag = if (isLokLok) "LOKLOK" else "MBOX"
 
         if (isSeries) {
             val episodes = ArrayList<Episode>()
@@ -113,7 +143,8 @@ class Adimoviebox : MainAPI() {
                 }
 
                 epList.forEach { epNum ->
-                    val loadData = LoadData(id, seasonNum, epNum, subject.detailPath).toJson()
+                    // Masukkan sourceFlag ke LoadData
+                    val loadData = LoadData(subject.subjectId, seasonNum, epNum, subject.detailPath, sourceFlag).toJson()
                     episodes.add(
                         newEpisode(loadData) {
                             this.name = "Episode $epNum"
@@ -136,7 +167,7 @@ class Adimoviebox : MainAPI() {
             }
 
         } else {
-            val loadData = LoadData(id, 0, 0, subject.detailPath).toJson()
+            val loadData = LoadData(subject.subjectId, 0, 0, subject.detailPath, sourceFlag).toJson()
             return newMovieLoadResponse(title, url, TvType.Movie, loadData) {
                 this.posterUrl = poster
                 this.year = year
@@ -158,10 +189,16 @@ class Adimoviebox : MainAPI() {
     ): Boolean {
 
         val media = parseJson<LoadData>(data)
+        
+        // Cek Source Flag dari Data
+        val isLokLok = media.source == "LOKLOK"
+        val headers = getDynamicHeaders(isLokLok)
+        
         val refererUrl = "$apiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&lang=en"
         val playUrl = "$apiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}"
         
-        val response = app.get(playUrl, headers = mapOf("Referer" to refererUrl)).parsedSafe<Media>()
+        // Gunakan Headers yang sesuai (LokLok/Mbox)
+        val response = app.get(playUrl, headers = headers).parsedSafe<Media>()
         val streams = response?.data?.streams
 
         streams?.forEach { source ->
@@ -169,18 +206,15 @@ class Adimoviebox : MainAPI() {
             val qualityStr = source.resolutions ?: "Unknown"
             val qualityInt = getQualityFromName(qualityStr)
             
-            // FIX PENULISAN (Menghindari Error Argument Mismatch):
-            // 1. Parameter kurung (): Cuma (Source, Name, Url, Type)
-            // 2. Parameter kurawal {}: Referer (via Headers) & Quality
             callback.invoke(
                 newExtractorLink(
-                    this.name,                      // 1. Source
-                    "Adimoviebox $qualityStr",      // 2. Name
-                    videoUrl,                       // 3. Url
-                    INFER_TYPE                      // 4. Type (Aman)
+                    this.name,
+                    "Adimoviebox $qualityStr",
+                    videoUrl,
+                    INFER_TYPE
                 ) {
-                    // Masukkan Referer & Quality di sini (Seperti Kode Lama, tapi pakai Headers map)
-                    this.headers = mapOf("Referer" to "$apiUrl/")
+                    // Masukkan Headers Dinamis ke sini
+                    this.headers = headers 
                     this.quality = qualityInt
                 }
             )
@@ -189,7 +223,7 @@ class Adimoviebox : MainAPI() {
         val firstStream = streams?.firstOrNull()
         if (firstStream != null) {
             val subUrl = "$apiUrl/wefeed-h5-bff/web/subject/caption?format=${firstStream.format}&id=${firstStream.id}&subjectId=${media.id}"
-            app.get(subUrl, headers = mapOf("Referer" to refererUrl)).parsedSafe<Media>()?.data?.captions?.forEach { sub ->
+            app.get(subUrl, headers = headers).parsedSafe<Media>()?.data?.captions?.forEach { sub ->
                 subtitleCallback.invoke(
                     SubtitleFile(
                         lang = sub.lanName ?: "Unknown",
@@ -210,6 +244,7 @@ data class LoadData(
     val season: Int? = null,
     val episode: Int? = null,
     val detailPath: String? = null,
+    val source: String? = "MBOX" // Tambahan flag Source (Default MBOX)
 )
 
 data class Media(
