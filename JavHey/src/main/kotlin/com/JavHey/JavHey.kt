@@ -60,7 +60,12 @@ class JavHey : MainAPI() {
             .replace("Description: ", "", ignoreCase = true).trim()
         val poster = document.selectFirst("div.images img")?.attr("src")
         
-        val actors = document.select("div.product_meta a[href*='/actor/']").map { it.text() }
+        // PERBAIKAN DI SINI:
+        // Mengubah List<String> menjadi List<ActorData>
+        val actors = document.select("div.product_meta a[href*='/actor/']").map { 
+            ActorData(Actor(it.text(), "")) 
+        }
+
         val yearText = document.selectFirst("div.product_meta span:contains(Release Day)")?.text()
         val year = yearText?.split(":")?.lastOrNull()?.trim()?.take(4)?.toIntOrNull()
         val tags = document.select("div.product_meta span:contains(Category) a, div.product_meta span:contains(Tag) a")
@@ -69,7 +74,7 @@ class JavHey : MainAPI() {
         return newMovieLoadResponse(title, url, TvType.NSFW, url) {
             this.posterUrl = poster
             this.plot = description
-            this.actors = actors
+            this.actors = actors // Sekarang tipe datanya sudah cocok (List<ActorData>)
             this.year = year
             this.tags = tags
         }
@@ -94,7 +99,6 @@ class JavHey : MainAPI() {
                 
                 urls.forEach { sourceUrl ->
                     if (sourceUrl.isNotBlank()) {
-                        // FIX: Urutan parameter dibalik (subtitleCallback dulu, baru callback)
                         loadExtractor(sourceUrl, subtitleCallback, callback)
                     }
                 }
@@ -107,7 +111,6 @@ class JavHey : MainAPI() {
         document.select("div.links-download a").forEach { linkTag ->
             val downloadUrl = linkTag.attr("href")
             if (downloadUrl.isNotBlank()) {
-                // FIX: Urutan parameter dibalik (subtitleCallback dulu, baru callback)
                 loadExtractor(downloadUrl, subtitleCallback, callback)
             }
         }
