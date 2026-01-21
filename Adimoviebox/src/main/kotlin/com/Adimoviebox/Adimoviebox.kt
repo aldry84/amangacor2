@@ -89,7 +89,7 @@ class Adimoviebox : MainAPI() {
         val tags = subject.genre?.split(",")?.map { it.trim() }
         val trailerUrl = subject.trailer?.videoAddress?.url
         
-        // FIX SCORE: Menggunakan Score.from10 agar tidak error constructor
+        // SCORE AMAN
         val scoreObj = Score.from10(subject.imdbRatingValue)
         
         val recommendations = app.get("$apiUrl/wefeed-h5-bff/web/subject/detail-rec?subjectId=$id&page=1&perPage=12")
@@ -126,7 +126,7 @@ class Adimoviebox : MainAPI() {
                 this.plot = description
                 this.tags = tags
                 this.recommendations = recommendations
-                this.score = scoreObj // Assign Score object
+                this.score = scoreObj
                 if (!trailerUrl.isNullOrEmpty()) addTrailer(trailerUrl)
             }
 
@@ -138,7 +138,7 @@ class Adimoviebox : MainAPI() {
                 this.plot = description
                 this.tags = tags
                 this.recommendations = recommendations
-                this.score = scoreObj // Assign Score object
+                this.score = scoreObj
                 if (!trailerUrl.isNullOrEmpty()) addTrailer(trailerUrl)
             }
         }
@@ -164,16 +164,17 @@ class Adimoviebox : MainAPI() {
             val qualityStr = source.resolutions ?: "Unknown"
             val qualityInt = getQualityFromName(qualityStr)
             
-            // FIX EXTRACTOR: Pakai INFER_TYPE agar tidak kena error "Prerelease API"
+            // FIX FINAL: Menggunakan newExtractorLink dengan POSITIONAL ARGUMENTS
+            // Urutan: Source, Name, Url, Referer, Quality, Type
+            // Kita gunakan INFER_TYPE untuk type-nya agar aman.
             callback.invoke(
-                ExtractorLink(
-                    source = this.name,
-                    name = "Adimoviebox $qualityStr",
-                    url = videoUrl,
-                    referer = "$apiUrl/",
-                    quality = qualityInt,
-                    type = INFER_TYPE, // Gunakan INFER_TYPE, Aman!
-                    headers = mapOf("Referer" to "$apiUrl/")
+                newExtractorLink(
+                    this.name,                      // 1. Source
+                    "Adimoviebox $qualityStr",      // 2. Name
+                    videoUrl,                       // 3. Url
+                    "$apiUrl/",                     // 4. Referer
+                    qualityInt,                     // 5. Quality
+                    INFER_TYPE                      // 6. Type (INFER_TYPE)
                 )
             )
         }
@@ -268,7 +269,6 @@ data class Items(
             if (subjectType == 1) TvType.Movie else TvType.TvSeries
         ) {
             this.posterUrl = posterImage
-            // FIX SCORE: Menggunakan Score.from10
             this.score = Score.from10(imdbRatingValue)
             this.year = releaseDate?.substringBefore("-")?.toIntOrNull()
         }
