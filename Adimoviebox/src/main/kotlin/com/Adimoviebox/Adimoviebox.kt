@@ -1,7 +1,24 @@
 package com.Adimoviebox
 
-import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.utils.*
+// --- IMPORT EKSPLISIT (Sesuai Referensi Filmyfiy & Extractor) ---
+import com.lagradost.cloudstream3.ErrorLoadingException
+import com.lagradost.cloudstream3.HomePageList
+import com.lagradost.cloudstream3.HomePageResponse
+import com.lagradost.cloudstream3.LoadResponse
+import com.lagradost.cloudstream3.MainAPI
+import com.lagradost.cloudstream3.MainPageRequest
+import com.lagradost.cloudstream3.SubtitleFile
+import com.lagradost.cloudstream3.TvType
+import com.lagradost.cloudstream3.app
+import com.lagradost.cloudstream3.fixUrl
+import com.lagradost.cloudstream3.newEpisode
+import com.lagradost.cloudstream3.newHomePageResponse
+import com.lagradost.cloudstream3.newMovieLoadResponse
+import com.lagradost.cloudstream3.newMovieSearchResponse
+import com.lagradost.cloudstream3.newTvSeriesLoadResponse
+import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.utils.newExtractorLink // <--- INI PENTING BANGET
 import com.fasterxml.jackson.annotation.JsonProperty
 
 class Adimoviebox : MainAPI() {
@@ -24,7 +41,7 @@ class Adimoviebox : MainAPI() {
         "x-client-info" to "{\"timezone\":\"Asia/Jakarta\"}"
     )
 
-    // Helper Header Dinamis
+    // Helper Header Dinamis (Bunglon Mode 🦎)
     private fun getDynamicHeaders(isLokLok: Boolean): Map<String, String> {
         return baseHeaders + if (isLokLok) {
             mapOf("Origin" to "https://lok-lok.cc", "Referer" to "https://lok-lok.cc/")
@@ -80,11 +97,12 @@ class Adimoviebox : MainAPI() {
         val dataId = "${subject.subjectId}|$detailPath|$sourceFlag"
 
         if (isSeries) {
-            val episodes = ArrayList<Episode>()
+            val episodes = ArrayList<com.lagradost.cloudstream3.Episode>()
             resource?.seasons?.forEach { season ->
                 val seasonNum = season.se ?: 1
                 val maxEpisode = season.maxEp ?: 0
                 for (i in 1..maxEpisode) {
+                    // MENGGUNAKAN FORMAT BARU: newEpisode
                     val epData = newEpisode("$dataId|$seasonNum|$i") {
                         this.name = "Episode $i"
                         this.season = seasonNum
@@ -111,7 +129,7 @@ class Adimoviebox : MainAPI() {
     }
 
     // ==========================================
-    // 4. LOAD LINKS (SUDAH DIPERBAIKI SESUAI Extractor.kt)
+    // 4. LOAD LINKS (FIXED: Sesuai Extractor.kt)
     // ==========================================
     override suspend fun loadLinks(
         data: String,
@@ -143,19 +161,19 @@ class Adimoviebox : MainAPI() {
                 val qualityStr = stream.resolutions ?: "0"
                 val qualityInt = qualityStr.toIntOrNull() ?: Qualities.Unknown.value
 
-                // PERBAIKAN UTAMA: Mengikuti gaya penulisan di Extractor.kt
-                // 3 Parameter wajib di dalam (), sisanya di dalam { }
+                // --- BAGIAN INI SAMA PERSIS DENGAN GAYA PENULISAN DI EXTRACTOR.KT ---
                 callback.invoke(
                     newExtractorLink(
-                        source = name,                            // Parameter 1: Source Name
-                        name = "Adimoviebox ${qualityStr}p",      // Parameter 2: Display Name
-                        url = stream.url                          // Parameter 3: URL
+                        source = name,                  // Param 1: Source
+                        name = "Adimoviebox ${qualityStr}p", // Param 2: Name
+                        url = stream.url                // Param 3: Url
                     ) {
-                        this.referer = refererUrl                 // Property Referer
-                        this.quality = qualityInt                 // Property Quality
-                        this.isM3u8 = stream.url.contains(".m3u8") // Property isM3u8
+                        this.referer = refererUrl
+                        this.quality = qualityInt
+                        this.isM3u8 = stream.url.contains(".m3u8")
                     }
                 )
+                // -------------------------------------------------------------------
             }
         }
         return true
