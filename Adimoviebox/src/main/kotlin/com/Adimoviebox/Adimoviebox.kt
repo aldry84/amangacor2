@@ -14,17 +14,14 @@ class Adimoviebox : MainAPI() {
     override var lang = "id"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.AsianDrama)
 
-    // API Backend Pusat
     private val apiUrl = "https://h5-api.aoneroom.com/wefeed-h5api-bff"
 
-    // Header Dasar
     private val baseHeaders = mapOf(
         "Accept" to "application/json",
         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
         "x-client-info" to "{\"timezone\":\"Asia/Jakarta\"}"
     )
 
-    // Helper Header Dinamis
     private fun getDynamicHeaders(isLokLok: Boolean): Map<String, String> {
         return baseHeaders + if (isLokLok) {
             mapOf("Origin" to "https://lok-lok.cc", "Referer" to "https://lok-lok.cc/")
@@ -36,8 +33,7 @@ class Adimoviebox : MainAPI() {
     // ==========================================
     // 2. HALAMAN UTAMA
     // ==========================================
-    // FIX JITU: Bungkam error deprecated untuk fungsi ini juga
-    @Suppress("DEPRECATION") 
+    @Suppress("DEPRECATION")
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
         val document = app.get(mainUrl).document
         val homeData = ArrayList<HomePageList>()
@@ -55,7 +51,7 @@ class Adimoviebox : MainAPI() {
                 homeData.add(HomePageList(sectionName, movies))
             }
         }
-        return HomePageResponse(homeData)
+        return newHomePageResponse(homeData)
     }
 
     // ==========================================
@@ -82,7 +78,7 @@ class Adimoviebox : MainAPI() {
         val sourceFlag = if (isLokLok) "LOKLOK" else "MBOX"
         val dataId = "${subject.subjectId}|$detailPath|$sourceFlag"
 
-        // Konversi rating
+        // Kita convert rating ke format integer (skala 1000) agar aman
         val ratingInt = subject.imdbRatingValue?.toFloatOrNull()?.times(1000)?.toInt()
 
         if (isSeries) {
@@ -91,7 +87,7 @@ class Adimoviebox : MainAPI() {
                 val seasonNum = season.se ?: 1
                 val maxEpisode = season.maxEp ?: 0
                 for (i in 1..maxEpisode) {
-                    // Kita pakai constructor Episode lama tapi aman karena ada @Suppress
+                    // Menggunakan constructor Episode lama (Aman karena @Suppress)
                     episodes.add(
                         Episode(
                             data = "$dataId|$seasonNum|$i",
@@ -103,14 +99,12 @@ class Adimoviebox : MainAPI() {
                     )
                 }
             }
-
             return newTvSeriesLoadResponse(subject.title ?: "No Title", url, TvType.TvSeries, episodes) {
                 this.posterUrl = subject.cover?.url
                 this.plot = subject.description
                 this.year = subject.releaseDate?.take(4)?.toIntOrNull()
                 this.rating = ratingInt
             }
-
         } else {
             return newMovieLoadResponse(subject.title ?: "No Title", url, TvType.Movie, "$dataId|0|0") {
                 this.posterUrl = subject.cover?.url
@@ -122,15 +116,14 @@ class Adimoviebox : MainAPI() {
     }
 
     // ==========================================
-    // 4. LOAD LINKS
+    // 4. LOAD LINKS (FIXED: Positional Arguments)
     // ==========================================
-    // FIX JITU: Ini kuncinya! Kita bungkam error 'deprecated' di fungsi ini.
     @Suppress("DEPRECATION")
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
-        subtitleCallback: SubtitleCallback,
-        callback: ExtractorLinkCallback
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
     ): Boolean {
         
         val args = data.split("|")
@@ -142,6 +135,7 @@ class Adimoviebox : MainAPI() {
 
         val isLokLok = sourceFlag == "LOKLOK"
         val headers = getDynamicHeaders(isLokLok)
+        val refererUrl = headers["Referer"] ?: "https://filmboom.top/"
 
         val playUrl = "$apiUrl/subject/play?subjectId=$subjectId&se=$seasonNum&ep=$episodeNum&detailPath=$detailPath"
 
@@ -154,17 +148,18 @@ class Adimoviebox : MainAPI() {
             if (!stream.url.isNullOrEmpty()) {
                 val qualityStr = stream.resolutions ?: "0"
                 val quality = qualityStr.toIntOrNull() ?: Qualities.Unknown.value
+                val isM3u8 = stream.url.contains(".m3u8")
 
-                // KITA KEMBALI KE KODE LAMA YANG PASTI JALAN
-                // Karena kita sudah pakai @Suppress("DEPRECATION"), ini tidak akan error lagi!
+                // FIX FINAL: Menggunakan urutan (Positional Arguments)
+                // Urutan Constructor ExtractorLink: (source, name, url, referer, quality, isM3u8)
                 callback.invoke(
                     ExtractorLink(
-                        source = name,
-                        name = "Adimoviebox ${qualityStr}p",
-                        url = stream.url,
-                        referer = headers["Referer"] ?: "https://filmboom.top/",
-                        quality = quality,
-                        isM3u8 = stream.url.contains(".m3u8")
+                        this.name,               // 1. source (Tadi error karena ini kurang)
+                        "Adimoviebox ${qualityStr}p", // 2. name
+                        stream.url,              // 3. url
+                        refererUrl,              // 4. referer
+                        quality,                 // 5. quality
+                        isM3u8                   // 6. isM3u8
                     )
                 )
             }
