@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION") // MEMBUNGKAM SEMUA ERROR VERSI USANG
+
 package com.Adimoviebox
 
 import com.lagradost.cloudstream3.*
@@ -33,7 +35,6 @@ class Adimoviebox : MainAPI() {
     // ==========================================
     // 2. HALAMAN UTAMA
     // ==========================================
-    @Suppress("DEPRECATION") // Membungkam error warning di fungsi ini
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
         val document = app.get(mainUrl).document
         val homeData = ArrayList<HomePageList>()
@@ -57,7 +58,6 @@ class Adimoviebox : MainAPI() {
     // ==========================================
     // 3. LOAD DETAIL
     // ==========================================
-    @Suppress("DEPRECATION") // Membungkam error 'rating' deprecated
     override suspend fun load(url: String): LoadResponse? {
         val isLokLok = url.contains("lok-lok.cc")
         val regex = "(?:detail\\/|movies\\/)([^?]+)".toRegex()
@@ -88,7 +88,7 @@ class Adimoviebox : MainAPI() {
                 val maxEpisode = season.maxEp ?: 0
                 
                 for (i in 1..maxEpisode) {
-                    // Constructor Episode manual agar aman
+                    // MENGGUNAKAN CONSTRUCTOR LAMA (KARENA PASTI DIKENALI)
                     episodes.add(
                         Episode(
                             data = "$dataId|$seasonNum|$i",
@@ -104,7 +104,7 @@ class Adimoviebox : MainAPI() {
                 this.posterUrl = subject.cover?.url
                 this.plot = subject.description
                 this.year = subject.releaseDate?.take(4)?.toIntOrNull()
-                this.rating = ratingInt // Suppressed Error
+                this.rating = ratingInt // IGNORE DEPRECATED ERROR
             }
 
         } else {
@@ -112,7 +112,7 @@ class Adimoviebox : MainAPI() {
                 this.posterUrl = subject.cover?.url
                 this.plot = subject.description
                 this.year = subject.releaseDate?.take(4)?.toIntOrNull()
-                this.rating = ratingInt // Suppressed Error
+                this.rating = ratingInt // IGNORE DEPRECATED ERROR
             }
         }
     }
@@ -120,7 +120,6 @@ class Adimoviebox : MainAPI() {
     // ==========================================
     // 4. LOAD LINKS
     // ==========================================
-    @Suppress("DEPRECATION") // Membungkam error 'ExtractorLink' deprecated
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -149,8 +148,7 @@ class Adimoviebox : MainAPI() {
                 val qualityStr = stream.resolutions ?: "0"
                 val quality = qualityStr.toIntOrNull() ?: Qualities.Unknown.value
                 
-                // Menggunakan Constructor lama yang stabil
-                // Error "Deprecated" akan diabaikan karena ada @Suppress
+                // MENGGUNAKAN CONSTRUCTOR LAMA AGAR TIDAK ERROR PARAMETER
                 callback.invoke(
                     ExtractorLink(
                         source = name,
@@ -171,47 +169,12 @@ class Adimoviebox : MainAPI() {
 // DATA CLASSES
 // ==========================================
 
-data class MovieBoxDetailResponse(
-    @JsonProperty("data") val data: MBDetailData?
-)
-
-data class MBDetailData(
-    @JsonProperty("subject") val subject: MBSubject?,
-    @JsonProperty("resource") val resource: MBResource?
-)
-
-data class MBSubject(
-    @JsonProperty("subjectId") val subjectId: String?,
-    @JsonProperty("title") val title: String?,
-    @JsonProperty("description") val description: String?,
-    @JsonProperty("cover") val cover: MBImage?,
-    @JsonProperty("releaseDate") val releaseDate: String?,
-    @JsonProperty("imdbRatingValue") val imdbRatingValue: String?
-)
-
-data class MBResource(
-    @JsonProperty("seasons") val seasons: List<MBSeason>?
-)
-
-data class MBSeason(
-    @JsonProperty("se") val se: Int?,
-    @JsonProperty("maxEp") val maxEp: Int?
-)
-
-data class MBImage(
-    @JsonProperty("url") val url: String?
-)
-
-data class MovieBoxPlayResponse(
-    @JsonProperty("data") val data: MBPlayData?
-)
-
-data class MBPlayData(
-    @JsonProperty("streams") val streams: List<MBStream>?
-)
-
-data class MBStream(
-    @JsonProperty("url") val url: String?,
-    @JsonProperty("resolutions") val resolutions: String?,
-    @JsonProperty("format") val format: String?
-)
+data class MovieBoxDetailResponse(@JsonProperty("data") val data: MBDetailData?)
+data class MBDetailData(@JsonProperty("subject") val subject: MBSubject?, @JsonProperty("resource") val resource: MBResource?)
+data class MBSubject(@JsonProperty("subjectId") val subjectId: String?, @JsonProperty("title") val title: String?, @JsonProperty("description") val description: String?, @JsonProperty("cover") val cover: MBImage?, @JsonProperty("releaseDate") val releaseDate: String?, @JsonProperty("imdbRatingValue") val imdbRatingValue: String?)
+data class MBResource(@JsonProperty("seasons") val seasons: List<MBSeason>?)
+data class MBSeason(@JsonProperty("se") val se: Int?, @JsonProperty("maxEp") val maxEp: Int?)
+data class MBImage(@JsonProperty("url") val url: String?)
+data class MovieBoxPlayResponse(@JsonProperty("data") val data: MBPlayData?)
+data class MBPlayData(@JsonProperty("streams") val streams: List<MBStream>?)
+data class MBStream(@JsonProperty("url") val url: String?, @JsonProperty("resolutions") val resolutions: String?, @JsonProperty("format") val format: String?)
