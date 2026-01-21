@@ -34,7 +34,7 @@ class Adimoviebox : MainAPI() {
     }
 
     // ==========================================
-    // 2. HALAMAN UTAMA (FIXED: newHomePageResponse)
+    // 2. HALAMAN UTAMA
     // ==========================================
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
         val document = app.get(mainUrl).document
@@ -53,12 +53,11 @@ class Adimoviebox : MainAPI() {
                 homeData.add(HomePageList(sectionName, movies))
             }
         }
-        // FIX: Menggunakan newHomePageResponse untuk menghindari error deprecated
         return newHomePageResponse(homeData)
     }
 
     // ==========================================
-    // 3. LOAD DETAIL (FIXED: this.rating)
+    // 3. LOAD DETAIL
     // ==========================================
     override suspend fun load(url: String): LoadResponse? {
         val isLokLok = url.contains("lok-lok.cc")
@@ -80,25 +79,20 @@ class Adimoviebox : MainAPI() {
         val sourceFlag = if (isLokLok) "LOKLOK" else "MBOX"
         val dataId = "${subject.subjectId}|$detailPath|$sourceFlag"
 
-        // Hitung rating manual (0-1000 scale biasanya, atau 0-100)
-        // Kita ambil int safe
-        val ratingInt = subject.imdbRatingValue?.toFloatOrNull()?.times(1000)?.toInt()
-
         if (isSeries) {
             val episodes = ArrayList<Episode>()
             resource?.seasons?.forEach { season ->
                 val seasonNum = season.se ?: 1
                 val maxEpisode = season.maxEp ?: 0
                 for (i in 1..maxEpisode) {
-                    // FIX: Menggunakan newEpisode builder
-                    episodes.add(
-                        newEpisode("$dataId|$seasonNum|$i") {
-                            this.name = "Episode $i"
-                            this.season = seasonNum
-                            this.episode = i
-                            this.posterUrl = subject.cover?.url
-                        }
-                    )
+                    // MENGGUNAKAN FORMAT BARU: newEpisode
+                    val epData = newEpisode("$dataId|$seasonNum|$i") {
+                        this.name = "Episode $i"
+                        this.season = seasonNum
+                        this.episode = i
+                        this.posterUrl = subject.cover?.url
+                    }
+                    episodes.add(epData)
                 }
             }
 
@@ -106,8 +100,7 @@ class Adimoviebox : MainAPI() {
                 this.posterUrl = subject.cover?.url
                 this.plot = subject.description
                 this.year = subject.releaseDate?.take(4)?.toIntOrNull()
-                // FIX: Pakai this.rating, jangan addRating (karena unresolved)
-                this.rating = ratingInt
+                // CATATAN: Rating dihapus dulu agar build sukses
             }
 
         } else {
@@ -115,16 +108,14 @@ class Adimoviebox : MainAPI() {
                 this.posterUrl = subject.cover?.url
                 this.plot = subject.description
                 this.year = subject.releaseDate?.take(4)?.toIntOrNull()
-                // FIX: Pakai this.rating
-                this.rating = ratingInt
+                // CATATAN: Rating dihapus dulu agar build sukses
             }
         }
     }
 
     // ==========================================
-    // 4. LOAD LINKS (FIXED: Signature & ExtractorLink)
+    // 4. LOAD LINKS
     // ==========================================
-    // FIX: Mengubah tipe parameter callback agar sesuai dengan Cloudstream terbaru
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -154,11 +145,10 @@ class Adimoviebox : MainAPI() {
                 val qualityStr = stream.resolutions ?: "0"
                 val quality = qualityStr.toIntOrNull() ?: Qualities.Unknown.value
 
-                // FIX: Menggunakan ExtractorLink constructor manual
-                // Menghindari penggunaan SourceUrl yang error (unresolved)
+                // FIX UTAMA: Ganti ExtractorLink(...) dengan newExtractorLink(...)
+                // Ini perintah langsung dari error log kamu.
                 callback.invoke(
-                    ExtractorLink(
-                        source = name,
+                    newExtractorLink(
                         name = "Adimoviebox ${qualityStr}p",
                         url = stream.url,
                         referer = headers["Referer"] ?: "https://filmboom.top/",
