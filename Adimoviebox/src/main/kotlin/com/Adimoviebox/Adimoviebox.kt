@@ -14,14 +14,17 @@ class Adimoviebox : MainAPI() {
     override var lang = "id"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.AsianDrama)
 
+    // API Backend Pusat
     private val apiUrl = "https://h5-api.aoneroom.com/wefeed-h5api-bff"
 
+    // Header Dasar
     private val baseHeaders = mapOf(
         "Accept" to "application/json",
         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
         "x-client-info" to "{\"timezone\":\"Asia/Jakarta\"}"
     )
 
+    // Helper Header Dinamis
     private fun getDynamicHeaders(isLokLok: Boolean): Map<String, String> {
         return baseHeaders + if (isLokLok) {
             mapOf("Origin" to "https://lok-lok.cc", "Referer" to "https://lok-lok.cc/")
@@ -33,7 +36,6 @@ class Adimoviebox : MainAPI() {
     // ==========================================
     // 2. HALAMAN UTAMA
     // ==========================================
-    @Suppress("DEPRECATION")
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
         val document = app.get(mainUrl).document
         val homeData = ArrayList<HomePageList>()
@@ -57,7 +59,6 @@ class Adimoviebox : MainAPI() {
     // ==========================================
     // 3. LOAD DETAIL
     // ==========================================
-    @Suppress("DEPRECATION")
     override suspend fun load(url: String): LoadResponse? {
         val isLokLok = url.contains("lok-lok.cc")
         val regex = "(?:detail\\/|movies\\/)([^?]+)".toRegex()
@@ -78,47 +79,40 @@ class Adimoviebox : MainAPI() {
         val sourceFlag = if (isLokLok) "LOKLOK" else "MBOX"
         val dataId = "${subject.subjectId}|$detailPath|$sourceFlag"
 
-        // Kita convert rating ke format integer (skala 1000) agar aman
-        val ratingInt = subject.imdbRatingValue?.toFloatOrNull()?.times(1000)?.toInt()
-
         if (isSeries) {
             val episodes = ArrayList<Episode>()
             resource?.seasons?.forEach { season ->
                 val seasonNum = season.se ?: 1
                 val maxEpisode = season.maxEp ?: 0
                 for (i in 1..maxEpisode) {
-                    // Menggunakan constructor Episode lama (Aman karena @Suppress)
-                    episodes.add(
-                        Episode(
-                            data = "$dataId|$seasonNum|$i",
-                            name = "Episode $i",
-                            season = seasonNum,
-                            episode = i,
-                            posterUrl = subject.cover?.url
-                        )
-                    )
+                    val epData = newEpisode("$dataId|$seasonNum|$i") {
+                        this.name = "Episode $i"
+                        this.season = seasonNum
+                        this.episode = i
+                        this.posterUrl = subject.cover?.url
+                    }
+                    episodes.add(epData)
                 }
             }
+
             return newTvSeriesLoadResponse(subject.title ?: "No Title", url, TvType.TvSeries, episodes) {
                 this.posterUrl = subject.cover?.url
                 this.plot = subject.description
                 this.year = subject.releaseDate?.take(4)?.toIntOrNull()
-                this.rating = ratingInt
             }
+
         } else {
             return newMovieLoadResponse(subject.title ?: "No Title", url, TvType.Movie, "$dataId|0|0") {
                 this.posterUrl = subject.cover?.url
                 this.plot = subject.description
                 this.year = subject.releaseDate?.take(4)?.toIntOrNull()
-                this.rating = ratingInt
             }
         }
     }
 
     // ==========================================
-    // 4. LOAD LINKS (FIXED: Positional Arguments)
+    // 4. LOAD LINKS (SUDAH DIPERBAIKI SESUAI Extractor.kt)
     // ==========================================
-    @Suppress("DEPRECATION")
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -147,20 +141,20 @@ class Adimoviebox : MainAPI() {
         streams.forEach { stream ->
             if (!stream.url.isNullOrEmpty()) {
                 val qualityStr = stream.resolutions ?: "0"
-                val quality = qualityStr.toIntOrNull() ?: Qualities.Unknown.value
-                val isM3u8 = stream.url.contains(".m3u8")
+                val qualityInt = qualityStr.toIntOrNull() ?: Qualities.Unknown.value
 
-                // FIX FINAL: Menggunakan urutan (Positional Arguments)
-                // Urutan Constructor ExtractorLink: (source, name, url, referer, quality, isM3u8)
+                // PERBAIKAN UTAMA: Mengikuti gaya penulisan di Extractor.kt
+                // 3 Parameter wajib di dalam (), sisanya di dalam { }
                 callback.invoke(
-                    ExtractorLink(
-                        this.name,               // 1. source (Tadi error karena ini kurang)
-                        "Adimoviebox ${qualityStr}p", // 2. name
-                        stream.url,              // 3. url
-                        refererUrl,              // 4. referer
-                        quality,                 // 5. quality
-                        isM3u8                   // 6. isM3u8
-                    )
+                    newExtractorLink(
+                        source = name,                            // Parameter 1: Source Name
+                        name = "Adimoviebox ${qualityStr}p",      // Parameter 2: Display Name
+                        url = stream.url                          // Parameter 3: URL
+                    ) {
+                        this.referer = refererUrl                 // Property Referer
+                        this.quality = qualityInt                 // Property Quality
+                        this.isM3u8 = stream.url.contains(".m3u8") // Property isM3u8
+                    }
                 )
             }
         }
