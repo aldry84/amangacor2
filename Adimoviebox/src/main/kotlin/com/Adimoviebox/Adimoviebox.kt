@@ -6,12 +6,13 @@ import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.Qualities
-// Import penting yang diminta
-import com.lagradost.cloudstream3.utils.newExtractorLink
 
+@Suppress("DEPRECATION")
 class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
+    // API Utama untuk Home/Detail/Search
     private val apiUrl = "https://h5-api.aoneroom.com"
+    // API Khusus Player (Video)
     private val playUrl = "https://filmboom.top"
     
     override var name = "Adimoviebox"
@@ -51,6 +52,7 @@ class Adimoviebox : MainAPI() {
         )
     }
 
+    // --- KATEGORI SESUAI LOG (Filter JSON) ---
     override val mainPage = mainPageOf(
         "$apiUrl/wefeed-h5api-bff/home?host=moviebox.ph" to "Home",
         "2|{\"classify\":\"All\",\"country\":\"Indonesia\",\"genre\":\"All\",\"sort\":\"Hottest\",\"year\":\"All\"}" to "Indo Film",
@@ -66,6 +68,7 @@ class Adimoviebox : MainAPI() {
         val pages = mutableListOf<HomePageList>()
 
         if (request.data.startsWith("http")) {
+            // Logic Home Page
             val response = app.get(request.data, headers = getBaseHeaders()).parsedSafe<HomeResponse>()
             response?.data?.operatingList?.forEach { section ->
                 val title = section.title ?: "Featured"
@@ -73,16 +76,14 @@ class Adimoviebox : MainAPI() {
                 
                 section.subjects?.forEach { items.add(it.toSearchResponse(this)) }
                 section.banner?.items?.forEach { items.add(it.toSearchResponse(this)) }
-                
-                // PERBAIKAN: Mapping manual dari CustomItem ke SubjectItem
-                section.customData?.items?.forEach { item -> 
-                    val subjectItem = item.subject ?: SubjectItem(
+                section.customData?.items?.forEach { item ->
+                    val realItem = item.subject ?: SubjectItem(
                         subjectId = item.subjectId,
                         title = item.title,
                         image = item.image,
                         cover = item.image
                     )
-                    items.add(subjectItem.toSearchResponse(this))
+                    items.add(realItem.toSearchResponse(this))
                 }
                 
                 if (items.isNotEmpty()) {
@@ -90,8 +91,12 @@ class Adimoviebox : MainAPI() {
                 }
             }
         } else {
+            // Logic Kategori (Filter)
             val parts = request.data.split("|")
-            val filterUrl = "$apiUrl/wefeed-h5api-bff/home/movieFilter?tabId=${parts[0]}&filterType=${parts.getOrNull(1)}&pageNo=$page&pageSize=18"
+            val tabId = parts[0]
+            val filterJson = parts.getOrNull(1) ?: ""
+            val filterUrl = "$apiUrl/wefeed-h5api-bff/home/movieFilter?tabId=$tabId&filterType=$filterJson&pageNo=$page&pageSize=18"
+            
             try {
                 val response = app.get(filterUrl, headers = getBaseHeaders()).parsedSafe<FilterResponse>()
                 val items = response?.data?.map { it.toSearchResponse(this) } ?: emptyList()
@@ -101,7 +106,7 @@ class Adimoviebox : MainAPI() {
             } catch (e: Exception) { }
         }
         
-        return newHomePageResponse(pages, hasNext = !request.data.startsWith("http"))
+        return HomePageResponse(pages, hasNext = !request.data.startsWith("http"))
     }
 
     override suspend fun load(url: String): LoadResponse {
@@ -136,22 +141,24 @@ class Adimoviebox : MainAPI() {
             if (data?.seasonList.isNullOrEmpty()) {
                 val totalEp = data?.episodesCount ?: 1
                 for (i in 1..totalEp) {
-                     episodes.add(newEpisode(LinkData(id, path, 1, i).toJson()) {
-                        this.name = "Episode $i"
-                        this.season = 1
-                        this.episode = i
-                    })
+                     episodes.add(Episode(
+                        data = LinkData(id, path, 1, i).toJson(),
+                        name = "Episode $i",
+                        season = 1,
+                        episode = i
+                    ))
                 }
             } else {
                 data?.seasonList?.forEach { season ->
                     val seasonNum = season.seasonNo ?: 1
                     season.episodeList?.forEach { ep ->
-                        episodes.add(newEpisode(LinkData(id, path, seasonNum, ep.episodeNo ?: 1).toJson()) {
-                            this.name = "E${ep.episodeNo} - ${ep.title ?: ""}"
-                            this.season = seasonNum
-                            this.episode = ep.episodeNo
-                            this.posterUrl = ep.cover?.url
-                        })
+                        episodes.add(Episode(
+                            data = LinkData(id, path, seasonNum, ep.episodeNo ?: 1).toJson(),
+                            name = "E${ep.episodeNo} - ${ep.title ?: ""}",
+                            season = seasonNum,
+                            episode = ep.episodeNo,
+                            posterUrl = ep.cover?.url
+                        ))
                     }
                 }
             }
@@ -170,6 +177,7 @@ class Adimoviebox : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
+
         val linkData = parseJson<LinkData>(data)
         val playApiUrl = "$playUrl/wefeed-h5api-bff/subject/play?subjectId=${linkData.id}&se=${linkData.se}&ep=${linkData.ep}&detailPath=${linkData.path}"
         
@@ -177,96 +185,96 @@ class Adimoviebox : MainAPI() {
 
         response?.data?.streams?.forEach { stream ->
             val qualityInt = stream.resolutions?.toIntOrNull() ?: Qualities.Unknown.value
+            // PERBAIKAN: Positional Argument untuk ExtractorLink
             callback.invoke(
-                // Menggunakan newExtractorLink karena sudah diimport
-                newExtractorLink(
+                ExtractorLink(
                     this.name,
                     "${this.name} ${stream.format} ${stream.resolutions}p",
                     stream.url ?: return@forEach,
-                    referer = "https://filmboom.top/",
-                    quality = qualityInt,
-                    isM3u8 = stream.url.contains(".m3u8")
+                    "https://filmboom.top/",
+                    qualityInt,
+                    stream.url.contains(".m3u8")
                 )
             )
         }
         return true
     }
+}
 
-    // --- DATA CLASSES ---
-    data class LinkData(val id: String, val path: String, val se: Int, val ep: Int)
+// --- DATA CLASSES ---
 
-    data class HomeResponse(@JsonProperty("data") val data: DataObj? = null)
-    data class FilterResponse(@JsonProperty("data") val data: List<SubjectItem>? = null)
-    
-    data class DetailResponse(@JsonProperty("data") val data: SubjectDetail? = null)
-    data class SubjectDetail(
-        @JsonProperty("title") val title: String? = null,
-        @JsonProperty("description") val description: String? = null,
-        @JsonProperty("cover") val cover: CoverObj? = null,
-        @JsonProperty("image") val image: CoverObj? = null,
-        @JsonProperty("imdbRatingValue") val imdbRatingValue: String? = null,
-        @JsonProperty("episodesCount") val episodesCount: Int? = null,
-        @JsonProperty("seasonList") val seasonList: List<SeasonObj>? = null 
-    )
-    data class SeasonObj(
-        @JsonProperty("seasonNo") val seasonNo: Int? = null,
-        @JsonProperty("episodeList") val episodeList: List<EpisodeObj>? = null
-    )
-    data class EpisodeObj(
-        @JsonProperty("episodeNo") val episodeNo: Int? = null,
-        @JsonProperty("title") val title: String? = null,
-        @JsonProperty("cover") val cover: CoverObj? = null
-    )
+data class LinkData(val id: String, val path: String, val se: Int, val ep: Int)
 
-    data class PlayResponse(@JsonProperty("data") val data: PlayData? = null)
-    data class PlayData(@JsonProperty("streams") val streams: List<StreamItem>? = null)
-    data class StreamItem(
-        @JsonProperty("format") val format: String? = null,
-        @JsonProperty("url") val url: String? = null,
-        @JsonProperty("resolutions") val resolutions: String? = null
-    )
+data class HomeResponse(@JsonProperty("data") val data: DataObj? = null)
+data class FilterResponse(@JsonProperty("data") val data: List<SubjectItem>? = null)
 
-    data class DataObj(@JsonProperty("operatingList") val operatingList: List<OperatingItem>? = null)
-    data class OperatingItem(
-        @JsonProperty("title") val title: String? = null,
-        @JsonProperty("subjects") val subjects: List<SubjectItem>? = null,
-        @JsonProperty("banner") val banner: BannerObj? = null,
-        @JsonProperty("customData") val customData: CustomDataObj? = null
-    )
-    data class BannerObj(@JsonProperty("items") val items: List<SubjectItem>? = null)
-    data class CustomDataObj(@JsonProperty("items") val items: List<CustomItem>? = null)
-    
-    data class CustomItem(
-        @JsonProperty("subject") val subject: SubjectItem? = null,
-        @JsonProperty("title") val title: String? = null,
-        @JsonProperty("image") val image: CoverObj? = null,
-        @JsonProperty("subjectId") val subjectId: String? = null,
-        @JsonProperty("detailPath") val detailPath: String? = null
-    )
+data class DetailResponse(@JsonProperty("data") val data: SubjectDetail? = null)
+data class SubjectDetail(
+    @JsonProperty("title") val title: String? = null,
+    @JsonProperty("description") val description: String? = null,
+    @JsonProperty("cover") val cover: CoverObj? = null,
+    @JsonProperty("image") val image: CoverObj? = null,
+    @JsonProperty("imdbRatingValue") val imdbRatingValue: String? = null,
+    @JsonProperty("episodesCount") val episodesCount: Int? = null,
+    @JsonProperty("seasonList") val seasonList: List<SeasonObj>? = null 
+)
+data class SeasonObj(
+    @JsonProperty("seasonNo") val seasonNo: Int? = null,
+    @JsonProperty("episodeList") val episodeList: List<EpisodeObj>? = null
+)
+data class EpisodeObj(
+    @JsonProperty("episodeNo") val episodeNo: Int? = null,
+    @JsonProperty("title") val title: String? = null,
+    @JsonProperty("cover") val cover: CoverObj? = null
+)
 
-    data class SubjectItem(
-        @JsonProperty("subjectId") val subjectId: String? = null,
-        @JsonProperty("title") val title: String? = null,
-        @JsonProperty("cover") val cover: CoverObj? = null,
-        @JsonProperty("image") val image: CoverObj? = null,
-        @JsonProperty("description") val description: String? = null,
-        @JsonProperty("imdbRatingValue") val imdbRatingValue: String? = null,
-        @JsonProperty("subjectType") val subjectType: Int? = null,
-        @JsonProperty("detailPath") val detailPath: String? = null
-    ) {
-        fun toSearchResponse(provider: Adimoviebox): SearchResponse {
-            val id = subjectId ?: "0"
-            val type = if (subjectType == 1) TvType.Movie else TvType.TvSeries
-            val path = detailPath ?: ""
-            // URL internal
-            val url = "${provider.mainUrl}/detail?id=$id&path=$path&type=$subjectType"
-            val posterImage = cover?.url ?: image?.url
+data class PlayResponse(@JsonProperty("data") val data: PlayData? = null)
+data class PlayData(@JsonProperty("streams") val streams: List<StreamItem>? = null)
+data class StreamItem(
+    @JsonProperty("format") val format: String? = null,
+    @JsonProperty("url") val url: String? = null,
+    @JsonProperty("resolutions") val resolutions: String? = null
+)
 
-            return provider.newMovieSearchResponse(title ?: "", url, type) {
-                this.posterUrl = posterImage
-                // Gunakan properti standar
-            }
+data class DataObj(@JsonProperty("operatingList") val operatingList: List<OperatingItem>? = null)
+data class OperatingItem(
+    @JsonProperty("title") val title: String? = null,
+    @JsonProperty("subjects") val subjects: List<SubjectItem>? = null,
+    @JsonProperty("banner") val banner: BannerObj? = null,
+    @JsonProperty("customData") val customData: CustomDataObj? = null
+)
+data class BannerObj(@JsonProperty("items") val items: List<SubjectItem>? = null)
+data class CustomDataObj(@JsonProperty("items") val items: List<CustomItem>? = null)
+
+data class CustomItem(
+    @JsonProperty("subject") val subject: SubjectItem? = null,
+    @JsonProperty("title") val title: String? = null,
+    @JsonProperty("image") val image: CoverObj? = null,
+    @JsonProperty("subjectId") val subjectId: String? = null,
+    @JsonProperty("detailPath") val detailPath: String? = null
+)
+
+data class SubjectItem(
+    @JsonProperty("subjectId") val subjectId: String? = null,
+    @JsonProperty("title") val title: String? = null,
+    @JsonProperty("cover") val cover: CoverObj? = null,
+    @JsonProperty("image") val image: CoverObj? = null,
+    @JsonProperty("description") val description: String? = null,
+    @JsonProperty("imdbRatingValue") val imdbRatingValue: String? = null,
+    @JsonProperty("subjectType") val subjectType: Int? = null,
+    @JsonProperty("detailPath") val detailPath: String? = null
+) {
+    fun toSearchResponse(provider: Adimoviebox): SearchResponse {
+        val id = subjectId ?: "0"
+        val type = if (subjectType == 1) TvType.Movie else TvType.TvSeries
+        val path = detailPath ?: ""
+        val url = "${provider.mainUrl}/detail?id=$id&path=$path&type=$subjectType"
+        val posterImage = cover?.url ?: image?.url
+
+        return provider.newMovieSearchResponse(title ?: "", url, type) {
+            this.posterUrl = posterImage
+            // this.plot = description // Opsional, bisa diaktifkan jika perlu
         }
     }
-    data class CoverObj(@JsonProperty("url") val url: String? = null)
 }
+data class CoverObj(@JsonProperty("url") val url: String? = null)
