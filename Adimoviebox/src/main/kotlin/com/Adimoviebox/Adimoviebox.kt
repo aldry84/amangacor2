@@ -11,10 +11,9 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 
 class Adimoviebox : MainAPI() {
-    override var mainUrl = "https://moviebox.ph" // Website hanya untuk info dasar
+    override var mainUrl = "https://moviebox.ph" 
     
-    // API UTAMA (Jantung Aplikasi)
-    // Kita pakai API yang ditemukan di MT Manager
+    // API UTAMA (Aoneroom) - Jantung aplikasi
     private val apiUrl = "https://api.aoneroom.com" 
 
     override val instantLinkLoading = true
@@ -39,31 +38,27 @@ class Adimoviebox : MainAPI() {
         "872031290915189720" to "Bad Ending Romance" 
     )
 
-    // --- SEARCH LOGIC (FIXED) ---
+    // --- SEARCH LOGIC ---
     override suspend fun search(query: String): List<SearchResponse> {
-        // RAHASIA: Di aplikasi, mereka mungkin mengirim parameter berbeda agar "Mamasan" muncul.
-        // Kita coba hapus 'subjectType' atau biarkan kosong agar API mencari ke semua kategori.
+        // HAPUS subjectType: Membiarkan API mencari ke semua kategori (termasuk konten dewasa/lok-lok)
         val postData = mapOf(
             "keyword" to query,
             "page" to 1,
             "perPage" to 20
-            // "subjectType" dihapus agar pencarian global (termasuk konten dewasa/lok-lok)
         )
 
         return app.post(
             "$apiUrl/wefeed-h5-bff/web/subject/search", 
             requestBody = postData.toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
         ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
-            ?: throw ErrorLoadingException("Pencarian '$query' tidak ditemukan di server.")
+            ?: throw ErrorLoadingException("Pencarian '$query' tidak ditemukan.")
     }
 
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val id = request.data 
-        // Menggunakan API Aoneroom untuk kategori juga
         val targetUrl = "$apiUrl/wefeed-h5api-bff/ranking-list/content?id=$id&page=$page&perPage=12"
-
         val responseData = app.get(targetUrl).parsedSafe<Media>()?.data
         val listFilm = responseData?.subjectList ?: responseData?.items
 
@@ -76,7 +71,6 @@ class Adimoviebox : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfterLast("/")
         
-        // Ambil detail film dari API Aoneroom
         val document = app.get("$apiUrl/wefeed-h5-bff/web/subject/detail?subjectId=$id")
             .parsedSafe<MediaDetail>()?.data
         
@@ -92,9 +86,10 @@ class Adimoviebox : MainAPI() {
         val recommendations = app.get("$apiUrl/wefeed-h5-bff/web/subject/detail-rec?subjectId=$id&page=1&perPage=12")
                 .parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
 
-        // Menentukan Tipe (Series atau Movie)
         val isSeries = subject?.subjectType == 2 
-        val tvType = if (isSeries) TvType.TvSeries else TvType.Movie
+        
+        // PENTING: Kita kirim detailPath ke LoadData agar bisa dipakai di loadLinks nanti
+        val commonLoadData = LoadData(id, detailPath = subject?.detailPath)
 
         if (isSeries) {
             val episodes = document?.resource?.seasons?.flatMap { season ->
@@ -106,7 +101,8 @@ class Adimoviebox : MainAPI() {
                 
                 epList.map { epNum ->
                     newEpisode(
-                        LoadData(id, season.se, epNum, subject?.detailPath).toJson()
+                        // Masukkan detailPath ke setiap episode
+                        commonLoadData.copy(season = season.se, episode = epNum).toJson()
                     ) {
                         this.season = season.se
                         this.episode = epNum
@@ -124,7 +120,7 @@ class Adimoviebox : MainAPI() {
                 addTrailer(trailer)
             }
         } else {
-            return newMovieLoadResponse(title, url, TvType.Movie, LoadData(id, detailPath = subject?.detailPath).toJson()) {
+            return newMovieLoadResponse(title, url, TvType.Movie, commonLoadData.toJson()) {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
@@ -136,7 +132,7 @@ class Adimoviebox : MainAPI() {
         }
     }
 
-    // --- LINK HANDLING (SOLUSI UNTUK LOK-LOK & FILMBOOM) ---
+    // --- LINK HANDLING (DIPERBAIKI BERDASARKAN LOG KIWI BROWSER) ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -145,44 +141,38 @@ class Adimoviebox : MainAPI() {
     ): Boolean {
         val media = parseJson<LoadData>(data)
         
-        // 1. Coba cara standar (Request ke API Play)
-        val playUrl = "$apiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}"
-        val referer = "$apiUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&lang=en"
+        // TRIK JITU: Menggunakan Referer Lok-Lok agar server mau memberi link
+        // Ini meniru kelakuan browser di screenshot 1000115539.jpg
+        val fakeReferer = "https://lok-lok.cc/" 
+
+        // Membentuk URL Play persis seperti di Log Network:
+        // play?subjectId=...&se=...&ep=...&detailPath=...
+        val playUrl = "$apiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}&detailPath=${media.detailPath}"
         
-        val response = app.get(playUrl, referer = referer).parsedSafe<Media>()
+        val response = app.get(playUrl, referer = fakeReferer).parsedSafe<Media>()
         val streams = response?.data?.streams
 
-        // Jika API Play mengembalikan stream langsung (Biasanya Filmboom style)
         if (!streams.isNullOrEmpty()) {
             streams.reversed().distinctBy { it.url }.forEach { source ->
                 val url = source.url ?: return@forEach
                 
-                // DETEKSI LOK-LOK DI SINI
-                if (url.contains("lok-lok.cc") || url.contains("loklok")) {
-                    // Jika URL adalah lok-lok, kita load sebagai link biasa atau parsing ulang jika perlu
-                    callback.invoke(
-                        newExtractorLink(this.name, "Lok-Lok VIP", url, Referer = "https://lok-lok.cc/", quality = Qualities.Unknown.value)
+                callback.invoke(
+                    newExtractorLink(
+                        this.name, 
+                        "Aoneroom/LokLok ${source.resolutions ?: "HD"}", 
+                        url, 
+                        Referer = fakeReferer, 
+                        quality = getQualityFromName(source.resolutions)
                     )
-                } else {
-                    // URL Biasa (Filmboom/Aoneroom storage)
-                    callback.invoke(
-                        newExtractorLink(this.name, "Server Utama", url, Referer = referer, quality = getQualityFromName(source.resolutions))
-                    )
-                }
+                )
             }
-        
-        // 2. JIKA STREAM KOSONG, TAPI ADA DATA LAIN (Kasus khusus)
-        } else {
-             // Kadang link lok-lok disembunyikan di field lain atau butuh penanganan manual.
-             // Namun, berdasarkan pola, API Aoneroom biasanya tetap mengembalikan URL di 'streams' 
-             // meskipun URL-nya mengarah ke domain lok-lok.
         }
 
-        // Load Subtitle
+        // Subtitle juga butuh detailPath kadang-kadang
         val id = streams?.firstOrNull()?.id
         val format = streams?.firstOrNull()?.format
         if (id != null && format != null) {
-            app.get("$apiUrl/wefeed-h5-bff/web/subject/caption?format=$format&id=$id&subjectId=${media.id}", referer = referer)
+            app.get("$apiUrl/wefeed-h5-bff/web/subject/caption?format=$format&id=$id&subjectId=${media.id}&detailPath=${media.detailPath}", referer = fakeReferer)
                 .parsedSafe<Media>()?.data?.captions?.forEach { subtitle ->
                     subtitleCallback.invoke(newSubtitleFile(subtitle.lanName ?: "Unknown", subtitle.url ?: return@forEach))
                 }
@@ -192,7 +182,7 @@ class Adimoviebox : MainAPI() {
     }
 }
 
-// --- DATA CLASSES (Sama seperti sebelumnya, aman) ---
+// --- DATA CLASSES ---
 data class LoadData(val id: String? = null, val season: Int? = null, val episode: Int? = null, val detailPath: String? = null)
 
 data class Media(@field:JsonProperty("data") val data: Data? = null) {
