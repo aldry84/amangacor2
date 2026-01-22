@@ -12,8 +12,6 @@ import okhttp3.RequestBody.Companion.toRequestBody
 
 class Adimoviebox : MainAPI() {
     override var mainUrl = "https://lok-lok.cc" 
-    
-    // API Utama (Backend yang stabil)
     private val apiUrl = "https://h5-api.aoneroom.com"
 
     override val instantLinkLoading = true
@@ -29,22 +27,24 @@ class Adimoviebox : MainAPI() {
     )
 
     // Header Global
-    // Authority dihapus agar otomatis mengikuti URL (menghindari 403 Forbidden)
+    // Ditambahkan x-client-info dan x-request-lang agar tidak dianggap bot/lokasi salah
     private val apiHeaders = mapOf(
+        "authority" to "lok-lok.cc",
         "accept" to "application/json",
         "origin" to "https://lok-lok.cc",
         "referer" to "https://lok-lok.cc/",
         "x-source" to "app-search",
+        "x-request-lang" to "en",
+        "x-client-info" to "{\"timezone\":\"Asia/Jakarta\"}", // Penting untuk Geo-lock
         "user-agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36"
     )
 
-    // Header khusus Poster (Penting agar gambar Pinoy Romance muncul)
+    // Header khusus Poster (Jaga-jaga jika CDN butuh UA)
     private val imageHeaders = mapOf(
         "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
         "Referer" to "https://lok-lok.cc/"
     )
 
-    // --- BAGIAN KATEGORI ---
     override val mainPage: List<MainPageData> = mainPageOf(
         "5283462032510044280" to "Indonesian Drama",
         "6528093688173053896" to "Indonesian Movies",
@@ -56,7 +56,7 @@ class Adimoviebox : MainAPI() {
         "8449223314756747760" to "Pinoy Drama",
         "606779077307122552" to "Pinoy Movie",
         "872031290915189720" to "Bad Ending Romance",
-        "filter_pinoy_romance" to "Pinoy Romance" // Kategori Spesial
+        "filter_pinoy_romance" to "Pinoy Romance (Filter)"
     )
 
     override suspend fun getMainPage(
@@ -66,11 +66,11 @@ class Adimoviebox : MainAPI() {
         val id = request.data
         
         val responseData = if (id == "filter_pinoy_romance") {
-            // LOGIKA FILTER (POST) - Untuk Pinoy Romance
+            // POST untuk Filter
             val postBody = mapOf(
                 "page" to page,
                 "perPage" to 24,
-                "channelId" to 2, // 2 = TV Series/Drama
+                "channelId" to 2,
                 "genre" to "Romance",
                 "country" to "Philippines"
             )
@@ -82,7 +82,7 @@ class Adimoviebox : MainAPI() {
             ).parsedSafe<Media>()?.data
             
         } else {
-            // LOGIKA RANKING (GET) - Untuk kategori biasa
+            // GET untuk Ranking
             val targetUrl = "$apiUrl/wefeed-h5api-bff/ranking-list/content?id=$id&page=$page&perPage=12"
             app.get(targetUrl, headers = apiHeaders).parsedSafe<Media>()?.data
         }
@@ -112,21 +112,17 @@ class Adimoviebox : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfterLast("/")
-        
-        // Cek apakah ID berupa Angka (lama) atau Slug Text (baru)
         val isNumericId = id.all { it.isDigit() }
         
         val targetDetailUrl = if (isNumericId) {
             "$apiUrl/wefeed-h5api-bff/subject/detail?subjectId=$id"
         } else {
-            // API Baru pakai detailPath untuk ID teks (seperti 'halo-halo-x-...')
             "$apiUrl/wefeed-h5api-bff/detail?detailPath=$id"
         }
 
         val detailData = app.get(targetDetailUrl, headers = apiHeaders).parsedSafe<MediaDetail>()?.data
         val subject = detailData?.subject ?: throw ErrorLoadingException("Gagal memuat detail film.")
         
-        // Ambil Real ID (Angka) untuk keperluan play, dan DetailPath untuk referer
         val realId = subject.subjectId ?: id 
         val detailPath = subject.detailPath ?: id
 
@@ -137,7 +133,7 @@ class Adimoviebox : MainAPI() {
         val tvType = if (subject.subjectType == 2) TvType.TvSeries else TvType.Movie
         val description = subject.description
         val trailer = subject.trailer?.videoAddress?.url
-        val score = Score.from10(subject.imdbRatingValue)
+        val score = Score.from10(subject.imdbRatingValue?.toString())
         
         val actors = detailData.stars?.mapNotNull { cast ->
             ActorData(
@@ -151,9 +147,8 @@ class Adimoviebox : MainAPI() {
             headers = apiHeaders
         ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
 
-        // --- PERBAIKAN LOGIKA EPISODE ---
         val episodeList = detailData.resource?.seasons?.map { season ->
-            // Logic: Jika 'allEp' kosong (seperti Halo-Halo X), gunakan 'maxEp' untuk generate 1..4
+            // Fix: Logic Episode Halo-Halo X (AllEp kosong, tapi MaxEp ada)
             val eps = if (!season.allEp.isNullOrEmpty()) {
                 season.allEp.split(",").map { it.toInt() }
             } else {
@@ -173,8 +168,8 @@ class Adimoviebox : MainAPI() {
                     this.episode = epNum
                     this.name = if (tvType == TvType.Movie) title else "Episode $epNum"
                     this.description = season.resolutions?.joinToString(", ") { "${it.resolution}p" }
-                    this.posterUrl = poster // Wariskan poster utama ke episode
-                    this.posterHeaders = imageHeaders
+                    this.posterUrl = poster
+                    this.posterHeaders = imageHeaders // Fix Poster Detail
                 }
             }
         }?.flatten() ?: emptyList()
@@ -214,7 +209,6 @@ class Adimoviebox : MainAPI() {
     ): Boolean {
 
         val media = parseJson<LoadData>(data)
-        // Referer wajib ada untuk play
         val refererUrl = "$mainUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&utm_source=app-search"
         
         val playHeaders = apiHeaders.toMutableMap().apply {
@@ -260,7 +254,7 @@ class Adimoviebox : MainAPI() {
     }
 }
 
-// --- DATA CLASSES (Updated with @param:JsonProperty) ---
+// --- DATA CLASSES ---
 
 data class LoadData(
     val id: String? = null,
@@ -340,7 +334,6 @@ data class Items(
     @param:JsonProperty("detailPath") val detailPath: String? = null,
 ) {
     fun toSearchResponse(provider: Adimoviebox): SearchResponse {
-        // Prioritas pakai detailPath (slug) agar link detail stabil
         val finalId = detailPath ?: subjectId
         val url = "${provider.mainUrl}/detail/${finalId}"
         val posterImage = cover?.url
@@ -352,7 +345,7 @@ data class Items(
             false
         ) {
             this.posterUrl = posterImage
-            // Fix: Header wajib agar poster muncul di Search/Home
+            // Fix: Header wajib agar poster muncul (User-Agent)
             this.posterHeaders = mapOf("User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36")
             this.score = Score.from10(imdbRatingValue)
             this.year = releaseDate?.substringBefore("-")?.toIntOrNull()
