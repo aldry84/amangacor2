@@ -11,7 +11,6 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 
 class Adimoviebox : MainAPI() {
-    // Domain dan API diperbarui sesuai analisis Network Log sebelumnya
     override var mainUrl = "https://lok-lok.cc"
     private val apiUrl = "https://h5-api.aoneroom.com"
 
@@ -92,24 +91,31 @@ class Adimoviebox : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val detailPath = url.substringAfterLast("/")
         
+        // Mengambil data document, jika null langsung error (Cleaning Warning)
         val document = app.get(
             "$apiUrl/wefeed-h5api-bff/detail?detailPath=$detailPath",
             headers = baseHeaders
-        ).parsedSafe<MediaDetail>()?.data
+        ).parsedSafe<MediaDetail>()?.data ?: throw ErrorLoadingException("Failed to load details")
 
-        val subject = document?.subject
-        val id = subject?.subjectId ?: throw ErrorLoadingException("No Subject ID found")
+        // Mengambil subject, jika null langsung error (Cleaning Warning)
+        val subject = document.subject ?: throw ErrorLoadingException("No Subject ID found")
         
-        val title = subject?.title ?: ""
-        val poster = subject?.cover?.url
-        val tags = subject?.genre?.split(",")?.map { it.trim() }
-        val year = subject?.releaseDate?.substringBefore("-")?.toIntOrNull()
-        val tvType = if (subject?.subjectType == 2) TvType.TvSeries else TvType.Movie
-        val description = subject?.description
-        val trailer = subject?.trailer?.videoAddress?.url
-        val score = Score.from10(subject?.imdbRatingValue?.toString())
+        val id = subject.subjectId ?: throw ErrorLoadingException("No ID")
         
-        val actors = document?.stars?.mapNotNull { cast ->
+        // Karena subject & document sudah dipastikan tidak null di atas,
+        // kita ganti "?." menjadi "." untuk menghindari warning "Unnecessary safe call"
+        val title = subject.title ?: ""
+        val poster = subject.cover?.url
+        val tags = subject.genre?.split(",")?.map { it.trim() }
+        val year = subject.releaseDate?.substringBefore("-")?.toIntOrNull()
+        val tvType = if (subject.subjectType == 2) TvType.TvSeries else TvType.Movie
+        val description = subject.description
+        val trailer = subject.trailer?.videoAddress?.url
+        
+        // Hapus .toString() karena imdbRatingValue sudah String (Cleaning Warning)
+        val score = Score.from10(subject.imdbRatingValue)
+        
+        val actors = document.stars?.mapNotNull { cast ->
             ActorData(
                 Actor(cast.name ?: return@mapNotNull null, cast.avatarUrl),
                 roleString = cast.character
@@ -129,7 +135,7 @@ class Adimoviebox : MainAPI() {
         ).toJson()
 
         return if (tvType == TvType.TvSeries) {
-            val episode = document?.resource?.seasons?.map { seasons ->
+            val episode = document.resource?.seasons?.map { seasons ->
                 (if (seasons.allEp.isNullOrEmpty()) (1..seasons.maxEp!!) else seasons.allEp.split(",")
                     .map { it.toInt() })
                     .map { episode ->
@@ -225,7 +231,7 @@ class Adimoviebox : MainAPI() {
     }
 }
 
-// --- Data Classes Updated with Explicit Targets (KEEP-0402) ---
+// --- Data Classes ---
 
 data class LoadData(
     val id: String? = null,
@@ -235,7 +241,6 @@ data class LoadData(
 )
 
 data class Media(
-    // Menggunakan @param:JsonProperty untuk memastikan targetnya parameter konstruktor
     @param:JsonProperty("data") val data: Data? = null,
 ) {
     data class Data(
@@ -309,7 +314,8 @@ data class Items(
             false
         ) {
             this.posterUrl = cover?.url
-            this.score = Score.from10(imdbRatingValue?.toString())
+            // Fix: menghapus .toString() yang redundant
+            this.score = Score.from10(imdbRatingValue)
         }
     }
 
