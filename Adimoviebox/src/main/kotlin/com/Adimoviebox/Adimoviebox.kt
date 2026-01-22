@@ -16,7 +16,7 @@ class Adimoviebox : MainAPI() {
     // API UTAMA (Aoneroom)
     private val apiUrl = "https://api.aoneroom.com" 
 
-    // Header Anti-Blokir
+    // Header Anti-Blokir (Penting!)
     private val commonHeaders = mapOf(
         "Origin" to "https://lok-lok.cc",
         "Referer" to "https://lok-lok.cc/",
@@ -35,7 +35,7 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
-    // --- KATEGORI HOME PAGE ---
+    // --- KATEGORI ---
     override val mainPage: List<MainPageData> = mainPageOf(
         "2025" to "Terbaru 2025",
         "2024" to "Film 2024",
@@ -52,6 +52,7 @@ class Adimoviebox : MainAPI() {
         request: MainPageRequest,
     ): HomePageResponse {
         val query = request.data 
+        // Try-catch agar jika 1 kategori error, aplikasi tidak crash
         val searchResults = try {
             search(query)
         } catch (e: Exception) {
@@ -73,14 +74,10 @@ class Adimoviebox : MainAPI() {
             requestBody = postData.toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
         ).parsedSafe<Media>()
 
-        // LOGIKA BARU: Cek 'subjectList' dulu, kalau kosong baru cek 'items'
-        // Ini penting karena API sering menukar-nukar tempat penyimpanan datanya
+        // Cek subjectList dulu, baru items
         val listData = response?.data?.subjectList ?: response?.data?.items
 
-        return listData?.mapNotNull { 
-            // mapNotNull agar item yang error tidak bikin crash
-            it.toSearchResponse(this) 
-        } ?: emptyList()
+        return listData?.mapNotNull { it.toSearchResponse(this) } ?: emptyList()
     }
 
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
@@ -196,7 +193,7 @@ class Adimoviebox : MainAPI() {
     }
 }
 
-// --- DATA CLASSES (YANG DIPERBAIKI) ---
+// --- DATA CLASSES ---
 
 data class LoadData(val id: String? = null, val season: Int? = null, val episode: Int? = null, val detailPath: String? = null)
 
@@ -234,7 +231,7 @@ data class MediaDetail(@field:JsonProperty("data") val data: Data? = null) {
     }
 }
 
-// --- ITEMS YANG DIPERBAIKI: BISA BACA DATA BERSARANG ---
+// --- ITEM CLASS BARU (LEBIH PINTAR & LENGKAP) ---
 data class Items(
     @field:JsonProperty("subjectId") val subjectId: String? = null,
     @field:JsonProperty("subjectType") val subjectType: Int? = null,
@@ -246,27 +243,33 @@ data class Items(
     @field:JsonProperty("cover") val cover: Cover? = null,
     @field:JsonProperty("trailer") val trailer: Trailer? = null,
     @field:JsonProperty("detailPath") val detailPath: String? = null,
-    // TAMBAHAN: Untuk menangani kasus data bersarang di dalam 'subject'
-    @field:JsonProperty("subject") val subject: Items? = null
+    // FIELD TAMBAHAN UNTUK PARSING LANJUTAN
+    @field:JsonProperty("subject") val subject: Items? = null,
+    @field:JsonProperty("media") val media: PostMedia? = null
 ) {
     fun toSearchResponse(provider: Adimoviebox): SearchResponse? {
-        // LOGIKA PINTAR:
-        // Jika data 'title' ada di level atas, pakai 'this'.
-        // Jika tidak, dan ada objek 'subject', pakai data dari dalam 'subject'.
+        // 1. Tentukan sumber data yang benar (Root atau Subject)
+        // Kalau 'this' punya judul, pakai 'this'. Kalau tidak, coba cek 'subject'.
         val item = if (!title.isNullOrBlank()) this else subject
 
-        // Kalau setelah dicek item-nya masih null atau tidak punya judul, skip aja
+        // Kalau masih null atau judulnya kosong, berarti data sampah, skip aja.
         if (item == null || item.title.isNullOrBlank()) return null
 
         val url = "${provider.mainUrl}/detail/${item.subjectId}"
         
+        // 2. LOGIKA PENCARI GAMBAR (TRIPLE CHECK)
+        // Cek cover root -> Cek cover subject -> Cek media image
+        val posterImage = item.cover?.url 
+            ?: subject?.cover?.url 
+            ?: media?.image?.firstOrNull()?.url
+
         return provider.newMovieSearchResponse(
             item.title ?: "No Title",
             url,
             if (item.subjectType == 1) TvType.Movie else TvType.TvSeries,
             false
         ) {
-            this.posterUrl = item.cover?.url
+            this.posterUrl = posterImage // Akhirnya dapet gambar!
             this.score = Score.from10(item.imdbRatingValue)
             this.year = item.releaseDate?.substringBefore("-")?.toIntOrNull()
         }
@@ -277,3 +280,12 @@ data class Items(
         data class VideoAddress(@field:JsonProperty("url") val url: String? = null)
     }
 }
+
+// Helper Class untuk membaca struktur "media" yang sering muncul di search result
+data class PostMedia(
+    @field:JsonProperty("image") val image: ArrayList<PostImage>? = null
+)
+
+data class PostImage(
+    @field:JsonProperty("url") val url: String? = null
+)
