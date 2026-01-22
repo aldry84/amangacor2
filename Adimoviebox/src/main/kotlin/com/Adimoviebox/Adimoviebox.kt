@@ -6,6 +6,8 @@ import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.Qualities
+// Import penting yang diminta
+import com.lagradost.cloudstream3.utils.newExtractorLink
 
 class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
@@ -69,21 +71,18 @@ class Adimoviebox : MainAPI() {
                 val title = section.title ?: "Featured"
                 val items = mutableListOf<SearchResponse>()
                 
-                section.subjects?.forEach { item -> 
-                    mapItem(item)?.let { items.add(it) }
-                }
-                section.banner?.items?.forEach { item -> 
-                    mapItem(item)?.let { items.add(it) }
-                }
+                section.subjects?.forEach { items.add(it.toSearchResponse(this)) }
+                section.banner?.items?.forEach { items.add(it.toSearchResponse(this)) }
+                
+                // PERBAIKAN: Mapping manual dari CustomItem ke SubjectItem
                 section.customData?.items?.forEach { item -> 
-                    // FIX: Konversi CustomItem ke SubjectItem secara manual jika null
-                    val realItem = item.subject ?: SubjectItem(
+                    val subjectItem = item.subject ?: SubjectItem(
                         subjectId = item.subjectId,
                         title = item.title,
                         image = item.image,
                         cover = item.image
                     )
-                    mapItem(realItem)?.let { items.add(it) }
+                    items.add(subjectItem.toSearchResponse(this))
                 }
                 
                 if (items.isNotEmpty()) {
@@ -95,7 +94,7 @@ class Adimoviebox : MainAPI() {
             val filterUrl = "$apiUrl/wefeed-h5api-bff/home/movieFilter?tabId=${parts[0]}&filterType=${parts.getOrNull(1)}&pageNo=$page&pageSize=18"
             try {
                 val response = app.get(filterUrl, headers = getBaseHeaders()).parsedSafe<FilterResponse>()
-                val items = response?.data?.mapNotNull { mapItem(it) } ?: emptyList()
+                val items = response?.data?.map { it.toSearchResponse(this) } ?: emptyList()
                 if (items.isNotEmpty()) {
                     pages.add(HomePageList(request.name, items))
                 }
@@ -103,20 +102,6 @@ class Adimoviebox : MainAPI() {
         }
         
         return newHomePageResponse(pages, hasNext = !request.data.startsWith("http"))
-    }
-
-    private fun mapItem(item: SubjectItem): SearchResponse? {
-        val id = item.subjectId ?: return null
-        val title = item.title ?: return null
-        val type = if (item.subjectType == 1) TvType.Movie else TvType.TvSeries
-        val detailPath = item.detailPath ?: ""
-        
-        val url = "$mainUrl/detail?id=$id&path=$detailPath&type=${item.subjectType}"
-        val poster = item.cover?.url ?: item.image?.url
-        
-        return newMovieSearchResponse(title, url, type) {
-            this.posterUrl = poster
-        }
     }
 
     override suspend fun load(url: String): LoadResponse {
@@ -179,8 +164,6 @@ class Adimoviebox : MainAPI() {
         }
     }
 
-    // Gunakan suppress deprecation agar build tidak gagal saat pakai constructor lama
-    @Suppress("DEPRECATION")
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -194,12 +177,12 @@ class Adimoviebox : MainAPI() {
 
         response?.data?.streams?.forEach { stream ->
             val qualityInt = stream.resolutions?.toIntOrNull() ?: Qualities.Unknown.value
-            // Menggunakan constructor langsung (deprecated tapi disuppress) karena newExtractorLink tidak ditemukan
             callback.invoke(
-                ExtractorLink(
-                    source = this.name,
-                    name = "${this.name} ${stream.format} ${stream.resolutions}p",
-                    url = stream.url ?: return@forEach,
+                // Menggunakan newExtractorLink karena sudah diimport
+                newExtractorLink(
+                    this.name,
+                    "${this.name} ${stream.format} ${stream.resolutions}p",
+                    stream.url ?: return@forEach,
                     referer = "https://filmboom.top/",
                     quality = qualityInt,
                     isM3u8 = stream.url.contains(".m3u8")
@@ -270,6 +253,20 @@ class Adimoviebox : MainAPI() {
         @JsonProperty("imdbRatingValue") val imdbRatingValue: String? = null,
         @JsonProperty("subjectType") val subjectType: Int? = null,
         @JsonProperty("detailPath") val detailPath: String? = null
-    )
+    ) {
+        fun toSearchResponse(provider: Adimoviebox): SearchResponse {
+            val id = subjectId ?: "0"
+            val type = if (subjectType == 1) TvType.Movie else TvType.TvSeries
+            val path = detailPath ?: ""
+            // URL internal
+            val url = "${provider.mainUrl}/detail?id=$id&path=$path&type=$subjectType"
+            val posterImage = cover?.url ?: image?.url
+
+            return provider.newMovieSearchResponse(title ?: "", url, type) {
+                this.posterUrl = posterImage
+                // Gunakan properti standar
+            }
+        }
+    }
     data class CoverObj(@JsonProperty("url") val url: String? = null)
 }
