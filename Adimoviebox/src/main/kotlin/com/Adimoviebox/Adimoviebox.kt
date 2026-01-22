@@ -27,7 +27,6 @@ class Adimoviebox : MainAPI() {
     )
 
     // Header Global
-    // Ditambahkan x-client-info dan x-request-lang agar tidak dianggap bot/lokasi salah
     private val apiHeaders = mapOf(
         "authority" to "lok-lok.cc",
         "accept" to "application/json",
@@ -35,11 +34,11 @@ class Adimoviebox : MainAPI() {
         "referer" to "https://lok-lok.cc/",
         "x-source" to "app-search",
         "x-request-lang" to "en",
-        "x-client-info" to "{\"timezone\":\"Asia/Jakarta\"}", // Penting untuk Geo-lock
+        "x-client-info" to "{\"timezone\":\"Asia/Jakarta\"}",
         "user-agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36"
     )
 
-    // Header khusus Poster (Jaga-jaga jika CDN butuh UA)
+    // Header khusus Poster
     private val imageHeaders = mapOf(
         "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
         "Referer" to "https://lok-lok.cc/"
@@ -66,7 +65,6 @@ class Adimoviebox : MainAPI() {
         val id = request.data
         
         val responseData = if (id == "filter_pinoy_romance") {
-            // POST untuk Filter
             val postBody = mapOf(
                 "page" to page,
                 "perPage" to 24,
@@ -82,7 +80,6 @@ class Adimoviebox : MainAPI() {
             ).parsedSafe<Media>()?.data
             
         } else {
-            // GET untuk Ranking
             val targetUrl = "$apiUrl/wefeed-h5api-bff/ranking-list/content?id=$id&page=$page&perPage=12"
             app.get(targetUrl, headers = apiHeaders).parsedSafe<Media>()?.data
         }
@@ -148,7 +145,6 @@ class Adimoviebox : MainAPI() {
         ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
 
         val episodeList = detailData.resource?.seasons?.map { season ->
-            // Fix: Logic Episode Halo-Halo X (AllEp kosong, tapi MaxEp ada)
             val eps = if (!season.allEp.isNullOrEmpty()) {
                 season.allEp.split(",").map { it.toInt() }
             } else {
@@ -169,7 +165,7 @@ class Adimoviebox : MainAPI() {
                     this.name = if (tvType == TvType.Movie) title else "Episode $epNum"
                     this.description = season.resolutions?.joinToString(", ") { "${it.resolution}p" }
                     this.posterUrl = poster
-                    this.posterHeaders = imageHeaders // Fix Poster Detail
+                    // DELETE posterHeaders here because Episode class doesn't support it
                 }
             }
         }?.flatten() ?: emptyList()
@@ -177,7 +173,7 @@ class Adimoviebox : MainAPI() {
         return if (tvType == TvType.TvSeries) {
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodeList) {
                 this.posterUrl = poster
-                this.posterHeaders = imageHeaders
+                this.posterHeaders = imageHeaders // Valid here
                 this.year = year
                 this.plot = description
                 this.tags = tags
@@ -189,7 +185,7 @@ class Adimoviebox : MainAPI() {
         } else {
             newMovieLoadResponse(title, url, TvType.Movie, LoadData(realId, 0, 1, detailPath).toJson()) {
                 this.posterUrl = poster
-                this.posterHeaders = imageHeaders
+                this.posterHeaders = imageHeaders // Valid here
                 this.year = year
                 this.plot = description
                 this.tags = tags
@@ -345,7 +341,6 @@ data class Items(
             false
         ) {
             this.posterUrl = posterImage
-            // Fix: Header wajib agar poster muncul (User-Agent)
             this.posterHeaders = mapOf("User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36")
             this.score = Score.from10(imdbRatingValue)
             this.year = releaseDate?.substringBefore("-")?.toIntOrNull()
