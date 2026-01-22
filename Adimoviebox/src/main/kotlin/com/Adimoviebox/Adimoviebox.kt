@@ -76,8 +76,6 @@ class Adimoviebox : MainAPI() {
         val subject = document?.subject
         val title = subject?.title ?: ""
         val poster = subject?.cover?.url
-        
-        // FIX: Variable 'genre' sekarang sudah ada di data class Items
         val tags = subject?.genre?.split(",")?.map { it.trim() }
         
         val year = subject?.releaseDate?.substringBefore("-")?.toIntOrNull()
@@ -152,14 +150,16 @@ class Adimoviebox : MainAPI() {
             streams.reversed().distinctBy { it.url }.forEach { source ->
                 val url = source.url ?: return@forEach
                 
+                // PERBAIKAN DI SINI:
+                // Kita HAPUS "referer =" dan "quality =". Kita pakai urutan posisi saja.
+                // Urutannya: source, name, url, referer, quality
                 callback.invoke(
                     newExtractorLink(
                         this.name, 
                         "Aoneroom/LokLok ${source.resolutions ?: "HD"}", 
                         url, 
-                        // FIX: Menggunakan huruf kecil 'referer' agar dikenali Kotlin
-                        referer = fakeReferer, 
-                        quality = getQualityFromName(source.resolutions)
+                        fakeReferer, 
+                        getQualityFromName(source.resolutions)
                     )
                 )
             }
@@ -222,7 +222,6 @@ data class Items(
     @field:JsonProperty("description") val description: String? = null,
     @field:JsonProperty("releaseDate") val releaseDate: String? = null,
     @field:JsonProperty("imdbRatingValue") val imdbRatingValue: String? = null,
-    // FIX: Menambahkan field 'genre' yang tadi hilang menyebabkan error
     @field:JsonProperty("genre") val genre: String? = null,
     @field:JsonProperty("cover") val cover: Cover? = null,
     @field:JsonProperty("trailer") val trailer: Trailer? = null,
