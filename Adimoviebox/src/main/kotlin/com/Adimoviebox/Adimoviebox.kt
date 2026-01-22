@@ -40,35 +40,48 @@ class Adimoviebox : MainAPI() {
         "accept-language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7"
     )
 
-    // --- BAGIAN KATEGORI LENGKAP ---
+    // --- BAGIAN KATEGORI (DIUBAH KE KODE LAMA) ---
     override val mainPage: List<MainPageData> = mainPageOf(
-        "5283462032510044280" to "Indonesian Drama",
-        "6528093688173053896" to "Indonesian Movies",
-        "5848753831881965888" to "Indo Horror",
-        "997144265920760504" to "Hollywood Movies",
-        "4380734070238626200" to "K-Drama",
-        "8624142774394406504" to "C-Drama",
-        "3058742380078711608" to "Disney",
-        "8449223314756747760" to "Pinoy Drama",
-        "606779077307122552" to "Pinoy Movie",
-        "872031290915189720" to "Bad Ending Romance" 
+        "1,ForYou" to "Movie ForYou",
+        "1,Hottest" to "Movie Hottest",
+        "1,Latest" to "Movie Latest",
+        "1,Rating" to "Movie Rating",
+        "2,ForYou" to "TVShow ForYou",
+        "2,Hottest" to "TVShow Hottest",
+        "2,Latest" to "TVShow Latest",
+        "2,Rating" to "TVShow Rating",
+        "1006,ForYou" to "Animation ForYou",
+        "1006,Hottest" to "Animation Hottest",
+        "1006,Latest" to "Animation Latest",
+        "1006,Rating" to "Animation Rating",
     )
 
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse {
-        val id = request.data 
-        
-        // UPDATED: Path baru 'wefeed-h5api-bff'
-        val targetUrl = "$homeApiUrl/wefeed-h5api-bff/ranking-list/content?id=$id&page=$page&perPage=12"
+        // Logika disesuaikan kembali untuk menangani format "ID,Sort"
+        val params = request.data.split(",")
+        val channelId = params.first()
+        val sort = params.last()
 
-        val responseData = app.get(targetUrl, headers = commonHeaders).parsedSafe<Media>()?.data
-        val listFilm = responseData?.subjectList ?: responseData?.items
+        // Membuat body request JSON seperti di kode lama
+        val body = mapOf(
+            "channelId" to channelId,
+            "page" to page,
+            "perPage" to "12",
+            "sort" to sort
+        ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
 
-        val home = listFilm?.map {
+        // Menggunakan endpoint 'filter' (disesuaikan dengan path API baru: wefeed-h5api-bff)
+        // Kita menggunakan post request ke apiUrl (lok-lok.cc) dengan headers baru
+        val home = app.post(
+            "$apiUrl/wefeed-h5api-bff/filter", 
+            headers = commonHeaders, 
+            requestBody = body
+        ).parsedSafe<Media>()?.data?.items?.map {
             it.toSearchResponse(this)
-        } ?: throw ErrorLoadingException("Gagal memuat kategori. Data kosong.")
+        } ?: throw ErrorLoadingException("No Data Found")
 
         return newHomePageResponse(request.name, home)
     }
@@ -97,10 +110,6 @@ class Adimoviebox : MainAPI() {
         // UPDATED: Menggunakan API Detail baru
         // Kita coba fetch detail menggunakan subjectId atau detailPath jika tersedia
         val detailUrl = "$homeApiUrl/wefeed-h5api-bff/detail?detailPath=$id" // Coba pakai slug dulu
-        
-        // Logika fallback: Kadang ID di URL adalah numeric, kadang slug.
-        // API logs menunjukkan penggunaan parameter 'detailPath' tapi juga 'subjectId' di situasi lain.
-        // Kita coba request ke endpoint detail.
         
         val response = app.get(detailUrl, headers = commonHeaders).parsedSafe<MediaDetail>()
         
@@ -239,7 +248,7 @@ class Adimoviebox : MainAPI() {
     }
 }
 
-// --- DATA CLASSES (Tidak banyak berubah, hanya penyesuaian penggunaan) ---
+// --- DATA CLASSES ---
 
 data class LoadData(
     val id: String? = null,
@@ -313,9 +322,7 @@ data class Items(
     @JsonProperty("detailPath") val detailPath: String? = null,
 ) {
     fun toSearchResponse(provider: Adimoviebox): SearchResponse {
-        // Link detail sekarang menggunakan path
         val url = "${provider.mainUrl}/detail/${detailPath ?: subjectId}"
-        
         val posterImage = cover?.url
 
         return provider.newMovieSearchResponse(
