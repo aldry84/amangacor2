@@ -77,7 +77,6 @@ class Adimoviebox : MainAPI() {
         val title = subject?.title ?: ""
         val poster = subject?.cover?.url
         val tags = subject?.genre?.split(",")?.map { it.trim() }
-        
         val year = subject?.releaseDate?.substringBefore("-")?.toIntOrNull()
         val description = subject?.description
         val trailer = subject?.trailer?.videoAddress?.url
@@ -150,17 +149,18 @@ class Adimoviebox : MainAPI() {
             streams.reversed().distinctBy { it.url }.forEach { source ->
                 val url = source.url ?: return@forEach
                 
-                // PERBAIKAN DI SINI:
-                // Kita HAPUS "referer =" dan "quality =". Kita pakai urutan posisi saja.
-                // Urutannya: source, name, url, referer, quality
+                // --- PERBAIKAN FINAL DI SINI ---
+                // Menggunakan pola Lambda { } agar tidak error parameter mismatch
                 callback.invoke(
                     newExtractorLink(
                         this.name, 
                         "Aoneroom/LokLok ${source.resolutions ?: "HD"}", 
                         url, 
-                        fakeReferer, 
-                        getQualityFromName(source.resolutions)
-                    )
+                        Referer.INFER_TYPE // Posisi ke-4 adalah Tipe
+                    ) {
+                        this.referer = fakeReferer // Posisi header di dalam body
+                        this.quality = getQualityFromName(source.resolutions)
+                    }
                 )
             }
         }
