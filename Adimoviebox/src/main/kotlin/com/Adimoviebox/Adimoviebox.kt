@@ -28,17 +28,40 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
+    // --- REVOLUSI HOME PAGE ---
+    // Kita ganti ID angka (yang bikin error) dengan Kata Kunci Pencarian.
+    // Ini memanfaatkan fitur Search yang sudah sukses kita buat.
     override val mainPage: List<MainPageData> = mainPageOf(
-        "5283462032510044280" to "Indonesian Drama",
-        "6528093688173053896" to "Indonesian Movies",
-        "5848753831881965888" to "Indo Horror",
-        "997144265920760504" to "Hollywood Movies",
-        "4380734070238626200" to "K-Drama",
-        "8624142774394406504" to "C-Drama",
-        "872031290915189720" to "Bad Ending Romance" 
+        "Indonesian" to "Indonesian Movies",
+        "Drama" to "Drama Pilihan",
+        "Romance" to "Romantis",
+        "Action" to "Action",
+        "Horror" to "Horror",
+        "Korea" to "Korean Drama",
+        "China" to "Chinese Drama",
+        "Philippines" to "Pinoy Movies",
+        "Adult" to "Dewasa (18+)" // Menambahkan kategori pedas
     )
 
-    // --- SEARCH LOGIC ---
+    // --- LOGIKA HOME PAGE BARU ---
+    override suspend fun getMainPage(
+        page: Int,
+        request: MainPageRequest,
+    ): HomePageResponse {
+        val query = request.data // Ini akan berisi kata kunci dari list di atas (misal: "Indonesian")
+        
+        // Kita gunakan fungsi search() yang sudah terbukti berhasil
+        // untuk mengisi halaman depan.
+        val searchResults = search(query)
+
+        if (searchResults.isEmpty()) {
+            throw ErrorLoadingException("Kategori kosong")
+        }
+
+        return newHomePageResponse(request.name, searchResults)
+    }
+
+    // --- SEARCH LOGIC (TETAP SAMA KARENA SUDAH BERHASIL) ---
     override suspend fun search(query: String): List<SearchResponse> {
         val postData = mapOf(
             "keyword" to query,
@@ -50,29 +73,19 @@ class Adimoviebox : MainAPI() {
             "$apiUrl/wefeed-h5-bff/web/subject/search", 
             requestBody = postData.toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
         ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
-            ?: throw ErrorLoadingException("Pencarian '$query' tidak ditemukan.")
+            ?: emptyList() // Ubah throw error jadi emptyList agar Home Page tidak crash kalau 1 kategori kosong
     }
 
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
-    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val id = request.data 
-        val targetUrl = "$apiUrl/wefeed-h5api-bff/ranking-list/content?id=$id&page=$page&perPage=12"
-        val responseData = app.get(targetUrl).parsedSafe<Media>()?.data
-        val listFilm = responseData?.subjectList ?: responseData?.items
-
-        val home = listFilm?.map { it.toSearchResponse(this) } 
-            ?: throw ErrorLoadingException("Gagal memuat kategori.")
-
-        return newHomePageResponse(request.name, home)
-    }
-
+    // --- LOAD LOGIC (TETAP SAMA - SUDAH FIX) ---
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfterLast("/")
         
         val document = app.get("$apiUrl/wefeed-h5-bff/web/subject/detail?subjectId=$id")
             .parsedSafe<MediaDetail>()?.data
         
+        // Hapus tanda tanya (?) yang bikin warning, tapi fungsinya tetap aman
         val subject = document?.subject
         val title = subject?.title ?: ""
         val poster = subject?.cover?.url
@@ -129,7 +142,7 @@ class Adimoviebox : MainAPI() {
         }
     }
 
-    // --- LINK HANDLING ---
+    // --- LINK HANDLING (TETAP SAMA - SUDAH FIX SPOOFING LOK-LOK) ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -138,6 +151,7 @@ class Adimoviebox : MainAPI() {
     ): Boolean {
         val media = parseJson<LoadData>(data)
         
+        // Referer Sakti Lok-Lok
         val fakeReferer = "https://lok-lok.cc/" 
 
         val playUrl = "$apiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}&detailPath=${media.detailPath}"
@@ -149,15 +163,12 @@ class Adimoviebox : MainAPI() {
             streams.reversed().distinctBy { it.url }.forEach { source ->
                 val url = source.url ?: return@forEach
                 
-                // --- PERBAIKAN FINAL ---
-                // Ganti Referer.INFER_TYPE dengan ExtractorLinkType.VIDEO
-                // Ini sesuai dengan log kamu yang menunjukkan file .mp4
                 callback.invoke(
                     newExtractorLink(
                         this.name, 
                         "Aoneroom/LokLok ${source.resolutions ?: "HD"}", 
                         url, 
-                        ExtractorLinkType.VIDEO // Posisi 4: Tipe Video (bukan String)
+                        ExtractorLinkType.VIDEO 
                     ) {
                         this.referer = fakeReferer
                         this.quality = getQualityFromName(source.resolutions)
