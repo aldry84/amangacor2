@@ -149,16 +149,17 @@ class Adimoviebox : MainAPI() {
             streams.reversed().distinctBy { it.url }.forEach { source ->
                 val url = source.url ?: return@forEach
                 
-                // --- PERBAIKAN FINAL DI SINI ---
-                // Menggunakan pola Lambda { } agar tidak error parameter mismatch
+                // --- PERBAIKAN FINAL ---
+                // Ganti Referer.INFER_TYPE dengan ExtractorLinkType.VIDEO
+                // Ini sesuai dengan log kamu yang menunjukkan file .mp4
                 callback.invoke(
                     newExtractorLink(
                         this.name, 
                         "Aoneroom/LokLok ${source.resolutions ?: "HD"}", 
                         url, 
-                        Referer.INFER_TYPE // Posisi ke-4 adalah Tipe
+                        ExtractorLinkType.VIDEO // Posisi 4: Tipe Video (bukan String)
                     ) {
-                        this.referer = fakeReferer // Posisi header di dalam body
+                        this.referer = fakeReferer
                         this.quality = getQualityFromName(source.resolutions)
                     }
                 )
