@@ -96,7 +96,10 @@ class Adimoviebox : MainAPI() {
         val tvType = if (subject?.subjectType == 2) TvType.TvSeries else TvType.Movie
         val description = subject?.description
         val trailer = subject?.trailer?.videoAddress?.url
-        val score = Score.from10(subject?.imdbRatingValue?.toString()) 
+        
+        // PERBAIKAN: Menghapus .toString() yang redundan karena imdbRatingValue sudah String?
+        val score = Score.from10(subject?.imdbRatingValue) 
+        
         val actors = document?.stars?.mapNotNull { cast ->
             ActorData(
                 Actor(
@@ -219,69 +222,70 @@ data class LoadData(
     val detailPath: String? = null,
 )
 
+// PERBAIKAN: Menambahkan @field: pada semua anotasi @JsonProperty untuk menghindari warning
 data class Media(
-    @JsonProperty("data") val data: Data? = null,
+    @field:JsonProperty("data") val data: Data? = null,
 ) {
     data class Data(
-        @JsonProperty("subjectList") val subjectList: ArrayList<Items>? = arrayListOf(),
-        @JsonProperty("items") val items: ArrayList<Items>? = arrayListOf(),
-        @JsonProperty("streams") val streams: ArrayList<Streams>? = arrayListOf(),
-        @JsonProperty("captions") val captions: ArrayList<Captions>? = arrayListOf(),
+        @field:JsonProperty("subjectList") val subjectList: ArrayList<Items>? = arrayListOf(),
+        @field:JsonProperty("items") val items: ArrayList<Items>? = arrayListOf(),
+        @field:JsonProperty("streams") val streams: ArrayList<Streams>? = arrayListOf(),
+        @field:JsonProperty("captions") val captions: ArrayList<Captions>? = arrayListOf(),
     ) {
         data class Streams(
-            @JsonProperty("id") val id: String? = null,
-            @JsonProperty("format") val format: String? = null,
-            @JsonProperty("url") val url: String? = null,
-            @JsonProperty("resolutions") val resolutions: String? = null,
+            @field:JsonProperty("id") val id: String? = null,
+            @field:JsonProperty("format") val format: String? = null,
+            @field:JsonProperty("url") val url: String? = null,
+            @field:JsonProperty("resolutions") val resolutions: String? = null,
         )
 
         data class Captions(
-            @JsonProperty("lan") val lan: String? = null,
-            @JsonProperty("lanName") val lanName: String? = null,
-            @JsonProperty("url") val url: String? = null,
+            @field:JsonProperty("lan") val lan: String? = null,
+            @field:JsonProperty("lanName") val lanName: String? = null,
+            @field:JsonProperty("url") val url: String? = null,
         )
     }
 }
 
 data class MediaDetail(
-    @JsonProperty("data") val data: Data? = null,
+    @field:JsonProperty("data") val data: Data? = null,
 ) {
     data class Data(
-        @JsonProperty("subject") val subject: Items? = null,
-        @JsonProperty("stars") val stars: ArrayList<Stars>? = arrayListOf(),
-        @JsonProperty("resource") val resource: Resource? = null,
+        @field:JsonProperty("subject") val subject: Items? = null,
+        @field:JsonProperty("stars") val stars: ArrayList<Stars>? = arrayListOf(),
+        @field:JsonProperty("resource") val resource: Resource? = null,
     ) {
         data class Stars(
-            @JsonProperty("name") val name: String? = null,
-            @JsonProperty("character") val character: String? = null,
-            @JsonProperty("avatarUrl") val avatarUrl: String? = null,
+            @field:JsonProperty("name") val name: String? = null,
+            @field:JsonProperty("character") val character: String? = null,
+            @field:JsonProperty("avatarUrl") val avatarUrl: String? = null,
         )
 
         data class Resource(
-            @JsonProperty("seasons") val seasons: ArrayList<Seasons>? = arrayListOf(),
+            @field:JsonProperty("seasons") val seasons: ArrayList<Seasons>? = arrayListOf(),
         ) {
             data class Seasons(
-                @JsonProperty("se") val se: Int? = null,
-                @JsonProperty("maxEp") val maxEp: Int? = null,
-                @JsonProperty("allEp") val allEp: String? = null,
+                @field:JsonProperty("se") val se: Int? = null,
+                @field:JsonProperty("maxEp") val maxEp: Int? = null,
+                @field:JsonProperty("allEp") val allEp: String? = null,
             )
         }
     }
 }
 
 data class Items(
-    @JsonProperty("subjectId") val subjectId: String? = null,
-    @JsonProperty("subjectType") val subjectType: Int? = null,
-    @JsonProperty("title") val title: String? = null,
-    @JsonProperty("description") val description: String? = null,
-    @JsonProperty("releaseDate") val releaseDate: String? = null,
-    @JsonProperty("duration") val duration: Long? = null,
-    @JsonProperty("genre") val genre: String? = null,
-    @JsonProperty("cover") val cover: Cover? = null,
-    @JsonProperty("imdbRatingValue") val imdbRatingValue: String? = null,
-    @JsonProperty("countryName") val countryName: String? = null,
-    @JsonProperty("trailer") val trailer: Trailer? = null,
-    @JsonProperty("detailPath") val detailPath: String? = null,
+    @field:JsonProperty("subjectId") val subjectId: String? = null,
+    @field:JsonProperty("subjectType") val subjectType: Int? = null,
+    @field:JsonProperty("title") val title: String? = null,
+    @field:JsonProperty("description") val description: String? = null,
+    @field:JsonProperty("releaseDate") val releaseDate: String? = null,
+    @field:JsonProperty("duration") val duration: Long? = null,
+    @field:JsonProperty("genre") val genre: String? = null,
+    @field:JsonProperty("cover") val cover: Cover? = null,
+    @field:JsonProperty("imdbRatingValue") val imdbRatingValue: String? = null,
+    @field:JsonProperty("countryName") val countryName: String? = null,
+    @field:JsonProperty("trailer") val trailer: Trailer? = null,
+    @field:JsonProperty("detailPath") val detailPath: String? = null,
 ) {
     fun toSearchResponse(provider: Adimoviebox): SearchResponse {
         val url = "${provider.mainUrl}/detail/${subjectId}"
@@ -295,20 +299,20 @@ data class Items(
             false
         ) {
             this.posterUrl = posterImage
-            this.score = Score.from10(imdbRatingValue?.toString())
+            this.score = Score.from10(imdbRatingValue) // .toString() dihapus di sini juga karena sudah String?
             this.year = releaseDate?.substringBefore("-")?.toIntOrNull()
         }
     }
 
     data class Cover(
-        @JsonProperty("url") val url: String? = null,
+        @field:JsonProperty("url") val url: String? = null,
     )
 
     data class Trailer(
-        @JsonProperty("videoAddress") val videoAddress: VideoAddress? = null,
+        @field:JsonProperty("videoAddress") val videoAddress: VideoAddress? = null,
     ) {
         data class VideoAddress(
-            @JsonProperty("url") val url: String? = null,
+            @field:JsonProperty("url") val url: String? = null,
         )
     }
 }
