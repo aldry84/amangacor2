@@ -13,7 +13,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph" 
     
-    // API UTAMA (Aoneroom) - Jantung aplikasi
+    // API UTAMA (Aoneroom)
     private val apiUrl = "https://api.aoneroom.com" 
 
     override val instantLinkLoading = true
@@ -40,7 +40,6 @@ class Adimoviebox : MainAPI() {
 
     // --- SEARCH LOGIC ---
     override suspend fun search(query: String): List<SearchResponse> {
-        // HAPUS subjectType: Membiarkan API mencari ke semua kategori (termasuk konten dewasa/lok-lok)
         val postData = mapOf(
             "keyword" to query,
             "page" to 1,
@@ -77,7 +76,10 @@ class Adimoviebox : MainAPI() {
         val subject = document?.subject
         val title = subject?.title ?: ""
         val poster = subject?.cover?.url
+        
+        // FIX: Variable 'genre' sekarang sudah ada di data class Items
         val tags = subject?.genre?.split(",")?.map { it.trim() }
+        
         val year = subject?.releaseDate?.substringBefore("-")?.toIntOrNull()
         val description = subject?.description
         val trailer = subject?.trailer?.videoAddress?.url
@@ -88,7 +90,6 @@ class Adimoviebox : MainAPI() {
 
         val isSeries = subject?.subjectType == 2 
         
-        // PENTING: Kita kirim detailPath ke LoadData agar bisa dipakai di loadLinks nanti
         val commonLoadData = LoadData(id, detailPath = subject?.detailPath)
 
         if (isSeries) {
@@ -101,7 +102,6 @@ class Adimoviebox : MainAPI() {
                 
                 epList.map { epNum ->
                     newEpisode(
-                        // Masukkan detailPath ke setiap episode
                         commonLoadData.copy(season = season.se, episode = epNum).toJson()
                     ) {
                         this.season = season.se
@@ -132,7 +132,7 @@ class Adimoviebox : MainAPI() {
         }
     }
 
-    // --- LINK HANDLING (DIPERBAIKI BERDASARKAN LOG KIWI BROWSER) ---
+    // --- LINK HANDLING ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -141,12 +141,8 @@ class Adimoviebox : MainAPI() {
     ): Boolean {
         val media = parseJson<LoadData>(data)
         
-        // TRIK JITU: Menggunakan Referer Lok-Lok agar server mau memberi link
-        // Ini meniru kelakuan browser di screenshot 1000115539.jpg
         val fakeReferer = "https://lok-lok.cc/" 
 
-        // Membentuk URL Play persis seperti di Log Network:
-        // play?subjectId=...&se=...&ep=...&detailPath=...
         val playUrl = "$apiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}&detailPath=${media.detailPath}"
         
         val response = app.get(playUrl, referer = fakeReferer).parsedSafe<Media>()
@@ -161,14 +157,14 @@ class Adimoviebox : MainAPI() {
                         this.name, 
                         "Aoneroom/LokLok ${source.resolutions ?: "HD"}", 
                         url, 
-                        Referer = fakeReferer, 
+                        // FIX: Menggunakan huruf kecil 'referer' agar dikenali Kotlin
+                        referer = fakeReferer, 
                         quality = getQualityFromName(source.resolutions)
                     )
                 )
             }
         }
 
-        // Subtitle juga butuh detailPath kadang-kadang
         val id = streams?.firstOrNull()?.id
         val format = streams?.firstOrNull()?.format
         if (id != null && format != null) {
@@ -226,6 +222,8 @@ data class Items(
     @field:JsonProperty("description") val description: String? = null,
     @field:JsonProperty("releaseDate") val releaseDate: String? = null,
     @field:JsonProperty("imdbRatingValue") val imdbRatingValue: String? = null,
+    // FIX: Menambahkan field 'genre' yang tadi hilang menyebabkan error
+    @field:JsonProperty("genre") val genre: String? = null,
     @field:JsonProperty("cover") val cover: Cover? = null,
     @field:JsonProperty("trailer") val trailer: Trailer? = null,
     @field:JsonProperty("detailPath") val detailPath: String? = null,
