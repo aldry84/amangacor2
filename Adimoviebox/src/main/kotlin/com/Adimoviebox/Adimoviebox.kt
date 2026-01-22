@@ -38,68 +38,39 @@ class Adimoviebox : MainAPI() {
         "accept-language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7"
     )
 
-    // Kategori Lama
+    // PERBAIKAN DI SINI:
+    // Kita menggunakan ID Kategori UNIK dari server baru.
+    // Ini menjamin setiap baris isinya berbeda (Hollywood, Indo, Korea, Anime, dll).
     override val mainPage: List<MainPageData> = mainPageOf(
-        "1,ForYou" to "Movie ForYou",
-        "1,Hottest" to "Movie Hottest",
-        "1,Latest" to "Movie Latest",
-        "1,Rating" to "Movie Rating",
-        "2,ForYou" to "TVShow ForYou",
-        "2,Hottest" to "TVShow Hottest",
-        "2,Latest" to "TVShow Latest",
-        "2,Rating" to "TVShow Rating",
-        "1006,ForYou" to "Animation ForYou",
-        "1006,Hottest" to "Animation Hottest",
-        "1006,Latest" to "Animation Latest",
-        "1006,Rating" to "Animation Rating",
+        "997144265920760504" to "Hollywood Movies",
+        "6528093688173053896" to "Indonesian Movies",
+        "5848753831881965888" to "Horror Movies",
+        "4380734070238626200" to "K-Drama Trending",
+        "8624142774394406504" to "C-Drama (China)",
+        "3058742380078711608" to "Anime & Disney",
+        "5283462032510044280" to "Indonesian Series",
+        "8449223314756747760" to "Pinoy Drama"
     )
 
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse {
-        val params = request.data.split(",")
-        val channelId = params.first()
-        val sort = params.last()
+        val id = request.data
+        
+        // PERBAIKAN LOGIKA:
+        // Langsung tembak ke endpoint 'ranking-list' yang pasti valid.
+        // Tidak perlu logic 'filter' lama yang bikin konten kembar.
+        val targetUrl = "$homeApiUrl/wefeed-h5api-bff/ranking-list/content?id=$id&page=$page&perPage=12"
 
-        val body = mapOf(
-            "channelId" to channelId,
-            "page" to page,
-            "perPage" to "12",
-            "sort" to sort
-        ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
+        val responseData = app.get(targetUrl, headers = commonHeaders).parsedSafe<Media>()?.data
+        
+        // Data bisa ada di subjectList (biasanya) atau items
+        val listFilm = responseData?.subjectList ?: responseData?.items
 
-        // PERBAIKAN: Menggunakan homeApiUrl (aoneroom) bukan apiUrl (lok-lok)
-        // Jika endpoint 'filter' gagal, kita akan mencoba endpoint 'ranking-list' sebagai fallback
-        var items = try {
-            app.post(
-                "$homeApiUrl/wefeed-h5api-bff/filter", 
-                headers = commonHeaders, 
-                requestBody = body
-            ).parsedSafe<Media>()?.data?.items
-        } catch (e: Exception) {
-            null
-        }
-
-        // FALLBACK: Jika filter lama tidak jalan di API baru, gunakan ranking default
-        if (items.isNullOrEmpty()) {
-             // Mapping kasar ID kategori lama ke ID Ranking baru supaya tidak blank
-             val fallbackId = when(channelId) {
-                 "1" -> "997144265920760504" // Hollywood Movies
-                 "2" -> "4380734070238626200" // K-Drama (sebagai contoh TV)
-                 "1006" -> "3058742380078711608" // Disney/Anime
-                 else -> "6528093688173053896" // Indo Movies
-             }
-             
-             items = app.get(
-                 "$homeApiUrl/wefeed-h5api-bff/ranking-list/content?id=$fallbackId&page=$page&perPage=12",
-                 headers = commonHeaders
-             ).parsedSafe<Media>()?.data?.subjectList
-        }
-
-        val home = items?.map {
+        val home = listFilm?.map {
             it.toSearchResponse(this)
-        } ?: throw ErrorLoadingException("No Data Found")
+        } ?: throw ErrorLoadingException("Gagal memuat kategori.")
 
         return newHomePageResponse(request.name, home)
     }
@@ -107,14 +78,13 @@ class Adimoviebox : MainAPI() {
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
     override suspend fun search(query: String): List<SearchResponse> {
-        // PERBAIKAN: Menggunakan homeApiUrl untuk search juga agar konsisten
         return app.post(
             "$homeApiUrl/wefeed-h5api-bff/subject/search", 
             headers = commonHeaders,
             requestBody = mapOf(
                 "keyword" to query,
                 "page" to "1",
-                "perPage" to "12", // Ubah 0 jadi 12 agar tidak berat
+                "perPage" to "12",
                 "subjectType" to "0",
             ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
         ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
@@ -125,10 +95,11 @@ class Adimoviebox : MainAPI() {
         val id = url.substringAfterLast("?id=")
             .ifEmpty { url.substringAfterLast("/") } 
         
+        // Mencoba detailPath dulu (slug)
         val detailUrl = "$homeApiUrl/wefeed-h5api-bff/detail?detailPath=$id" 
-        
         val response = app.get(detailUrl, headers = commonHeaders).parsedSafe<MediaDetail>()
         
+        // Fallback ke subjectId jika slug gagal
         val document = response?.data ?: app.get("$homeApiUrl/wefeed-h5api-bff/subject/detail?subjectId=$id", headers = commonHeaders)
             .parsedSafe<MediaDetail>()?.data
             ?: throw ErrorLoadingException("Gagal memuat detail konten.")
@@ -217,11 +188,9 @@ class Adimoviebox : MainAPI() {
     ): Boolean {
 
         val media = parseJson<LoadData>(data)
-        // Referer tetap ke lok-lok untuk playback
         val referer = "$mainUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&lang=en"
         val specificHeaders = commonHeaders + ("referer" to referer)
 
-        // Request Playback tetap ke apiUrl (lok-lok)
         val streams = app.get(
             "$apiUrl/wefeed-h5api-bff/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}&detailPath=${media.detailPath}",
             headers = specificHeaders
