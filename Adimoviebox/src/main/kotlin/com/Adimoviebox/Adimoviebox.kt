@@ -119,7 +119,7 @@ class Adimoviebox : MainAPI() {
         val description = subject?.description
         val trailer = subject?.trailer?.videoAddress?.url
         
-        // PERBAIKAN: Menghapus .toString() yang redundant karena imdbRatingValue sudah String?
+        // FIX: Menghapus .toString() yang redundant
         val score = Score.from10(subject?.imdbRatingValue) 
         
         val realId = subject?.subjectId ?: id
@@ -328,7 +328,8 @@ data class Items(
             false
         ) {
             this.posterUrl = posterImage
-            this.score = Score.from10(imdbRatingValue?.toString())
+            // FIX TERAKHIR: Menghapus .toString() karena imdbRatingValue sudah String?
+            this.score = Score.from10(imdbRatingValue)
             this.year = releaseDate?.substringBefore("-")?.toIntOrNull()
         }
     }
