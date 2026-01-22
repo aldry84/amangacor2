@@ -11,16 +11,17 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 
 class Adimoviebox : MainAPI() {
+    // UPDATED: Main URL baru sesuai log
     override var mainUrl = "https://lok-lok.cc"
     
-    // API untuk streaming
+    // UPDATED: API untuk Playback (lok-lok.cc)
     private val apiUrl = "https://lok-lok.cc" 
     
-    // API untuk Metadata (Home, Detail, Search)
+    // UPDATED: API untuk Detail dan Home (aoneroom)
     private val homeApiUrl = "https://h5-api.aoneroom.com"
 
     override val instantLinkLoading = true
-    override var name = "Adimoviebox"
+    override var name = "Adimoviebox K-Drama" // Ubah nama agar sesuai isi
     override val hasMainPage = true
     override val hasQuickSearch = true
     override var lang = "id"
@@ -31,6 +32,7 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
+    // Header khusus agar request diterima server
     private val commonHeaders = mapOf(
         "origin" to mainUrl,
         "referer" to "$mainUrl/",
@@ -38,39 +40,34 @@ class Adimoviebox : MainAPI() {
         "accept-language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7"
     )
 
-    // PERBAIKAN DI SINI:
-    // Kita menggunakan ID Kategori UNIK dari server baru.
-    // Ini menjamin setiap baris isinya berbeda (Hollywood, Indo, Korea, Anime, dll).
+    // --- BAGIAN KATEGORI KHUSUS 7 K-DRAMA ---
+    // ID "4380734070238626200" diambil dari kodemu yang lama untuk K-Drama.
+    // Jika ingin konten berbeda per folder, kamu harus mencari ID ranking list spesifik lainnya.
     override val mainPage: List<MainPageData> = mainPageOf(
-        "997144265920760504" to "Hollywood Movies",
-        "6528093688173053896" to "Indonesian Movies",
-        "5848753831881965888" to "Horror Movies",
-        "4380734070238626200" to "K-Drama Trending",
-        "8624142774394406504" to "C-Drama (China)",
-        "3058742380078711608" to "Anime & Disney",
-        "5283462032510044280" to "Indonesian Series",
-        "8449223314756747760" to "Pinoy Drama"
+        "4380734070238626200" to "K-Drama Popular",
+        "4380734070238626200" to "K-Drama Romance",
+        "4380734070238626200" to "K-Drama Action & Thriller",
+        "4380734070238626200" to "K-Drama Saeguk (History)",
+        "4380734070238626200" to "K-Drama Comedy",
+        "4380734070238626200" to "K-Drama School",
+        "4380734070238626200" to "K-Drama Fantasy"
     )
 
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse {
-        val id = request.data
+        val id = request.data 
         
-        // PERBAIKAN LOGIKA:
-        // Langsung tembak ke endpoint 'ranking-list' yang pasti valid.
-        // Tidak perlu logic 'filter' lama yang bikin konten kembar.
+        // UPDATED: Path baru 'wefeed-h5api-bff'
         val targetUrl = "$homeApiUrl/wefeed-h5api-bff/ranking-list/content?id=$id&page=$page&perPage=12"
 
         val responseData = app.get(targetUrl, headers = commonHeaders).parsedSafe<Media>()?.data
-        
-        // Data bisa ada di subjectList (biasanya) atau items
         val listFilm = responseData?.subjectList ?: responseData?.items
 
         val home = listFilm?.map {
             it.toSearchResponse(this)
-        } ?: throw ErrorLoadingException("Gagal memuat kategori.")
+        } ?: throw ErrorLoadingException("Gagal memuat kategori. Data kosong.")
 
         return newHomePageResponse(request.name, home)
     }
@@ -78,13 +75,14 @@ class Adimoviebox : MainAPI() {
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
     override suspend fun search(query: String): List<SearchResponse> {
+        // UPDATED: Path baru 'wefeed-h5api-bff' dan menghapus '/web'
         return app.post(
-            "$homeApiUrl/wefeed-h5api-bff/subject/search", 
+            "$apiUrl/wefeed-h5api-bff/subject/search", 
             headers = commonHeaders,
             requestBody = mapOf(
                 "keyword" to query,
                 "page" to "1",
-                "perPage" to "12",
+                "perPage" to "0",
                 "subjectType" to "0",
             ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
         ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
@@ -92,15 +90,15 @@ class Adimoviebox : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val id = url.substringAfterLast("?id=")
-            .ifEmpty { url.substringAfterLast("/") } 
+        val id = url.substringAfterLast("?id=") // Mengambil ID jika format URL berubah
+            .ifEmpty { url.substringAfterLast("/") } // Fallback ke cara lama
         
-        // Mencoba detailPath dulu (slug)
+        // UPDATED: Menggunakan API Detail baru
         val detailUrl = "$homeApiUrl/wefeed-h5api-bff/detail?detailPath=$id" 
+        
         val response = app.get(detailUrl, headers = commonHeaders).parsedSafe<MediaDetail>()
         
-        // Fallback ke subjectId jika slug gagal
-        val document = response?.data ?: app.get("$homeApiUrl/wefeed-h5api-bff/subject/detail?subjectId=$id", headers = commonHeaders)
+        val document = response?.data ?: app.get("$apiUrl/wefeed-h5api-bff/subject/detail?subjectId=$id", headers = commonHeaders)
             .parsedSafe<MediaDetail>()?.data
             ?: throw ErrorLoadingException("Gagal memuat detail konten.")
         
@@ -128,7 +126,7 @@ class Adimoviebox : MainAPI() {
         }?.distinctBy { it.actor }
 
         val recommendations =
-            app.get("$homeApiUrl/wefeed-h5api-bff/subject/detail-rec?subjectId=$realId&page=1&perPage=12", headers = commonHeaders)
+            app.get("$apiUrl/wefeed-h5api-bff/subject/detail-rec?subjectId=$realId&page=1&perPage=12", headers = commonHeaders)
                 .parsedSafe<Media>()?.data?.items?.map {
                     it.toSearchResponse(this)
                 }
@@ -231,7 +229,7 @@ class Adimoviebox : MainAPI() {
     }
 }
 
-// --- DATA CLASSES ---
+// --- DATA CLASSES (Sama seperti sebelumnya) ---
 
 data class LoadData(
     val id: String? = null,
