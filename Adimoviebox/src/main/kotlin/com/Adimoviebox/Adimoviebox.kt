@@ -11,7 +11,10 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 
 class Adimoviebox : MainAPI() {
+    // Domain utama untuk Player/Stream
     override var mainUrl = "https://lok-lok.cc"
+    
+    // API Server untuk Data (Home, Search, Detail) - Sesuai Network Log
     private val apiUrl = "https://h5-api.aoneroom.com"
 
     override val instantLinkLoading = true
@@ -27,11 +30,19 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
+    // Header lengkap untuk menghindari Timeout/Blokir
     private val baseHeaders = mapOf(
         "origin" to mainUrl,
+        "referer" to "$mainUrl/",
         "x-client-info" to """{"timezone":"Asia/Jakarta"}""",
         "user-agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
-        "accept-language" to "en-US,en;q=0.9"
+        "accept-language" to "en-US,en;q=0.9",
+        "sec-ch-ua" to "\"Chromium\";v=\"137\", \"Not/A)Brand\";v=\"24\"",
+        "sec-ch-ua-mobile" to "?1",
+        "sec-ch-ua-platform" to "\"Android\"",
+        "sec-fetch-dest" to "empty",
+        "sec-fetch-mode" to "cors",
+        "sec-fetch-site" to "cross-site"
     )
 
     override val mainPage: List<MainPageData> = mainPageOf(
@@ -61,8 +72,9 @@ class Adimoviebox : MainAPI() {
             "sort" to params.last()
         ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
 
+        // FIX: Menggunakan apiUrl (h5-api.aoneroom.com) bukan mainUrl untuk menghindari Timeout
         val home = app.post(
-            "$mainUrl/wefeed-h5api-bff/web/filter", 
+            "$apiUrl/wefeed-h5api-bff/web/filter", 
             requestBody = body, 
             headers = baseHeaders
         ).parsedSafe<Media>()?.data?.items?.map {
@@ -75,8 +87,9 @@ class Adimoviebox : MainAPI() {
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
     override suspend fun search(query: String): List<SearchResponse> {
+        // FIX: Menggunakan apiUrl (h5-api.aoneroom.com)
         return app.post(
-            "$mainUrl/wefeed-h5api-bff/web/subject/search",
+            "$apiUrl/wefeed-h5api-bff/web/subject/search",
             headers = baseHeaders,
             requestBody = mapOf(
                 "keyword" to query,
@@ -91,19 +104,15 @@ class Adimoviebox : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val detailPath = url.substringAfterLast("/")
         
-        // Mengambil data document, jika null langsung error (Cleaning Warning)
+        // FIX: Menggunakan apiUrl (h5-api.aoneroom.com)
         val document = app.get(
             "$apiUrl/wefeed-h5api-bff/detail?detailPath=$detailPath",
             headers = baseHeaders
         ).parsedSafe<MediaDetail>()?.data ?: throw ErrorLoadingException("Failed to load details")
 
-        // Mengambil subject, jika null langsung error (Cleaning Warning)
         val subject = document.subject ?: throw ErrorLoadingException("No Subject ID found")
-        
         val id = subject.subjectId ?: throw ErrorLoadingException("No ID")
         
-        // Karena subject & document sudah dipastikan tidak null di atas,
-        // kita ganti "?." menjadi "." untuk menghindari warning "Unnecessary safe call"
         val title = subject.title ?: ""
         val poster = subject.cover?.url
         val tags = subject.genre?.split(",")?.map { it.trim() }
@@ -111,8 +120,6 @@ class Adimoviebox : MainAPI() {
         val tvType = if (subject.subjectType == 2) TvType.TvSeries else TvType.Movie
         val description = subject.description
         val trailer = subject.trailer?.videoAddress?.url
-        
-        // Hapus .toString() karena imdbRatingValue sudah String (Cleaning Warning)
         val score = Score.from10(subject.imdbRatingValue)
         
         val actors = document.stars?.mapNotNull { cast ->
@@ -122,6 +129,7 @@ class Adimoviebox : MainAPI() {
             )
         }?.distinctBy { it.actor }
 
+        // FIX: Menggunakan apiUrl (h5-api.aoneroom.com)
         val recommendations = app.get(
             "$apiUrl/wefeed-h5api-bff/detail-rec?detailPath=$detailPath&page=1&perPage=12",
             headers = baseHeaders
@@ -184,13 +192,18 @@ class Adimoviebox : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val media = parseJson<LoadData>(data)
+        
+        // Referer tetap ke mainUrl (lok-lok.cc) karena ini untuk Player
         val referer = "$mainUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&utm_source=app-search"
 
         val playHeaders = baseHeaders.toMutableMap().apply {
             put("referer", referer)
             put("x-source", "app-search")
+            // Penting: Hapus sec-fetch-site cross-site jika ada, ganti ke same-origin karena request ke lok-lok
+            put("sec-fetch-site", "same-origin")
         }
 
+        // Endpoint Play tetap di mainUrl (lok-lok.cc) sesuai log
         val streams = app.get(
             "$mainUrl/wefeed-h5api-bff/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}&detailPath=${media.detailPath}",
             headers = playHeaders
@@ -314,7 +327,6 @@ data class Items(
             false
         ) {
             this.posterUrl = cover?.url
-            // Fix: menghapus .toString() yang redundant
             this.score = Score.from10(imdbRatingValue)
         }
     }
