@@ -11,10 +11,12 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 
 class Adimoviebox : MainAPI() {
+    // URL Utama dan API
     override var mainUrl = "https://lok-lok.cc"
     private val apiUrl = "https://lok-lok.cc"
     private val homeApiUrl = "https://h5-api.aoneroom.com"
 
+    // Konfigurasi Provider
     override val instantLinkLoading = true
     override var name = "Adimoviebox"
     override val hasMainPage = true
@@ -23,10 +25,10 @@ class Adimoviebox : MainAPI() {
     override val supportedTypes = setOf(
         TvType.Movie,
         TvType.TvSeries,
-        TvType.Anime,
         TvType.AsianDrama
     )
 
+    // Header Wajib
     private val commonHeaders = mapOf(
         "origin" to mainUrl,
         "referer" to "$mainUrl/",
@@ -34,20 +36,20 @@ class Adimoviebox : MainAPI() {
         "accept-language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7"
     )
 
-    // REVISI: Kita hanya butuh 1 trigger "Home" karena API /home memuat semua kategori sekaligus
+    // Menu Utama (Cukup 1 Trigger untuk memuat semua dari API)
     override val mainPage: List<MainPageData> = mainPageOf(
         "" to "Home"
     )
 
-    // --- LOGIKA HOME PAGE BARU (PARSING OTOMATIS) ---
+    // --- LOGIKA HOME PAGE (Auto Parse JSON) ---
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse {
-        // Kita hanya load di halaman 1 karena API home memberikan semua data sekaligus
+        // Hanya load di halaman 1 karena API home memberikan semua data sekaligus
         if (page > 1) return newHomePageResponse(emptyList())
 
-        // Request ke API Home
+        // Request ke API Home Aoneroom
         val targetUrl = "$homeApiUrl/wefeed-h5api-bff/home?host=moviebox.ph"
         val json = app.get(targetUrl, headers = commonHeaders).parsedSafe<HomeResponse>()
         val operatingList = json?.data?.operatingList ?: throw ErrorLoadingException("Gagal memuat Home")
@@ -58,33 +60,38 @@ class Adimoviebox : MainAPI() {
             val title = section.title ?: ""
             val subjects = section.subjects
 
-            // Skip jika subjects kosong atau jika ini kategori Short TV (Reels)
-            if (subjects.isNullOrEmpty() || title.contains("Short TV", true)) return@forEach
+            // 1. Skip jika konten kosong
+            if (subjects.isNullOrEmpty()) return@forEach
 
-            // Mapping Nama Kategori agar lebih rapi (Logika 10 Kategori)
+            // 2. Skip Kategori yang TIDAK diinginkan (Short TV & Anime)
+            if (title.contains("Short TV", true)) return@forEach
+            if (title.contains("Anime", true)) return@forEach // Anime dibuang sesuai request bro
+
+            // 3. Mapping Nama Kategori (Biar Keren)
             val categoryName = when {
                 title.contains("Trending🔥", true) -> "🔥 Trending Hot"
                 title.contains("Indonesian Movies", true) -> "🇮🇩 Indo Layar Lebar"
                 title.contains("Indonesian Drama", true) -> "📺 Indo Series Viral"
                 title.contains("K-Drama", true) -> "🇰🇷 K-Drama Universe"
                 
-                // KATEGORI DEWASA (Perhatian: Pastikan plugin kamu aman)
-                title.contains("Grown-Up", true) || title.contains("Sssex", true) -> "🔞 Grown-Up (18+)"
+                // Ubah label kategori dewasa jadi Vivamax
+                title.contains("Grown-Up", true) || 
+                title.contains("Sssex", true) || 
+                title.contains("18+", true) -> "🔞 Vivamax Stories (18+)"
                 
                 title.contains("Midnight Horror", true) -> "👻 Midnight Horror"
-                title.contains("Animeverse", true) -> "⚔️ Animeverse"
                 
-                // Gabung Hollywood & Western TV biar isinya banyak
+                // Gabung Hollywood & Western
                 title.contains("Hollywood", true) || title.contains("Western", true) -> "🇺🇸 Hollywood & Western"
                 
                 title.contains("C-Drama", true) -> "🇨🇳 Mandarin Series"
                 title.contains("Thai-Drama", true) -> "🇹🇭 Sawadikap (Thai Drama)"
                 
-                // Fallback: Jika ada kategori baru dari server, pakai judul aslinya
+                // Fallback: Pakai judul asli dari server jika tidak ada match
                 else -> title 
             }
 
-            // Convert Subject menjadi SearchResponse
+            // Convert data JSON ke format Cloudstream
             val listFilm = subjects.mapNotNull { it.toSearchResponse(this) }
 
             if (listFilm.isNotEmpty()) {
@@ -95,6 +102,7 @@ class Adimoviebox : MainAPI() {
         return newHomePageResponse(homeSets)
     }
 
+    // --- PENCARIAN ---
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
     override suspend fun search(query: String): List<SearchResponse> {
@@ -111,10 +119,12 @@ class Adimoviebox : MainAPI() {
             ?: throw ErrorLoadingException("Pencarian tidak ditemukan.")
     }
 
+    // --- LOAD DETAIL (FILM/SERIES) ---
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfterLast("?id=")
             .ifEmpty { url.substringAfterLast("/") }
 
+        // Coba load detail pakai slug/path
         val detailUrl = "$homeApiUrl/wefeed-h5api-bff/detail?detailPath=$id"
         
         val response = app.get(detailUrl, headers = commonHeaders).parsedSafe<MediaDetail>()
@@ -131,6 +141,7 @@ class Adimoviebox : MainAPI() {
         val description = subject?.description
         val trailer = subject?.trailer?.videoAddress?.url
         val score = Score.from10(subject?.imdbRatingValue)
+        
         val realId = subject?.subjectId ?: id
         val detailPath = subject?.detailPath ?: id
 
@@ -182,6 +193,7 @@ class Adimoviebox : MainAPI() {
         }
     }
 
+    // --- LOAD LINKS (VIDEO) ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -189,6 +201,7 @@ class Adimoviebox : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val media = parseJson<LoadData>(data)
+        // Referer wajib agar tidak forbidden
         val referer = "$mainUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&lang=en"
         val specificHeaders = commonHeaders + ("referer" to referer)
 
@@ -206,6 +219,7 @@ class Adimoviebox : MainAPI() {
             )
         }
 
+        // Load Subtitle
         val id = streams?.firstOrNull()?.id
         val format = streams?.firstOrNull()?.format
 
@@ -221,8 +235,9 @@ class Adimoviebox : MainAPI() {
     }
 }
 
-// --- DATA CLASSES BARU ---
+// ================= DATA CLASSES =================
 
+// 1. Data Class untuk Parsing Home Page
 data class HomeResponse(
     @param:JsonProperty("data") val data: HomeData? = null
 ) {
@@ -236,8 +251,7 @@ data class OperatingSection(
     @param:JsonProperty("subjects") val subjects: ArrayList<Items>? = null
 )
 
-// --- DATA CLASSES LAMA (Tetap dipakai) ---
-
+// 2. Data Class untuk Load Data antar screen
 data class LoadData(
     val id: String? = null,
     val season: Int? = null,
@@ -245,6 +259,7 @@ data class LoadData(
     val detailPath: String? = null,
 )
 
+// 3. Data Class Response Umum (Search & Play)
 data class Media(
     @param:JsonProperty("data") val data: Data? = null,
 ) {
@@ -267,6 +282,7 @@ data class Media(
     }
 }
 
+// 4. Data Class Detail Film
 data class MediaDetail(
     @param:JsonProperty("data") val data: Data? = null,
 ) {
@@ -293,6 +309,7 @@ data class MediaDetail(
     }
 }
 
+// 5. Data Class Item Film Individual
 data class Items(
     @param:JsonProperty("subjectId") val subjectId: String? = null,
     @param:JsonProperty("subjectType") val subjectType: Int? = null,
