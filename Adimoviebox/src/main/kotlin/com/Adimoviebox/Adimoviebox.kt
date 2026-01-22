@@ -16,8 +16,7 @@ class Adimoviebox : MainAPI() {
     // API UTAMA (Aoneroom)
     private val apiUrl = "https://api.aoneroom.com" 
 
-    // --- HEADER SAKTI (ANTI BLOKIR/TIMEOUT) ---
-    // Kita menyamar sebagai Lok-Lok agar server mau melayani request kita
+    // Header Anti-Blokir
     private val commonHeaders = mapOf(
         "Origin" to "https://lok-lok.cc",
         "Referer" to "https://lok-lok.cc/",
@@ -36,8 +35,7 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
-    // --- KATEGORI ---
-    // Menggunakan kata kunci yang lebih umum agar tidak timeout
+    // --- KATEGORI HOME PAGE ---
     override val mainPage: List<MainPageData> = mainPageOf(
         "2025" to "Terbaru 2025",
         "2024" to "Film 2024",
@@ -49,49 +47,50 @@ class Adimoviebox : MainAPI() {
         "Adult" to "Dewasa (18+)" 
     )
 
-    // --- LOGIKA HOME PAGE ---
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse {
         val query = request.data 
-        
-        // Kita gunakan fungsi search() dengan try-catch
-        // Jika satu kategori gagal/timeout, dia tidak akan bikin crash aplikasi
         val searchResults = try {
             search(query)
         } catch (e: Exception) {
             emptyList()
         }
-
         return newHomePageResponse(request.name, searchResults)
     }
 
-    // --- SEARCH LOGIC (DITAMBAH HEADER) ---
     override suspend fun search(query: String): List<SearchResponse> {
         val postData = mapOf(
             "keyword" to query,
             "page" to 1,
-            "perPage" to 12 // Kurangi jumlah per page biar load lebih ringan
+            "perPage" to 12
         )
 
-        return app.post(
+        val response = app.post(
             "$apiUrl/wefeed-h5-bff/web/subject/search", 
-            headers = commonHeaders, // PENTING: Pakai header Lok-Lok
+            headers = commonHeaders,
             requestBody = postData.toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
-        ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
-            ?: emptyList()
+        ).parsedSafe<Media>()
+
+        // LOGIKA BARU: Cek 'subjectList' dulu, kalau kosong baru cek 'items'
+        // Ini penting karena API sering menukar-nukar tempat penyimpanan datanya
+        val listData = response?.data?.subjectList ?: response?.data?.items
+
+        return listData?.mapNotNull { 
+            // mapNotNull agar item yang error tidak bikin crash
+            it.toSearchResponse(this) 
+        } ?: emptyList()
     }
 
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
-    // --- LOAD LOGIC (DITAMBAH HEADER) ---
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfterLast("/")
         
         val document = app.get(
             "$apiUrl/wefeed-h5-bff/web/subject/detail?subjectId=$id",
-            headers = commonHeaders // PENTING: Pakai header
+            headers = commonHeaders
         ).parsedSafe<MediaDetail>()?.data
         
         val subject = document?.subject
@@ -106,7 +105,7 @@ class Adimoviebox : MainAPI() {
         val recommendations = app.get(
             "$apiUrl/wefeed-h5-bff/web/subject/detail-rec?subjectId=$id&page=1&perPage=12",
             headers = commonHeaders
-        ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
+        ).parsedSafe<Media>()?.data?.items?.mapNotNull { it.toSearchResponse(this) }
 
         val isSeries = subject?.subjectType == 2 
         val commonLoadData = LoadData(id, detailPath = subject?.detailPath)
@@ -151,7 +150,6 @@ class Adimoviebox : MainAPI() {
         }
     }
 
-    // --- LINK HANDLING (HEADER SUDAH READY) ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -162,7 +160,6 @@ class Adimoviebox : MainAPI() {
         
         val playUrl = "$apiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}&detailPath=${media.detailPath}"
         
-        // Kita pakai commonHeaders yang isinya Referer Lok-Lok
         val response = app.get(playUrl, headers = commonHeaders).parsedSafe<Media>()
         val streams = response?.data?.streams
 
@@ -177,7 +174,7 @@ class Adimoviebox : MainAPI() {
                         url, 
                         ExtractorLinkType.VIDEO 
                     ) {
-                        this.referer = "https://lok-lok.cc/" // Header khusus buat player
+                        this.referer = "https://lok-lok.cc/" 
                         this.quality = getQualityFromName(source.resolutions)
                     }
                 )
@@ -199,7 +196,8 @@ class Adimoviebox : MainAPI() {
     }
 }
 
-// --- DATA CLASSES ---
+// --- DATA CLASSES (YANG DIPERBAIKI) ---
+
 data class LoadData(val id: String? = null, val season: Int? = null, val episode: Int? = null, val detailPath: String? = null)
 
 data class Media(@field:JsonProperty("data") val data: Data? = null) {
@@ -236,6 +234,7 @@ data class MediaDetail(@field:JsonProperty("data") val data: Data? = null) {
     }
 }
 
+// --- ITEMS YANG DIPERBAIKI: BISA BACA DATA BERSARANG ---
 data class Items(
     @field:JsonProperty("subjectId") val subjectId: String? = null,
     @field:JsonProperty("subjectType") val subjectType: Int? = null,
@@ -247,15 +246,32 @@ data class Items(
     @field:JsonProperty("cover") val cover: Cover? = null,
     @field:JsonProperty("trailer") val trailer: Trailer? = null,
     @field:JsonProperty("detailPath") val detailPath: String? = null,
+    // TAMBAHAN: Untuk menangani kasus data bersarang di dalam 'subject'
+    @field:JsonProperty("subject") val subject: Items? = null
 ) {
-    fun toSearchResponse(provider: Adimoviebox): SearchResponse {
-        val url = "${provider.mainUrl}/detail/${subjectId}"
-        return provider.newMovieSearchResponse(title ?: "No Title", url, if (subjectType == 1) TvType.Movie else TvType.TvSeries, false) {
-            this.posterUrl = cover?.url
-            this.score = Score.from10(imdbRatingValue)
-            this.year = releaseDate?.substringBefore("-")?.toIntOrNull()
+    fun toSearchResponse(provider: Adimoviebox): SearchResponse? {
+        // LOGIKA PINTAR:
+        // Jika data 'title' ada di level atas, pakai 'this'.
+        // Jika tidak, dan ada objek 'subject', pakai data dari dalam 'subject'.
+        val item = if (!title.isNullOrBlank()) this else subject
+
+        // Kalau setelah dicek item-nya masih null atau tidak punya judul, skip aja
+        if (item == null || item.title.isNullOrBlank()) return null
+
+        val url = "${provider.mainUrl}/detail/${item.subjectId}"
+        
+        return provider.newMovieSearchResponse(
+            item.title ?: "No Title",
+            url,
+            if (item.subjectType == 1) TvType.Movie else TvType.TvSeries,
+            false
+        ) {
+            this.posterUrl = item.cover?.url
+            this.score = Score.from10(item.imdbRatingValue)
+            this.year = item.releaseDate?.substringBefore("-")?.toIntOrNull()
         }
     }
+
     data class Cover(@field:JsonProperty("url") val url: String? = null)
     data class Trailer(@field:JsonProperty("videoAddress") val videoAddress: VideoAddress? = null) {
         data class VideoAddress(@field:JsonProperty("url") val url: String? = null)
