@@ -16,6 +16,14 @@ class Adimoviebox : MainAPI() {
     // API UTAMA (Aoneroom)
     private val apiUrl = "https://api.aoneroom.com" 
 
+    // --- HEADER SAKTI (ANTI BLOKIR/TIMEOUT) ---
+    // Kita menyamar sebagai Lok-Lok agar server mau melayani request kita
+    private val commonHeaders = mapOf(
+        "Origin" to "https://lok-lok.cc",
+        "Referer" to "https://lok-lok.cc/",
+        "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+    )
+
     override val instantLinkLoading = true
     override var name = "Adimoviebox"
     override val hasMainPage = true
@@ -28,64 +36,64 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
-    // --- REVOLUSI HOME PAGE ---
-    // Kita ganti ID angka (yang bikin error) dengan Kata Kunci Pencarian.
-    // Ini memanfaatkan fitur Search yang sudah sukses kita buat.
+    // --- KATEGORI ---
+    // Menggunakan kata kunci yang lebih umum agar tidak timeout
     override val mainPage: List<MainPageData> = mainPageOf(
-        "Indonesian" to "Indonesian Movies",
-        "Drama" to "Drama Pilihan",
-        "Romance" to "Romantis",
+        "2025" to "Terbaru 2025",
+        "2024" to "Film 2024",
         "Action" to "Action",
+        "Romance" to "Romance",
         "Horror" to "Horror",
-        "Korea" to "Korean Drama",
-        "China" to "Chinese Drama",
-        "Philippines" to "Pinoy Movies",
-        "Adult" to "Dewasa (18+)" // Menambahkan kategori pedas
+        "Drama" to "Drama",
+        "Anime" to "Anime",
+        "Adult" to "Dewasa (18+)" 
     )
 
-    // --- LOGIKA HOME PAGE BARU ---
+    // --- LOGIKA HOME PAGE ---
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest,
     ): HomePageResponse {
-        val query = request.data // Ini akan berisi kata kunci dari list di atas (misal: "Indonesian")
+        val query = request.data 
         
-        // Kita gunakan fungsi search() yang sudah terbukti berhasil
-        // untuk mengisi halaman depan.
-        val searchResults = search(query)
-
-        if (searchResults.isEmpty()) {
-            throw ErrorLoadingException("Kategori kosong")
+        // Kita gunakan fungsi search() dengan try-catch
+        // Jika satu kategori gagal/timeout, dia tidak akan bikin crash aplikasi
+        val searchResults = try {
+            search(query)
+        } catch (e: Exception) {
+            emptyList()
         }
 
         return newHomePageResponse(request.name, searchResults)
     }
 
-    // --- SEARCH LOGIC (TETAP SAMA KARENA SUDAH BERHASIL) ---
+    // --- SEARCH LOGIC (DITAMBAH HEADER) ---
     override suspend fun search(query: String): List<SearchResponse> {
         val postData = mapOf(
             "keyword" to query,
             "page" to 1,
-            "perPage" to 20
+            "perPage" to 12 // Kurangi jumlah per page biar load lebih ringan
         )
 
         return app.post(
             "$apiUrl/wefeed-h5-bff/web/subject/search", 
+            headers = commonHeaders, // PENTING: Pakai header Lok-Lok
             requestBody = postData.toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
         ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
-            ?: emptyList() // Ubah throw error jadi emptyList agar Home Page tidak crash kalau 1 kategori kosong
+            ?: emptyList()
     }
 
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
-    // --- LOAD LOGIC (TETAP SAMA - SUDAH FIX) ---
+    // --- LOAD LOGIC (DITAMBAH HEADER) ---
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfterLast("/")
         
-        val document = app.get("$apiUrl/wefeed-h5-bff/web/subject/detail?subjectId=$id")
-            .parsedSafe<MediaDetail>()?.data
+        val document = app.get(
+            "$apiUrl/wefeed-h5-bff/web/subject/detail?subjectId=$id",
+            headers = commonHeaders // PENTING: Pakai header
+        ).parsedSafe<MediaDetail>()?.data
         
-        // Hapus tanda tanya (?) yang bikin warning, tapi fungsinya tetap aman
         val subject = document?.subject
         val title = subject?.title ?: ""
         val poster = subject?.cover?.url
@@ -95,11 +103,12 @@ class Adimoviebox : MainAPI() {
         val trailer = subject?.trailer?.videoAddress?.url
         val score = Score.from10(subject?.imdbRatingValue) 
 
-        val recommendations = app.get("$apiUrl/wefeed-h5-bff/web/subject/detail-rec?subjectId=$id&page=1&perPage=12")
-                .parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
+        val recommendations = app.get(
+            "$apiUrl/wefeed-h5-bff/web/subject/detail-rec?subjectId=$id&page=1&perPage=12",
+            headers = commonHeaders
+        ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
 
         val isSeries = subject?.subjectType == 2 
-        
         val commonLoadData = LoadData(id, detailPath = subject?.detailPath)
 
         if (isSeries) {
@@ -142,7 +151,7 @@ class Adimoviebox : MainAPI() {
         }
     }
 
-    // --- LINK HANDLING (TETAP SAMA - SUDAH FIX SPOOFING LOK-LOK) ---
+    // --- LINK HANDLING (HEADER SUDAH READY) ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -151,12 +160,10 @@ class Adimoviebox : MainAPI() {
     ): Boolean {
         val media = parseJson<LoadData>(data)
         
-        // Referer Sakti Lok-Lok
-        val fakeReferer = "https://lok-lok.cc/" 
-
         val playUrl = "$apiUrl/wefeed-h5-bff/web/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}&detailPath=${media.detailPath}"
         
-        val response = app.get(playUrl, referer = fakeReferer).parsedSafe<Media>()
+        // Kita pakai commonHeaders yang isinya Referer Lok-Lok
+        val response = app.get(playUrl, headers = commonHeaders).parsedSafe<Media>()
         val streams = response?.data?.streams
 
         if (!streams.isNullOrEmpty()) {
@@ -170,7 +177,7 @@ class Adimoviebox : MainAPI() {
                         url, 
                         ExtractorLinkType.VIDEO 
                     ) {
-                        this.referer = fakeReferer
+                        this.referer = "https://lok-lok.cc/" // Header khusus buat player
                         this.quality = getQualityFromName(source.resolutions)
                     }
                 )
@@ -180,10 +187,12 @@ class Adimoviebox : MainAPI() {
         val id = streams?.firstOrNull()?.id
         val format = streams?.firstOrNull()?.format
         if (id != null && format != null) {
-            app.get("$apiUrl/wefeed-h5-bff/web/subject/caption?format=$format&id=$id&subjectId=${media.id}&detailPath=${media.detailPath}", referer = fakeReferer)
-                .parsedSafe<Media>()?.data?.captions?.forEach { subtitle ->
-                    subtitleCallback.invoke(newSubtitleFile(subtitle.lanName ?: "Unknown", subtitle.url ?: return@forEach))
-                }
+            app.get(
+                "$apiUrl/wefeed-h5-bff/web/subject/caption?format=$format&id=$id&subjectId=${media.id}&detailPath=${media.detailPath}",
+                headers = commonHeaders
+            ).parsedSafe<Media>()?.data?.captions?.forEach { subtitle ->
+                subtitleCallback.invoke(newSubtitleFile(subtitle.lanName ?: "Unknown", subtitle.url ?: return@forEach))
+            }
         }
 
         return true
