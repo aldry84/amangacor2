@@ -42,7 +42,6 @@ class Adimoviebox : MainAPI() {
         "2|{\"classify\":\"All\",\"country\":\"United States\",\"genre\":\"All\",\"sort\":\"Hottest\",\"year\":\"All\"}" to "Hollywood Movie"
     )
 
-    // Header Home
     private fun getBaseHeaders(): Map<String, String> {
         return mapOf(
             "authority" to "h5-api.aoneroom.com",
@@ -65,7 +64,7 @@ class Adimoviebox : MainAPI() {
         // Request ke API Baru (aoneroom)
         val targetUrl = "$homeApiUrl/wefeed-h5api-bff/home/movieFilter?tabId=$tabId&filterType=$filterJson&pageNo=$page&pageSize=18"
 
-        // Struktur response API baru { data: [item1, item2] }
+        // Struktur response filter API baru
         val responseData = app.get(targetUrl, headers = getBaseHeaders()).parsedSafe<FilterResponse>()
         
         val home = responseData?.data?.map {
@@ -92,13 +91,11 @@ class Adimoviebox : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        // Parsing URL internal
         val isInternalUrl = url.contains("?id=")
         
         val id = if (isInternalUrl) url.substringAfter("id=").substringBefore("&") else url.substringAfterLast("/")
         val path = if (isInternalUrl) url.substringAfter("path=").substringBefore("&") else ""
 
-        // Gunakan API detail
         val detailUrl = if (path.isNotEmpty()) {
             "$homeApiUrl/wefeed-h5api-bff/detail?detailPath=$path"
         } else {
@@ -127,10 +124,12 @@ class Adimoviebox : MainAPI() {
             )
         }?.distinctBy { it.actor }
 
-        val recUrl = "$apiUrl/wefeed-h5-bff/web/subject/detail-rec?subjectId=$id&page=1&perPage=12"
-        val recommendations = app.get(recUrl).parsedSafe<Media>()?.data?.items?.map {
-             it.toSearchResponse(this)
-        }
+        val recommendations = try {
+            val recUrl = "$apiUrl/wefeed-h5-bff/web/subject/detail-rec?subjectId=$id&page=1&perPage=12"
+            app.get(recUrl).parsedSafe<Media>()?.data?.items?.map {
+                 it.toSearchResponse(this)
+            }
+        } catch (e: Exception) { emptyList() }
 
         if (tvType == TvType.TvSeries) {
             val episodeList = mutableListOf<Episode>()
@@ -194,8 +193,6 @@ class Adimoviebox : MainAPI() {
         }
     }
 
-    // PERBAIKAN: Tambahkan @Suppress("DEPRECATION") di sini untuk fix build error
-    @Suppress("DEPRECATION")
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -218,14 +215,14 @@ class Adimoviebox : MainAPI() {
         val streams = app.get(playUrl, headers = playHeaders).parsedSafe<Media>()?.data?.streams
 
         streams?.reversed()?.distinctBy { it.url }?.map { source ->
-            // Fix ExtractorLink (Constructor Biasa dengan urutan parameter)
+            val qualityInt = getQualityFromName(source.resolutions)
+            // PERBAIKAN UTAMA: Menggunakan newExtractorLink
             callback.invoke(
-                ExtractorLink(
-                    this.name,
-                    this.name,
+                newExtractorLink(
+                    "${this.name} ${source.format} ${source.resolutions}p",
                     source.url ?: return@map,
                     "https://filmboom.top/",
-                    getQualityFromName(source.resolutions),
+                    qualityInt,
                     source.url.contains(".m3u8")
                 )
             )
@@ -261,7 +258,6 @@ data class LoadData(
     val detailPath: String? = null,
 )
 
-// Response Filter
 data class FilterResponse(
     @JsonProperty("data") val data: ArrayList<Items>? = arrayListOf()
 )
