@@ -6,7 +6,6 @@ import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.Qualities
-import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 
 class Adimoviebox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
@@ -77,7 +76,13 @@ class Adimoviebox : MainAPI() {
                     mapItem(item)?.let { items.add(it) }
                 }
                 section.customData?.items?.forEach { item -> 
-                    val realItem = item.subject ?: item
+                    // FIX: Konversi CustomItem ke SubjectItem secara manual jika null
+                    val realItem = item.subject ?: SubjectItem(
+                        subjectId = item.subjectId,
+                        title = item.title,
+                        image = item.image,
+                        cover = item.image
+                    )
                     mapItem(realItem)?.let { items.add(it) }
                 }
                 
@@ -92,32 +97,25 @@ class Adimoviebox : MainAPI() {
                 val response = app.get(filterUrl, headers = getBaseHeaders()).parsedSafe<FilterResponse>()
                 val items = response?.data?.mapNotNull { mapItem(it) } ?: emptyList()
                 if (items.isNotEmpty()) {
-                    // isHorizontal dihapus karena menyebabkan error build
                     pages.add(HomePageList(request.name, items))
                 }
             } catch (e: Exception) { }
         }
         
-        // Menggunakan newHomePageResponse untuk menghindari error deprecated
         return newHomePageResponse(pages, hasNext = !request.data.startsWith("http"))
     }
 
-    // Fungsi helper manual untuk mapping (pengganti toSearchResponse di dalam data class)
     private fun mapItem(item: SubjectItem): SearchResponse? {
         val id = item.subjectId ?: return null
         val title = item.title ?: return null
         val type = if (item.subjectType == 1) TvType.Movie else TvType.TvSeries
         val detailPath = item.detailPath ?: ""
         
-        // URL internal
         val url = "$mainUrl/detail?id=$id&path=$detailPath&type=${item.subjectType}"
         val poster = item.cover?.url ?: item.image?.url
         
         return newMovieSearchResponse(title, url, type) {
             this.posterUrl = poster
-            // Menggunakan plot dari SearchResponse (beberapa versi SDK mungkin butuh casting, tapi ini standar)
-            // Jika 'plot' masih error, bisa dihapus baris ini
-            // this.plot = item.description 
         }
     }
 
@@ -139,8 +137,6 @@ class Adimoviebox : MainAPI() {
         val title = data?.title ?: "Unknown Title"
         val desc = data?.description
         val poster = data?.cover?.url ?: data?.image?.url
-        
-        // Menggunakan Score.from10 untuk rating (mengatasi error deprecated rating)
         val ratingScore = Score.from10(data?.imdbRatingValue)
 
         if (typeStr == "1") {
@@ -155,7 +151,6 @@ class Adimoviebox : MainAPI() {
             if (data?.seasonList.isNullOrEmpty()) {
                 val totalEp = data?.episodesCount ?: 1
                 for (i in 1..totalEp) {
-                     // Menggunakan newEpisode (mengatasi error deprecated constructor)
                      episodes.add(newEpisode(LinkData(id, path, 1, i).toJson()) {
                         this.name = "Episode $i"
                         this.season = 1
@@ -184,6 +179,8 @@ class Adimoviebox : MainAPI() {
         }
     }
 
+    // Gunakan suppress deprecation agar build tidak gagal saat pakai constructor lama
+    @Suppress("DEPRECATION")
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -197,12 +194,12 @@ class Adimoviebox : MainAPI() {
 
         response?.data?.streams?.forEach { stream ->
             val qualityInt = stream.resolutions?.toIntOrNull() ?: Qualities.Unknown.value
-            // Menggunakan newExtractorLink (mengatasi error deprecated constructor)
+            // Menggunakan constructor langsung (deprecated tapi disuppress) karena newExtractorLink tidak ditemukan
             callback.invoke(
-                newExtractorLink(
-                    this.name,
-                    "${this.name} ${stream.format} ${stream.resolutions}p",
-                    stream.url ?: return@forEach,
+                ExtractorLink(
+                    source = this.name,
+                    name = "${this.name} ${stream.format} ${stream.resolutions}p",
+                    url = stream.url ?: return@forEach,
                     referer = "https://filmboom.top/",
                     quality = qualityInt,
                     isM3u8 = stream.url.contains(".m3u8")
