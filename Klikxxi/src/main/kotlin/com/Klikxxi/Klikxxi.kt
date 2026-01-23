@@ -1,10 +1,10 @@
-package com.klikxxi
+package com.Klikxxi
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import org.jsoup.nodes.Element
 
-class KlikXXI : MainAPI() {
+class Klikxxi : MainAPI() {
     override var mainUrl = "https://klikxxi.me"
     override var name = "KlikXXI"
     override val hasMainPage = true
@@ -81,14 +81,14 @@ class KlikXXI : MainAPI() {
         val isTvSeries = document.select(".gmr-numbeps").isNotEmpty() || url.contains("/tv/")
         val tvType = if (isTvSeries) TvType.TvSeries else TvType.Movie
 
-        return if (isTvSeries) {
-            newTvSeriesLoadResponse(title, url, tvType, emptyList()) {
+        if (isTvSeries) {
+            return newTvSeriesLoadResponse(title, url, tvType, emptyList()) {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
             }
         } else {
-            newMovieLoadResponse(title, url, tvType, url) {
+            return newMovieLoadResponse(title, url, tvType, url) {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
