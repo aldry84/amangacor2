@@ -1,7 +1,5 @@
 package com.Idlixku
 
-import com.Idlixku.IdlixkuProvider.ResponseSource
-import com.Idlixku.IdlixkuProvider.Tracks
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.newSubtitleFile
@@ -11,9 +9,8 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.getAndUnpack
 import com.lagradost.cloudstream3.utils.newExtractorLink
-import com.lagradost.cloudstream3.utils.Qualities
 
-class JeniusPlayExtractor : ExtractorApi() {
+class Jeniusplay : ExtractorApi() {
     override var name = "Jeniusplay"
     override var mainUrl = "https://jeniusplay.com"
     override val requiresReferer = true
@@ -24,60 +21,48 @@ class JeniusPlayExtractor : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        val res = app.get(url, referer = referer)
-        val document = res.document
-        val hash = url.substringAfter("data=").substringBefore("&")
+        val document = app.get(url, referer = referer).document
+        val hash = url.split("/").last().substringAfter("data=")
 
-        val response = app.post(
+        // IdlixProvider.ResponseSource bisa diakses langsung karena satu package
+        val m3uLink = app.post(
             url = "$mainUrl/player/index.php?data=$hash&do=getVideo",
-            data = mapOf("hash" to hash, "r" to (referer ?: "https://tv12.idlixku.com/")),
-            referer = url,
+            data = mapOf("hash" to hash, "r" to "$referer"),
+            referer = referer,
             headers = mapOf("X-Requested-With" to "XMLHttpRequest")
-        ).parsedSafe<ResponseSource>()
+        ).parsed<IdlixProvider.ResponseSource>().videoSource
 
-        val m3uLink = response?.securedLink ?: response?.videoSource
-
-        if (!m3uLink.isNullOrEmpty()) {
-            // Menggunakan format 4 parameter + lambda agar lulus compile
-            callback.invoke(
-                newExtractorLink(
-                    name,
-                    name,
-                    m3uLink,
-                    ExtractorLinkType.M3U8
-                ) {
-                    this.referer = url
-                    this.quality = Qualities.Unknown.value
-                }
+        callback.invoke(
+            newExtractorLink(
+                name,
+                name,
+                url = m3uLink,
+                ExtractorLinkType.M3U8
             )
-        }
+        )
 
-        // Logic Subtitle menggunakan Unpacker (Hexated Style)
-        document.select("script").forEach { script ->
-            val scriptData = script.data()
-            if (scriptData.contains("eval(function(p,a,c,k,e,d)")) {
-                try {
-                    val unpacked = getAndUnpack(scriptData)
-                    if (unpacked.contains("\"tracks\":[")) {
-                        val subData = unpacked.substringAfter("\"tracks\":[").substringBefore("],")
-                        AppUtils.tryParseJson<List<Tracks>>("[$subData]")?.forEach { subtitle ->
-                            subtitleCallback.invoke(
-                                newSubtitleFile(
-                                    getLanguage(subtitle.label ?: ""),
-                                    subtitle.file
-                                )
-                            )
-                        }
-                    }
-                } catch (e: Exception) { }
+        document.select("script").map { script ->
+            if (script.data().contains("eval(function(p,a,c,k,e,d)")) {
+                val subData =
+                    getAndUnpack(script.data()).substringAfter("\"tracks\":[").substringBefore("],")
+                // IdlixProvider.Tracks bisa diakses langsung karena satu package
+                AppUtils.tryParseJson<List<IdlixProvider.Tracks>>("[$subData]")?.map { subtitle ->
+                    subtitleCallback.invoke(
+                        newSubtitleFile(
+                            getLanguage(subtitle.label ?: ""),
+                            subtitle.file
+                        )
+                    )
+                }
             }
         }
     }
 
+
     private fun getLanguage(str: String): String {
         return when {
-            str.contains("indonesia", true) || str.contains("bahasa", true) -> "Indonesian"
-            str.contains("english", true) -> "English"
+            str.contains("indonesia", true) || str
+                .contains("bahasa", true) -> "Indonesian"
             else -> str
         }
     }
