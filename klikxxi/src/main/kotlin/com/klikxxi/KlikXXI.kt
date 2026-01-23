@@ -13,49 +13,33 @@ class KlikXXI : MainAPI() {
 
     // --- HELPER FUNCTIONS ---
 
-    // Mengubah elemen HTML menjadi SearchResponse (Data Film di list)
     private fun Element.toSearchResponse(): SearchResponse? {
-        // Mengambil judul dan link dari class 'entry-title'
         val titleElement = this.selectFirst(".entry-title a") ?: return null
         val title = titleElement.text().trim()
         val href = titleElement.attr("href")
 
-        // Mengambil poster
-        // Prioritas: data-lazy-src (karena pakai RocketLoader) -> src biasa
         val posterElement = this.selectFirst("img.attachment-medium")
         val posterUrl = posterElement?.attr("data-lazy-src") ?: posterElement?.attr("src")
 
-        // Mengambil kualitas (HD/CAM)
         val quality = this.selectFirst(".gmr-quality-item")?.text() ?: "N/A"
 
-        // Mengambil Rating (Perbaikan Error 1 & 2)
-        // Kita parse manual text-nya menjadi Double, lalu dikali 10 menjadi Int (skala 0-100)
-        // Contoh text: "8" -> 8.0 -> 80
-        val ratingElement = this.selectFirst(".gmr-rating-item")?.text()?.trim()
-        val ratingValue = ratingElement?.toDoubleOrNull()?.times(10)?.toInt()
-
+        // Bagian rating dihapus dulu sesuai permintaan
+        
         return newMovieSearchResponse(title, href, TvType.Movie) {
             this.posterUrl = posterUrl
             this.quality = getQualityFromString(quality)
-            // Ganti 'apiRating' menjadi 'rating'
-            if (ratingValue != null) {
-                this.rating = ratingValue
-            }
         }
     }
 
     // --- MAIN FUNCTIONS ---
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        // Mengambil HTML dari halaman utama
         val document = app.get(mainUrl).document
         val homeSets = ArrayList<HomePageList>()
 
-        // Loop setiap widget kategori di homepage
         document.select(".muvipro-posts-module").forEach { widget ->
             val title = widget.select(".homemodule-title").text().trim()
             
-            // Ambil semua film dalam widget tersebut
             val movies = widget.select(".gmr-item-modulepost").mapNotNull { 
                 it.toSearchResponse() 
             }
@@ -65,7 +49,6 @@ class KlikXXI : MainAPI() {
             }
         }
 
-        // Perbaikan Error 3: Menggunakan 'newHomePageResponse' alih-alih constructor langsung
         return newHomePageResponse(homeSets)
     }
 
