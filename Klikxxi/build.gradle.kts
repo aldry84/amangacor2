@@ -26,5 +26,4 @@ cloudstream {
 
     iconUrl = "https://klikxxi.me/wp-content/uploads/2024/02/cropped-site-icon.png"
 
-    isCrossPlatform = true
 }
