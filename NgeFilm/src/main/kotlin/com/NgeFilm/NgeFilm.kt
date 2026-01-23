@@ -5,7 +5,8 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
 import org.jsoup.nodes.Element
 
-class NgeFilm : ParsersHttpProvider() {
+// PERBAIKAN 1: Ganti ParsersHttpProvider menjadi MainAPI
+class NgeFilm : MainAPI() {
 
     override var mainUrl = "https://new31.ngefilm.site"
     override var name = "NgeFilm21"
@@ -13,15 +14,12 @@ class NgeFilm : ParsersHttpProvider() {
     override var lang = "id"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
-    // Headers untuk menghindari blokir (menyamar sebagai Chrome)
-    override val mainHeaders = mapOf(
+    // Headers standar
+    val mainHeaders = mapOf(
         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Referer" to "$mainUrl/"
     )
 
-    // =========================================================================
-    // 1. HALAMAN UTAMA (Home)
-    // =========================================================================
     override val mainPage = mainPageOf(
         "$mainUrl/page/" to "Terbaru",
         "$mainUrl/populer/page/" to "Populer",
@@ -38,29 +36,22 @@ class NgeFilm : ParsersHttpProvider() {
         return newHomePageResponse(request.name, home)
     }
 
-    // =========================================================================
-    // 2. PENCARIAN (Search)
-    // =========================================================================
     override suspend fun search(query: String): List<SearchResponse> {
-        // Filter agar mencari Movie (post) dan Series (tv)
         val url = "$mainUrl/?s=$query&post_type[]=post&post_type[]=tv"
         val doc = app.get(url, headers = mainHeaders).document
         return doc.select("article.item").mapNotNull { toSearchResult(it) }
     }
 
-    // Fungsi konversi Element HTML -> SearchResponse Cloudstream
     private fun toSearchResult(element: Element): SearchResponse? {
         val title = element.selectFirst("h2.entry-title a")?.text() ?: return null
         val href = element.selectFirst("h2.entry-title a")?.attr("href") ?: return null
         
-        // Ambil poster, prioritaskan src, fallback ke data-src (lazy load)
         val posterUrl = element.selectFirst("img")?.let { img ->
             img.attr("src").ifEmpty { img.attr("data-src") }
         }
 
         val quality = element.selectFirst(".gmr-quality-item a")?.text()
         
-        // Deteksi Series vs Movie berdasarkan indikator di HTML
         val isTv = element.select(".gmr-posttype-item").text().contains("TV Show", true) || 
                    element.select(".gmr-numbeps").isNotEmpty()
 
@@ -77,9 +68,6 @@ class NgeFilm : ParsersHttpProvider() {
         }
     }
 
-    // =========================================================================
-    // 3. DETAIL (Load Info)
-    // =========================================================================
     override suspend fun load(url: String): LoadResponse {
         val doc = app.get(url, headers = mainHeaders).document
 
@@ -90,19 +78,25 @@ class NgeFilm : ParsersHttpProvider() {
             ?: doc.selectFirst("div.post-thumbnail img")?.attr("src")
             
         val year = doc.select("div.gmr-moviedata a[href*='year']").text().toIntOrNull()
-        val rating = doc.select("span[itemprop=ratingValue]").text().toDoubleOrNull()?.times(1000)?.toInt()
+        
+        // PERBAIKAN 2: Rating kadang bikin error jika tipenya salah, kita handle manual
+        val ratingText = doc.select("span[itemprop=ratingValue]").text()
+        val ratingInt = ratingText.toDoubleOrNull()?.times(1000)?.toInt()
+
         val backdrop = doc.selectFirst("#muvipro_player_content_id img")?.attr("src") ?: poster
 
-        // Ambil Genre (Tags) dan Aktor
+        // PERBAIKAN 3: Tags (Genre) tetap List<String>
         val tags = doc.select("div.gmr-moviedata a[href*='genre']").map { it.text() }
-        val actors = doc.select("span[itemprop=actors] a").map { it.text() }
+        
+        // PERBAIKAN 4: Actors harus List<ActorData>, bukan List<String>
+        val actors = doc.select("span[itemprop=actors] a").map { 
+            ActorData(Actor(it.text(), null)) 
+        }
 
-        // Ambil Rekomendasi (Film Terkait)
         val recommendations = doc.select("div.idmuvi-core .row.grid-container article.item").mapNotNull { 
             toSearchResult(it) 
         }
 
-        // Cek apakah ada list episode
         val episodeList = doc.select(".gmr-listseries a")
         
         if (episodeList.isNotEmpty()) {
@@ -110,18 +104,17 @@ class NgeFilm : ParsersHttpProvider() {
                 val epHref = it.attr("href")
                 val epText = it.text()
                 
-                // Filter tombol "Pilih Episode" agar tidak dianggap episode
                 if (it.hasClass("gmr-all-serie") || epText.contains("Pilih Episode", true)) {
                     return@mapNotNull null
                 }
 
-                // Ubah "Eps1" jadi "Episode 1"
                 val cleanName = if(epText.startsWith("Eps", true)) {
                     epText.replace("Eps", "Episode ")
                 } else {
                     epText
                 }
 
+                // PERBAIKAN 5: Perbaikan format Episode
                 newEpisode(epHref) {
                     this.name = cleanName
                     this.episode = cleanName.filter { char -> char.isDigit() }.toIntOrNull()
@@ -133,7 +126,7 @@ class NgeFilm : ParsersHttpProvider() {
                 this.backgroundPosterUrl = backdrop
                 this.plot = description
                 this.year = year
-                this.rating = rating
+                this.rating = ratingInt // Menggunakan variabel lokal
                 this.tags = tags
                 this.actors = actors
                 this.recommendations = recommendations
@@ -144,7 +137,7 @@ class NgeFilm : ParsersHttpProvider() {
                 this.backgroundPosterUrl = backdrop
                 this.plot = description
                 this.year = year
-                this.rating = rating
+                this.rating = ratingInt // Menggunakan variabel lokal
                 this.tags = tags
                 this.actors = actors
                 this.recommendations = recommendations
@@ -152,9 +145,6 @@ class NgeFilm : ParsersHttpProvider() {
         }
     }
 
-    // =========================================================================
-    // 4. LOAD LINKS (Video Sources)
-    // =========================================================================
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -163,7 +153,7 @@ class NgeFilm : ParsersHttpProvider() {
     ): Boolean {
         val doc = app.get(data, headers = mainHeaders).document
 
-        // [A] Cek Link Download (Biasanya kualitas bagus: GDrive, FilePress)
+        // 1. Link Download
         doc.select("ul.gmr-download-list li a").forEach { link ->
             val href = link.attr("href")
             if (href.startsWith("http")) {
@@ -171,27 +161,21 @@ class NgeFilm : ParsersHttpProvider() {
             }
         }
 
-        // [B] Cek Iframe Player Utama (Di atas tombol lampu)
+        // 2. Iframe Utama
         doc.select("div.gmr-embed-responsive iframe").forEach { iframe ->
             var sourceUrl = iframe.attr("src")
             if (sourceUrl.startsWith("//")) sourceUrl = "https:$sourceUrl"
             
-            // Filter: Jangan load trailer Youtube
             if (!sourceUrl.contains("youtube.com") && !sourceUrl.contains("youtu.be")) {
                 loadExtractor(sourceUrl, data, subtitleCallback, callback)
             }
         }
         
-        // [C] Cek Tab Server Lain (Server 2, Server 3, dst)
+        // 3. Tab Server Lain
         doc.select("ul.muvipro-player-tabs li a").forEach { tab ->
             var link = tab.attr("href")
+            if (link.startsWith("/")) link = mainUrl + link
             
-            // Fix URL jika formatnya relative "/judul/?player=2"
-            if (link.startsWith("/")) {
-                link = mainUrl + link
-            }
-            
-            // Proses link valid, hindari loop ke halaman sendiri
              if (link.startsWith("http") && link != data && !link.contains("#")) {
                  try {
                      val embedPage = app.get(link, headers = mainHeaders).document
@@ -206,7 +190,6 @@ class NgeFilm : ParsersHttpProvider() {
                          }
                      }
                  } catch (e: Exception) {
-                     // Lanjut ke tab berikutnya jika error
                  }
              }
         }
