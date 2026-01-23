@@ -1,34 +1,37 @@
-package com.Klikxxi
+package com.NgeFilm
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import org.jsoup.nodes.Element
+import java.net.URI
 
-class Klikxxi : MainAPI() {
-    override var mainUrl = "https://klikxxi.me"
-    override var name = "KlikXXI"
+class NgeFilm : MainAPI() {
+    override var mainUrl = "https://new31.ngefilm.site"
+    override var name = "NgeFilm21"
     override val hasMainPage = true
     override var lang = "id"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
-    // --- DEFINISI KATEGORI ---
-    override val mainPage = mainPageOf(
-        "$mainUrl/" to "Home",
-        "$mainUrl/category/action/" to "Eksen",
-        "$mainUrl/category/adventure/" to "Petualangan",
-        "$mainUrl/category/crime/" to "Kriminal",
-        "$mainUrl/category/drama/" to "Drama",
-        "$mainUrl/category/horror/" to "Horror",
-        "$mainUrl/category/mystery/" to "Misteri",
-        "$mainUrl/category/science-fiction/" to "Science & Fiction",
-        "$mainUrl/category/war/" to "War"
+    val mainHeaders = mapOf(
+        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Referer" to "$mainUrl/"
     )
 
-    // --- HELPER UNTUK GAMBAR HD ---
+    override val mainPage = mainPageOf(
+        "$mainUrl/page/" to "Terbaru",
+        "$mainUrl/populer/page/" to "Populer",
+        "$mainUrl/genre/action/page/" to "Action",
+        "$mainUrl/genre/drama/page/" to "Drama",
+        "$mainUrl/genre/horror/page/" to "Horror",
+        "$mainUrl/country/indonesia/page/" to "Indonesia"
+    )
+
+    // --- ENGINE GAMBAR HD KLIKXXI ---
     private fun String?.toLargeUrl(): String? {
         val url = this ?: return null
         val fullUrl = if (url.startsWith("//")) "https:$url" else url
-        return fullUrl.replace(Regex("-\\d+x\\d+"), "")
+        // Menghapus parameter resize (?resize=...) dan suffix dimensi (-150x200)
+        return fullUrl.substringBefore("?").replace(Regex("-\\d+x\\d+"), "")
     }
 
     private fun Element.toSearchResponse(): SearchResponse? {
@@ -36,123 +39,80 @@ class Klikxxi : MainAPI() {
         val title = titleElement.text().trim()
         val href = titleElement.attr("href")
 
-        // DETEKSI TIPE KONTEN (Movie vs TV)
-        val isTv = href.contains("/tv/")
+        val isTv = this.select(".gmr-numbeps").isNotEmpty() || href.contains("/tv/")
 
         val imgElement = this.selectFirst("img")
-        val rawPoster = imgElement?.attr("data-lazy-src") ?: imgElement?.attr("src")
+        val rawPoster = imgElement?.attr("data-src") ?: imgElement?.attr("src") ?: imgElement?.attr("data-lazy-src")
         val posterUrl = rawPoster.toLargeUrl()
 
         val quality = this.selectFirst(".gmr-quality-item")?.text() ?: "N/A"
-        
-        // Ambil Rating (Jika ada di website)
         val ratingText = this.selectFirst(".gmr-rating-item")?.text()?.trim()
         val rating = ratingText?.toDoubleOrNull()
 
-        if (isTv) {
-            return newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
+        return if (isTv) {
+            newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
                 this.posterUrl = posterUrl
-                this.quality = getQualityFromString(quality)
-                if (rating != null) {
-                    this.score = Score.from10(rating)
-                }
+                addQuality(quality)
+                if (rating != null) this.score = Score.from10(rating)
             }
         } else {
-            return newMovieSearchResponse(title, href, TvType.Movie) {
+            newMovieSearchResponse(title, href, TvType.Movie) {
                 this.posterUrl = posterUrl
-                this.quality = getQualityFromString(quality)
-                if (rating != null) {
-                    this.score = Score.from10(rating)
-                }
+                addQuality(quality)
+                if (rating != null) this.score = Score.from10(rating)
             }
         }
     }
 
-    // --- MAIN FUNCTIONS ---
-
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val homeSets = ArrayList<HomePageList>()
-        
-        // Handle Pagination untuk Kategori
-        val url = if (page > 1) {
-            if (request.data.endsWith("/")) "${request.data}page/$page/" else "${request.data}/page/$page/"
-        } else {
-            request.data
-        }
-
-        val document = app.get(url).document
-
-        if (request.name == "Home") {
-            // Logic khusus Halaman Utama (Widget)
-            document.select(".muvipro-posts-module").forEach { widget ->
-                val title = widget.select(".homemodule-title").text().trim()
-                val movies = widget.select(".gmr-item-modulepost").mapNotNull { it.toSearchResponse() }
-                if (movies.isNotEmpty()) {
-                    homeSets.add(HomePageList(title, movies))
-                }
-            }
-        } else {
-            // Logic untuk Kategori
-            val movies = document.select("article.item").mapNotNull { it.toSearchResponse() }
-            if (movies.isNotEmpty()) {
-                homeSets.add(HomePageList(request.name, movies))
-            }
-        }
-
-        return newHomePageResponse(homeSets)
+        val url = if (page > 1) "${request.data}$page/" else request.data
+        val doc = app.get(url, headers = mainHeaders).document
+        val home = doc.select("article.item").mapNotNull { it.toSearchResponse() }
+        return newHomePageResponse(request.name, home)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
         val url = "$mainUrl/?s=$query&post_type%5B%5D=post&post_type%5B%5D=tv"
-        val document = app.get(url).document
-        return document.select("article.item").mapNotNull { it.toSearchResponse() }
+        val doc = app.get(url, headers = mainHeaders).document
+        return doc.select("article.item").mapNotNull { it.toSearchResponse() }
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val document = app.get(url).document
+        val document = app.get(url, headers = mainHeaders).document
         val title = document.selectFirst("h1.entry-title")?.text()?.trim() ?: "Unknown"
         
-        val imgTag = document.selectFirst("img.attachment-thumbnail") 
-                     ?: document.selectFirst(".gmr-poster img")
-                     ?: document.selectFirst("figure img")
-        val rawPoster = imgTag?.attr("data-lazy-src") ?: imgTag?.attr("src")
+        val imgTag = document.selectFirst(".gmr-movie-data img") ?: document.selectFirst(".content-thumbnail img")
+        val rawPoster = imgTag?.attr("data-src") ?: imgTag?.attr("src")
         val poster = rawPoster.toLargeUrl()
+        
+        // BACKDROP FORCE (Logic Fix dari V8)
+        val backdropUrlRaw = document.selectFirst("#muvipro_player_content_id img")?.attr("src")
+        val backdrop = if (!backdropUrlRaw.isNullOrBlank()) backdropUrlRaw.toLargeUrl() else poster
+
         val description = document.select(".entry-content p").text().trim()
         val year = document.select("time[itemprop=dateCreated]").text().takeLast(4).toIntOrNull()
-        
-        // Coba ambil rating dari detail page
-        val ratingMeta = document.selectFirst("meta[itemprop=ratingValue]")?.attr("content") 
-                        ?: document.selectFirst(".gmr-rating-item")?.text()?.trim()
-        val scoreVal = ratingMeta?.toDoubleOrNull()
+        val ratingText = document.selectFirst("span[itemprop=ratingValue]")?.text()?.trim()
+        val scoreVal = ratingText?.toDoubleOrNull()
 
-        // --- DETEKSI TV SERIES & EPISODE ---
+        // --- TV SERIES LOGIC ---
         val episodes = ArrayList<Episode>()
-        val episodeElements = document.select(".gmr-season-episodes a")
+        val episodeElements = document.select(".gmr-listseries a")
         
         if (episodeElements.isNotEmpty()) {
              episodeElements.forEach { eps ->
                  val epsUrl = eps.attr("href")
                  val epsName = eps.text().trim() 
-                 
-                 if (!epsName.contains("Batch", ignoreCase = true)) {
-                     val regex = Regex("S(\\d+)Eps(\\d+)", RegexOption.IGNORE_CASE)
-                     val match = regex.find(epsName)
-                     
-                     val seasonNum = match?.groupValues?.get(1)?.toIntOrNull()
-                     val episodeNum = match?.groupValues?.get(2)?.toIntOrNull()
-                     
-                     episodes.add(
-                         newEpisode(epsUrl) {
+                 if (!epsName.contains("Pilih Episode", true) && !eps.hasClass("gmr-all-serie")) {
+                     episodes.add(newEpisode(epsUrl) {
                              this.name = epsName
-                             this.season = seasonNum
-                             this.episode = episodeNum
+                             this.episode = epsName.filter { it.isDigit() }.toIntOrNull()
                          }
                      )
                  }
              }
-             
              return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                 this.posterUrl = poster
+                this.backgroundPosterUrl = backdrop
                 this.year = year
                 this.plot = description
                 if (scoreVal != null) this.score = Score.from10(scoreVal)
@@ -161,6 +121,7 @@ class Klikxxi : MainAPI() {
         
         return newMovieLoadResponse(title, url, TvType.Movie, url) {
             this.posterUrl = poster
+            this.backgroundPosterUrl = backdrop
             this.year = year
             this.plot = description
             if (scoreVal != null) this.score = Score.from10(scoreVal)
@@ -173,13 +134,14 @@ class Klikxxi : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val document = app.get(data).document
+        val document = app.get(data, headers = mainHeaders).document
+        
+        // LOGIC AJAX TAB DARI KLIKXXI
         val postId = document.selectFirst("#muvipro_player_content_id")?.attr("data-id")
 
         if (postId != null) {
             val ajaxUrl = "$mainUrl/wp-admin/admin-ajax.php"
-            // Loop tab p1 sampai p6
-            (1..6).forEach { index ->
+            (1..5).forEach { index ->
                 try {
                     val response = app.post(
                         ajaxUrl,
@@ -188,17 +150,35 @@ class Klikxxi : MainAPI() {
                             "tab" to "p$index",
                             "post_id" to postId
                         ),
-                        headers = mapOf("X-Requested-With" to "XMLHttpRequest")
+                        headers = mapOf("X-Requested-With" to "XMLHttpRequest", "Referer" to data)
                     ).text
 
-                    val ajaxDoc = org.jsoup.Jsoup.parse(response)
+                    // --- REGEX HUNTER (LOG UBLOCK) ---
+                    // Mencari link .txt atau .m3u8 di dalam hasil AJAX
+                    val regex = Regex("""["'](https?://[^"']+\.(?:txt|m3u8)[^"']*)["']""")
+                    val matches = regex.findAll(response)
                     
-                    // Ambil iframe dan serahkan ke loadExtractor bawaan Cloudstream
+                    matches.forEach { match ->
+                        val streamUrl = match.groupValues[1]
+                        val wrapperUri = URI(streamUrl)
+                        val origin = "${wrapperUri.scheme}://${wrapperUri.host}"
+                        
+                        M3u8Helper.generateM3u8(
+                            "NgeFilm VIP Server $index",
+                            streamUrl,
+                            "https://playerngefilm21.rpmlive.online/",
+                            headers = mapOf(
+                                "Origin" to "https://playerngefilm21.rpmlive.online",
+                                "Referer" to "https://playerngefilm21.rpmlive.online/"
+                            )
+                        ).forEach { link -> callback(link) }
+                    }
+
+                    // Standard Iframe extraction dari AJAX
+                    val ajaxDoc = org.jsoup.Jsoup.parse(response)
                     ajaxDoc.select("iframe").forEach { iframe ->
                         var src = iframe.attr("src")
                         if (src.startsWith("//")) src = "https:$src"
-                        
-                        // Filter iklan, sisanya serahkan ke loadExtractor
                         if (!src.contains("facebook") && !src.contains("whatsapp")) {
                             loadExtractor(src, data, subtitleCallback, callback)
                         }
@@ -207,18 +187,9 @@ class Klikxxi : MainAPI() {
             }
         }
 
-        // Ambil link download (UserDrive, Voe, dll)
+        // Ambil link download (Gdrive, FilePress, dll)
         document.select(".gmr-download-list a").forEach { link ->
             loadExtractor(link.attr("href"), data, subtitleCallback, callback)
-        }
-        
-        // Ambil iframe biasa di halaman (jika ada)
-        document.select("iframe").forEach { iframe ->
-             var src = iframe.attr("src")
-             if (src.startsWith("//")) src = "https:$src"
-             if (!src.contains("youtube") && !src.contains("facebook")) {
-                 loadExtractor(src, data, subtitleCallback, callback)
-             }
         }
 
         return true
