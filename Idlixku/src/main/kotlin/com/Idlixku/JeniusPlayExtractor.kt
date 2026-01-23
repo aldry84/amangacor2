@@ -3,7 +3,7 @@ package com.Idlixku
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
-import com.lagradost.cloudstream3.utils.AppUtils.parsedSafe
+import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.INFER_TYPE
@@ -19,13 +19,14 @@ class JeniusPlayExtractor : ExtractorApi() {
         @JsonProperty("securedLink") val securedLink: String?
     )
 
+    // Kita suppress peringatan DEPRECATION agar build tetap jalan
+    @Suppress("DEPRECATION") 
     override suspend fun getUrl(
         url: String,
         referer: String?,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        // Ambil ID video dari URL (misal: /video/0e8990...)
         val id = url.substringAfter("/video/").substringBefore("/")
         val apiUrl = "$mainUrl/player/index.php?data=$id&do=getVideo"
 
@@ -36,13 +37,12 @@ class JeniusPlayExtractor : ExtractorApi() {
                 "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8"
             )
 
-            // Tembak API JeniusPlay
-            val response = app.post(apiUrl, headers = headers).parsedSafe<JeniusResponse>()
+            // Menggunakan .text lalu tryParseJson agar lebih aman
+            val responseText = app.post(apiUrl, headers = headers).text
+            val response = tryParseJson<JeniusResponse>(responseText)
             
-            // Ambil link master.txt (m3u8)
             val videoUrl = response?.securedLink ?: response?.videoSource ?: return
 
-            // Kirim ke CloudStream
             callback.invoke(
                 ExtractorLink(
                     name,
