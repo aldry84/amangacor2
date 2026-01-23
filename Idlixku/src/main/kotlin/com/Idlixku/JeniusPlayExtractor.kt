@@ -29,10 +29,11 @@ class JeniusPlayExtractor : ExtractorApi() {
 
         var foundLink: String? = null
 
-        // 1. COBA API (SEKARANG DENGAN DATA BODY)
+        // 1. Ambil link melalui API POST (Metode paling valid sekarang)
         if (id.isNotEmpty()) {
             val apiUrl = "$mainUrl/player/index.php?data=$id&do=getVideo"
             try {
+                // Header harus lengkap sesuai cURL kamu
                 val headers = mapOf(
                     "X-Requested-With" to "XMLHttpRequest",
                     "Referer" to url,
@@ -40,7 +41,6 @@ class JeniusPlayExtractor : ExtractorApi() {
                     "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36"
                 )
 
-                // INI PERBAIKANNYA: Kirim hash dan r di body
                 val bodyData = mapOf(
                     "hash" to id,
                     "r" to (referer ?: "https://tv12.idlixku.com/")
@@ -49,51 +49,44 @@ class JeniusPlayExtractor : ExtractorApi() {
                 val text = app.post(apiUrl, headers = headers, data = bodyData).text
                 val json = tryParseJson<JeniusResponse>(text)
                 foundLink = json?.securedLink ?: json?.videoSource
-            } catch (e: Exception) {
-                // Lanjut ke fallback
-            }
+            } catch (e: Exception) { }
         }
 
-        // 2. FALLBACK SCRAPING HTML (Jaga-jaga kalau API gagal)
+        // 2. Fallback: Cari link /m3/ atau master.txt di HTML
         if (foundLink.isNullOrEmpty()) {
             try {
                 val document = app.get(url).text
+                val regexM3 = Regex("""["'](https?://jeniusplay\.com/m3/[^"']+)["']""")
+                val regexMaster = Regex("""["']([^"']+\/master\.txt[^"']*)["']""")
                 
-                val regex1 = Regex("""(file|source)\s*[:=]\s*["']([^"']+)["']""")
-                val regex2 = Regex("""["']([^"']+\/master\.txt[^"']*)["']""")
-                val regex3 = Regex("""["']([^"']+\.m3u8[^"']*)["']""")
-
-                foundLink = regex1.find(document)?.groupValues?.get(2)
-                    ?: regex2.find(document)?.groupValues?.get(1)
-                    ?: regex3.find(document)?.groupValues?.get(1)
-
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+                foundLink = regexM3.find(document)?.groupValues?.get(1)
+                    ?: regexMaster.find(document)?.groupValues?.get(1)
+            } catch (e: Exception) { }
         }
 
         if (!foundLink.isNullOrEmpty()) {
             var finalUrl = foundLink!!
-            if (finalUrl.startsWith("//")) {
-                finalUrl = "https:$finalUrl"
-            }
+            if (finalUrl.startsWith("//")) finalUrl = "https:$finalUrl"
 
-            // Paksa M3U8 jika linknya .txt atau .m3u8
-            val isM3u8 = finalUrl.contains(".m3u8") || 
-                         finalUrl.contains("master.txt") || 
-                         finalUrl.contains("/hls/")
-
-            val type = if (isM3u8) ExtractorLinkType.M3U8 else INFER_TYPE
+            // Berdasarkan temuan kamu, link /m3/ atau master.txt PASTI M3U8
+            val isHls = finalUrl.contains("/m3/") || 
+                        finalUrl.contains("master.txt") || 
+                        finalUrl.contains("/hls/")
 
             callback.invoke(
                 newExtractorLink(
                     name,
                     name,
                     finalUrl,
-                    type
+                    url, // Referer sangat penting di sini
+                    Qualities.Unknown.value,
+                    if (isHls) ExtractorLinkType.M3U8 else INFER_TYPE
                 ) {
-                    this.referer = referer ?: mainUrl
-                    this.quality = Qualities.Unknown.value
+                    // Tambahkan header khusus agar server jeniusplay tidak memblokir player
+                    this.headers = mapOf(
+                        "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
+                        "Origin" to "https://jeniusplay.com"
+                    )
                 }
             )
         }
