@@ -1,11 +1,10 @@
-@file:Suppress("DEPRECATION")
-
 package com.Idlixku
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson 
+import com.lagradost.cloudstream3.Score
 import org.jsoup.nodes.Element
 
 class IdlixkuProvider : MainAPI() {
@@ -31,7 +30,6 @@ class IdlixkuProvider : MainAPI() {
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
-        // Gaya FourKHDHub: Bungkus dengan runCatching
         return runCatching {
             val document = app.get(request.data).document
             val sectionSelector = when (request.name) {
@@ -51,15 +49,10 @@ class IdlixkuProvider : MainAPI() {
     private fun toSearchResult(element: Element): SearchResponse? {
         val titleElement = element.selectFirst("h3 > a") ?: return null
         val title = titleElement.text()
-        
-        // Gaya FourKHDHub: Gunakan absUrl dan fallback ke attr
-        val href = titleElement.absUrl("href").ifBlank { titleElement.attr("href") }
-        
-        val imgTag = element.selectFirst("img")
-        val posterUrl = imgTag?.absUrl("src")?.ifBlank { imgTag.attr("src") }
+        val href = titleElement.attr("href")
+        val posterUrl = element.selectFirst("img")?.attr("src")
             ?.replace("/w185/", "/w500/")
             ?.replace("/w92/", "/w500/")
-            
         val quality = element.selectFirst(".quality")?.text() ?: ""
         
         val isTvSeries = element.classNames().any { it in listOf("tvshows", "seasons", "episodes") } 
@@ -96,10 +89,7 @@ class IdlixkuProvider : MainAPI() {
             val document = app.get(url).document
 
             val title = document.selectFirst(".data h1")?.text()?.trim() ?: return null
-            val imgTag = document.selectFirst(".poster img")
-            val poster = imgTag?.absUrl("src")?.ifBlank { imgTag.attr("src") }
-                ?.replace("/w185/", "/w780/")
-                
+            val poster = document.selectFirst(".poster img")?.attr("src")?.replace("/w185/", "/w780/")
             val description = document.selectFirst(".wp-content p")?.text()?.trim() 
                 ?: document.selectFirst("center p")?.text()?.trim()
             
@@ -115,14 +105,10 @@ class IdlixkuProvider : MainAPI() {
                 document.select("#seasons .se-c").flatMap { seasonElement ->
                     val seasonNum = seasonElement.selectFirst(".se-t")?.text()?.toIntOrNull() ?: 1
                     seasonElement.select("ul.episodios li").map { ep ->
-                        val epImgTag = ep.selectFirst("img")
-                        val epImg = epImgTag?.absUrl("src")?.ifBlank { epImgTag.attr("src") }
-                        
+                        val epImg = ep.selectFirst("img")?.attr("src")
                         val epNum = ep.selectFirst(".numerando")?.text()?.split("-")?.last()?.trim()?.toIntOrNull()
                         val epTitle = ep.selectFirst(".episodiotitle a")?.text()
-                        
-                        val epLink = ep.selectFirst(".episodiotitle a")
-                        val epUrl = epLink?.absUrl("href")?.ifBlank { epLink.attr("href") } ?: ""
+                        val epUrl = ep.selectFirst(".episodiotitle a")?.attr("href") ?: ""
                         val date = ep.selectFirst(".date")?.text()
 
                         newEpisode(epUrl) {
@@ -168,7 +154,6 @@ class IdlixkuProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // Gaya FourKHDHub: Safety check di awal
         val document = runCatching { app.get(data).document }.getOrNull() ?: return false
 
         document.select("ul#playeroptionsul li").forEach { element ->
@@ -186,7 +171,7 @@ class IdlixkuProvider : MainAPI() {
                 "type" to type
             )
 
-            runCatching {
+            try {
                 val response = app.post(
                     "$mainUrl/wp-admin/admin-ajax.php",
                     data = formData,
@@ -194,7 +179,6 @@ class IdlixkuProvider : MainAPI() {
                     referer = data
                 )
                 
-                // Parse Manual agar aman dari library yg missing
                 val dooplayResponse = AppUtils.parseJson<DooplayResponse>(response.text)
                 var embedUrl = dooplayResponse.embed_url ?: return@forEach
 
@@ -208,8 +192,9 @@ class IdlixkuProvider : MainAPI() {
                 } else {
                     loadExtractor(embedUrl, "IDLIX $title", subtitleCallback, callback)
                 }
-            }.onFailure { 
-                // Error handling diam
+
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
         return true
