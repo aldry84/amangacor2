@@ -11,7 +11,15 @@ class Klikxxi : MainAPI() {
     override var lang = "id"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
-    // --- HELPER FUNCTIONS ---
+    // --- HELPER UNTUK MEMPERBAIKI URL GAMBAR ---
+    private fun String?.toLink(): String? {
+        if (this == null) return null
+        return if (this.startsWith("//")) {
+            "https:$this"
+        } else {
+            this
+        }
+    }
 
     private fun Element.toSearchResponse(): SearchResponse? {
         // Ambil judul dan link
@@ -19,11 +27,14 @@ class Klikxxi : MainAPI() {
         val title = titleElement.text().trim()
         val href = titleElement.attr("href")
 
-        // Ambil poster (prioritas data-lazy-src)
-        val posterElement = this.selectFirst("img.attachment-medium")
-        val posterUrl = posterElement?.attr("data-lazy-src") ?: posterElement?.attr("src")
+        // Ambil poster
+        // Kita cari tag 'img' apa saja di dalam elemen ini
+        val imgTag = this.selectFirst("img")
+        // Prioritaskan 'data-lazy-src' karena situs pakai lazy load, kalau tidak ada baru 'src'
+        val rawPoster = imgTag?.attr("data-lazy-src") ?: imgTag?.attr("src")
+        val posterUrl = rawPoster.toLink()
 
-        // Ambil kualitas
+        // Ambil kualitas (HD/CAM)
         val quality = this.selectFirst(".gmr-quality-item")?.text() ?: "N/A"
 
         return newMovieSearchResponse(title, href, TvType.Movie) {
@@ -55,7 +66,8 @@ class Klikxxi : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val url = "$mainUrl/?s=$query&post_type[]=post&post_type[]=tv"
+        // PERBAIKAN SEARCH: Menggunakan format standar WordPress
+        val url = "$mainUrl/?s=$query" 
         val document = app.get(url).document
 
         return document.select(".gmr-item-modulepost").mapNotNull {
@@ -68,9 +80,13 @@ class Klikxxi : MainAPI() {
 
         val title = document.selectFirst("h1.entry-title")?.text()?.trim() ?: "Unknown"
         
-        val poster = document.selectFirst("img.attachment-thumbnail")?.attr("src") 
-                     ?: document.selectFirst(".gmr-poster img")?.attr("src")
-                     ?: document.selectFirst("figure img")?.attr("src")
+        // PERBAIKAN POSTER DI DETAIL
+        val imgTag = document.selectFirst("img.attachment-thumbnail") 
+                     ?: document.selectFirst(".gmr-poster img")
+                     ?: document.selectFirst("figure img")
+        
+        val rawPoster = imgTag?.attr("data-lazy-src") ?: imgTag?.attr("src")
+        val poster = rawPoster.toLink()
 
         val description = document.select(".entry-content p").text().trim()
         
@@ -81,14 +97,14 @@ class Klikxxi : MainAPI() {
         val isTvSeries = document.select(".gmr-numbeps").isNotEmpty() || url.contains("/tv/")
         val tvType = if (isTvSeries) TvType.TvSeries else TvType.Movie
 
-        if (isTvSeries) {
-            return newTvSeriesLoadResponse(title, url, tvType, emptyList()) {
+        return if (isTvSeries) {
+            newTvSeriesLoadResponse(title, url, tvType, emptyList()) {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
             }
         } else {
-            return newMovieLoadResponse(title, url, tvType, url) {
+            newMovieLoadResponse(title, url, tvType, url) {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
