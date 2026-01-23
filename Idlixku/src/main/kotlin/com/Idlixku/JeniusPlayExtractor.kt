@@ -3,19 +3,14 @@ package com.Idlixku
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
-import com.lagradost.cloudstream3.utils.AppUtils
-import com.lagradost.cloudstream3.utils.ExtractorApi
-import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.INFER_TYPE
-import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.utils.* // Import ini memuat newExtractorLink
+import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 
-@Suppress("DEPRECATION") 
 class JeniusPlayExtractor : ExtractorApi() {
     override val name = "JeniusPlay"
     override val mainUrl = "https://jeniusplay.com"
     override val requiresReferer = true
 
-    // PERBAIKAN: Menggunakan @param:JsonProperty untuk menghilangkan warning
     private data class JeniusResponse(
         @param:JsonProperty("videoSource") val videoSource: String?,
         @param:JsonProperty("securedLink") val securedLink: String?
@@ -30,7 +25,7 @@ class JeniusPlayExtractor : ExtractorApi() {
         val id = url.substringAfter("/video/").substringBefore("/")
         val apiUrl = "$mainUrl/player/index.php?data=$id&do=getVideo"
 
-        try {
+        runCatching {
             val headers = mapOf(
                 "X-Requested-With" to "XMLHttpRequest",
                 "Referer" to url,
@@ -38,27 +33,24 @@ class JeniusPlayExtractor : ExtractorApi() {
             )
 
             val responseText = app.post(apiUrl, headers = headers).text
+            val response = tryParseJson<JeniusResponse>(responseText)
             
-            // Gunakan AppUtils.tryParseJson agar aman
-            val response = AppUtils.tryParseJson<JeniusResponse>(responseText)
-            
-            val videoUrl = response?.securedLink ?: response?.videoSource ?: return
+            val videoUrl = response?.securedLink ?: response?.videoSource ?: return@runCatching
 
-            val link = ExtractorLink(
-                source = name,
-                name = name,
-                url = videoUrl,
-                referer = referer ?: mainUrl,
-                quality = Qualities.Unknown.value,
-                type = INFER_TYPE,
-                headers = mapOf(),
-                extractorData = null
+            // MENGGUNAKAN FORMAT ADIMOVIEBOX TANPA DEPRECATED
+            callback.invoke(
+                newExtractorLink(
+                    name,
+                    name,
+                    videoUrl,
+                    INFER_TYPE
+                ) {
+                    this.referer = referer ?: mainUrl
+                    this.quality = Qualities.Unknown.value
+                }
             )
-            
-            callback.invoke(link)
-
-        } catch (e: Exception) {
-            e.printStackTrace()
+        }.onFailure {
+            it.printStackTrace()
         }
     }
 }
