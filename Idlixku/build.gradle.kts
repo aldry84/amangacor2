@@ -2,8 +2,7 @@
 version = 6
 
 cloudstream {
-    // Informasi Plugin
-    name = "Idlixku" // Nama plugin wajib ada
+    
     description = "Nonton Film, Serial, Drama Korea dan Anime Subtitle Indonesia"
     language = "id"
     
