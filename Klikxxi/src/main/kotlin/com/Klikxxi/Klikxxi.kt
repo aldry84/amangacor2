@@ -22,9 +22,11 @@ class Klikxxi : MainAPI() {
         val titleElement = this.selectFirst(".entry-title a") ?: return null
         val title = titleElement.text().trim()
         val href = titleElement.attr("href")
+
         val imgElement = this.selectFirst("img")
         val rawPoster = imgElement?.attr("data-lazy-src") ?: imgElement?.attr("src")
         val posterUrl = rawPoster.toLargeUrl()
+
         val quality = this.selectFirst(".gmr-quality-item")?.text() ?: "N/A"
 
         return newMovieSearchResponse(title, href, TvType.Movie) {
@@ -34,18 +36,15 @@ class Klikxxi : MainAPI() {
     }
 
     // --- CUSTOM EXTRACTOR UNTUK STRP2P ---
-    // Logika ini mencoba meniru curl yang kamu kirim
     private suspend fun invokeStrp2p(
         url: String,
         callback: (ExtractorLink) -> Unit
     ) {
         try {
-            // URL asal: https://klikxxi.strp2p.site/embed/vir5ra
-            // Kita butuh ID-nya: vir5ra
             val id = url.substringAfter("/embed/").substringBefore("?")
             val domain = "https://klikxxi.strp2p.site"
 
-            // Langkah 1: Request Token (Sesuai CURL kamu)
+            // Langkah 1: Request Token
             val apiVideoUrl = "$domain/api/v1/video?id=$id&w=360&h=800&r=klikxxi.me"
             
             val tokenResponse = app.get(
@@ -57,11 +56,9 @@ class Klikxxi : MainAPI() {
                 )
             ).text
 
-            // Jika responnya JSON error, berhenti
             if (tokenResponse.contains("success\":false")) return
 
             // Langkah 2: Request Player dengan Token
-            // Token biasanya string panjang mentah, kita coba kirim ke endpoint player
             val apiPlayerUrl = "$domain/api/v1/player?t=$tokenResponse"
             
             val playerResponse = app.get(
@@ -72,25 +69,25 @@ class Klikxxi : MainAPI() {
                 )
             ).parsedSafe<Strp2pResponse>()
 
-            // Langkah 3: Ambil link m3u8 dari respon JSON
+            // Langkah 3: Ambil link m3u8
+            // PERBAIKAN DI SINI: Mengganti getQualityFromString dengan Qualities.Unknown.value
             playerResponse?.source?.forEach { source ->
                 callback.invoke(
                     ExtractorLink(
-                        "StrP2P (VIP)",
-                        "StrP2P ${source.label}",
-                        source.file,
-                        mainUrl,
-                        getQualityFromString(source.label),
-                        true // isM3u8
+                        source = "StrP2P (VIP)",
+                        name = "StrP2P ${source.label}",
+                        url = source.file,
+                        referer = mainUrl,
+                        quality = Qualities.Unknown.value, // Fix: Menggunakan Integer
+                        isM3u8 = true
                     )
                 )
             }
         } catch (e: Exception) {
-            // Ignore error jika gagal decode
+            // Ignore error
         }
     }
 
-    // Class untuk parsing JSON respon StrP2P
     data class Strp2pResponse(
         val source: List<Strp2pSource>? = null
     )
@@ -137,14 +134,14 @@ class Klikxxi : MainAPI() {
         val isTvSeries = document.select(".gmr-numbeps").isNotEmpty() || url.contains("/tv/")
         val tvType = if (isTvSeries) TvType.TvSeries else TvType.Movie
 
-        return if (isTvSeries) {
-            newTvSeriesLoadResponse(title, url, tvType, emptyList()) {
+        if (isTvSeries) {
+            return newTvSeriesLoadResponse(title, url, tvType, emptyList()) {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
             }
         } else {
-            newMovieLoadResponse(title, url, tvType, url) {
+            return newMovieLoadResponse(title, url, tvType, url) {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
@@ -163,7 +160,6 @@ class Klikxxi : MainAPI() {
 
         if (postId != null) {
             val ajaxUrl = "$mainUrl/wp-admin/admin-ajax.php"
-            // Coba Server 1 sampai 6
             (1..6).forEach { index ->
                 try {
                     val response = app.post(
@@ -181,7 +177,6 @@ class Klikxxi : MainAPI() {
                         var src = iframe.attr("src")
                         if (src.startsWith("//")) src = "https:$src"
                         
-                        // DETEKSI SERVER STRP2P
                         if (src.contains("strp2p") || src.contains("auvexiug")) {
                              invokeStrp2p(src, callback)
                         } else if (!src.contains("facebook") && !src.contains("whatsapp")) {
@@ -194,6 +189,14 @@ class Klikxxi : MainAPI() {
 
         document.select(".gmr-download-list a").forEach { link ->
             loadExtractor(link.attr("href"), data, subtitleCallback, callback)
+        }
+        
+        document.select("iframe").forEach { iframe ->
+             var src = iframe.attr("src")
+             if (src.startsWith("//")) src = "https:$src"
+             if (!src.contains("youtube") && !src.contains("facebook")) {
+                 loadExtractor(src, data, subtitleCallback, callback)
+             }
         }
 
         return true
