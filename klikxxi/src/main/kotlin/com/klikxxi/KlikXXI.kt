@@ -28,14 +28,18 @@ class KlikXXI : MainAPI() {
         // Mengambil kualitas (HD/CAM)
         val quality = this.selectFirst(".gmr-quality-item")?.text() ?: "N/A"
 
-        // Mengambil Rating
-        val ratingText = this.selectFirst(".gmr-rating-item")?.text()?.trim()?.toRatingInt()
+        // Mengambil Rating (Perbaikan Error 1 & 2)
+        // Kita parse manual text-nya menjadi Double, lalu dikali 10 menjadi Int (skala 0-100)
+        // Contoh text: "8" -> 8.0 -> 80
+        val ratingElement = this.selectFirst(".gmr-rating-item")?.text()?.trim()
+        val ratingValue = ratingElement?.toDoubleOrNull()?.times(10)?.toInt()
 
         return newMovieSearchResponse(title, href, TvType.Movie) {
             this.posterUrl = posterUrl
             this.quality = getQualityFromString(quality)
-            if (ratingText != null) {
-                this.apiRating = ratingText
+            // Ganti 'apiRating' menjadi 'rating'
+            if (ratingValue != null) {
+                this.rating = ratingValue
             }
         }
     }
@@ -47,8 +51,7 @@ class KlikXXI : MainAPI() {
         val document = app.get(mainUrl).document
         val homeSets = ArrayList<HomePageList>()
 
-        // Loop setiap widget kategori di homepage (Latest Movies, Tv Series, dll)
-        // Berdasarkan HTML log: class widgetnya adalah 'muvipro-posts-module'
+        // Loop setiap widget kategori di homepage
         document.select(".muvipro-posts-module").forEach { widget ->
             val title = widget.select(".homemodule-title").text().trim()
             
@@ -62,11 +65,11 @@ class KlikXXI : MainAPI() {
             }
         }
 
-        return HomePageResponse(homeSets)
+        // Perbaikan Error 3: Menggunakan 'newHomePageResponse' alih-alih constructor langsung
+        return newHomePageResponse(homeSets)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        // URL Search pattern: https://klikxxi.me/?s=judul&post_type[]=post&post_type[]=tv
         val url = "$mainUrl/?s=$query&post_type[]=post&post_type[]=tv"
         val document = app.get(url).document
 
@@ -80,30 +83,24 @@ class KlikXXI : MainAPI() {
 
         val title = document.selectFirst("h1.entry-title")?.text()?.trim() ?: "Unknown"
         
-        // Cek beberapa kemungkinan letak poster di detail page
         val poster = document.selectFirst("img.attachment-thumbnail")?.attr("src") 
                      ?: document.selectFirst(".gmr-poster img")?.attr("src")
                      ?: document.selectFirst("figure img")?.attr("src")
 
         val description = document.select(".entry-content p").text().trim()
         
-        // Mengambil tahun dari meta tag time
         val year = document.select("time[itemprop=dateCreated]").text().takeLast(4).toIntOrNull()
 
-        // Cek apakah ini TV Series (biasanya ada info episode)
         val isTvSeries = document.select(".gmr-numbeps").isNotEmpty() || url.contains("/tv/")
         val tvType = if (isTvSeries) TvType.TvSeries else TvType.Movie
 
         if (isTvSeries) {
-            // Logika untuk TV Series
-            // Kita perlu cari list episode jika ada (Nanti kita update jika ada log halaman series)
             return newTvSeriesLoadResponse(title, url, tvType, emptyList()) {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
             }
         } else {
-            // Logika untuk Movie
             return newMovieLoadResponse(title, url, tvType, url) {
                 this.posterUrl = poster
                 this.year = year
@@ -118,24 +115,18 @@ class KlikXXI : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // Request ke halaman detail/nonton
         val document = app.get(data).document
 
-        // --- PENCARIAN LINK (BETA) ---
-        // Mencari semua iframe di halaman tersebut
         document.select("iframe").forEach { iframe ->
             var src = iframe.attr("src")
-            // Handle jika src dimulai dengan // (protocol relative URL)
             if (src.startsWith("//")) {
                 src = "https:$src"
             }
 
-            // Filter iframe yang bukan iklan
             if (src.contains("youtube") || src.contains("facebook") || src.contains("whatsapp")) {
                 return@forEach
             }
 
-            // Mencoba load extractor bawaan Cloudstream (Fembed, StreamTape, GDrive, dll)
             loadExtractor(src, data, subtitleCallback, callback)
         }
 
