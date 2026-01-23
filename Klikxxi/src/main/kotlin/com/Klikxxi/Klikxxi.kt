@@ -26,11 +26,10 @@ class NgeFilm : MainAPI() {
         "$mainUrl/country/indonesia/page/" to "Indonesia"
     )
 
-    // --- ENGINE GAMBAR HD KLIKXXI ---
+    // --- ENGINE GAMBAR ANTI-BLUR ---
     private fun String?.toLargeUrl(): String? {
         val url = this ?: return null
         val fullUrl = if (url.startsWith("//")) "https:$url" else url
-        // Menghapus parameter resize (?resize=...) dan suffix dimensi (-150x200)
         return fullUrl.substringBefore("?").replace(Regex("-\\d+x\\d+"), "")
     }
 
@@ -38,13 +37,10 @@ class NgeFilm : MainAPI() {
         val titleElement = this.selectFirst(".entry-title a") ?: return null
         val title = titleElement.text().trim()
         val href = titleElement.attr("href")
-
         val isTv = this.select(".gmr-numbeps").isNotEmpty() || href.contains("/tv/")
-
         val imgElement = this.selectFirst("img")
         val rawPoster = imgElement?.attr("data-src") ?: imgElement?.attr("src") ?: imgElement?.attr("data-lazy-src")
         val posterUrl = rawPoster.toLargeUrl()
-
         val quality = this.selectFirst(".gmr-quality-item")?.text() ?: "N/A"
         val ratingText = this.selectFirst(".gmr-rating-item")?.text()?.trim()
         val rating = ratingText?.toDoubleOrNull()
@@ -80,51 +76,43 @@ class NgeFilm : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url, headers = mainHeaders).document
         val title = document.selectFirst("h1.entry-title")?.text()?.trim() ?: "Unknown"
-        
         val imgTag = document.selectFirst(".gmr-movie-data img") ?: document.selectFirst(".content-thumbnail img")
-        val rawPoster = imgTag?.attr("data-src") ?: imgTag?.attr("src")
-        val poster = rawPoster.toLargeUrl()
-        
-        // BACKDROP FORCE (Logic Fix dari V8)
+        val poster = (imgTag?.attr("data-src") ?: imgTag?.attr("src")).toLargeUrl()
         val backdropUrlRaw = document.selectFirst("#muvipro_player_content_id img")?.attr("src")
         val backdrop = if (!backdropUrlRaw.isNullOrBlank()) backdropUrlRaw.toLargeUrl() else poster
-
         val description = document.select(".entry-content p").text().trim()
         val year = document.select("time[itemprop=dateCreated]").text().takeLast(4).toIntOrNull()
         val ratingText = document.selectFirst("span[itemprop=ratingValue]")?.text()?.trim()
         val scoreVal = ratingText?.toDoubleOrNull()
 
-        // --- TV SERIES LOGIC ---
         val episodes = ArrayList<Episode>()
-        val episodeElements = document.select(".gmr-listseries a")
-        
-        if (episodeElements.isNotEmpty()) {
-             episodeElements.forEach { eps ->
-                 val epsUrl = eps.attr("href")
-                 val epsName = eps.text().trim() 
-                 if (!epsName.contains("Pilih Episode", true) && !eps.hasClass("gmr-all-serie")) {
-                     episodes.add(newEpisode(epsUrl) {
-                             this.name = epsName
-                             this.episode = epsName.filter { it.isDigit() }.toIntOrNull()
-                         }
-                     )
-                 }
-             }
-             return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+        document.select(".gmr-listseries a").forEach { eps ->
+            val epsUrl = eps.attr("href")
+            val epsName = eps.text().trim() 
+            if (!epsName.contains("Pilih Episode", true) && !eps.hasClass("gmr-all-serie")) {
+                episodes.add(newEpisode(epsUrl) {
+                    this.name = epsName
+                    this.episode = epsName.filter { it.isDigit() }.toIntOrNull()
+                })
+            }
+        }
+
+        return if (episodes.isNotEmpty()) {
+            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                 this.posterUrl = poster
                 this.backgroundPosterUrl = backdrop
                 this.year = year
                 this.plot = description
                 if (scoreVal != null) this.score = Score.from10(scoreVal)
             }
-        } 
-        
-        return newMovieLoadResponse(title, url, TvType.Movie, url) {
-            this.posterUrl = poster
-            this.backgroundPosterUrl = backdrop
-            this.year = year
-            this.plot = description
-            if (scoreVal != null) this.score = Score.from10(scoreVal)
+        } else {
+            newMovieLoadResponse(title, url, TvType.Movie, url) {
+                this.posterUrl = poster
+                this.backgroundPosterUrl = backdrop
+                this.year = year
+                this.plot = description
+                if (scoreVal != null) this.score = Score.from10(scoreVal)
+            }
         }
     }
 
@@ -135,12 +123,11 @@ class NgeFilm : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val document = app.get(data, headers = mainHeaders).document
-        
-        // LOGIC AJAX TAB DARI KLIKXXI
         val postId = document.selectFirst("#muvipro_player_content_id")?.attr("data-id")
 
         if (postId != null) {
             val ajaxUrl = "$mainUrl/wp-admin/admin-ajax.php"
+            // Loop tab p1 sampai p5
             (1..5).forEach { index ->
                 try {
                     val response = app.post(
@@ -153,33 +140,43 @@ class NgeFilm : MainAPI() {
                         headers = mapOf("X-Requested-With" to "XMLHttpRequest", "Referer" to data)
                     ).text
 
-                    // --- REGEX HUNTER (LOG UBLOCK) ---
-                    // Mencari link .txt atau .m3u8 di dalam hasil AJAX
+                    // --- SUPER REGEX HUNTER (UNTUK LINK .TXT / .M3U8) ---
+                    // Ini menangkap link video rahasia yang muncul di log uBlock kamu
                     val regex = Regex("""["'](https?://[^"']+\.(?:txt|m3u8)[^"']*)["']""")
                     val matches = regex.findAll(response)
                     
                     matches.forEach { match ->
                         val streamUrl = match.groupValues[1]
-                        val wrapperUri = URI(streamUrl)
-                        val origin = "${wrapperUri.scheme}://${wrapperUri.host}"
+                        val wrapperHost = "playerngefilm21.rpmlive.online"
                         
                         M3u8Helper.generateM3u8(
-                            "NgeFilm VIP Server $index",
+                            "NgeFilm VIP Tab $index",
                             streamUrl,
-                            "https://playerngefilm21.rpmlive.online/",
+                            "https://$wrapperHost/",
                             headers = mapOf(
-                                "Origin" to "https://playerngefilm21.rpmlive.online",
-                                "Referer" to "https://playerngefilm21.rpmlive.online/"
+                                "Origin" to "https://$wrapperHost",
+                                "Referer" to "https://$wrapperHost/",
+                                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
                             )
                         ).forEach { link -> callback(link) }
                     }
 
-                    // Standard Iframe extraction dari AJAX
+                    // Fallback: Jika isinya iframe (Klikxxi Style)
                     val ajaxDoc = org.jsoup.Jsoup.parse(response)
                     ajaxDoc.select("iframe").forEach { iframe ->
                         var src = iframe.attr("src")
                         if (src.startsWith("//")) src = "https:$src"
-                        if (!src.contains("facebook") && !src.contains("whatsapp")) {
+                        if (src.contains("rpmlive") || src.contains("playerngefilm")) {
+                           // Jika di dalam tab ada iframe wrapper lagi, kita bongkar isinya
+                           val innerRes = app.get(src, headers = mapOf("Referer" to data)).text
+                           val innerMatches = regex.findAll(innerRes)
+                           innerMatches.forEach { m ->
+                               val innerUrl = m.groupValues[1]
+                               M3u8Helper.generateM3u8("NgeFilm VIP Inner", innerUrl, src, 
+                                   headers = mapOf("Origin" to "https://playerngefilm21.rpmlive.online", "Referer" to "https://playerngefilm21.rpmlive.online/"))
+                                   .forEach { link -> callback(link) }
+                           }
+                        } else {
                             loadExtractor(src, data, subtitleCallback, callback)
                         }
                     }
@@ -187,7 +184,7 @@ class NgeFilm : MainAPI() {
             }
         }
 
-        // Ambil link download (Gdrive, FilePress, dll)
+        // Ambil link download (UserDrive, Voe, dll)
         document.select(".gmr-download-list a").forEach { link ->
             loadExtractor(link.attr("href"), data, subtitleCallback, callback)
         }
