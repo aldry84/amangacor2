@@ -22,27 +22,21 @@ class Idlixku : MainAPI() {
         val document = app.get(mainUrl, headers = standardHeaders).document
         val homePageList = ArrayList<HomePageList>()
 
-        // Kategori 1: Featured
         val featured = document.select(".items.featured article").mapNotNull { toSearchResult(it) }
         if (featured.isNotEmpty()) homePageList.add(HomePageList("Featured", featured))
 
-        // Kategori 2: Film Terbaru
         val movies = document.select("#dt-movies article").mapNotNull { toSearchResult(it) }
         if (movies.isNotEmpty()) homePageList.add(HomePageList("Film Terbaru", movies))
 
-        // Kategori 3: Serial TV Terbaru
         val tvSeries = document.select("#dt-tvshows article").mapNotNull { toSearchResult(it) }
         if (tvSeries.isNotEmpty()) homePageList.add(HomePageList("Serial TV Terbaru", tvSeries))
 
-        // Kategori 4: Drama Korea
         val drakor = document.select("#genre_drama-korea article").mapNotNull { toSearchResult(it) }
         if (drakor.isNotEmpty()) homePageList.add(HomePageList("Drama Korea", drakor))
 
-        // Kategori 5: Anime
         val anime = document.select("#genre_anime article").mapNotNull { toSearchResult(it) }
         if (anime.isNotEmpty()) homePageList.add(HomePageList("Anime", anime))
 
-        [span_4](start_span)// FIX: Menggunakan newHomePageResponse agar tidak deprecated[span_4](end_span)
         return newHomePageResponse(homePageList)
     }
 
@@ -85,11 +79,13 @@ class Idlixku : MainAPI() {
         val poster = document.selectFirst(".poster img")?.attr("src")
         val description = document.selectFirst("#info .wp-content p")?.text()
             ?: document.selectFirst("center p")?.text() ?: ""
+        
+        // FIX: Year sekarang Int? agar aman
         val year = document.selectFirst(".extra .date")?.text()?.takeLast(4)?.toIntOrNull()
         
-        [span_5](start_span)[span_6](start_span)// FIX: Menggunakan Score.from10 menggantikan sistem rating lama[span_5](end_span)[span_6](end_span)
+        // FIX: Rating String ke Int Score (x1000)
         val ratingText = document.selectFirst(".dt_rating_vgs")?.text()
-        val scoreData = Score.from10(ratingText)
+        val scoreInt = ratingText?.toDoubleOrNull()?.times(1000)?.toLong() // Fix Long Expected
 
         val recommendations = document.select("#single_relacionados article").mapNotNull {
             toSearchResult(it)
@@ -125,7 +121,8 @@ class Idlixku : MainAPI() {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
-                this.score = scoreData // FIX: Menggunakan score
+                // FIX: Score
+                if (scoreInt != null) this.rating = scoreInt.toInt() 
                 this.recommendations = recommendations
                 addTrailer(trailerUrl)
             }
@@ -134,7 +131,8 @@ class Idlixku : MainAPI() {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
-                this.score = scoreData // FIX: Menggunakan score
+                // FIX: Score
+                if (scoreInt != null) this.rating = scoreInt.toInt()
                 this.recommendations = recommendations
                 addTrailer(trailerUrl)
             }
@@ -173,10 +171,10 @@ class Idlixku : MainAPI() {
 
             when {
                 embedUrl.contains("jeniusplay.com") -> {
+                    // Panggil extractor baru
                     JeniusPlayExtractor().getVideo(embedUrl, callback)
                 }
                 else -> {
-                    // FIX: Menukar posisi callback dan subtitleCallback agar sesuai tipe data
                     loadExtractor(embedUrl, subtitleCallback, callback)
                 }
             }
