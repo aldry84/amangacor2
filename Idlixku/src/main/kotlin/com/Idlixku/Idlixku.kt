@@ -83,7 +83,8 @@ class Idlixku : MainAPI() {
         
         val year = document.selectFirst(".extra .date")?.text()?.takeLast(4)?.toIntOrNull()
         
-        // FIX: Rating menggunakan Score class (standard baru)
+        // FIX ERROR 1: Menggunakan Score.from10 (Sesuai Adimoviebox)
+        // Rating di idlix biasanya string "9.8", Score.from10 menanganinya otomatis
         val ratingText = document.selectFirst(".dt_rating_vgs")?.text()
         val scoreData = Score.from10(ratingText)
 
@@ -121,7 +122,7 @@ class Idlixku : MainAPI() {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
-                this.score = scoreData // FIX: Pakai score
+                this.score = scoreData // Set Score
                 this.recommendations = recommendations
                 addTrailer(trailerUrl)
             }
@@ -130,7 +131,7 @@ class Idlixku : MainAPI() {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
-                this.score = scoreData // FIX: Pakai score
+                this.score = scoreData // Set Score
                 this.recommendations = recommendations
                 addTrailer(trailerUrl)
             }
@@ -169,10 +170,10 @@ class Idlixku : MainAPI() {
 
             when {
                 embedUrl.contains("jeniusplay.com") -> {
-                    // Panggil fungsi internal
                     invokeJeniusExtractor(embedUrl, callback)
                 }
                 else -> {
+                    // FIX: Urutan callback yang benar untuk loadExtractor
                     loadExtractor(embedUrl, subtitleCallback, callback)
                 }
             }
@@ -180,8 +181,7 @@ class Idlixku : MainAPI() {
         return true
     }
 
-    // ================== INTERNAL EXTRACTOR (JENIUSPLAY) ==================
-    // Dipindahkan kesini agar bisa akses 'app' dan 'newExtractorLink'
+    // ================== INTERNAL EXTRACTOR ==================
     private suspend fun invokeJeniusExtractor(url: String, callback: (ExtractorLink) -> Unit) {
         try {
             val videoId = url.substringAfter("/video/")
@@ -198,16 +198,19 @@ class Idlixku : MainAPI() {
 
             val playlistUrl = jsonResponse?.videoSource ?: return
 
-            // FIX: Menggunakan newExtractorLink (Helper bawaan MainAPI)
+            // FIX ERROR 2 & 3 & 4: Menggunakan Lambda Builder Pattern
+            // Sesuai dengan Adimoviebox.kt
             callback.invoke(
                 newExtractorLink(
                     source = "JeniusPlay",
                     name = "JeniusPlay (Auto)",
                     url = playlistUrl,
-                    referer = domain,
-                    quality = Qualities.Unknown.value,
-                    isM3u8 = true
-                )
+                    type = INFER_TYPE
+                ) {
+                    this.referer = domain
+                    this.quality = Qualities.Unknown.value
+                    this.isM3u8 = true
+                }
             )
 
         } catch (e: Exception) {
@@ -215,10 +218,9 @@ class Idlixku : MainAPI() {
         }
     }
 
-    // Data Classes
     data class DooPlayResponse(
-        val embed_url: String?,
-        val type: String?
+        @JsonProperty("embed_url") val embed_url: String?,
+        @JsonProperty("type") val type: String?
     )
 
     data class JeniusResponse(
