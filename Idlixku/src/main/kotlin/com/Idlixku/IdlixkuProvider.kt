@@ -21,6 +21,17 @@ class IdlixkuProvider : MainAPI() {
     override var lang = "id"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime)
 
+    // --- DATA CLASSES UNTUK IMPORT ---
+    data class ResponseSource(
+        @param:JsonProperty("videoSource") val videoSource: String? = null,
+        @param:JsonProperty("securedLink") val securedLink: String? = null
+    )
+
+    data class Tracks(
+        @param:JsonProperty("file") val file: String,
+        @param:JsonProperty("label") val label: String? = null
+    )
+
     data class DooplayResponse(
         @param:JsonProperty("embed_url") val embed_url: String?,
         @param:JsonProperty("type") val type: String?,
@@ -193,51 +204,35 @@ class IdlixkuProvider : MainAPI() {
                 var embedUrl = dooplayResponse?.embed_url
                 val key = dooplayResponse?.key
 
-                // LOGIKA DEKRIPSI (DIPERBAIKI)
                 if (embedUrl != null && embedUrl.contains("\"ct\"") && !key.isNullOrEmpty()) {
                     try {
                         val cleanKey = decodeHex(key)
                         val decrypted = decryptDooplay(embedUrl, cleanKey)
-                        if (decrypted != null) {
-                            embedUrl = decrypted
-                        }
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
+                        if (decrypted != null) embedUrl = decrypted
+                    } catch (e: Exception) { }
                 }
 
                 if (embedUrl == null) return@forEach
-                embedUrl = fixUrl(embedUrl!!)
+                val finalEmbedUrl = fixUrl(embedUrl)
 
-                if (embedUrl!!.contains("<iframe")) {
-                    val iframeDoc = org.jsoup.Jsoup.parse(embedUrl)
-                    embedUrl = fixUrl(iframeDoc.select("iframe").attr("src"))
-                }
-
-                if (embedUrl!!.contains("jeniusplay.com")) {
-                    JeniusPlayExtractor().getUrl(embedUrl!!, data, subtitleCallback, callback)
+                if (finalEmbedUrl.contains("jeniusplay.com")) {
+                    JeniusPlayExtractor().getUrl(finalEmbedUrl, data, subtitleCallback, callback)
                 } else {
-                    loadExtractor(embedUrl!!, "IDLIX $title", subtitleCallback, callback)
+                    loadExtractor(finalEmbedUrl, "IDLIX $title", subtitleCallback, callback)
                 }
 
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+            } catch (e: Exception) { }
         }
         return true
     }
 
-    // --- DECODER MANUAL YANG LEBIH AMAN ---
     private fun decodeHex(hex: String): String {
         return try {
-            // Memecah berdasarkan "\x" lalu mengubah setiap bagian hex menjadi karakter
             hex.split("\\x")
                 .filter { it.isNotEmpty() }
                 .map { it.toInt(16).toChar() }
                 .joinToString("")
-        } catch (e: Exception) {
-            hex // Return as is jika gagal
-        }
+        } catch (e: Exception) { hex }
     }
 
     private fun decryptDooplay(jsonString: String, key: String): String? {
@@ -266,10 +261,7 @@ class IdlixkuProvider : MainAPI() {
             }
             return result.replace("\\/", "/")
 
-        } catch (e: Exception) {
-            e.printStackTrace()
-            return null
-        }
+        } catch (e: Exception) { return null }
     }
 
     private fun hexToBytes(hex: String): ByteArray {
