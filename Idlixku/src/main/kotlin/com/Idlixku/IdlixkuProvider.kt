@@ -1,11 +1,10 @@
-@file:Suppress("DEPRECATION")
-
 package com.Idlixku
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson 
+import com.lagradost.cloudstream3.Score
 import org.jsoup.nodes.Element
 
 class IdlixkuProvider : MainAPI() {
@@ -15,13 +14,11 @@ class IdlixkuProvider : MainAPI() {
     override var lang = "id"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime)
 
-    // PERBAIKAN: Menggunakan @param:JsonProperty untuk menghilangkan warning
     data class DooplayResponse(
         @param:JsonProperty("embed_url") val embed_url: String?,
         @param:JsonProperty("type") val type: String?
     )
 
-    // --- 1. HOME PAGE ---
     override val mainPage = mainPageOf(
         "$mainUrl/" to "Featured",
         "$mainUrl/" to "Film Terbaru",
@@ -74,7 +71,6 @@ class IdlixkuProvider : MainAPI() {
         }
     }
 
-    // --- 2. SEARCH ---
     override suspend fun search(query: String): List<SearchResponse> {
         val url = "$mainUrl/?s=$query"
         return runCatching {
@@ -85,7 +81,6 @@ class IdlixkuProvider : MainAPI() {
         }.getOrElse { emptyList() }
     }
 
-    // --- 3. LOAD (DETAIL) ---
     override suspend fun load(url: String): LoadResponse? {
         return runCatching {
             val document = app.get(url).document
@@ -149,7 +144,6 @@ class IdlixkuProvider : MainAPI() {
         }.getOrNull()
     }
 
-    // --- 4. LOAD LINKS ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -181,9 +175,8 @@ class IdlixkuProvider : MainAPI() {
                     referer = data
                 )
                 
-                // Gunakan parseJson manual
-                val dooplayResponse = AppUtils.parseJson<DooplayResponse>(response.text)
-                var embedUrl = dooplayResponse.embed_url ?: return@forEach
+                val dooplayResponse = AppUtils.tryParseJson<DooplayResponse>(response.text)
+                var embedUrl = dooplayResponse?.embed_url ?: return@forEach
 
                 if (embedUrl.contains("<iframe")) {
                     val iframeDoc = org.jsoup.Jsoup.parse(embedUrl)
