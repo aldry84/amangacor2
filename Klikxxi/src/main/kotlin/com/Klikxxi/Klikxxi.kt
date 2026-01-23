@@ -11,30 +11,33 @@ class Klikxxi : MainAPI() {
     override var lang = "id"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
-    // --- HELPER: Memperbaiki URL Gambar (Menambah https:) ---
-    private fun String?.toFixUrl(): String? {
+    // --- HELPER UNTUK GAMBAR HD ---
+    private fun String?.toLargeUrl(): String? {
         val url = this ?: return null
-        return if (url.startsWith("//")) {
+        
+        // 1. Tambahkan https jika belum ada
+        val fullUrl = if (url.startsWith("//")) {
             "https:$url"
         } else {
             url
         }
+
+        // 2. Hapus suffix resolusi (contoh: -152x228, -300x400) agar dapat gambar original
+        return fullUrl.replace(Regex("-\\d+x\\d+"), "")
     }
 
     private fun Element.toSearchResponse(): SearchResponse? {
-        // Ambil elemen judul dan link
         val titleElement = this.selectFirst(".entry-title a") ?: return null
         val title = titleElement.text().trim()
         val href = titleElement.attr("href")
 
         // Ambil poster
-        // Kita ambil elemen <img> di dalam kotak film
         val imgElement = this.selectFirst("img")
-        // Prioritaskan 'data-lazy-src' karena situs pakai RocketLoader
         val rawPoster = imgElement?.attr("data-lazy-src") ?: imgElement?.attr("src")
-        val posterUrl = rawPoster.toFixUrl()
+        
+        // Convert ke URL Besar (HD)
+        val posterUrl = rawPoster.toLargeUrl()
 
-        // Ambil kualitas (HD/CAM)
         val quality = this.selectFirst(".gmr-quality-item")?.text() ?: "N/A"
 
         return newMovieSearchResponse(title, href, TvType.Movie) {
@@ -49,11 +52,9 @@ class Klikxxi : MainAPI() {
         val document = app.get(mainUrl).document
         val homeSets = ArrayList<HomePageList>()
 
-        // Mengambil widget di homepage (Latest Movies, TV Series)
         document.select(".muvipro-posts-module").forEach { widget ->
             val title = widget.select(".homemodule-title").text().trim()
             
-            // Ambil list film di dalam widget tersebut
             val movies = widget.select(".gmr-item-modulepost").mapNotNull { 
                 it.toSearchResponse() 
             }
@@ -67,7 +68,6 @@ class Klikxxi : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        // Kita sederhanakan URL search agar lebih kompatibel
         val url = "$mainUrl/?s=$query"
         val document = app.get(url).document
 
@@ -81,20 +81,20 @@ class Klikxxi : MainAPI() {
 
         val title = document.selectFirst("h1.entry-title")?.text()?.trim() ?: "Unknown"
         
-        // Perbaikan Poster di Halaman Detail
+        // Ambil poster di halaman detail
         val imgTag = document.selectFirst("img.attachment-thumbnail") 
                      ?: document.selectFirst(".gmr-poster img")
                      ?: document.selectFirst("figure img")
         
         val rawPoster = imgTag?.attr("data-lazy-src") ?: imgTag?.attr("src")
-        val poster = rawPoster.toFixUrl()
+        
+        // Convert ke URL Besar (HD)
+        val poster = rawPoster.toLargeUrl()
 
         val description = document.select(".entry-content p").text().trim()
         
-        // Ambil tahun rilis
         val year = document.select("time[itemprop=dateCreated]").text().takeLast(4).toIntOrNull()
 
-        // Cek tipe (Movie/TV)
         val isTvSeries = document.select(".gmr-numbeps").isNotEmpty() || url.contains("/tv/")
         val tvType = if (isTvSeries) TvType.TvSeries else TvType.Movie
 
@@ -123,12 +123,10 @@ class Klikxxi : MainAPI() {
 
         document.select("iframe").forEach { iframe ->
             var src = iframe.attr("src")
-            // Fix protocol relative URL di iframe juga
             if (src.startsWith("//")) {
                 src = "https:$src"
             }
 
-            // Filter link sampah
             if (src.contains("youtube") || src.contains("facebook") || src.contains("whatsapp")) {
                 return@forEach
             }
