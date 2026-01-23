@@ -14,7 +14,7 @@ class NgeFilm : MainAPI() {
     override var lang = "id"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
-    // Standard headers for browsing the main site
+    // Headers standar
     val mainHeaders = mapOf(
         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Referer" to "$mainUrl/"
@@ -42,19 +42,18 @@ class NgeFilm : MainAPI() {
         return doc.select("article.item").mapNotNull { toSearchResult(it) }
     }
 
-    // --- HELPER: Get Best Resolution Poster ---
+    // --- FUNGSI BANTUAN GAMBAR ---
     private fun getPosterUrl(element: Element): String? {
         val img = element.selectFirst("img.wp-post-image") ?: element.selectFirst("img")
         return img?.let {
             var url = it.attr("data-src")
             if (url.isEmpty()) {
-                // Try to get the last url in srcset (usually highest res)
                 url = it.attr("srcset").split(",").lastOrNull()?.trim()?.split(" ")?.firstOrNull() ?: ""
             }
             if (url.isEmpty()) {
                 url = it.attr("src")
             }
-            // Remove resize params to get full quality
+            // Hapus parameter resize biar HD
             if (url.contains("?resize")) {
                 url = url.substringBefore("?")
             }
@@ -92,17 +91,15 @@ class NgeFilm : MainAPI() {
         }
     }
 
-    // --- LOAD DETAIL (Fix Backdrop & Metadata) ---
     override suspend fun load(url: String): LoadResponse {
         val doc = app.get(url, headers = mainHeaders).document
 
         val title = doc.selectFirst("h1.entry-title")?.text() ?: "No Title"
         val description = doc.selectFirst(".entry-content p")?.text()
         
-        // Poster: High Res
         val poster = getPosterUrl(doc.selectFirst("div.gmr-movie-data") ?: doc)
-
-        // BACKDROP FORCE: If specific backdrop element is missing/empty, use POSTER.
+        
+        // Backdrop Fix
         val backdropUrlRaw = doc.selectFirst("#muvipro_player_content_id img")?.attr("src")
         val backdrop = if (!backdropUrlRaw.isNullOrBlank()) fixUrl(backdropUrlRaw) else poster
 
@@ -167,7 +164,6 @@ class NgeFilm : MainAPI() {
         }
     }
 
-    // --- LOAD LINKS (THE TXT & M3U8 HUNTER) ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -176,35 +172,30 @@ class NgeFilm : MainAPI() {
     ): Boolean {
         val doc = app.get(data, headers = mainHeaders).document
 
-        // 1. LINK DOWNLOAD (Priority)
+        // 1. LINK DOWNLOAD (FIXED ERROR COPY)
+        // Kita gunakan pemanggilan standar tanpa modifikasi nama agar aman
         doc.select("ul.gmr-download-list li a").forEach { link ->
             val href = link.attr("href")
-            val text = link.text() 
             if (href.startsWith("http")) {
-                loadExtractor(href, data, subtitleCallback) { linkData ->
-                    callback(linkData.copy(name = "NgeFilm - $text"))
-                }
+                loadExtractor(href, data, subtitleCallback, callback)
             }
         }
 
-        // Wrapper Extraction Function
+        // Fungsi Helper: Ekstrak player dari wrapper
         suspend fun extractWrapper(url: String) {
             val fixedUrl = fixUrl(url)
             
             if (fixedUrl.contains("rpmlive") || fixedUrl.contains("playerngefilm")) {
                 try {
-                    // Get player HTML source
                     val response = app.get(fixedUrl, headers = mapOf("Referer" to data)).text
                     
-                    // REGEX: Find .txt or .m3u8 links inside scripts
-                    // Matches: "https://...index-f1-v1-a1.txt"
+                    // CARA 1 (TXT HUNTER)
                     val regex = Regex("[\"'](https?://.*?(?:\\.txt|\\.m3u8).*?)[\"']")
                     val matches = regex.findAll(response)
                     
                     matches.forEach { match ->
                         val streamUrl = match.groupValues[1]
                         
-                        // HEADERS: REQUIRED by Mindspire server (based on your curl)
                         val streamHeaders = mapOf(
                             "Origin" to "https://playerngefilm21.rpmlive.online",
                             "Referer" to "https://playerngefilm21.rpmlive.online/",
@@ -213,11 +204,10 @@ class NgeFilm : MainAPI() {
                         )
 
                         if (streamUrl.contains(".txt") || streamUrl.contains(".m3u8")) {
-                            // Convert the disguised .txt playlist into playable HLS stream
                             M3u8Helper.generateM3u8(
                                 "NgeFilm-VIP",
                                 streamUrl,
-                                "https://playerngefilm21.rpmlive.online/", // Referer is key!
+                                "https://playerngefilm21.rpmlive.online/", 
                                 headers = streamHeaders
                             ).forEach { link ->
                                 callback(link)
@@ -225,7 +215,7 @@ class NgeFilm : MainAPI() {
                         }
                     }
                     
-                    // Fallback: Check for standard iframe inside wrapper
+                    // CARA 2: Iframe fallback
                     val wrapperDoc = org.jsoup.Jsoup.parse(response)
                     val innerIframe = wrapperDoc.select("iframe").attr("src")
                     if (innerIframe.isNotBlank()) {
@@ -240,13 +230,13 @@ class NgeFilm : MainAPI() {
             }
         }
 
-        // 2. Scan Main Iframe
+        // 2. Scan Iframe Utama
         doc.select("div.gmr-embed-responsive iframe").forEach { iframe ->
             val src = iframe.attr("src")
             if (src.isNotBlank()) extractWrapper(src)
         }
         
-        // 3. Scan Tab Servers
+        // 3. Scan Tab Server
         doc.select("ul.muvipro-player-tabs li a").forEach { tab ->
             val link = fixUrl(tab.attr("href"))
              if (link.isNotBlank() && link != data && !link.contains("#")) {
