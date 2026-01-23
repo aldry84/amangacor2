@@ -42,15 +42,12 @@ class NgeFilm : MainAPI() {
         return doc.select("article.item").mapNotNull { toSearchResult(it) }
     }
 
-    // --- FUNGSI BANTUAN GAMBAR (Fix Poster Hilang) ---
+    // --- FUNGSI BANTUAN GAMBAR ---
     private fun getPosterUrl(element: Element): String? {
-        // Ambil elemen gambar, prioritas wp-post-image
         val img = element.selectFirst("img.wp-post-image") ?: element.selectFirst("img")
         return img?.let {
-            // Cek data-src dulu (resolusi tinggi)
             var url = it.attr("data-src")
             if (url.isEmpty()) {
-                // Cek srcset, ambil url paling belakang (biasanya resolusi terbesar)
                 url = it.attr("srcset").split(",").lastOrNull()?.trim()?.split(" ")?.firstOrNull() ?: ""
             }
             if (url.isEmpty()) {
@@ -90,23 +87,19 @@ class NgeFilm : MainAPI() {
         }
     }
 
-    // --- LOAD DETAIL (Fix Backdrop & Info) ---
+    // --- LOAD DETAIL ---
     override suspend fun load(url: String): LoadResponse {
         val doc = app.get(url, headers = mainHeaders).document
 
         val title = doc.selectFirst("h1.entry-title")?.text() ?: "No Title"
         val description = doc.selectFirst(".entry-content p")?.text()
-        
-        // Poster: Cari di container detail
         val poster = getPosterUrl(doc.selectFirst("div.gmr-movie-data") ?: doc)
 
-        // BACKDROP FIX: Cek elemen ID khusus, kalau gak ada, PAKSA pakai poster.
-        // Ini solusi untuk screenshot kamu yang gelap di atas.
+        // BACKDROP FIX: Pakai poster jika backdrop kosong
         val backdropUrlRaw = doc.selectFirst("#muvipro_player_content_id img")?.attr("src")
         val backdrop = if (!backdropUrlRaw.isNullOrBlank()) fixUrl(backdropUrlRaw) else poster
 
         val year = doc.select("div.gmr-moviedata a[href*='year']").text().toIntOrNull()
-        
         val ratingText = doc.select("span[itemprop=ratingValue]").text()
         val scoreVal = Score.from10(ratingText)
 
@@ -166,7 +159,7 @@ class NgeFilm : MainAPI() {
         }
     }
 
-    // --- LOAD LINKS (PLAYER MAGIC: TXT & M3U8 Hunter) ---
+    // --- LOAD LINKS (TXT & M3U8 HUNTER) ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -175,7 +168,7 @@ class NgeFilm : MainAPI() {
     ): Boolean {
         val doc = app.get(data, headers = mainHeaders).document
 
-        // 1. Link Download (Prioritas Tinggi karena kualitas bagus)
+        // 1. LINK DOWNLOAD
         doc.select("ul.gmr-download-list li a").forEach { link ->
             val href = link.attr("href")
             val text = link.text() 
@@ -192,32 +185,31 @@ class NgeFilm : MainAPI() {
             
             if (fixedUrl.contains("rpmlive") || fixedUrl.contains("playerngefilm")) {
                 try {
-                    // Ambil source HTML dari wrapper player
-                    // PENTING: Gunakan referer halaman film utama
+                    // Ambil source HTML player
                     val response = app.get(fixedUrl, headers = mapOf("Referer" to data)).text
                     
-                    // CARA BARU (TXT HUNTER): Cari link .txt atau .m3u8 di dalam script
-                    // Regex ini mencari URL yang diapit tanda kutip dan mengandung .txt atau .m3u8
-                    // Contoh temuan: "https://s3u.mindspireventures.sbs/.../cf-master...txt"
+                    // CARA 1 (UPDATE): Cari link .txt atau .m3u8 di dalam script
+                    // Regex ini menangkap link yang berakhiran .txt atau .m3u8
                     val regex = Regex("[\"'](https?://.*?(?:\\.txt|\\.m3u8).*?)[\"']")
                     val matches = regex.findAll(response)
                     
                     matches.forEach { match ->
                         val streamUrl = match.groupValues[1]
                         
-                        // Header khusus agar tidak 403 Forbidden (Sesuai CURL kamu)
+                        // Header "Sakti" sesuai temuan CURL kamu
                         val streamHeaders = mapOf(
                             "Origin" to "https://playerngefilm21.rpmlive.online",
                             "Referer" to "https://playerngefilm21.rpmlive.online/",
-                            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                            "Accept" to "*/*"
                         )
 
-                        // Jika ketemu link .txt atau .m3u8, proses dengan M3u8Helper
+                        // Jika ketemu file .txt (seperti di curl), kita paksa generate M3U8
                         if (streamUrl.contains(".txt") || streamUrl.contains(".m3u8")) {
                             M3u8Helper.generateM3u8(
                                 "NgeFilm-VIP",
                                 streamUrl,
-                                "https://playerngefilm21.rpmlive.online/", // Referer wajib ini
+                                "https://playerngefilm21.rpmlive.online/", 
                                 headers = streamHeaders
                             ).forEach { link ->
                                 callback(link)
@@ -225,7 +217,7 @@ class NgeFilm : MainAPI() {
                         }
                     }
                     
-                    // Fallback: Cari Iframe lain di dalamnya
+                    // CARA 2: Cari Iframe lain di dalamnya (Fallback)
                     val wrapperDoc = org.jsoup.Jsoup.parse(response)
                     val innerIframe = wrapperDoc.select("iframe").attr("src")
                     if (innerIframe.isNotBlank()) {
@@ -233,7 +225,6 @@ class NgeFilm : MainAPI() {
                     }
 
                 } catch (e: Exception) {
-                    // Jika gagal, coba load langsung (siapa tau support)
                     loadExtractor(fixedUrl, data, subtitleCallback, callback)
                 }
             } else if (!fixedUrl.contains("youtube.com") && !fixedUrl.contains("youtu.be")) {
