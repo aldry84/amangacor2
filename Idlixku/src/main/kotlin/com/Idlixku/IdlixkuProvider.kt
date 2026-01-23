@@ -1,4 +1,4 @@
-package com.Idlixku
+package com.hexated
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.api.Log
@@ -26,17 +26,18 @@ class IdlixProvider : MainAPI() {
         TvType.AsianDrama
     )
 
+    // DAFTAR KATEGORI BARU SESUAI PERMINTAAN
     override val mainPage = mainPageOf(
-        "$mainUrl/" to "Featured",
-        "$mainUrl/trending/page/?get=movies" to "Trending Movies",
-        "$mainUrl/trending/page/?get=tv" to "Trending TV Series",
-        "$mainUrl/movie/page/" to "Movie Terbaru",
-        "$mainUrl/tvseries/page/" to "TV Series Terbaru",
-        "$mainUrl/network/amazon/page/" to "Amazon Prime",
-        "$mainUrl/network/apple-tv/page/" to "Apple TV+ Series",
-        "$mainUrl/network/disney/page/" to "Disney+ Series",
-        "$mainUrl/network/HBO/page/" to "HBO Series",
+        "$mainUrl/trending/page/?get=movies" to "Trending",
+        "$mainUrl/genre/action/page/" to "Action",
+        "$mainUrl/genre/horror/page/" to "Setang-Setang",
         "$mainUrl/network/netflix/page/" to "Netflix Series",
+        "$mainUrl/network/HBO/page/" to "HBO Series",
+        "$mainUrl/genre/adventure/page/" to "Petualangan",
+        "$mainUrl/network/disney/page/" to "Disney",
+        "$mainUrl/genre/drama-korea/page/" to "Drakor",
+        "$mainUrl/genre/drama-china/page/" to "Drama Ahok",
+        "$mainUrl/genre/western/page/" to "Film Barat"
     )
 
     private fun getBaseUrl(url: String): String {
@@ -51,11 +52,20 @@ class IdlixProvider : MainAPI() {
     ): HomePageResponse {
         val url = request.data.split("?")
         val nonPaged = request.name == "Featured" && page <= 1
+        
+        // Logika diperbarui agar mendukung URL tanpa parameter query (tanda tanya)
         val req = if (nonPaged) {
             app.get(request.data)
         } else {
-            app.get("${url.first()}$page/?${url.lastOrNull()}")
+            if (url.size > 1) {
+                // Untuk URL seperti: .../trending/page/2/?get=movies
+                app.get("${url.first()}$page/?${url[1]}")
+            } else {
+                // Untuk URL kategori biasa: .../genre/action/page/2/
+                app.get("${url.first()}$page/")
+            }
         }
+        
         mainUrl = getBaseUrl(req.url)
         val document = req.document
         val home = (if (nonPaged) {
@@ -164,10 +174,10 @@ class IdlixProvider : MainAPI() {
                     .toIntOrNull()
                 newEpisode(href)
                 {
-                        this.name=name
-                        this.season=season
-                        this.episode=episode
-                        this.posterUrl=image
+                    this.name=name
+                    this.season=season
+                    this.episode=episode
+                    this.posterUrl=image
                 }
             }
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
@@ -209,12 +219,12 @@ class IdlixProvider : MainAPI() {
         val idlixTime = match?.groups?.get(2)?.value ?: ""
 
         document.select("ul#playeroptionsul > li").map {
-                Triple(
-                    it.attr("data-post"),
-                    it.attr("data-nume"),
-                    it.attr("data-type")
-                )
-            }.amap { (id, nume, type) ->
+            Triple(
+                it.attr("data-post"),
+                it.attr("data-nume"),
+                it.attr("data-type")
+            )
+        }.amap { (id, nume, type) ->
             val json = app.post(
                 url = "$directUrl/wp-admin/admin-ajax.php",
                 data = mapOf(
@@ -269,23 +279,24 @@ class IdlixProvider : MainAPI() {
     }
 
     data class ResponseSource(
-        @param:JsonProperty("hls") val hls: Boolean,
-        @param:JsonProperty("videoSource") val videoSource: String,
-        @param:JsonProperty("securedLink") val securedLink: String?,
+        @JsonProperty("hls") val hls: Boolean,
+        @JsonProperty("videoSource") val videoSource: String,
+        @JsonProperty("securedLink") val securedLink: String?,
     )
 
     data class Tracks(
-        @param:JsonProperty("kind") val kind: String?,
-        @param:JsonProperty("file") val file: String,
-        @param:JsonProperty("label") val label: String?,
+        @JsonProperty("kind") val kind: String?,
+        @JsonProperty("file") val file: String,
+        @JsonProperty("label") val label: String?,
     )
 
     data class ResponseHash(
-        @param:JsonProperty("embed_url") val embed_url: String,
-        @param:JsonProperty("key") val key: String,
+        @JsonProperty("embed_url") val embed_url: String,
+        @JsonProperty("key") val key: String,
     )
 
     data class AesData(
-        @param:JsonProperty("m") val m: String,
+        @JsonProperty("m") val m: String,
     )
+
 }
