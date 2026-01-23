@@ -2,7 +2,8 @@ package com.Idlixku
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.utils.* import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
+import com.lagradost.cloudstream3.utils.*
+import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 
 class JeniusPlayExtractor : ExtractorApi() {
     override val name = "JeniusPlay"
@@ -29,13 +30,15 @@ class JeniusPlayExtractor : ExtractorApi() {
 
         var foundLink: String? = null
 
-        // 1. COBA API
+        // 1. COBA API (Prioritas Utama)
         if (id.isNotEmpty()) {
             val apiUrl = "$mainUrl/player/index.php?data=$id&do=getVideo"
             try {
                 val headers = mapOf(
                     "X-Requested-With" to "XMLHttpRequest",
                     "Referer" to url,
+                    "Origin" to mainUrl,
+                    "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36"
                 )
                 val text = app.post(apiUrl, headers = headers).text
                 val json = tryParseJson<JeniusResponse>(text)
@@ -45,34 +48,53 @@ class JeniusPlayExtractor : ExtractorApi() {
             }
         }
 
-        // 2. FALLBACK SCRAPING HTML (Cari string "file":"..." atau "source":"...")
+        // 2. FALLBACK SCRAPING HTML (Regex lebih agresif)
         if (foundLink.isNullOrEmpty()) {
             try {
                 val document = app.get(url).text
-                // Regex untuk menangkap URL di dalam tanda kutip setelah file: atau source:
-                // Menangani 'file': "url", file: "url", dll.
-                val regex = Regex("""(file|source)\s*[:=]\s*["']([^"']+)["']""")
-                val match = regex.find(document)
-                foundLink = match?.groupValues?.get(2)
+                
+                // Regex 1: Format standar file: "url"
+                val regex1 = Regex("""(file|source)\s*[:=]\s*["']([^"']+)["']""")
+                
+                // Regex 2: Format master.txt langsung
+                val regex2 = Regex("""["']([^"']+\/master\.txt[^"']*)["']""")
+                
+                // Regex 3: Format m3u8 umum
+                val regex3 = Regex("""["']([^"']+\.m3u8[^"']*)["']""")
+
+                foundLink = regex1.find(document)?.groupValues?.get(2)
+                    ?: regex2.find(document)?.groupValues?.get(1)
+                    ?: regex3.find(document)?.groupValues?.get(1)
+
             } catch (e: Exception) {
                 e.printStackTrace()
             }
         }
 
         if (!foundLink.isNullOrEmpty()) {
-            // Fix URL jika formatnya //domain.com
-            val finalUrl = if (foundLink!!.startsWith("//")) "https:$foundLink" else foundLink!!
-            
+            var finalUrl = foundLink!!
+            // Fix protocol //domain.com -> https://domain.com
+            if (finalUrl.startsWith("//")) {
+                finalUrl = "https:$finalUrl"
+            }
+
+            // --- PERBAIKAN KRUSIAL BERDASARKAN CURL KAMU ---
+            // Jika link adalah .txt atau ada di folder /hls/, itu adalah M3U8
+            val isM3u8 = finalUrl.contains(".m3u8") || 
+                         finalUrl.contains("master.txt") || 
+                         finalUrl.contains("/hls/")
+
+            val type = if (isM3u8) ExtractorLinkType.M3U8 else ExtractorLinkType.INFER
+
             callback.invoke(
                 newExtractorLink(
                     name,
                     name,
                     finalUrl,
-                    INFER_TYPE
-                ) {
-                    this.referer = referer ?: mainUrl
-                    this.quality = Qualities.Unknown.value
-                }
+                    referer ?: mainUrl,
+                    Qualities.Unknown.value,
+                    type // Paksa tipe M3U8 agar player mau memutar
+                )
             )
         }
     }
