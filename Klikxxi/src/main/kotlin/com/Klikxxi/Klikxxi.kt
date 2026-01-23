@@ -11,6 +11,7 @@ class Klikxxi : MainAPI() {
     override var lang = "id"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
+    // --- HELPER UNTUK GAMBAR HD ---
     private fun String?.toLargeUrl(): String? {
         val url = this ?: return null
         val fullUrl = if (url.startsWith("//")) "https:$url" else url
@@ -21,9 +22,11 @@ class Klikxxi : MainAPI() {
         val titleElement = this.selectFirst(".entry-title a") ?: return null
         val title = titleElement.text().trim()
         val href = titleElement.attr("href")
+
         val imgElement = this.selectFirst("img")
         val rawPoster = imgElement?.attr("data-lazy-src") ?: imgElement?.attr("src")
         val posterUrl = rawPoster.toLargeUrl()
+
         val quality = this.selectFirst(".gmr-quality-item")?.text() ?: "N/A"
 
         return newMovieSearchResponse(title, href, TvType.Movie) {
@@ -31,6 +34,70 @@ class Klikxxi : MainAPI() {
             this.quality = getQualityFromString(quality)
         }
     }
+
+    // --- CUSTOM EXTRACTOR UNTUK STRP2P ---
+    private suspend fun invokeStrp2p(
+        url: String,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        try {
+            val id = url.substringAfter("/embed/").substringBefore("?")
+            val domain = "https://klikxxi.strp2p.site"
+
+            // Langkah 1: Request Token
+            val apiVideoUrl = "$domain/api/v1/video?id=$id&w=360&h=800&r=klikxxi.me"
+            
+            val tokenResponse = app.get(
+                apiVideoUrl,
+                headers = mapOf(
+                    "Referer" to url,
+                    "Origin" to domain,
+                    "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36"
+                )
+            ).text
+
+            if (tokenResponse.contains("success\":false")) return
+
+            // Langkah 2: Request Player dengan Token
+            val apiPlayerUrl = "$domain/api/v1/player?t=$tokenResponse"
+            
+            val playerResponse = app.get(
+                apiPlayerUrl,
+                headers = mapOf(
+                    "Referer" to url,
+                    "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36"
+                )
+            ).parsedSafe<Strp2pResponse>()
+
+            // Langkah 3: Ambil link m3u8
+            playerResponse?.source?.forEach { source ->
+                callback.invoke(
+                    ExtractorLink(
+                        source = "StrP2P (VIP)",
+                        name = "StrP2P ${source.label}",
+                        url = source.file,
+                        referer = mainUrl,
+                        quality = Qualities.Unknown.value,
+                        isM3u8 = true
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            // Ignore error
+        }
+    }
+
+    data class Strp2pResponse(
+        val source: List<Strp2pSource>? = null
+    )
+
+    data class Strp2pSource(
+        val file: String,
+        val label: String
+    )
+
+
+    // --- MAIN FUNCTIONS ---
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val document = app.get(mainUrl).document
@@ -54,7 +121,9 @@ class Klikxxi : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url).document
+
         val title = document.selectFirst("h1.entry-title")?.text()?.trim() ?: "Unknown"
+        
         val imgTag = document.selectFirst("img.attachment-thumbnail") 
                      ?: document.selectFirst(".gmr-poster img")
                      ?: document.selectFirst("figure img")
@@ -63,23 +132,53 @@ class Klikxxi : MainAPI() {
         val description = document.select(".entry-content p").text().trim()
         val year = document.select("time[itemprop=dateCreated]").text().takeLast(4).toIntOrNull()
         
-        // Logika TV Series
-        val isTvSeries = document.select(".gmr-numbeps").isNotEmpty() || url.contains("/tv/")
-        val tvType = if (isTvSeries) TvType.TvSeries else TvType.Movie
-
-        if (isTvSeries) {
-            // Nanti bisa ditambahkan logika episode extractor jika ada HTML contohnya
-            return newTvSeriesLoadResponse(title, url, tvType, emptyList()) {
+        // --- DETEKSI TV SERIES & EPISODE ---
+        // Mencari tombol episode di dalam class .gmr-season-episodes
+        val episodes = ArrayList<Episode>()
+        val episodeElements = document.select(".gmr-season-episodes a")
+        
+        if (episodeElements.isNotEmpty()) {
+             // Jika ada tombol episode, berarti ini TV Series
+             episodeElements.forEach { eps ->
+                 val epsUrl = eps.attr("href")
+                 val epsName = eps.text().trim() // Contoh: "S1Eps1"
+                 
+                 // Jangan masukkan link download batch jika ada
+                 if (!epsName.contains("Batch", ignoreCase = true)) {
+                     // Mencoba parse Season dan Episode number dari teks "S1Eps1"
+                     // Regex: S(\d+)Eps(\d+)
+                     val regex = Regex("S(\\d+)Eps(\\d+)", RegexOption.IGNORE_CASE)
+                     val match = regex.find(epsName)
+                     
+                     val seasonNum = match?.groupValues?.get(1)?.toIntOrNull()
+                     val episodeNum = match?.groupValues?.get(2)?.toIntOrNull()
+                     
+                     episodes.add(
+                         newEpisode(epsUrl) {
+                             this.name = epsName
+                             this.season = seasonNum
+                             this.episode = episodeNum
+                         }
+                     )
+                 }
+             }
+             
+             // Balikkan urutan episode agar dari eps 1
+             // (Terkadang situs menaruh episode terbaru di atas)
+             // episodes.reverse() -> Opsional, tergantung situs
+             
+             return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
             }
-        } else {
-            return newMovieLoadResponse(title, url, tvType, url) {
-                this.posterUrl = poster
-                this.year = year
-                this.plot = description
-            }
+        } 
+        
+        // Jika tidak ada episode, berarti Movie biasa
+        return newMovieLoadResponse(title, url, TvType.Movie, url) {
+            this.posterUrl = poster
+            this.year = year
+            this.plot = description
         }
     }
 
@@ -90,14 +189,10 @@ class Klikxxi : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val document = app.get(data).document
-
-        // 1. Ambil Post ID
         val postId = document.selectFirst("#muvipro_player_content_id")?.attr("data-id")
 
-        // 2. Tembak AJAX untuk Server 1-6
         if (postId != null) {
             val ajaxUrl = "$mainUrl/wp-admin/admin-ajax.php"
-            // Loop tab p1 sampai p6
             (1..6).forEach { index ->
                 try {
                     val response = app.post(
@@ -110,33 +205,25 @@ class Klikxxi : MainAPI() {
                         headers = mapOf("X-Requested-With" to "XMLHttpRequest")
                     ).text
 
-                    // Parse hasil AJAX
                     val ajaxDoc = org.jsoup.Jsoup.parse(response)
                     ajaxDoc.select("iframe").forEach { iframe ->
                         var src = iframe.attr("src")
                         if (src.startsWith("//")) src = "https:$src"
                         
-                        // Cek jika link adalah strp2p (server utama)
                         if (src.contains("strp2p") || src.contains("auvexiug")) {
-                             // Untuk saat ini kita load saja, biarkan Cloudstream mencoba menghandlenya
-                             loadExtractor(src, data, subtitleCallback, callback)
+                             invokeStrp2p(src, callback)
                         } else if (!src.contains("facebook") && !src.contains("whatsapp")) {
                             loadExtractor(src, data, subtitleCallback, callback)
                         }
                     }
-                } catch (e: Exception) {
-                    // Skip error
-                }
+                } catch (e: Exception) { }
             }
         }
 
-        // 3. Fallback: Cari link download (Lulu, Voe, UserDrive)
         document.select(".gmr-download-list a").forEach { link ->
-            val href = link.attr("href")
-            loadExtractor(href, data, subtitleCallback, callback)
+            loadExtractor(link.attr("href"), data, subtitleCallback, callback)
         }
         
-        // 4. Fallback Terakhir: Iframe di halaman utama (jika ada)
         document.select("iframe").forEach { iframe ->
              var src = iframe.attr("src")
              if (src.startsWith("//")) src = "https:$src"
