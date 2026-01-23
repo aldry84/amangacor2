@@ -20,7 +20,6 @@ class JeniusPlayExtractor : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        // 1. Ambil ID dari URL
         val id = when {
             url.contains("data=") -> url.substringAfter("data=").substringBefore("&")
             url.contains("/embed/") -> url.substringAfter("/embed/").substringBefore("/")
@@ -30,7 +29,7 @@ class JeniusPlayExtractor : ExtractorApi() {
 
         var foundLink: String? = null
 
-        // 2. COBA METODE API (Prioritas 1)
+        // 1. COBA API
         if (id.isNotEmpty()) {
             val apiUrl = "$mainUrl/player/index.php?data=$id&do=getVideo"
             try {
@@ -42,17 +41,17 @@ class JeniusPlayExtractor : ExtractorApi() {
                 val json = tryParseJson<JeniusResponse>(text)
                 foundLink = json?.securedLink ?: json?.videoSource
             } catch (e: Exception) {
-                // Ignore API error, lanjut ke fallback
+                // Lanjut ke fallback
             }
         }
 
-        // 3. COBA METODE REGEX HTML (Prioritas 2 - Fallback)
-        // Jika API gagal, kita cari langsung di source code halamannya
+        // 2. FALLBACK SCRAPING HTML (Cari string "file":"..." atau "source":"...")
         if (foundLink.isNullOrEmpty()) {
             try {
                 val document = app.get(url).text
-                // Cari pola: file: "https://..." atau source: "https://..."
-                val regex = Regex("""(file|source)\s*:\s*["']([^"']+)["']""")
+                // Regex untuk menangkap URL di dalam tanda kutip setelah file: atau source:
+                // Menangani 'file': "url", file: "url", dll.
+                val regex = Regex("""(file|source)\s*[:=]\s*["']([^"']+)["']""")
                 val match = regex.find(document)
                 foundLink = match?.groupValues?.get(2)
             } catch (e: Exception) {
@@ -60,9 +59,10 @@ class JeniusPlayExtractor : ExtractorApi() {
             }
         }
 
-        // 4. Eksekusi Callback jika link ketemu
         if (!foundLink.isNullOrEmpty()) {
-            val finalUrl = foundLink!!
+            // Fix URL jika formatnya //domain.com
+            val finalUrl = if (foundLink!!.startsWith("//")) "https:$foundLink" else foundLink!!
+            
             callback.invoke(
                 newExtractorLink(
                     name,
