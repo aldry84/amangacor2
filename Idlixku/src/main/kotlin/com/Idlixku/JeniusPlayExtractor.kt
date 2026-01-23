@@ -2,8 +2,7 @@ package com.Idlixku
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.utils.*
-import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
+import com.lagradost.cloudstream3.utils.* import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 
 class JeniusPlayExtractor : ExtractorApi() {
     override val name = "JeniusPlay"
@@ -78,23 +77,25 @@ class JeniusPlayExtractor : ExtractorApi() {
                 finalUrl = "https:$finalUrl"
             }
 
-            // --- PERBAIKAN KRUSIAL BERDASARKAN CURL KAMU ---
-            // Jika link adalah .txt atau ada di folder /hls/, itu adalah M3U8
+            // Cek apakah ini M3U8 (termasuk .txt yang kamu temukan)
             val isM3u8 = finalUrl.contains(".m3u8") || 
                          finalUrl.contains("master.txt") || 
                          finalUrl.contains("/hls/")
 
-            val type = if (isM3u8) ExtractorLinkType.M3U8 else ExtractorLinkType.INFER
+            // PERBAIKAN DI SINI: Gunakan INFER_TYPE, bukan ExtractorLinkType.INFER
+            val type = if (isM3u8) ExtractorLinkType.M3U8 else INFER_TYPE
 
+            // PERBAIKAN DI SINI: Referer dan Quality masuk ke dalam lambda
             callback.invoke(
                 newExtractorLink(
                     name,
                     name,
                     finalUrl,
-                    referer ?: mainUrl,
-                    Qualities.Unknown.value,
-                    type // Paksa tipe M3U8 agar player mau memutar
-                )
+                    type
+                ) {
+                    this.referer = referer ?: mainUrl
+                    this.quality = Qualities.Unknown.value
+                }
             )
         }
     }
