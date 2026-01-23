@@ -45,7 +45,8 @@ class IdlixkuProvider : MainAPI() {
     }
 
     private fun toSearchResult(element: Element): SearchResponse? {
-        val titleElement = element.selectFirst("h3 > a") ?: return null
+        // PERBAIKAN: Cek h3 > a ATAU .title > a (Fallback selector)
+        val titleElement = element.selectFirst("h3 > a") ?: element.selectFirst(".title > a") ?: return null
         val title = titleElement.text()
         val href = titleElement.attr("href")
         val posterUrl = element.selectFirst("img")?.attr("src")
@@ -74,7 +75,8 @@ class IdlixkuProvider : MainAPI() {
         val url = "$mainUrl/?s=$query"
         return runCatching {
             val document = app.get(url).document
-            document.select("div.result-item article").mapNotNull {
+            // PERBAIKAN: Selektor lebih luas untuk search results
+            document.select("div.result-item article, .items article").mapNotNull {
                 toSearchResult(it)
             }
         }.getOrElse { emptyList() }
@@ -175,11 +177,12 @@ class IdlixkuProvider : MainAPI() {
                 )
                 
                 val dooplayResponse = response.parsedSafe<DooplayResponse>()
-                var embedUrl = dooplayResponse?.embed_url ?: return@forEach
+                // Fix URL (misal //domain.com jadi https://domain.com)
+                var embedUrl = fixUrl(dooplayResponse?.embed_url ?: return@forEach)
 
                 if (embedUrl.contains("<iframe")) {
                     val iframeDoc = org.jsoup.Jsoup.parse(embedUrl)
-                    embedUrl = iframeDoc.select("iframe").attr("src")
+                    embedUrl = fixUrl(iframeDoc.select("iframe").attr("src"))
                 }
 
                 if (embedUrl.contains("jeniusplay.com")) {
