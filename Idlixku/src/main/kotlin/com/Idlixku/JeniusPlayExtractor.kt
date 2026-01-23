@@ -25,7 +25,7 @@ class JeniusPlayExtractor : ExtractorApi() {
         url: String,
         referer: String?,
         subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
+        callback: (newExtractorLink) -> Unit
     ) {
         val id = url.substringAfter("/video/").substringBefore("/")
         val apiUrl = "$mainUrl/player/index.php?data=$id&do=getVideo"
