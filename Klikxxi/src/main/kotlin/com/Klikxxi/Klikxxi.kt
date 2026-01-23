@@ -22,11 +22,12 @@ class Klikxxi : MainAPI() {
             url
         }
 
-        // 2. Hapus suffix resolusi (contoh: -152x228, -300x400) agar dapat gambar original
+        // 2. Hapus suffix resolusi (contoh: -152x228, -170x255) agar dapat gambar original
         return fullUrl.replace(Regex("-\\d+x\\d+"), "")
     }
 
     private fun Element.toSearchResponse(): SearchResponse? {
+        // Ambil judul dan link
         val titleElement = this.selectFirst(".entry-title a") ?: return null
         val title = titleElement.text().trim()
         val href = titleElement.attr("href")
@@ -34,10 +35,9 @@ class Klikxxi : MainAPI() {
         // Ambil poster
         val imgElement = this.selectFirst("img")
         val rawPoster = imgElement?.attr("data-lazy-src") ?: imgElement?.attr("src")
-        
-        // Convert ke URL Besar (HD)
         val posterUrl = rawPoster.toLargeUrl()
 
+        // Ambil kualitas (HD/CAM)
         val quality = this.selectFirst(".gmr-quality-item")?.text() ?: "N/A"
 
         return newMovieSearchResponse(title, href, TvType.Movie) {
@@ -52,6 +52,7 @@ class Klikxxi : MainAPI() {
         val document = app.get(mainUrl).document
         val homeSets = ArrayList<HomePageList>()
 
+        // Di Homepage, class-nya .gmr-item-modulepost
         document.select(".muvipro-posts-module").forEach { widget ->
             val title = widget.select(".homemodule-title").text().trim()
             
@@ -71,7 +72,9 @@ class Klikxxi : MainAPI() {
         val url = "$mainUrl/?s=$query"
         val document = app.get(url).document
 
-        return document.select(".gmr-item-modulepost").mapNotNull {
+        // PERBAIKAN DISINI: Menyesuaikan log HTML terbaru
+        // Halaman search menggunakan tag 'article' dengan class 'item'
+        return document.select("article.item").mapNotNull {
             it.toSearchResponse()
         }
     }
@@ -81,14 +84,11 @@ class Klikxxi : MainAPI() {
 
         val title = document.selectFirst("h1.entry-title")?.text()?.trim() ?: "Unknown"
         
-        // Ambil poster di halaman detail
         val imgTag = document.selectFirst("img.attachment-thumbnail") 
                      ?: document.selectFirst(".gmr-poster img")
                      ?: document.selectFirst("figure img")
         
         val rawPoster = imgTag?.attr("data-lazy-src") ?: imgTag?.attr("src")
-        
-        // Convert ke URL Besar (HD)
         val poster = rawPoster.toLargeUrl()
 
         val description = document.select(".entry-content p").text().trim()
