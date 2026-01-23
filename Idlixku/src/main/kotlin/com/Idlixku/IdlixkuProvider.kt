@@ -31,7 +31,7 @@ class IdlixkuProvider : MainAPI() {
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
-        // Menggunakan runCatching ala FourKHDHub untuk safety
+        // Gaya FourKHDHub: Bungkus dengan runCatching
         return runCatching {
             val document = app.get(request.data).document
             val sectionSelector = when (request.name) {
@@ -45,20 +45,16 @@ class IdlixkuProvider : MainAPI() {
             }
             val home = document.select(sectionSelector).mapNotNull { toSearchResult(it) }
             newHomePageResponse(request.name, home)
-        }.getOrElse {
-            // Log error jika perlu, atau return null
-            null
-        }
+        }.getOrNull()
     }
 
     private fun toSearchResult(element: Element): SearchResponse? {
         val titleElement = element.selectFirst("h3 > a") ?: return null
         val title = titleElement.text()
         
-        // Upgrade: Menggunakan absUrl agar link selalu valid (https://...)
+        // Gaya FourKHDHub: Gunakan absUrl dan fallback ke attr
         val href = titleElement.absUrl("href").ifBlank { titleElement.attr("href") }
         
-        // Upgrade: Menggunakan absUrl untuk gambar juga
         val imgTag = element.selectFirst("img")
         val posterUrl = imgTag?.absUrl("src")?.ifBlank { imgTag.attr("src") }
             ?.replace("/w185/", "/w500/")
@@ -86,7 +82,6 @@ class IdlixkuProvider : MainAPI() {
     // --- 2. SEARCH ---
     override suspend fun search(query: String): List<SearchResponse> {
         val url = "$mainUrl/?s=$query"
-        // Safety call
         return runCatching {
             val document = app.get(url).document
             document.select("div.result-item article").mapNotNull {
@@ -173,7 +168,7 @@ class IdlixkuProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // Safety block
+        // Gaya FourKHDHub: Safety check di awal
         val document = runCatching { app.get(data).document }.getOrNull() ?: return false
 
         document.select("ul#playeroptionsul li").forEach { element ->
@@ -191,7 +186,7 @@ class IdlixkuProvider : MainAPI() {
                 "type" to type
             )
 
-            try {
+            runCatching {
                 val response = app.post(
                     "$mainUrl/wp-admin/admin-ajax.php",
                     data = formData,
@@ -199,6 +194,7 @@ class IdlixkuProvider : MainAPI() {
                     referer = data
                 )
                 
+                // Parse Manual agar aman dari library yg missing
                 val dooplayResponse = AppUtils.parseJson<DooplayResponse>(response.text)
                 var embedUrl = dooplayResponse.embed_url ?: return@forEach
 
@@ -212,9 +208,8 @@ class IdlixkuProvider : MainAPI() {
                 } else {
                     loadExtractor(embedUrl, "IDLIX $title", subtitleCallback, callback)
                 }
-
-            } catch (e: Exception) {
-                e.printStackTrace()
+            }.onFailure { 
+                // Error handling diam
             }
         }
         return true
