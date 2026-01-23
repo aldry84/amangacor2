@@ -6,6 +6,12 @@ import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.Score
 import org.jsoup.nodes.Element
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
+import java.util.Base64
+import javax.crypto.Cipher
+import javax.crypto.spec.IvParameterSpec
+import javax.crypto.spec.SecretKeySpec
 
 class IdlixkuProvider : MainAPI() {
     override var mainUrl = "https://tv12.idlixku.com"
@@ -16,7 +22,15 @@ class IdlixkuProvider : MainAPI() {
 
     data class DooplayResponse(
         @param:JsonProperty("embed_url") val embed_url: String?,
-        @param:JsonProperty("type") val type: String?
+        @param:JsonProperty("type") val type: String?,
+        @param:JsonProperty("key") val key: String? // Menambahkan field Key
+    )
+
+    // Struktur data untuk encrypted content
+    data class EncryptedData(
+        @param:JsonProperty("ct") val ct: String?,
+        @param:JsonProperty("iv") val iv: String?,
+        @param:JsonProperty("s") val s: String?
     )
 
     override val mainPage = mainPageOf(
@@ -176,18 +190,36 @@ class IdlixkuProvider : MainAPI() {
                 )
                 
                 val dooplayResponse = response.parsedSafe<DooplayResponse>()
-                // Tambahkan fixUrl agar URL embed valid
-                var embedUrl = fixUrl(dooplayResponse?.embed_url ?: return@forEach)
+                var embedUrl = dooplayResponse?.embed_url
+                val key = dooplayResponse?.key
 
-                if (embedUrl.contains("<iframe")) {
+                // --- LOGIKA DEKRIPSI ---
+                if (embedUrl != null && embedUrl.contains("\"ct\"") && !key.isNullOrEmpty()) {
+                    try {
+                        // 1. Bersihkan format key (misal \x35\x7a -> 5z)
+                        val cleanKey = decodeHex(key)
+                        // 2. Dekripsi
+                        val decrypted = decryptDooplay(embedUrl, cleanKey)
+                        if (decrypted != null) {
+                            embedUrl = decrypted
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+
+                if (embedUrl == null) return@forEach
+                embedUrl = fixUrl(embedUrl!!)
+
+                if (embedUrl!!.contains("<iframe")) {
                     val iframeDoc = org.jsoup.Jsoup.parse(embedUrl)
                     embedUrl = fixUrl(iframeDoc.select("iframe").attr("src"))
                 }
 
-                if (embedUrl.contains("jeniusplay.com")) {
-                    JeniusPlayExtractor().getUrl(embedUrl, data, subtitleCallback, callback)
+                if (embedUrl!!.contains("jeniusplay.com")) {
+                    JeniusPlayExtractor().getUrl(embedUrl!!, data, subtitleCallback, callback)
                 } else {
-                    loadExtractor(embedUrl, "IDLIX $title", subtitleCallback, callback)
+                    loadExtractor(embedUrl!!, "IDLIX $title", subtitleCallback, callback)
                 }
 
             } catch (e: Exception) {
@@ -195,5 +227,81 @@ class IdlixkuProvider : MainAPI() {
             }
         }
         return true
+    }
+
+    // --- HELPER DEKRIPSI ---
+
+    private fun decodeHex(hex: String): String {
+        // Mengubah string seperti "\x35\x7a" menjadi string ASCII biasa
+        return hex.replace("\\x", "%").let { 
+             try { java.net.URLDecoder.decode(it, "UTF-8") } catch(e: Exception) { it }
+        }
+    }
+
+    private fun decryptDooplay(jsonString: String, key: String): String? {
+        try {
+            val encryptedData = parseJson<EncryptedData>(jsonString)
+            val saltHex = encryptedData.s ?: return null
+            val ctBase64 = encryptedData.ct ?: return null
+            val ivHex = encryptedData.iv ?: return null
+
+            val salt = hexToBytes(saltHex)
+            val iv = hexToBytes(ivHex)
+            val cipherText = Base64.getDecoder().decode(ctBase64)
+            val pass = key.toByteArray(StandardCharsets.UTF_8)
+
+            // Derive Key using OpenSSL method (MD5 with 1 iteration)
+            // Note: Dooplay standard often uses derived key and IV.
+            // But since IV is provided in JSON, we use derived Key + Provided IV.
+            val derivedKey = deriveKey(pass, salt, 32) // AES-256 needs 32 bytes
+
+            val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+            val keySpec = SecretKeySpec(derivedKey, "AES")
+            val ivSpec = IvParameterSpec(iv)
+            
+            cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec)
+            val decryptedBytes = cipher.doFinal(cipherText)
+            
+            var result = String(decryptedBytes, StandardCharsets.UTF_8)
+            // Clean result (remove surrounding quotes if any)
+            if (result.startsWith("\"") && result.endsWith("\"")) {
+                result = result.substring(1, result.length - 1)
+            }
+            // Unescape escaped slashes
+            return result.replace("\\/", "/")
+
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return null
+        }
+    }
+
+    private fun hexToBytes(hex: String): ByteArray {
+        val len = hex.length
+        val data = ByteArray(len / 2)
+        var i = 0
+        while (i < len) {
+            data[i / 2] = ((Character.digit(hex[i], 16) shl 4) +
+                    Character.digit(hex[i + 1], 16)).toByte()
+            i += 2
+        }
+        return data
+    }
+
+    // OpenSSL Compatible Key Derivation (EVP_BytesToKey)
+    private fun deriveKey(password: ByteArray, salt: ByteArray, keySize: Int): ByteArray {
+        val digest = MessageDigest.getInstance("MD5")
+        var derivedBytes = ByteArray(0)
+        var lastDigest = ByteArray(0)
+
+        while (derivedBytes.size < keySize) {
+            digest.update(lastDigest)
+            digest.update(password)
+            digest.update(salt)
+            lastDigest = digest.digest()
+            derivedBytes += lastDigest
+        }
+
+        return derivedBytes.copyOfRange(0, keySize)
     }
 }
