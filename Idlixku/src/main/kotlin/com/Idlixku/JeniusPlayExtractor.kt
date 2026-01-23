@@ -1,6 +1,5 @@
 package com.Idlixku
 
-// Import tetap dipertahankan secara eksplisit sesuai permintaanmu
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
@@ -13,12 +12,11 @@ import com.lagradost.cloudstream3.utils.getAndUnpack
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.utils.Qualities
 
-class Jeniusplay : ExtractorApi() {
+class JeniusPlayExtractor : ExtractorApi() { // Nama disamakan
     override var name = "Jeniusplay"
     override var mainUrl = "https://jeniusplay.com"
     override val requiresReferer = true
 
-    // DATA CLASS PINDAHAN DARI HEXATED (Sekarang milik Idlixku)
     data class ResponseSource(
         @param:JsonProperty("videoSource") val videoSource: String? = null,
         @param:JsonProperty("securedLink") val securedLink: String? = null
@@ -37,11 +35,8 @@ class Jeniusplay : ExtractorApi() {
     ) {
         val res = app.get(url, referer = referer)
         val document = res.document
-        
-        // Mengambil Hash ID dari URL
         val hash = url.substringAfter("data=").substringBefore("&")
 
-        // Request Video Source menggunakan POST (Metode Hexated)
         val response = app.post(
             url = "$mainUrl/player/index.php?data=$hash&do=getVideo",
             data = mapOf("hash" to hash, "r" to (referer ?: "")),
@@ -52,7 +47,6 @@ class Jeniusplay : ExtractorApi() {
         val m3uLink = response?.securedLink ?: response?.videoSource
 
         if (!m3uLink.isNullOrEmpty()) {
-            // Menggunakan format 4 parameter + lambda agar lulus compile
             callback.invoke(
                 newExtractorLink(
                     name,
@@ -66,7 +60,6 @@ class Jeniusplay : ExtractorApi() {
             )
         }
 
-        // Logic Subtitle menggunakan Unpacker (Hexated Style)
         document.select("script").forEach { script ->
             val scriptData = script.data()
             if (scriptData.contains("eval(function(p,a,c,k,e,d)")) {
