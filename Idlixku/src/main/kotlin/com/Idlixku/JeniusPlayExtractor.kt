@@ -1,11 +1,13 @@
+@file:Suppress("DEPRECATION")
+
 package com.Idlixku
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
-import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
+import com.lagradost.cloudstream3.utils.AppUtils
 import com.lagradost.cloudstream3.utils.ExtractorApi
-import com.lagradost.cloudstream3.utils.newExtractorLink
+import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.INFER_TYPE
 import com.lagradost.cloudstream3.utils.Qualities
 
@@ -23,7 +25,7 @@ class JeniusPlayExtractor : ExtractorApi() {
         url: String,
         referer: String?,
         subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (newExtractorLink) -> Unit
+        callback: (ExtractorLink) -> Unit
     ) {
         val id = url.substringAfter("/video/").substringBefore("/")
         val apiUrl = "$mainUrl/player/index.php?data=$id&do=getVideo"
@@ -36,14 +38,15 @@ class JeniusPlayExtractor : ExtractorApi() {
             )
 
             val responseText = app.post(apiUrl, headers = headers).text
-            val response = tryParseJson<JeniusResponse>(responseText)
+            // Parsing Aman
+            val response = AppUtils.tryParseJson<JeniusResponse>(responseText)
             
             val videoUrl = response?.securedLink ?: response?.videoSource ?: return
 
-            // KEMBALI KE CONSTRUCTOR LAMA DENGAN SUPPRESS
+            // Suppress Peringatan Deprecated hanya di sini
             @Suppress("DEPRECATION")
             callback.invoke(
-                newExtractorLink(
+                ExtractorLink(
                     name,
                     name,
                     videoUrl,
