@@ -20,40 +20,60 @@ class JeniusPlayExtractor : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        // PERBAIKAN: Logic ekstraksi ID yang lebih tangguh
-        // Coba ambil dari parameter "data" dulu, kalau tidak ada baru dari path
-        val id = if (url.contains("data=")) {
-            url.substringAfter("data=").substringBefore("&")
-        } else {
-            url.substringAfter("/video/").substringBefore("/")
+        // 1. Ambil ID dari URL
+        val id = when {
+            url.contains("data=") -> url.substringAfter("data=").substringBefore("&")
+            url.contains("/embed/") -> url.substringAfter("/embed/").substringBefore("/")
+            url.contains("/video/") -> url.substringAfter("/video/").substringBefore("/")
+            else -> ""
         }
-        
-        val apiUrl = "$mainUrl/player/index.php?data=$id&do=getVideo"
 
-        runCatching {
-            val headers = mapOf(
-                "X-Requested-With" to "XMLHttpRequest",
-                "Referer" to url,
-                "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8"
-            )
+        var foundLink: String? = null
 
-            val response = app.post(apiUrl, headers = headers).parsedSafe<JeniusResponse>()
-            
-            val videoUrl = response?.securedLink ?: response?.videoSource ?: return@runCatching
+        // 2. COBA METODE API (Prioritas 1)
+        if (id.isNotEmpty()) {
+            val apiUrl = "$mainUrl/player/index.php?data=$id&do=getVideo"
+            try {
+                val headers = mapOf(
+                    "X-Requested-With" to "XMLHttpRequest",
+                    "Referer" to url,
+                )
+                val text = app.post(apiUrl, headers = headers).text
+                val json = tryParseJson<JeniusResponse>(text)
+                foundLink = json?.securedLink ?: json?.videoSource
+            } catch (e: Exception) {
+                // Ignore API error, lanjut ke fallback
+            }
+        }
 
+        // 3. COBA METODE REGEX HTML (Prioritas 2 - Fallback)
+        // Jika API gagal, kita cari langsung di source code halamannya
+        if (foundLink.isNullOrEmpty()) {
+            try {
+                val document = app.get(url).text
+                // Cari pola: file: "https://..." atau source: "https://..."
+                val regex = Regex("""(file|source)\s*:\s*["']([^"']+)["']""")
+                val match = regex.find(document)
+                foundLink = match?.groupValues?.get(2)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
+        // 4. Eksekusi Callback jika link ketemu
+        if (!foundLink.isNullOrEmpty()) {
+            val finalUrl = foundLink!!
             callback.invoke(
                 newExtractorLink(
                     name,
                     name,
-                    videoUrl,
+                    finalUrl,
                     INFER_TYPE
                 ) {
                     this.referer = referer ?: mainUrl
                     this.quality = Qualities.Unknown.value
                 }
             )
-        }.onFailure {
-            it.printStackTrace()
         }
     }
 }
