@@ -5,7 +5,6 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
 import org.jsoup.nodes.Element
 
-// PERBAIKAN 1: Ganti ParsersHttpProvider menjadi MainAPI
 class NgeFilm : MainAPI() {
 
     override var mainUrl = "https://new31.ngefilm.site"
@@ -14,7 +13,7 @@ class NgeFilm : MainAPI() {
     override var lang = "id"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
-    // Headers standar
+    // Headers standar untuk request
     val mainHeaders = mapOf(
         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Referer" to "$mainUrl/"
@@ -58,12 +57,18 @@ class NgeFilm : MainAPI() {
         return if (isTv) {
             newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
                 this.posterUrl = posterUrl
-                addQuality(quality)
+                // FIX ERROR: Hanya addQuality jika tidak null
+                if (quality != null && quality.isNotBlank()) {
+                    addQuality(quality)
+                }
             }
         } else {
             newMovieSearchResponse(title, href, TvType.Movie) {
                 this.posterUrl = posterUrl
-                addQuality(quality)
+                // FIX ERROR: Hanya addQuality jika tidak null
+                if (quality != null && quality.isNotBlank()) {
+                    addQuality(quality)
+                }
             }
         }
     }
@@ -79,16 +84,15 @@ class NgeFilm : MainAPI() {
             
         val year = doc.select("div.gmr-moviedata a[href*='year']").text().toIntOrNull()
         
-        // PERBAIKAN 2: Rating kadang bikin error jika tipenya salah, kita handle manual
+        // Handle Rating
         val ratingText = doc.select("span[itemprop=ratingValue]").text()
         val ratingInt = ratingText.toDoubleOrNull()?.times(1000)?.toInt()
 
         val backdrop = doc.selectFirst("#muvipro_player_content_id img")?.attr("src") ?: poster
 
-        // PERBAIKAN 3: Tags (Genre) tetap List<String>
         val tags = doc.select("div.gmr-moviedata a[href*='genre']").map { it.text() }
         
-        // PERBAIKAN 4: Actors harus List<ActorData>, bukan List<String>
+        // Format Actors untuk Cloudstream v4+
         val actors = doc.select("span[itemprop=actors] a").map { 
             ActorData(Actor(it.text(), null)) 
         }
@@ -114,7 +118,6 @@ class NgeFilm : MainAPI() {
                     epText
                 }
 
-                // PERBAIKAN 5: Perbaikan format Episode
                 newEpisode(epHref) {
                     this.name = cleanName
                     this.episode = cleanName.filter { char -> char.isDigit() }.toIntOrNull()
@@ -126,7 +129,9 @@ class NgeFilm : MainAPI() {
                 this.backgroundPosterUrl = backdrop
                 this.plot = description
                 this.year = year
-                this.rating = ratingInt // Menggunakan variabel lokal
+                // FIX ERROR: Suppress deprecation warning agar build sukses
+                @Suppress("DEPRECATION")
+                this.rating = ratingInt
                 this.tags = tags
                 this.actors = actors
                 this.recommendations = recommendations
@@ -137,7 +142,9 @@ class NgeFilm : MainAPI() {
                 this.backgroundPosterUrl = backdrop
                 this.plot = description
                 this.year = year
-                this.rating = ratingInt // Menggunakan variabel lokal
+                // FIX ERROR: Suppress deprecation warning agar build sukses
+                @Suppress("DEPRECATION")
+                this.rating = ratingInt
                 this.tags = tags
                 this.actors = actors
                 this.recommendations = recommendations
