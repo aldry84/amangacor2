@@ -5,9 +5,9 @@ import com.lagradost.cloudstream3.plugins.Plugin
 import android.content.Context
 
 @CloudstreamPlugin
-class IdlixkuPlugin : Plugin() {
+class IdlixkuPlugin: Plugin() {
     override fun load(context: Context) {
         // Mendaftarkan Provider Utama
-        registerMainAPI(Idlixku())
+        registerMainAPI(IdlixkuProvider())
     }
 }
