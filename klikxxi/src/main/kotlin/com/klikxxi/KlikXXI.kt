@@ -14,17 +14,18 @@ class KlikXXI : MainAPI() {
     // --- HELPER FUNCTIONS ---
 
     private fun Element.toSearchResponse(): SearchResponse? {
+        // Ambil judul dan link
         val titleElement = this.selectFirst(".entry-title a") ?: return null
         val title = titleElement.text().trim()
         val href = titleElement.attr("href")
 
+        // Ambil poster (prioritas data-lazy-src)
         val posterElement = this.selectFirst("img.attachment-medium")
         val posterUrl = posterElement?.attr("data-lazy-src") ?: posterElement?.attr("src")
 
+        // Ambil kualitas
         val quality = this.selectFirst(".gmr-quality-item")?.text() ?: "N/A"
 
-        // Bagian rating dihapus dulu sesuai permintaan
-        
         return newMovieSearchResponse(title, href, TvType.Movie) {
             this.posterUrl = posterUrl
             this.quality = getQualityFromString(quality)
@@ -37,6 +38,7 @@ class KlikXXI : MainAPI() {
         val document = app.get(mainUrl).document
         val homeSets = ArrayList<HomePageList>()
 
+        // Mengambil widget di homepage
         document.select(".muvipro-posts-module").forEach { widget ->
             val title = widget.select(".homemodule-title").text().trim()
             
@@ -72,19 +74,21 @@ class KlikXXI : MainAPI() {
 
         val description = document.select(".entry-content p").text().trim()
         
+        // Ambil tahun
         val year = document.select("time[itemprop=dateCreated]").text().takeLast(4).toIntOrNull()
 
+        // Cek tipe (Movie/TV)
         val isTvSeries = document.select(".gmr-numbeps").isNotEmpty() || url.contains("/tv/")
         val tvType = if (isTvSeries) TvType.TvSeries else TvType.Movie
 
-        if (isTvSeries) {
-            return newTvSeriesLoadResponse(title, url, tvType, emptyList()) {
+        return if (isTvSeries) {
+            newTvSeriesLoadResponse(title, url, tvType, emptyList()) {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
             }
         } else {
-            return newMovieLoadResponse(title, url, tvType, url) {
+            newMovieLoadResponse(title, url, tvType, url) {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
@@ -106,6 +110,7 @@ class KlikXXI : MainAPI() {
                 src = "https:$src"
             }
 
+            // Filter link sampah
             if (src.contains("youtube") || src.contains("facebook") || src.contains("whatsapp")) {
                 return@forEach
             }
