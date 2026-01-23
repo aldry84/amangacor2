@@ -1,5 +1,3 @@
-@file:Suppress("DEPRECATION")
-
 package com.Idlixku
 
 import com.fasterxml.jackson.annotation.JsonProperty
