@@ -13,7 +13,7 @@ class NgeFilm : MainAPI() {
     override var lang = "id"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
-    // Headers standar untuk request
+    // Headers standar
     val mainHeaders = mapOf(
         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Referer" to "$mainUrl/"
@@ -57,18 +57,12 @@ class NgeFilm : MainAPI() {
         return if (isTv) {
             newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
                 this.posterUrl = posterUrl
-                // FIX ERROR: Hanya addQuality jika tidak null
-                if (quality != null && quality.isNotBlank()) {
-                    addQuality(quality)
-                }
+                if (!quality.isNullOrBlank()) addQuality(quality)
             }
         } else {
             newMovieSearchResponse(title, href, TvType.Movie) {
                 this.posterUrl = posterUrl
-                // FIX ERROR: Hanya addQuality jika tidak null
-                if (quality != null && quality.isNotBlank()) {
-                    addQuality(quality)
-                }
+                if (!quality.isNullOrBlank()) addQuality(quality)
             }
         }
     }
@@ -84,15 +78,15 @@ class NgeFilm : MainAPI() {
             
         val year = doc.select("div.gmr-moviedata a[href*='year']").text().toIntOrNull()
         
-        // Handle Rating
+        // CONTEK ADICINEMAX: Menggunakan Score.from10() string rating
         val ratingText = doc.select("span[itemprop=ratingValue]").text()
-        val ratingInt = ratingText.toDoubleOrNull()?.times(1000)?.toInt()
+        val scoreVal = Score.from10(ratingText) // Ini otomatis handle parsing String ke Double/Int
 
         val backdrop = doc.selectFirst("#muvipro_player_content_id img")?.attr("src") ?: poster
 
         val tags = doc.select("div.gmr-moviedata a[href*='genre']").map { it.text() }
         
-        // Format Actors untuk Cloudstream v4+
+        // CONTEK ADICINEMAX: Format Actors menggunakan ActorData
         val actors = doc.select("span[itemprop=actors] a").map { 
             ActorData(Actor(it.text(), null)) 
         }
@@ -129,9 +123,10 @@ class NgeFilm : MainAPI() {
                 this.backgroundPosterUrl = backdrop
                 this.plot = description
                 this.year = year
-                // FIX ERROR: Suppress deprecation warning agar build sukses
-                @Suppress("DEPRECATION")
-                this.rating = ratingInt
+                
+                // PERBAIKAN UTAMA: Pakai this.score bukan this.rating
+                this.score = scoreVal 
+                
                 this.tags = tags
                 this.actors = actors
                 this.recommendations = recommendations
@@ -142,9 +137,10 @@ class NgeFilm : MainAPI() {
                 this.backgroundPosterUrl = backdrop
                 this.plot = description
                 this.year = year
-                // FIX ERROR: Suppress deprecation warning agar build sukses
-                @Suppress("DEPRECATION")
-                this.rating = ratingInt
+                
+                // PERBAIKAN UTAMA: Pakai this.score bukan this.rating
+                this.score = scoreVal
+                
                 this.tags = tags
                 this.actors = actors
                 this.recommendations = recommendations
