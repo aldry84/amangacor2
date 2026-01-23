@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
+import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.Score
 import org.jsoup.nodes.Element
 import java.nio.charset.StandardCharsets
@@ -23,10 +24,9 @@ class IdlixkuProvider : MainAPI() {
     data class DooplayResponse(
         @param:JsonProperty("embed_url") val embed_url: String?,
         @param:JsonProperty("type") val type: String?,
-        @param:JsonProperty("key") val key: String? // Menambahkan field Key
+        @param:JsonProperty("key") val key: String?
     )
 
-    // Struktur data untuk encrypted content
     data class EncryptedData(
         @param:JsonProperty("ct") val ct: String?,
         @param:JsonProperty("iv") val iv: String?,
@@ -189,16 +189,14 @@ class IdlixkuProvider : MainAPI() {
                     referer = data
                 )
                 
-                val dooplayResponse = response.parsedSafe<DooplayResponse>()
+                val dooplayResponse = tryParseJson<DooplayResponse>(response.text)
                 var embedUrl = dooplayResponse?.embed_url
                 val key = dooplayResponse?.key
 
-                // --- LOGIKA DEKRIPSI ---
+                // LOGIKA DEKRIPSI (DIPERBAIKI)
                 if (embedUrl != null && embedUrl.contains("\"ct\"") && !key.isNullOrEmpty()) {
                     try {
-                        // 1. Bersihkan format key (misal \x35\x7a -> 5z)
                         val cleanKey = decodeHex(key)
-                        // 2. Dekripsi
                         val decrypted = decryptDooplay(embedUrl, cleanKey)
                         if (decrypted != null) {
                             embedUrl = decrypted
@@ -229,12 +227,16 @@ class IdlixkuProvider : MainAPI() {
         return true
     }
 
-    // --- HELPER DEKRIPSI ---
-
+    // --- DECODER MANUAL YANG LEBIH AMAN ---
     private fun decodeHex(hex: String): String {
-        // Mengubah string seperti "\x35\x7a" menjadi string ASCII biasa
-        return hex.replace("\\x", "%").let { 
-             try { java.net.URLDecoder.decode(it, "UTF-8") } catch(e: Exception) { it }
+        return try {
+            // Memecah berdasarkan "\x" lalu mengubah setiap bagian hex menjadi karakter
+            hex.split("\\x")
+                .filter { it.isNotEmpty() }
+                .map { it.toInt(16).toChar() }
+                .joinToString("")
+        } catch (e: Exception) {
+            hex // Return as is jika gagal
         }
     }
 
@@ -250,11 +252,7 @@ class IdlixkuProvider : MainAPI() {
             val cipherText = Base64.getDecoder().decode(ctBase64)
             val pass = key.toByteArray(StandardCharsets.UTF_8)
 
-            // Derive Key using OpenSSL method (MD5 with 1 iteration)
-            // Note: Dooplay standard often uses derived key and IV.
-            // But since IV is provided in JSON, we use derived Key + Provided IV.
-            val derivedKey = deriveKey(pass, salt, 32) // AES-256 needs 32 bytes
-
+            val derivedKey = deriveKey(pass, salt, 32)
             val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
             val keySpec = SecretKeySpec(derivedKey, "AES")
             val ivSpec = IvParameterSpec(iv)
@@ -263,11 +261,9 @@ class IdlixkuProvider : MainAPI() {
             val decryptedBytes = cipher.doFinal(cipherText)
             
             var result = String(decryptedBytes, StandardCharsets.UTF_8)
-            // Clean result (remove surrounding quotes if any)
             if (result.startsWith("\"") && result.endsWith("\"")) {
                 result = result.substring(1, result.length - 1)
             }
-            // Unescape escaped slashes
             return result.replace("\\/", "/")
 
         } catch (e: Exception) {
@@ -288,7 +284,6 @@ class IdlixkuProvider : MainAPI() {
         return data
     }
 
-    // OpenSSL Compatible Key Derivation (EVP_BytesToKey)
     private fun deriveKey(password: ByteArray, salt: ByteArray, keySize: Int): ByteArray {
         val digest = MessageDigest.getInstance("MD5")
         var derivedBytes = ByteArray(0)
@@ -301,7 +296,6 @@ class IdlixkuProvider : MainAPI() {
             lastDigest = digest.digest()
             derivedBytes += lastDigest
         }
-
         return derivedBytes.copyOfRange(0, keySize)
     }
 }
