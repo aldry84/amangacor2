@@ -1,7 +1,7 @@
 package com.Idlixku
 
-// Import tetap dipertahankan secara eksplisit sesuai permintaanmu
-import com.fasterxml.jackson.annotation.JsonProperty
+import com.Idlixku.IdlixkuProvider.ResponseSource
+import com.Idlixku.IdlixkuProvider.Tracks
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.newSubtitleFile
@@ -18,37 +18,19 @@ class JeniusPlayExtractor : ExtractorApi() {
     override var mainUrl = "https://jeniusplay.com"
     override val requiresReferer = true
 
-    // Data class internal agar tidak bergantung pada hexated
-    data class ResponseSource(
-        @param:JsonProperty("videoSource") val videoSource: String? = null,
-        @param:JsonProperty("securedLink") val securedLink: String? = null
-    )
-
-    data class Tracks(
-        @param:JsonProperty("file") val file: String,
-        @param:JsonProperty("label") val label: String? = null
-    )
-
     override suspend fun getUrl(
         url: String,
         referer: String?,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        // Ambil document untuk mencari subtitle nanti
         val res = app.get(url, referer = referer)
         val document = res.document
-        
-        // Cara Hexated mengambil hash: split "/" lalu ambil data=
-        val hash = url.split("/").last().substringAfter("data=").substringBefore("&")
+        val hash = url.substringAfter("data=").substringBefore("&")
 
-        // Request POST yang sangat spesifik (Inilah rahasianya)
         val response = app.post(
             url = "$mainUrl/player/index.php?data=$hash&do=getVideo",
-            data = mapOf(
-                "hash" to hash, 
-                "r" to (referer ?: "https://tv12.idlixku.com/")
-            ),
+            data = mapOf("hash" to hash, "r" to (referer ?: "https://tv12.idlixku.com/")),
             referer = url,
             headers = mapOf("X-Requested-With" to "XMLHttpRequest")
         ).parsedSafe<ResponseSource>()
@@ -56,12 +38,13 @@ class JeniusPlayExtractor : ExtractorApi() {
         val m3uLink = response?.securedLink ?: response?.videoSource
 
         if (!m3uLink.isNullOrEmpty()) {
+            // Menggunakan format 4 parameter + lambda agar lulus compile
             callback.invoke(
                 newExtractorLink(
                     name,
                     name,
                     m3uLink,
-                    ExtractorLinkType.M3U8 // Paksa M3U8
+                    ExtractorLinkType.M3U8
                 ) {
                     this.referer = url
                     this.quality = Qualities.Unknown.value
@@ -69,7 +52,7 @@ class JeniusPlayExtractor : ExtractorApi() {
             )
         }
 
-        // Logic Subtitle Unpacker (Hexated Style)
+        // Logic Subtitle menggunakan Unpacker (Hexated Style)
         document.select("script").forEach { script ->
             val scriptData = script.data()
             if (scriptData.contains("eval(function(p,a,c,k,e,d)")) {
