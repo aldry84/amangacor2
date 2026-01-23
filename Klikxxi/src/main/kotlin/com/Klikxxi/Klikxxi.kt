@@ -11,6 +11,19 @@ class Klikxxi : MainAPI() {
     override var lang = "id"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
+    // --- DEFINISI KATEGORI ---
+    override val mainPage = mainPageOf(
+        "$mainUrl/" to "Home",
+        "$mainUrl/category/action/" to "Eksen",
+        "$mainUrl/category/adventure/" to "Petualangan",
+        "$mainUrl/category/crime/" to "Kriminal",
+        "$mainUrl/category/drama/" to "Drama",
+        "$mainUrl/category/horror/" to "Horror",
+        "$mainUrl/category/mystery/" to "Misteri",
+        "$mainUrl/category/science-fiction/" to "Science & Fiction",
+        "$mainUrl/category/war/" to "War"
+    )
+
     // --- HELPER UNTUK GAMBAR HD ---
     private fun String?.toLargeUrl(): String? {
         val url = this ?: return null
@@ -23,21 +36,34 @@ class Klikxxi : MainAPI() {
         val title = titleElement.text().trim()
         val href = titleElement.attr("href")
 
+        // DETEKSI TIPE KONTEN (Movie vs TV)
+        val isTv = href.contains("/tv/")
+
         val imgElement = this.selectFirst("img")
         val rawPoster = imgElement?.attr("data-lazy-src") ?: imgElement?.attr("src")
         val posterUrl = rawPoster.toLargeUrl()
 
         val quality = this.selectFirst(".gmr-quality-item")?.text() ?: "N/A"
         
-        // --- AMBIL RATING (SCORE) ---
+        // Ambil Rating (Jika ada di website)
         val ratingText = this.selectFirst(".gmr-rating-item")?.text()?.trim()
         val rating = ratingText?.toDoubleOrNull()
 
-        return newMovieSearchResponse(title, href, TvType.Movie) {
-            this.posterUrl = posterUrl
-            this.quality = getQualityFromString(quality)
-            if (rating != null) {
-                this.score = Score.from10(rating)
+        if (isTv) {
+            return newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
+                this.posterUrl = posterUrl
+                this.quality = getQualityFromString(quality)
+                if (rating != null) {
+                    this.score = Score.from10(rating)
+                }
+            }
+        } else {
+            return newMovieSearchResponse(title, href, TvType.Movie) {
+                this.posterUrl = posterUrl
+                this.quality = getQualityFromString(quality)
+                if (rating != null) {
+                    this.score = Score.from10(rating)
+                }
             }
         }
     }
@@ -77,17 +103,16 @@ class Klikxxi : MainAPI() {
             ).parsedSafe<Strp2pResponse>()
 
             // Langkah 3: Ambil link m3u8
-            // PERBAIKAN: Menggunakan newExtractorLink dengan benar (sesuai Adicinemax)
             playerResponse?.source?.forEach { source ->
                 callback.invoke(
                     newExtractorLink(
                         "StrP2P (VIP)",
                         "StrP2P ${source.label}",
                         source.file,
-                        ExtractorLinkType.M3U8 // Tipe ditaruh di sini
+                        mainUrl,
+                        Qualities.Unknown.value
                     ) {
-                        this.referer = mainUrl
-                        this.quality = Qualities.Unknown.value
+                        this.isM3u8 = true
                     }
                 )
             }
@@ -108,16 +133,34 @@ class Klikxxi : MainAPI() {
     // --- MAIN FUNCTIONS ---
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val document = app.get(mainUrl).document
         val homeSets = ArrayList<HomePageList>()
+        
+        // Handle Pagination untuk Kategori
+        val url = if (page > 1) {
+            if (request.data.endsWith("/")) "${request.data}page/$page/" else "${request.data}/page/$page/"
+        } else {
+            request.data
+        }
 
-        document.select(".muvipro-posts-module").forEach { widget ->
-            val title = widget.select(".homemodule-title").text().trim()
-            val movies = widget.select(".gmr-item-modulepost").mapNotNull { it.toSearchResponse() }
+        val document = app.get(url).document
+
+        if (request.name == "Home") {
+            // Logic khusus Halaman Utama (Widget)
+            document.select(".muvipro-posts-module").forEach { widget ->
+                val title = widget.select(".homemodule-title").text().trim()
+                val movies = widget.select(".gmr-item-modulepost").mapNotNull { it.toSearchResponse() }
+                if (movies.isNotEmpty()) {
+                    homeSets.add(HomePageList(title, movies))
+                }
+            }
+        } else {
+            // Logic untuk Kategori (Eksen, Petualangan, dll)
+            val movies = document.select("article.item").mapNotNull { it.toSearchResponse() }
             if (movies.isNotEmpty()) {
-                homeSets.add(HomePageList(title, movies))
+                homeSets.add(HomePageList(request.name, movies))
             }
         }
+
         return newHomePageResponse(homeSets)
     }
 
@@ -139,8 +182,7 @@ class Klikxxi : MainAPI() {
         val description = document.select(".entry-content p").text().trim()
         val year = document.select("time[itemprop=dateCreated]").text().takeLast(4).toIntOrNull()
         
-        // Coba ambil rating dari detail page jika ada (biasanya di meta atau bar)
-        // Di sini kita ambil dari meta tag untuk akurasi
+        // Coba ambil rating dari detail page jika ada
         val ratingMeta = document.selectFirst("meta[itemprop=ratingValue]")?.attr("content") 
                         ?: document.selectFirst(".gmr-rating-item")?.text()?.trim()
         val scoreVal = ratingMeta?.toDoubleOrNull()
