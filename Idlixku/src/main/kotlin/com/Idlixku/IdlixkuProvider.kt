@@ -1,4 +1,4 @@
-package com.hexated
+package com.Idlixku
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.api.Log
@@ -26,8 +26,9 @@ class IdlixProvider : MainAPI() {
         TvType.AsianDrama
     )
 
-    // DAFTAR KATEGORI BARU SESUAI PERMINTAAN
+    // DAFTAR KATEGORI BARU YANG SUDAH DISESUAIKAN
     override val mainPage = mainPageOf(
+        "$mainUrl/" to "Featured",
         "$mainUrl/trending/page/?get=movies" to "Trending",
         "$mainUrl/genre/action/page/" to "Action",
         "$mainUrl/genre/horror/page/" to "Setang-Setang",
@@ -53,15 +54,15 @@ class IdlixProvider : MainAPI() {
         val url = request.data.split("?")
         val nonPaged = request.name == "Featured" && page <= 1
         
-        // Logika diperbarui agar mendukung URL tanpa parameter query (tanda tanya)
+        // Logika diperbarui untuk mendukung URL dengan dan tanpa query (?)
         val req = if (nonPaged) {
             app.get(request.data)
         } else {
             if (url.size > 1) {
-                // Untuk URL seperti: .../trending/page/2/?get=movies
+                // Jika URL memiliki parameter query (seperti ?get=movies)
                 app.get("${url.first()}$page/?${url[1]}")
             } else {
-                // Untuk URL kategori biasa: .../genre/action/page/2/
+                // Jika URL kategori biasa (karena kita sudah tambahkan /page/ di mainPage)
                 app.get("${url.first()}$page/")
             }
         }
@@ -174,10 +175,10 @@ class IdlixProvider : MainAPI() {
                     .toIntOrNull()
                 newEpisode(href)
                 {
-                    this.name=name
-                    this.season=season
-                    this.episode=episode
-                    this.posterUrl=image
+                        this.name=name
+                        this.season=season
+                        this.episode=episode
+                        this.posterUrl=image
                 }
             }
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
@@ -219,12 +220,12 @@ class IdlixProvider : MainAPI() {
         val idlixTime = match?.groups?.get(2)?.value ?: ""
 
         document.select("ul#playeroptionsul > li").map {
-            Triple(
-                it.attr("data-post"),
-                it.attr("data-nume"),
-                it.attr("data-type")
-            )
-        }.amap { (id, nume, type) ->
+                Triple(
+                    it.attr("data-post"),
+                    it.attr("data-nume"),
+                    it.attr("data-type")
+                )
+            }.amap { (id, nume, type) ->
             val json = app.post(
                 url = "$directUrl/wp-admin/admin-ajax.php",
                 data = mapOf(
@@ -298,5 +299,4 @@ class IdlixProvider : MainAPI() {
     data class AesData(
         @JsonProperty("m") val m: String,
     )
-
 }
