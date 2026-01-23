@@ -1,10 +1,9 @@
 package com.Idlixku
 
 import com.fasterxml.jackson.annotation.JsonProperty
-import com.lagradost.cloudstream3.SubtitleFile
-import com.lagradost.cloudstream3.app
-import com.lagradost.cloudstream3.utils.* // Import ini memuat newExtractorLink
-import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
+import com.lagradost.cloudstream3.*
+import com.lagradost.cloudstream3.utils.* // Import ini WAJIB untuk newExtractorLink
+import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 
 class JeniusPlayExtractor : ExtractorApi() {
     override val name = "JeniusPlay"
@@ -32,12 +31,11 @@ class JeniusPlayExtractor : ExtractorApi() {
                 "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8"
             )
 
-            val responseText = app.post(apiUrl, headers = headers).text
-            val response = tryParseJson<JeniusResponse>(responseText)
+            val response = app.post(apiUrl, headers = headers).parsedSafe<JeniusResponse>()
             
             val videoUrl = response?.securedLink ?: response?.videoSource ?: return@runCatching
 
-            // MENGGUNAKAN FORMAT ADIMOVIEBOX TANPA DEPRECATED
+            // MENGGUNAKAN NEWEXTRACTORLINK SESUAI PERMINTAAN DAN CONTOH ADIMOVIEBOX
             callback.invoke(
                 newExtractorLink(
                     name,
