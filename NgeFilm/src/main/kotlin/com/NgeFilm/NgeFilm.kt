@@ -42,7 +42,7 @@ class NgeFilm : MainAPI() {
         return doc.select("article.item").mapNotNull { toSearchResult(it) }
     }
 
-    // --- FUNGSI BANTUAN GAMBAR ---
+    // --- FUNGSI BANTUAN GAMBAR (Fix Poster Hilang) ---
     private fun getPosterUrl(element: Element): String? {
         // Ambil elemen gambar, prioritas wp-post-image
         val img = element.selectFirst("img.wp-post-image") ?: element.selectFirst("img")
@@ -90,7 +90,7 @@ class NgeFilm : MainAPI() {
         }
     }
 
-    // --- LOAD DETAIL ---
+    // --- LOAD DETAIL (Fix Backdrop & Info) ---
     override suspend fun load(url: String): LoadResponse {
         val doc = app.get(url, headers = mainHeaders).document
 
@@ -166,7 +166,7 @@ class NgeFilm : MainAPI() {
         }
     }
 
-    // --- LOAD LINKS (PLAYER MAGIC) ---
+    // --- LOAD LINKS (PLAYER MAGIC: TXT & M3U8 Hunter) ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -193,30 +193,31 @@ class NgeFilm : MainAPI() {
             if (fixedUrl.contains("rpmlive") || fixedUrl.contains("playerngefilm")) {
                 try {
                     // Ambil source HTML dari wrapper player
-                    // PENTING: Gunakan referer halaman film
+                    // PENTING: Gunakan referer halaman film utama
                     val response = app.get(fixedUrl, headers = mapOf("Referer" to data)).text
                     
-                    // CARA 1: Cari link .txt atau .m3u8 di dalam script (Sesuai temuan curl kamu)
-                    // Pola: file: "https://...txt" atau source = "..."
+                    // CARA BARU (TXT HUNTER): Cari link .txt atau .m3u8 di dalam script
+                    // Regex ini mencari URL yang diapit tanda kutip dan mengandung .txt atau .m3u8
+                    // Contoh temuan: "https://s3u.mindspireventures.sbs/.../cf-master...txt"
                     val regex = Regex("[\"'](https?://.*?(?:\\.txt|\\.m3u8).*?)[\"']")
                     val matches = regex.findAll(response)
                     
                     matches.forEach { match ->
                         val streamUrl = match.groupValues[1]
                         
-                        // Header khusus untuk server Mindspire/RPMLive sesuai curl
+                        // Header khusus agar tidak 403 Forbidden (Sesuai CURL kamu)
                         val streamHeaders = mapOf(
                             "Origin" to "https://playerngefilm21.rpmlive.online",
                             "Referer" to "https://playerngefilm21.rpmlive.online/",
                             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
                         )
 
-                        // Jika linknya .txt (seperti temuanmu), kita perlakukan sebagai M3U8
+                        // Jika ketemu link .txt atau .m3u8, proses dengan M3u8Helper
                         if (streamUrl.contains(".txt") || streamUrl.contains(".m3u8")) {
                             M3u8Helper.generateM3u8(
                                 "NgeFilm-VIP",
                                 streamUrl,
-                                "https://playerngefilm21.rpmlive.online/", // Referer penting
+                                "https://playerngefilm21.rpmlive.online/", // Referer wajib ini
                                 headers = streamHeaders
                             ).forEach { link ->
                                 callback(link)
@@ -224,7 +225,7 @@ class NgeFilm : MainAPI() {
                         }
                     }
                     
-                    // CARA 2: Cari Iframe lain (Fallback)
+                    // Fallback: Cari Iframe lain di dalamnya
                     val wrapperDoc = org.jsoup.Jsoup.parse(response)
                     val innerIframe = wrapperDoc.select("iframe").attr("src")
                     if (innerIframe.isNotBlank()) {
@@ -232,6 +233,7 @@ class NgeFilm : MainAPI() {
                     }
 
                 } catch (e: Exception) {
+                    // Jika gagal, coba load langsung (siapa tau support)
                     loadExtractor(fixedUrl, data, subtitleCallback, callback)
                 }
             } else if (!fixedUrl.contains("youtube.com") && !fixedUrl.contains("youtu.be")) {
