@@ -1,4 +1,4 @@
-@file:Suppress("DEPRECATION") // Ini penting agar build tidak gagal
+@file:Suppress("DEPRECATION")
 
 package com.Idlixku
 
@@ -37,7 +37,7 @@ class JeniusPlayExtractor : ExtractorApi() {
                 "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8"
             )
 
-            // Menggunakan tryParseJson untuk menghindari crash
+            // Menggunakan text dan tryParseJson agar aman
             val responseText = app.post(apiUrl, headers = headers).text
             val response = tryParseJson<JeniusResponse>(responseText)
             
