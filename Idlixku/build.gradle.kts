@@ -24,7 +24,7 @@ cloudstream {
     )
 
 
-    iconUrl = "https://www.google.com/s2/favicons?domain=tv7.lk21.am.in&sz=%size%"
+    iconUrl = https://tv12.idlixku.com/wp-content/uploads/2020/06/idlix.png
 
     isCrossPlatform = true
 }
