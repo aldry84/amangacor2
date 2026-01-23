@@ -18,7 +18,6 @@ class Idlixku : MainAPI() {
         "Referer" to "$mainUrl/"
     )
 
-    // ================== 1. HOME PAGE ==================
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val document = app.get(mainUrl, headers = standardHeaders).document
         val homePageList = ArrayList<HomePageList>()
@@ -41,7 +40,6 @@ class Idlixku : MainAPI() {
         return newHomePageResponse(homePageList)
     }
 
-    // ================== 2. SEARCH ==================
     override suspend fun search(query: String): List<SearchResponse> {
         val url = "$mainUrl/?s=$query"
         val document = app.get(url, headers = standardHeaders).document
@@ -72,7 +70,6 @@ class Idlixku : MainAPI() {
         }
     }
 
-    // ================== 3. LOAD DETAIL ==================
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url, headers = standardHeaders).document
 
@@ -83,8 +80,8 @@ class Idlixku : MainAPI() {
         
         val year = document.selectFirst(".extra .date")?.text()?.takeLast(4)?.toIntOrNull()
         
-        // FIX: Rating Text String, diproses oleh Score.from10
-        val ratingText = document.selectFirst(".dt_rating_vgs")?.text() ?: "0.0"
+        // FIX: Rating String langsung ke Score.from10 (Seperti Adimoviebox source 13 & 46)
+        val ratingText = document.selectFirst(".dt_rating_vgs")?.text()
         val scoreData = Score.from10(ratingText)
 
         val recommendations = document.select("#single_relacionados article").mapNotNull {
@@ -121,7 +118,7 @@ class Idlixku : MainAPI() {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
-                this.score = scoreData
+                this.score = scoreData 
                 this.recommendations = recommendations
                 addTrailer(trailerUrl)
             }
@@ -130,14 +127,13 @@ class Idlixku : MainAPI() {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
-                this.score = scoreData
+                this.score = scoreData 
                 this.recommendations = recommendations
                 addTrailer(trailerUrl)
             }
         }
     }
 
-    // ================== 4. LOAD LINKS ==================
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -179,7 +175,6 @@ class Idlixku : MainAPI() {
         return true
     }
 
-    // ================== INTERNAL EXTRACTOR ==================
     private suspend fun invokeJeniusExtractor(url: String, callback: (ExtractorLink) -> Unit) {
         try {
             val videoId = url.substringAfter("/video/")
@@ -196,12 +191,12 @@ class Idlixku : MainAPI() {
 
             val playlistUrl = jsonResponse?.videoSource ?: return
 
-            // FIX ERROR: Menggunakan Constructor Parameter, bukan Builder pattern yang bikin error val reassignment
+            // FIX: Menggunakan newExtractorLink dengan parameter biasa (Seperti Adimoviebox source 27)
             callback.invoke(
-                ExtractorLink(
-                    source = "JeniusPlay",
-                    name = "JeniusPlay (Auto)",
-                    url = playlistUrl,
+                newExtractorLink(
+                    "JeniusPlay",
+                    "JeniusPlay (Auto)",
+                    playlistUrl,
                     referer = domain,
                     quality = Qualities.Unknown.value,
                     isM3u8 = true
@@ -214,8 +209,8 @@ class Idlixku : MainAPI() {
     }
 
     data class DooPlayResponse(
-        val embed_url: String?,
-        val type: String?
+        @JsonProperty("embed_url") val embed_url: String?,
+        @JsonProperty("type") val type: String?
     )
 
     data class JeniusResponse(
