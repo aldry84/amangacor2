@@ -3,8 +3,7 @@ package com.Idlixku
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
-import com.lagradost.cloudstream3.utils.AppUtils.parseJson 
-import com.lagradost.cloudstream3.Score
+import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import org.jsoup.nodes.Element
 
 class IdlixkuProvider : MainAPI() {
@@ -175,7 +174,7 @@ class IdlixkuProvider : MainAPI() {
                     referer = data
                 )
                 
-                val dooplayResponse = AppUtils.tryParseJson<DooplayResponse>(response.text)
+                val dooplayResponse = response.parsedSafe<DooplayResponse>()
                 var embedUrl = dooplayResponse?.embed_url ?: return@forEach
 
                 if (embedUrl.contains("<iframe")) {
