@@ -3,6 +3,7 @@ package com.NgeFilm
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
+import com.lagradost.cloudstream3.utils.M3u8Helper
 import org.jsoup.nodes.Element
 
 class NgeFilm : MainAPI() {
@@ -13,7 +14,7 @@ class NgeFilm : MainAPI() {
     override var lang = "id"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
-    // Headers standar (Wajib ada Referer)
+    // Headers standar untuk browsing situs utama
     val mainHeaders = mapOf(
         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Referer" to "$mainUrl/"
@@ -41,14 +42,15 @@ class NgeFilm : MainAPI() {
         return doc.select("article.item").mapNotNull { toSearchResult(it) }
     }
 
-    // --- FUNGSI BANTUAN URL GAMBAR ---
-    // Mengambil resolusi terbaik dari data-src atau srcset
+    // --- FUNGSI BANTUAN GAMBAR ---
     private fun getPosterUrl(element: Element): String? {
+        // Ambil elemen gambar, prioritas wp-post-image
         val img = element.selectFirst("img.wp-post-image") ?: element.selectFirst("img")
         return img?.let {
+            // Cek data-src dulu (resolusi tinggi)
             var url = it.attr("data-src")
             if (url.isEmpty()) {
-                // Ambil url pertama dari srcset (biasanya resolusi beda dipisah koma)
+                // Cek srcset, ambil url paling belakang (biasanya resolusi terbesar)
                 url = it.attr("srcset").split(",").lastOrNull()?.trim()?.split(" ")?.firstOrNull() ?: ""
             }
             if (url.isEmpty()) {
@@ -88,34 +90,31 @@ class NgeFilm : MainAPI() {
         }
     }
 
+    // --- LOAD DETAIL ---
     override suspend fun load(url: String): LoadResponse {
         val doc = app.get(url, headers = mainHeaders).document
 
         val title = doc.selectFirst("h1.entry-title")?.text() ?: "No Title"
         val description = doc.selectFirst(".entry-content p")?.text()
         
-        // Poster: Cari di container detail gmr-movie-data
+        // Poster: Cari di container detail
         val poster = getPosterUrl(doc.selectFirst("div.gmr-movie-data") ?: doc)
 
-        // BACKDROP FIX:
-        // Cek ID khusus backdrop, kalau gak ada (null/kosong), PAKSA pakai poster.
-        // Ini mengatasi masalah "poster besar diatas tidak muncul".
+        // BACKDROP FIX: Cek elemen ID khusus, kalau gak ada, PAKSA pakai poster.
+        // Ini solusi untuk screenshot kamu yang gelap di atas.
         val backdropUrlRaw = doc.selectFirst("#muvipro_player_content_id img")?.attr("src")
         val backdrop = if (!backdropUrlRaw.isNullOrBlank()) fixUrl(backdropUrlRaw) else poster
 
         val year = doc.select("div.gmr-moviedata a[href*='year']").text().toIntOrNull()
         
-        // Rating
         val ratingText = doc.select("span[itemprop=ratingValue]").text()
         val scoreVal = Score.from10(ratingText)
 
-        // Metadata
         val tags = doc.select("div.gmr-moviedata a[href*='genre']").map { it.text() }
         val actors = doc.select("span[itemprop=actors] a").map { 
             ActorData(Actor(it.text(), null)) 
         }
 
-        // Rekomendasi
         val recommendations = doc.select("div.idmuvi-core article.item").mapNotNull { 
             toSearchResult(it) 
         }
@@ -167,6 +166,7 @@ class NgeFilm : MainAPI() {
         }
     }
 
+    // --- LOAD LINKS (PLAYER MAGIC) ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -175,68 +175,84 @@ class NgeFilm : MainAPI() {
     ): Boolean {
         val doc = app.get(data, headers = mainHeaders).document
 
-        // --- 1. Link Download (PRIORITAS TINGGI) ---
-        // Biasanya berisi Google Drive atau FilePress (kualitas bagus)
+        // 1. Link Download (Prioritas Tinggi karena kualitas bagus)
         doc.select("ul.gmr-download-list li a").forEach { link ->
             val href = link.attr("href")
-            val text = link.text() // misal: "Google Drive 1080p"
-            
+            val text = link.text() 
             if (href.startsWith("http")) {
-                // Gunakan loadExtractor untuk otomatis handle gdrive/filepress/telegra
-                loadExtractor(href, data, subtitleCallback, callback)
+                loadExtractor(href, data, subtitleCallback) { linkData ->
+                    callback(linkData.copy(name = "NgeFilm - $text"))
+                }
             }
         }
 
-        // Fungsi Helper: Ekstrak link dari dalam iframe wrapper
+        // Fungsi Helper: Ekstrak player dari wrapper (RPMLIVE)
         suspend fun extractWrapper(url: String) {
             val fixedUrl = fixUrl(url)
             
-            // Cek apakah ini link wrapper (rpmlive/player)
             if (fixedUrl.contains("rpmlive") || fixedUrl.contains("playerngefilm")) {
                 try {
-                    // Request ke wrapper dengan Referer halaman film utama
-                    val wrapperDoc = app.get(fixedUrl, headers = mapOf("Referer" to data)).document
+                    // Ambil source HTML dari wrapper player
+                    // PENTING: Gunakan referer halaman film
+                    val response = app.get(fixedUrl, headers = mapOf("Referer" to data)).text
                     
-                    // 1. Cari Iframe di dalam wrapper
+                    // CARA 1: Cari link .txt atau .m3u8 di dalam script (Sesuai temuan curl kamu)
+                    // Pola: file: "https://...txt" atau source = "..."
+                    val regex = Regex("[\"'](https?://.*?(?:\\.txt|\\.m3u8).*?)[\"']")
+                    val matches = regex.findAll(response)
+                    
+                    matches.forEach { match ->
+                        val streamUrl = match.groupValues[1]
+                        
+                        // Header khusus untuk server Mindspire/RPMLive sesuai curl
+                        val streamHeaders = mapOf(
+                            "Origin" to "https://playerngefilm21.rpmlive.online",
+                            "Referer" to "https://playerngefilm21.rpmlive.online/",
+                            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                        )
+
+                        // Jika linknya .txt (seperti temuanmu), kita perlakukan sebagai M3U8
+                        if (streamUrl.contains(".txt") || streamUrl.contains(".m3u8")) {
+                            M3u8Helper.generateM3u8(
+                                "NgeFilm-VIP",
+                                streamUrl,
+                                "https://playerngefilm21.rpmlive.online/", // Referer penting
+                                headers = streamHeaders
+                            ).forEach { link ->
+                                callback(link)
+                            }
+                        }
+                    }
+                    
+                    // CARA 2: Cari Iframe lain (Fallback)
+                    val wrapperDoc = org.jsoup.Jsoup.parse(response)
                     val innerIframe = wrapperDoc.select("iframe").attr("src")
                     if (innerIframe.isNotBlank()) {
                         loadExtractor(fixUrl(innerIframe), fixedUrl, subtitleCallback, callback)
-                    } 
-                    // 2. Cari Script yang mungkin mengandung link (untuk kasus tertentu)
-                    else {
-                        // Fallback: coba load URL wrapper itu sendiri, siapa tau didukung extractor
-                        loadExtractor(fixedUrl, data, subtitleCallback, callback)
                     }
+
                 } catch (e: Exception) {
-                    // Jika gagal akses wrapper, coba load langsung URL-nya
                     loadExtractor(fixedUrl, data, subtitleCallback, callback)
                 }
             } else if (!fixedUrl.contains("youtube.com") && !fixedUrl.contains("youtu.be")) {
-                // Link langsung (bukan wrapper)
                 loadExtractor(fixedUrl, data, subtitleCallback, callback)
             }
         }
 
-        // --- 2. Iframe Utama (Embed Responsive) ---
+        // 2. Scan Iframe Utama
         doc.select("div.gmr-embed-responsive iframe").forEach { iframe ->
             val src = iframe.attr("src")
-            if (src.isNotBlank()) {
-                extractWrapper(src)
-            }
+            if (src.isNotBlank()) extractWrapper(src)
         }
         
-        // --- 3. Tab Server Lain ---
+        // 3. Scan Tab Server
         doc.select("ul.muvipro-player-tabs li a").forEach { tab ->
             val link = fixUrl(tab.attr("href"))
-            
              if (link.isNotBlank() && link != data && !link.contains("#")) {
                  try {
                      val embedPage = app.get(link, headers = mainHeaders).document
                      val iframeSrc = embedPage.select("div.gmr-embed-responsive iframe").attr("src")
-                     
-                     if(iframeSrc.isNotBlank()) {
-                         extractWrapper(iframeSrc)
-                     }
+                     if(iframeSrc.isNotBlank()) extractWrapper(iframeSrc)
                  } catch (e: Exception) {
                  }
              }
