@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
+import com.lagradost.cloudstream3.Score
 import org.jsoup.nodes.Element
 
 class IdlixkuProvider : MainAPI() {
@@ -45,7 +46,6 @@ class IdlixkuProvider : MainAPI() {
     }
 
     private fun toSearchResult(element: Element): SearchResponse? {
-        // PERBAIKAN: Cek h3 > a ATAU .title > a (Fallback selector)
         val titleElement = element.selectFirst("h3 > a") ?: element.selectFirst(".title > a") ?: return null
         val title = titleElement.text()
         val href = titleElement.attr("href")
@@ -75,7 +75,6 @@ class IdlixkuProvider : MainAPI() {
         val url = "$mainUrl/?s=$query"
         return runCatching {
             val document = app.get(url).document
-            // PERBAIKAN: Selektor lebih luas untuk search results
             document.select("div.result-item article, .items article").mapNotNull {
                 toSearchResult(it)
             }
@@ -177,7 +176,7 @@ class IdlixkuProvider : MainAPI() {
                 )
                 
                 val dooplayResponse = response.parsedSafe<DooplayResponse>()
-                // Fix URL (misal //domain.com jadi https://domain.com)
+                // Tambahkan fixUrl agar URL embed valid
                 var embedUrl = fixUrl(dooplayResponse?.embed_url ?: return@forEach)
 
                 if (embedUrl.contains("<iframe")) {
