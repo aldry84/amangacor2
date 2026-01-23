@@ -80,7 +80,7 @@ class IdlixkuProvider : MainAPI() {
         }
     }
 
-    // --- 3. LOAD (DETAIL) - BAGIAN RATING DIUPDATE ---
+    // --- 3. LOAD (DETAIL) ---
     override suspend fun load(url: String): LoadResponse? {
         val document = app.get(url).document
 
@@ -89,12 +89,9 @@ class IdlixkuProvider : MainAPI() {
         val description = document.selectFirst(".wp-content p")?.text()?.trim() 
             ?: document.selectFirst("center p")?.text()?.trim()
         
-        // --- UPDATE LOGIKA RATING ---
-        // Mengambil text rating (contoh: "9.4") dari class .dt_rating_vgs
+        // --- PERBAIKAN DI SINI ---
+        // Kita ambil text-nya saja, biarkan fungsi addRating yang mengurus
         val ratingText = document.selectFirst(".dt_rating_vgs")?.text()?.trim()
-        // Konversi ke Integer skala 1000 (Standar CloudStream)
-        // Jika kamu punya class helper Score, bisa disesuaikan, tapi ini cara paling aman:
-        val ratingInt = ratingText?.toDoubleOrNull()?.times(1000)?.toInt()
 
         val year = document.selectFirst(".date")?.text()?.split(",")?.last()?.trim()?.toIntOrNull()
         val tags = document.select(".sgeneros a").map { it.text() }
@@ -132,7 +129,7 @@ class IdlixkuProvider : MainAPI() {
                 this.posterUrl = poster
                 this.plot = description
                 this.year = year
-                this.rating = ratingInt // Set rating di sini
+                this.addRating(ratingText) // MENGGUNAKAN addRating
                 this.tags = tags
             }
         } else {
@@ -140,7 +137,7 @@ class IdlixkuProvider : MainAPI() {
                 this.posterUrl = poster
                 this.plot = description
                 this.year = year
-                this.rating = ratingInt // Set rating di sini
+                this.addRating(ratingText) // MENGGUNAKAN addRating
                 this.tags = tags
             }
         }
