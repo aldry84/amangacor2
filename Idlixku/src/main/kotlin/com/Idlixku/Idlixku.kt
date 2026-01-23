@@ -17,7 +17,7 @@ class Idlixku : MainAPI() {
         "Referer" to "$mainUrl/"
     )
 
-    // ================== 1. HOME PAGE (5 KATEGORI) ==================
+    // ================== 1. HOME PAGE ==================
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val document = app.get(mainUrl, headers = standardHeaders).document
         val homePageList = ArrayList<HomePageList>()
@@ -42,7 +42,8 @@ class Idlixku : MainAPI() {
         val anime = document.select("#genre_anime article").mapNotNull { toSearchResult(it) }
         if (anime.isNotEmpty()) homePageList.add(HomePageList("Anime", anime))
 
-        return HomePageResponse(homePageList)
+        [span_4](start_span)// FIX: Menggunakan newHomePageResponse agar tidak deprecated[span_4](end_span)
+        return newHomePageResponse(homePageList)
     }
 
     // ================== 2. SEARCH ==================
@@ -85,8 +86,10 @@ class Idlixku : MainAPI() {
         val description = document.selectFirst("#info .wp-content p")?.text()
             ?: document.selectFirst("center p")?.text() ?: ""
         val year = document.selectFirst(".extra .date")?.text()?.takeLast(4)?.toIntOrNull()
+        
+        [span_5](start_span)[span_6](start_span)// FIX: Menggunakan Score.from10 menggantikan sistem rating lama[span_5](end_span)[span_6](end_span)
         val ratingText = document.selectFirst(".dt_rating_vgs")?.text()
-        val rating = ratingText?.toDoubleOrNull()?.times(1000)?.toInt()
+        val scoreData = Score.from10(ratingText)
 
         val recommendations = document.select("#single_relacionados article").mapNotNull {
             toSearchResult(it)
@@ -94,7 +97,6 @@ class Idlixku : MainAPI() {
 
         val trailerUrl = document.selectFirst("#trailer iframe")?.attr("src")
 
-        // Cek TV Series
         val episodeElements = document.select("#seasons .episodios li")
 
         if (episodeElements.isNotEmpty()) {
@@ -123,7 +125,7 @@ class Idlixku : MainAPI() {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
-                this.rating = rating
+                this.score = scoreData // FIX: Menggunakan score
                 this.recommendations = recommendations
                 addTrailer(trailerUrl)
             }
@@ -132,7 +134,7 @@ class Idlixku : MainAPI() {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
-                this.rating = rating
+                this.score = scoreData // FIX: Menggunakan score
                 this.recommendations = recommendations
                 addTrailer(trailerUrl)
             }
@@ -174,7 +176,8 @@ class Idlixku : MainAPI() {
                     JeniusPlayExtractor().getVideo(embedUrl, callback)
                 }
                 else -> {
-                    loadExtractor(embedUrl, callback, subtitleCallback)
+                    // FIX: Menukar posisi callback dan subtitleCallback agar sesuai tipe data
+                    loadExtractor(embedUrl, subtitleCallback, callback)
                 }
             }
         }
