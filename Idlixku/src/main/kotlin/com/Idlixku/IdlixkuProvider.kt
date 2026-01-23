@@ -5,7 +5,6 @@ package com.Idlixku
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
-import com.lagradost.cloudstream3.utils.AppUtils.parseJson 
 import org.jsoup.nodes.Element
 
 class IdlixkuProvider : MainAPI() {
@@ -129,7 +128,8 @@ class IdlixkuProvider : MainAPI() {
                 this.posterUrl = poster
                 this.plot = description
                 this.year = year
-                this.score = Score.from10(ratingDouble)
+                // MENGGUNAKAN SCORE (Pastikan import com.lagradost.cloudstream3.Score ada)
+                this.score = Score.from10(ratingDouble) 
                 this.tags = tags
             }
         } else {
@@ -137,6 +137,7 @@ class IdlixkuProvider : MainAPI() {
                 this.posterUrl = poster
                 this.plot = description
                 this.year = year
+                // MENGGUNAKAN SCORE
                 this.score = Score.from10(ratingDouble)
                 this.tags = tags
             }
@@ -168,14 +169,18 @@ class IdlixkuProvider : MainAPI() {
             )
 
             try {
+                // Request POST
                 val response = app.post(
                     "$mainUrl/wp-admin/admin-ajax.php",
                     data = formData,
                     headers = mapOf("X-Requested-With" to "XMLHttpRequest"),
                     referer = data
-                ).parsed<DooplayResponse>()
+                )
+                
+                // PARSING MANUAL (Lebih Aman)
+                val dooplayResponse = AppUtils.parseJson<DooplayResponse>(response.text)
 
-                var embedUrl = response.embed_url ?: return@forEach
+                var embedUrl = dooplayResponse.embed_url ?: return@forEach
 
                 if (embedUrl.contains("<iframe")) {
                     val iframeDoc = org.jsoup.Jsoup.parse(embedUrl)
@@ -183,7 +188,6 @@ class IdlixkuProvider : MainAPI() {
                 }
 
                 if (embedUrl.contains("jeniusplay.com")) {
-                    // Panggil Class dari file sebelah
                     JeniusPlayExtractor().getUrl(embedUrl, data, subtitleCallback, callback)
                 } else {
                     loadExtractor(embedUrl, "IDLIX $title", subtitleCallback, callback)
