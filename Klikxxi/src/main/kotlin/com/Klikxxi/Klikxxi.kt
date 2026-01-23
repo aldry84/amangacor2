@@ -22,14 +22,23 @@ class Klikxxi : MainAPI() {
         val titleElement = this.selectFirst(".entry-title a") ?: return null
         val title = titleElement.text().trim()
         val href = titleElement.attr("href")
+
         val imgElement = this.selectFirst("img")
         val rawPoster = imgElement?.attr("data-lazy-src") ?: imgElement?.attr("src")
         val posterUrl = rawPoster.toLargeUrl()
+
         val quality = this.selectFirst(".gmr-quality-item")?.text() ?: "N/A"
+        
+        // --- AMBIL RATING (SCORE) ---
+        val ratingText = this.selectFirst(".gmr-rating-item")?.text()?.trim()
+        val rating = ratingText?.toDoubleOrNull()
 
         return newMovieSearchResponse(title, href, TvType.Movie) {
             this.posterUrl = posterUrl
             this.quality = getQualityFromString(quality)
+            if (rating != null) {
+                this.score = Score.from10(rating)
+            }
         }
     }
 
@@ -68,17 +77,17 @@ class Klikxxi : MainAPI() {
             ).parsedSafe<Strp2pResponse>()
 
             // Langkah 3: Ambil link m3u8
-            // PERBAIKAN: Menggunakan newExtractorLink dengan lambda
+            // PERBAIKAN: Menggunakan newExtractorLink dengan benar (sesuai Adicinemax)
             playerResponse?.source?.forEach { source ->
                 callback.invoke(
                     newExtractorLink(
                         "StrP2P (VIP)",
                         "StrP2P ${source.label}",
                         source.file,
-                        mainUrl,
-                        Qualities.Unknown.value
+                        ExtractorLinkType.M3U8 // Tipe ditaruh di sini
                     ) {
-                        this.isM3u8 = true
+                        this.referer = mainUrl
+                        this.quality = Qualities.Unknown.value
                     }
                 )
             }
@@ -121,6 +130,7 @@ class Klikxxi : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url).document
         val title = document.selectFirst("h1.entry-title")?.text()?.trim() ?: "Unknown"
+        
         val imgTag = document.selectFirst("img.attachment-thumbnail") 
                      ?: document.selectFirst(".gmr-poster img")
                      ?: document.selectFirst("figure img")
@@ -129,6 +139,12 @@ class Klikxxi : MainAPI() {
         val description = document.select(".entry-content p").text().trim()
         val year = document.select("time[itemprop=dateCreated]").text().takeLast(4).toIntOrNull()
         
+        // Coba ambil rating dari detail page jika ada (biasanya di meta atau bar)
+        // Di sini kita ambil dari meta tag untuk akurasi
+        val ratingMeta = document.selectFirst("meta[itemprop=ratingValue]")?.attr("content") 
+                        ?: document.selectFirst(".gmr-rating-item")?.text()?.trim()
+        val scoreVal = ratingMeta?.toDoubleOrNull()
+
         // --- DETEKSI TV SERIES & EPISODE ---
         val episodes = ArrayList<Episode>()
         val episodeElements = document.select(".gmr-season-episodes a")
@@ -159,6 +175,7 @@ class Klikxxi : MainAPI() {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
+                if (scoreVal != null) this.score = Score.from10(scoreVal)
             }
         } 
         
@@ -166,6 +183,7 @@ class Klikxxi : MainAPI() {
             this.posterUrl = poster
             this.year = year
             this.plot = description
+            if (scoreVal != null) this.score = Score.from10(scoreVal)
         }
     }
 
