@@ -2,7 +2,8 @@ package com.Idlixku
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.utils.* import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
+import com.lagradost.cloudstream3.utils.*
+import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 
 class JeniusPlayExtractor : ExtractorApi() {
     override val name = "JeniusPlay"
@@ -29,12 +30,11 @@ class JeniusPlayExtractor : ExtractorApi() {
 
         var foundLink: String? = null
 
-        // 1. Ambil link melalui API POST (Metode paling valid sekarang)
+        // 1. Ambil link melalui API POST
         if (id.isNotEmpty()) {
             val apiUrl = "$mainUrl/player/index.php?data=$id&do=getVideo"
             try {
-                // Header harus lengkap sesuai cURL kamu
-                val headers = mapOf(
+                val headersMap = mapOf(
                     "X-Requested-With" to "XMLHttpRequest",
                     "Referer" to url,
                     "Origin" to mainUrl,
@@ -46,13 +46,13 @@ class JeniusPlayExtractor : ExtractorApi() {
                     "r" to (referer ?: "https://tv12.idlixku.com/")
                 )
 
-                val text = app.post(apiUrl, headers = headers, data = bodyData).text
+                val text = app.post(apiUrl, headers = headersMap, data = bodyData).text
                 val json = tryParseJson<JeniusResponse>(text)
                 foundLink = json?.securedLink ?: json?.videoSource
             } catch (e: Exception) { }
         }
 
-        // 2. Fallback: Cari link /m3/ atau master.txt di HTML
+        // 2. Fallback: Scraping HTML
         if (foundLink.isNullOrEmpty()) {
             try {
                 val document = app.get(url).text
@@ -68,25 +68,24 @@ class JeniusPlayExtractor : ExtractorApi() {
             var finalUrl = foundLink!!
             if (finalUrl.startsWith("//")) finalUrl = "https:$finalUrl"
 
-            // Berdasarkan temuan kamu, link /m3/ atau master.txt PASTI M3U8
             val isHls = finalUrl.contains("/m3/") || 
                         finalUrl.contains("master.txt") || 
-                        finalUrl.contains("/hls/")
+                        finalUrl.contains("/hls/") ||
+                        finalUrl.contains(".m3u8")
 
+            // SESUAIKAN DENGAN ERROR LOG: Hanya 4 parameter di kurung biasa, sisanya di kurung kurawal
             callback.invoke(
                 newExtractorLink(
                     name,
                     name,
                     finalUrl,
-                    url, // Referer sangat penting di sini
-                    Qualities.Unknown.value,
                     if (isHls) ExtractorLinkType.M3U8 else INFER_TYPE
                 ) {
-                    // Tambahkan header khusus agar server jeniusplay tidak memblokir player
-                    this.headers = mapOf(
-                        "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
-                        "Origin" to "https://jeniusplay.com"
-                    )
+                    this.referer = url
+                    this.quality = Qualities.Unknown.value
+                    // Gunakan addHeader untuk keamanan ekstra
+                    addHeader("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36")
+                    addHeader("Origin", "https://jeniusplay.com")
                 }
             )
         }
