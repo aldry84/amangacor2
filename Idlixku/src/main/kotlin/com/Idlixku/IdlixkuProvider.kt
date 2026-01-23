@@ -6,7 +6,6 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson 
-import com.lagradost.cloudstream3.Score // Pastikan ini ada
 import org.jsoup.nodes.Element
 
 class IdlixkuProvider : MainAPI() {
@@ -16,7 +15,7 @@ class IdlixkuProvider : MainAPI() {
     override var lang = "id"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime)
 
-    // PERBAIKAN: Pakai @param:JsonProperty
+    // PERBAIKAN: Menggunakan @param:JsonProperty untuk menghilangkan warning
     data class DooplayResponse(
         @param:JsonProperty("embed_url") val embed_url: String?,
         @param:JsonProperty("type") val type: String?
@@ -182,7 +181,7 @@ class IdlixkuProvider : MainAPI() {
                     referer = data
                 )
                 
-                // Gunakan parseJson manual (lebih aman)
+                // Gunakan parseJson manual
                 val dooplayResponse = AppUtils.parseJson<DooplayResponse>(response.text)
                 var embedUrl = dooplayResponse.embed_url ?: return@forEach
 
