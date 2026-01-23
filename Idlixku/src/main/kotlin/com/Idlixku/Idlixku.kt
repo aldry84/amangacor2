@@ -3,6 +3,7 @@ package com.Idlixku
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
+import com.fasterxml.jackson.annotation.JsonProperty
 import org.jsoup.nodes.Element
 
 class Idlixku : MainAPI() {
@@ -80,12 +81,11 @@ class Idlixku : MainAPI() {
         val description = document.selectFirst("#info .wp-content p")?.text()
             ?: document.selectFirst("center p")?.text() ?: ""
         
-        // FIX: Year sekarang Int? agar aman
         val year = document.selectFirst(".extra .date")?.text()?.takeLast(4)?.toIntOrNull()
         
-        // FIX: Rating String ke Int Score (x1000)
+        // FIX: Rating menggunakan Score class (standard baru)
         val ratingText = document.selectFirst(".dt_rating_vgs")?.text()
-        val scoreInt = ratingText?.toDoubleOrNull()?.times(1000)?.toLong() // Fix Long Expected
+        val scoreData = Score.from10(ratingText)
 
         val recommendations = document.select("#single_relacionados article").mapNotNull {
             toSearchResult(it)
@@ -121,8 +121,7 @@ class Idlixku : MainAPI() {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
-                // FIX: Score
-                if (scoreInt != null) this.rating = scoreInt.toInt() 
+                this.score = scoreData // FIX: Pakai score
                 this.recommendations = recommendations
                 addTrailer(trailerUrl)
             }
@@ -131,8 +130,7 @@ class Idlixku : MainAPI() {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
-                // FIX: Score
-                if (scoreInt != null) this.rating = scoreInt.toInt()
+                this.score = scoreData // FIX: Pakai score
                 this.recommendations = recommendations
                 addTrailer(trailerUrl)
             }
@@ -171,8 +169,8 @@ class Idlixku : MainAPI() {
 
             when {
                 embedUrl.contains("jeniusplay.com") -> {
-                    // Panggil extractor baru
-                    JeniusPlayExtractor().getVideo(embedUrl, callback)
+                    // Panggil fungsi internal
+                    invokeJeniusExtractor(embedUrl, callback)
                 }
                 else -> {
                     loadExtractor(embedUrl, subtitleCallback, callback)
@@ -182,8 +180,49 @@ class Idlixku : MainAPI() {
         return true
     }
 
+    // ================== INTERNAL EXTRACTOR (JENIUSPLAY) ==================
+    // Dipindahkan kesini agar bisa akses 'app' dan 'newExtractorLink'
+    private suspend fun invokeJeniusExtractor(url: String, callback: (ExtractorLink) -> Unit) {
+        try {
+            val videoId = url.substringAfter("/video/")
+            val domain = "https://jeniusplay.com"
+
+            val jsonResponse = app.post(
+                "$domain/player/index.php?data=$videoId&do=getVideo",
+                headers = mapOf(
+                    "X-Requested-With" to "XMLHttpRequest",
+                    "Referer" to url
+                ),
+                data = mapOf("hash" to videoId, "r" to "")
+            ).parsedSafe<JeniusResponse>()
+
+            val playlistUrl = jsonResponse?.videoSource ?: return
+
+            // FIX: Menggunakan newExtractorLink (Helper bawaan MainAPI)
+            callback.invoke(
+                newExtractorLink(
+                    source = "JeniusPlay",
+                    name = "JeniusPlay (Auto)",
+                    url = playlistUrl,
+                    referer = domain,
+                    quality = Qualities.Unknown.value,
+                    isM3u8 = true
+                )
+            )
+
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    // Data Classes
     data class DooPlayResponse(
         val embed_url: String?,
         val type: String?
+    )
+
+    data class JeniusResponse(
+        @JsonProperty("videoSource") val videoSource: String?,
+        @JsonProperty("securedLink") val securedLink: String?
     )
 }
