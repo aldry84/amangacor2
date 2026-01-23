@@ -1,13 +1,9 @@
 package com.Idlixku
 
 import com.fasterxml.jackson.annotation.JsonProperty
-import com.lagradost.cloudstream3.SubtitleFile
-import com.lagradost.cloudstream3.app
+import com.lagradost.cloudstream3.*
+import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
-import com.lagradost.cloudstream3.utils.ExtractorApi
-import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.INFER_TYPE
-import com.lagradost.cloudstream3.utils.Qualities
 
 class JeniusPlayExtractor : ExtractorApi() {
     override val name = "JeniusPlay"
@@ -40,26 +36,20 @@ class JeniusPlayExtractor : ExtractorApi() {
             
             val videoUrl = response?.securedLink ?: response?.videoSource ?: return
 
-            // KITA PANGGIL FUNGSI SAFETY DI BAWAH
+            // MENGGUNAKAN GAYA ADIMOVIEBOX (newExtractorLink dengan lambda)
             callback.invoke(
-                createLink(name, name, videoUrl, referer ?: mainUrl)
+                newExtractorLink(
+                    name,
+                    name,
+                    videoUrl,
+                    INFER_TYPE
+                ) {
+                    this.referer = referer ?: mainUrl
+                    this.quality = Qualities.Unknown.value
+                }
             )
         } catch (e: Exception) {
             e.printStackTrace()
         }
-    }
-
-    // FUNGSI INI AKAN MEMBUNGKAM ERROR DEPRECATED
-    // KARENA KITA SUDAH KASIH SUPPRESS DI ATASNYA
-    @Suppress("DEPRECATION")
-    private fun createLink(source: String, name: String, url: String, referer: String): ExtractorLink {
-        return ExtractorLink(
-            source = source,
-            name = name,
-            url = url,
-            referer = referer,
-            quality = Qualities.Unknown.value,
-            type = INFER_TYPE 
-        )
     }
 }
