@@ -22,11 +22,9 @@ class Klikxxi : MainAPI() {
         val titleElement = this.selectFirst(".entry-title a") ?: return null
         val title = titleElement.text().trim()
         val href = titleElement.attr("href")
-
         val imgElement = this.selectFirst("img")
         val rawPoster = imgElement?.attr("data-lazy-src") ?: imgElement?.attr("src")
         val posterUrl = rawPoster.toLargeUrl()
-
         val quality = this.selectFirst(".gmr-quality-item")?.text() ?: "N/A"
 
         return newMovieSearchResponse(title, href, TvType.Movie) {
@@ -70,16 +68,18 @@ class Klikxxi : MainAPI() {
             ).parsedSafe<Strp2pResponse>()
 
             // Langkah 3: Ambil link m3u8
+            // PERBAIKAN: Menggunakan newExtractorLink dengan lambda
             playerResponse?.source?.forEach { source ->
                 callback.invoke(
-                    ExtractorLink(
-                        source = "StrP2P (VIP)",
-                        name = "StrP2P ${source.label}",
-                        url = source.file,
-                        referer = mainUrl,
-                        quality = Qualities.Unknown.value,
-                        isM3u8 = true
-                    )
+                    newExtractorLink(
+                        "StrP2P (VIP)",
+                        "StrP2P ${source.label}",
+                        source.file,
+                        mainUrl,
+                        Qualities.Unknown.value
+                    ) {
+                        this.isM3u8 = true
+                    }
                 )
             }
         } catch (e: Exception) {
@@ -95,7 +95,6 @@ class Klikxxi : MainAPI() {
         val file: String,
         val label: String
     )
-
 
     // --- MAIN FUNCTIONS ---
 
@@ -121,9 +120,7 @@ class Klikxxi : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url).document
-
         val title = document.selectFirst("h1.entry-title")?.text()?.trim() ?: "Unknown"
-        
         val imgTag = document.selectFirst("img.attachment-thumbnail") 
                      ?: document.selectFirst(".gmr-poster img")
                      ?: document.selectFirst("figure img")
@@ -133,20 +130,15 @@ class Klikxxi : MainAPI() {
         val year = document.select("time[itemprop=dateCreated]").text().takeLast(4).toIntOrNull()
         
         // --- DETEKSI TV SERIES & EPISODE ---
-        // Mencari tombol episode di dalam class .gmr-season-episodes
         val episodes = ArrayList<Episode>()
         val episodeElements = document.select(".gmr-season-episodes a")
         
         if (episodeElements.isNotEmpty()) {
-             // Jika ada tombol episode, berarti ini TV Series
              episodeElements.forEach { eps ->
                  val epsUrl = eps.attr("href")
-                 val epsName = eps.text().trim() // Contoh: "S1Eps1"
+                 val epsName = eps.text().trim() 
                  
-                 // Jangan masukkan link download batch jika ada
                  if (!epsName.contains("Batch", ignoreCase = true)) {
-                     // Mencoba parse Season dan Episode number dari teks "S1Eps1"
-                     // Regex: S(\d+)Eps(\d+)
                      val regex = Regex("S(\\d+)Eps(\\d+)", RegexOption.IGNORE_CASE)
                      val match = regex.find(epsName)
                      
@@ -163,10 +155,6 @@ class Klikxxi : MainAPI() {
                  }
              }
              
-             // Balikkan urutan episode agar dari eps 1
-             // (Terkadang situs menaruh episode terbaru di atas)
-             // episodes.reverse() -> Opsional, tergantung situs
-             
              return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                 this.posterUrl = poster
                 this.year = year
@@ -174,7 +162,6 @@ class Klikxxi : MainAPI() {
             }
         } 
         
-        // Jika tidak ada episode, berarti Movie biasa
         return newMovieLoadResponse(title, url, TvType.Movie, url) {
             this.posterUrl = poster
             this.year = year
