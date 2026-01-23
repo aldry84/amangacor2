@@ -10,6 +10,8 @@ import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.INFER_TYPE
 import com.lagradost.cloudstream3.utils.Qualities
+// IMPORT INI WAJIB ADA
+import com.lagradost.cloudstream3.newExtractorLink
 
 class JeniusPlayExtractor : ExtractorApi() {
     override val name = "JeniusPlay"
@@ -37,20 +39,20 @@ class JeniusPlayExtractor : ExtractorApi() {
                 "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8"
             )
 
-            // Menggunakan text dan tryParseJson agar aman
             val responseText = app.post(apiUrl, headers = headers).text
             val response = tryParseJson<JeniusResponse>(responseText)
             
             val videoUrl = response?.securedLink ?: response?.videoSource ?: return
 
+            // MENGGUNAKAN FACTORY FUNCTION TERBARU
             callback.invoke(
-                ExtractorLink(
+                newExtractorLink(
                     name,
                     name,
                     videoUrl,
                     referer ?: mainUrl,
-                    quality = Qualities.Unknown.value,
-                    type = INFER_TYPE 
+                    Qualities.Unknown.value,
+                    INFER_TYPE
                 )
             )
         } catch (e: Exception) {
