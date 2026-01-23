@@ -73,7 +73,8 @@ class JeniusPlayExtractor : ExtractorApi() {
                         finalUrl.contains("/hls/") ||
                         finalUrl.contains(".m3u8")
 
-            // SESUAIKAN DENGAN ERROR LOG: Hanya 4 parameter di kurung biasa, sisanya di kurung kurawal
+            // PERBAIKAN: Gunakan 4 parameter di dalam kurung (...), 
+            // dan assignment langsung untuk headers di dalam blok { ... }
             callback.invoke(
                 newExtractorLink(
                     name,
@@ -83,9 +84,11 @@ class JeniusPlayExtractor : ExtractorApi() {
                 ) {
                     this.referer = url
                     this.quality = Qualities.Unknown.value
-                    // Gunakan addHeader untuk keamanan ekstra
-                    addHeader("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36")
-                    addHeader("Origin", "https://jeniusplay.com")
+                    // Gunakan properti headers secara langsung (Map)
+                    this.headers = mapOf(
+                        "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
+                        "Origin" to "https://jeniusplay.com"
+                    )
                 }
             )
         }
