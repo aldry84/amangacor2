@@ -29,7 +29,7 @@ class JeniusPlayExtractor : ExtractorApi() {
 
         var foundLink: String? = null
 
-        // 1. COBA API (Prioritas Utama)
+        // 1. COBA API (SEKARANG DENGAN DATA BODY)
         if (id.isNotEmpty()) {
             val apiUrl = "$mainUrl/player/index.php?data=$id&do=getVideo"
             try {
@@ -39,7 +39,14 @@ class JeniusPlayExtractor : ExtractorApi() {
                     "Origin" to mainUrl,
                     "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36"
                 )
-                val text = app.post(apiUrl, headers = headers).text
+
+                // INI PERBAIKANNYA: Kirim hash dan r di body
+                val bodyData = mapOf(
+                    "hash" to id,
+                    "r" to (referer ?: "https://tv12.idlixku.com/")
+                )
+
+                val text = app.post(apiUrl, headers = headers, data = bodyData).text
                 val json = tryParseJson<JeniusResponse>(text)
                 foundLink = json?.securedLink ?: json?.videoSource
             } catch (e: Exception) {
@@ -47,18 +54,13 @@ class JeniusPlayExtractor : ExtractorApi() {
             }
         }
 
-        // 2. FALLBACK SCRAPING HTML (Regex lebih agresif)
+        // 2. FALLBACK SCRAPING HTML (Jaga-jaga kalau API gagal)
         if (foundLink.isNullOrEmpty()) {
             try {
                 val document = app.get(url).text
                 
-                // Regex 1: Format standar file: "url"
                 val regex1 = Regex("""(file|source)\s*[:=]\s*["']([^"']+)["']""")
-                
-                // Regex 2: Format master.txt langsung
                 val regex2 = Regex("""["']([^"']+\/master\.txt[^"']*)["']""")
-                
-                // Regex 3: Format m3u8 umum
                 val regex3 = Regex("""["']([^"']+\.m3u8[^"']*)["']""")
 
                 foundLink = regex1.find(document)?.groupValues?.get(2)
@@ -72,20 +74,17 @@ class JeniusPlayExtractor : ExtractorApi() {
 
         if (!foundLink.isNullOrEmpty()) {
             var finalUrl = foundLink!!
-            // Fix protocol //domain.com -> https://domain.com
             if (finalUrl.startsWith("//")) {
                 finalUrl = "https:$finalUrl"
             }
 
-            // Cek apakah ini M3U8 (termasuk .txt yang kamu temukan)
+            // Paksa M3U8 jika linknya .txt atau .m3u8
             val isM3u8 = finalUrl.contains(".m3u8") || 
                          finalUrl.contains("master.txt") || 
                          finalUrl.contains("/hls/")
 
-            // PERBAIKAN DI SINI: Gunakan INFER_TYPE, bukan ExtractorLinkType.INFER
             val type = if (isM3u8) ExtractorLinkType.M3U8 else INFER_TYPE
 
-            // PERBAIKAN DI SINI: Referer dan Quality masuk ke dalam lambda
             callback.invoke(
                 newExtractorLink(
                     name,
