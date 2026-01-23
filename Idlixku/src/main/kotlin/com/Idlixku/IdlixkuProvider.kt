@@ -1,10 +1,11 @@
+@file:Suppress("DEPRECATION")
+
 package com.Idlixku
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.utils.AppUtils.parseJson
-import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.loadExtractor
+import com.lagradost.cloudstream3.utils.*
+import com.lagradost.cloudstream3.utils.AppUtils.parseJson 
 import org.jsoup.nodes.Element
 
 class IdlixkuProvider : MainAPI() {
@@ -81,8 +82,6 @@ class IdlixkuProvider : MainAPI() {
     }
 
     // --- 3. LOAD (DETAIL) ---
-    // Kita suppress peringatan DEPRECATION agar build tetap jalan walau pakai 'rating'
-    @Suppress("DEPRECATION")
     override suspend fun load(url: String): LoadResponse? {
         val document = app.get(url).document
 
@@ -91,10 +90,9 @@ class IdlixkuProvider : MainAPI() {
         val description = document.selectFirst(".wp-content p")?.text()?.trim() 
             ?: document.selectFirst("center p")?.text()?.trim()
         
-        // Ambil text rating (contoh "9.4")
+        // --- PERBAIKAN RATING KE SCORE ---
         val ratingText = document.selectFirst(".dt_rating_vgs")?.text()?.trim()
-        // Konversi ke Integer (9400)
-        val ratingInt = ratingText?.toDoubleOrNull()?.times(1000)?.toInt()
+        val ratingDouble = ratingText?.toDoubleOrNull()
 
         val year = document.selectFirst(".date")?.text()?.split(",")?.last()?.trim()?.toIntOrNull()
         val tags = document.select(".sgeneros a").map { it.text() }
@@ -132,7 +130,8 @@ class IdlixkuProvider : MainAPI() {
                 this.posterUrl = poster
                 this.plot = description
                 this.year = year
-                this.rating = ratingInt // Menggunakan variable rating (bukan fungsi addRating)
+                // MENGGUNAKAN SCORE SESUAI PERMINTAAN
+                this.score = Score.from10(ratingDouble) 
                 this.tags = tags
             }
         } else {
@@ -140,7 +139,8 @@ class IdlixkuProvider : MainAPI() {
                 this.posterUrl = poster
                 this.plot = description
                 this.year = year
-                this.rating = ratingInt // Menggunakan variable rating (bukan fungsi addRating)
+                // MENGGUNAKAN SCORE SESUAI PERMINTAAN
+                this.score = Score.from10(ratingDouble)
                 this.tags = tags
             }
         }
