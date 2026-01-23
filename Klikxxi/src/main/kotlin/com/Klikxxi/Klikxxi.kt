@@ -38,51 +38,23 @@ class Klikxxi : MainAPI() {
     // --- MAIN FUNCTIONS ---
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val items = ArrayList<HomePageList>()
-        
-        // 1. Ambil Halaman Utama Asli (Latest Movies & TV Series)
-        // Kita pakai try-catch agar jika satu gagal, yang lain tetap jalan
-        try {
-            val document = app.get(mainUrl).document
-            document.select(".muvipro-posts-module").forEach { widget ->
-                val title = widget.select(".homemodule-title").text().trim()
-                val movies = widget.select(".gmr-item-modulepost").mapNotNull { it.toSearchResponse() }
-                if (movies.isNotEmpty()) items.add(HomePageList(title, movies))
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        val document = app.get(mainUrl).document
+        val homeSets = ArrayList<HomePageList>()
 
-        // 2. Tambahkan 5 Kategori Pilihan (Action, Horror, Drama, Comedy, Asia)
-        // Struktur halaman kategori SAMA dengan halaman Search (article.item)
-        val customCategories = listOf(
-            Pair("Action Movies", "$mainUrl/category/action/"),
-            Pair("Horror Movies", "$mainUrl/category/horror/"),
-            Pair("Drama Movies", "$mainUrl/category/drama/"),
-            Pair("Comedy Movies", "$mainUrl/category/comedy/"),
-            Pair("Asian Movies", "$mainUrl/category/asia/")
-        )
+        document.select(".muvipro-posts-module").forEach { widget ->
+            val title = widget.select(".homemodule-title").text().trim()
+            val movies = widget.select(".gmr-item-modulepost").mapNotNull { it.toSearchResponse() }
 
-        // Kita fetch secara paralel (apmap) supaya loadingnya cepat
-        customCategories.apmap { (title, url) ->
-            try {
-                val doc = app.get(url).document
-                val movies = doc.select("article.item").mapNotNull { it.toSearchResponse() }
-                
-                if (movies.isNotEmpty()) {
-                    synchronized(items) {
-                        items.add(HomePageList(title, movies))
-                    }
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
+            if (movies.isNotEmpty()) {
+                homeSets.add(HomePageList(title, movies))
             }
         }
 
-        return newHomePageResponse(items)
+        return newHomePageResponse(homeSets)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
+        // Encode URL untuk search
         val url = "$mainUrl/?s=$query&post_type%5B%5D=post&post_type%5B%5D=tv"
         val document = app.get(url).document
 
@@ -124,6 +96,7 @@ class Klikxxi : MainAPI() {
         }
     }
 
+    // --- FUNGSI LOAD LINKS YANG SUDAH DI-UPDATE UNTUK AJAX ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -132,11 +105,16 @@ class Klikxxi : MainAPI() {
     ): Boolean {
         val document = app.get(data).document
 
-        // 1. Cek AJAX Player (Prioritas Utama)
+        // 1. Ambil Post ID dari halaman HTML
+        // Contoh: <div class="..." id="muvipro_player_content_id" data-id="35533">
         val postId = document.selectFirst("#muvipro_player_content_id")?.attr("data-id")
+
         if (postId != null) {
+            // 2. Loop request AJAX untuk Server 1 sampai 6 (biasanya ada beberapa server)
+            // Kita tembak admin-ajax.php seolah-olah kita klik tab playernya
             val ajaxUrl = "$mainUrl/wp-admin/admin-ajax.php"
-            // Loop tab player 1 sampai 5
+            
+            // Loop tab player (biasanya p1, p2, p3...)
             (1..5).map { index ->
                 try {
                     val response = app.post(
@@ -149,32 +127,29 @@ class Klikxxi : MainAPI() {
                         headers = mapOf("X-Requested-With" to "XMLHttpRequest")
                     ).text
 
+                    // 3. Cari iframe di dalam respon AJAX
+                    // Responnya berupa HTML snippet yang berisi iframe
                     val ajaxDoc = org.jsoup.Jsoup.parse(response)
                     ajaxDoc.select("iframe").forEach { iframe ->
                         var src = iframe.attr("src")
                         if (src.startsWith("//")) src = "https:$src"
                         
+                        // Hindari iklan
                         if (!src.contains("facebook") && !src.contains("whatsapp")) {
                             loadExtractor(src, data, subtitleCallback, callback)
                         }
                     }
-                } catch (e: Exception) {}
+                } catch (e: Exception) {
+                    // Ignore error per tab
+                }
             }
         }
 
-        // 2. Cek Link Download (Fallback)
+        // 4. Fallback: Cari link download di bawah player (UserDrive, Voe, dll)
+        // Lihat log: <a href="https://usersdrive.com/..." ...>
         document.select(".gmr-download-list a").forEach { link ->
             val href = link.attr("href")
             loadExtractor(href, data, subtitleCallback, callback)
-        }
-        
-        // 3. Cek Iframe Biasa (Fallback Terakhir)
-        document.select("iframe").forEach { iframe ->
-             var src = iframe.attr("src")
-            if (src.startsWith("//")) src = "https:$src"
-             if (!src.contains("facebook") && !src.contains("whatsapp") && src.startsWith("http")) {
-                loadExtractor(src, data, subtitleCallback, callback)
-            }
         }
 
         return true
