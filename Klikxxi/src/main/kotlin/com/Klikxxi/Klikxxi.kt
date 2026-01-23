@@ -68,68 +68,6 @@ class Klikxxi : MainAPI() {
         }
     }
 
-    // --- CUSTOM EXTRACTOR UNTUK STRP2P ---
-    private suspend fun invokeStrp2p(
-        url: String,
-        callback: (ExtractorLink) -> Unit
-    ) {
-        try {
-            val id = url.substringAfter("/embed/").substringBefore("?")
-            val domain = "https://klikxxi.strp2p.site"
-
-            // Langkah 1: Request Token
-            val apiVideoUrl = "$domain/api/v1/video?id=$id&w=360&h=800&r=klikxxi.me"
-            
-            val tokenResponse = app.get(
-                apiVideoUrl,
-                headers = mapOf(
-                    "Referer" to url,
-                    "Origin" to domain,
-                    "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36"
-                )
-            ).text
-
-            if (tokenResponse.contains("success\":false")) return
-
-            // Langkah 2: Request Player dengan Token
-            val apiPlayerUrl = "$domain/api/v1/player?t=$tokenResponse"
-            
-            val playerResponse = app.get(
-                apiPlayerUrl,
-                headers = mapOf(
-                    "Referer" to url,
-                    "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36"
-                )
-            ).parsedSafe<Strp2pResponse>()
-
-            // Langkah 3: Ambil link m3u8
-            playerResponse?.source?.forEach { source ->
-                callback.invoke(
-                    newExtractorLink(
-                        "StrP2P (VIP)",
-                        "StrP2P ${source.label}",
-                        source.file,
-                        mainUrl,
-                        Qualities.Unknown.value
-                    ) {
-                        this.isM3u8 = true
-                    }
-                )
-            }
-        } catch (e: Exception) {
-            // Ignore error
-        }
-    }
-
-    data class Strp2pResponse(
-        val source: List<Strp2pSource>? = null
-    )
-
-    data class Strp2pSource(
-        val file: String,
-        val label: String
-    )
-
     // --- MAIN FUNCTIONS ---
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -154,7 +92,7 @@ class Klikxxi : MainAPI() {
                 }
             }
         } else {
-            // Logic untuk Kategori (Eksen, Petualangan, dll)
+            // Logic untuk Kategori
             val movies = document.select("article.item").mapNotNull { it.toSearchResponse() }
             if (movies.isNotEmpty()) {
                 homeSets.add(HomePageList(request.name, movies))
@@ -182,7 +120,7 @@ class Klikxxi : MainAPI() {
         val description = document.select(".entry-content p").text().trim()
         val year = document.select("time[itemprop=dateCreated]").text().takeLast(4).toIntOrNull()
         
-        // Coba ambil rating dari detail page jika ada
+        // Coba ambil rating dari detail page
         val ratingMeta = document.selectFirst("meta[itemprop=ratingValue]")?.attr("content") 
                         ?: document.selectFirst(".gmr-rating-item")?.text()?.trim()
         val scoreVal = ratingMeta?.toDoubleOrNull()
@@ -240,6 +178,7 @@ class Klikxxi : MainAPI() {
 
         if (postId != null) {
             val ajaxUrl = "$mainUrl/wp-admin/admin-ajax.php"
+            // Loop tab p1 sampai p6
             (1..6).forEach { index ->
                 try {
                     val response = app.post(
@@ -253,13 +192,14 @@ class Klikxxi : MainAPI() {
                     ).text
 
                     val ajaxDoc = org.jsoup.Jsoup.parse(response)
+                    
+                    // Ambil iframe dan serahkan ke loadExtractor bawaan Cloudstream
                     ajaxDoc.select("iframe").forEach { iframe ->
                         var src = iframe.attr("src")
                         if (src.startsWith("//")) src = "https:$src"
                         
-                        if (src.contains("strp2p") || src.contains("auvexiug")) {
-                             invokeStrp2p(src, callback)
-                        } else if (!src.contains("facebook") && !src.contains("whatsapp")) {
+                        // Filter iklan, sisanya serahkan ke loadExtractor
+                        if (!src.contains("facebook") && !src.contains("whatsapp")) {
                             loadExtractor(src, data, subtitleCallback, callback)
                         }
                     }
@@ -267,10 +207,12 @@ class Klikxxi : MainAPI() {
             }
         }
 
+        // Ambil link download (UserDrive, Voe, dll)
         document.select(".gmr-download-list a").forEach { link ->
             loadExtractor(link.attr("href"), data, subtitleCallback, callback)
         }
         
+        // Ambil iframe biasa di halaman (jika ada)
         document.select("iframe").forEach { iframe ->
              var src = iframe.attr("src")
              if (src.startsWith("//")) src = "https:$src"
