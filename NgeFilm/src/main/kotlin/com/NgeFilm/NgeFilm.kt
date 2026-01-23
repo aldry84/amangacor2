@@ -13,7 +13,7 @@ class NgeFilm : MainAPI() {
     override var lang = "id"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
-    // Headers standar
+    // Standard headers to prevent blocking
     val mainHeaders = mapOf(
         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Referer" to "$mainUrl/"
@@ -41,54 +41,35 @@ class NgeFilm : MainAPI() {
         return doc.select("article.item").mapNotNull { toSearchResult(it) }
     }
 
-    // --- FUNGSI BANTUAN URL GAMBAR ---
-    private fun getPosterUrl(element: Element): String? {
-        // Cari img tag
-        val img = element.selectFirst("img.wp-post-image") 
-                 ?: element.selectFirst("img")
-        
-        return img?.let {
-            // Urutan prioritas: data-src -> srcset -> src
-            var url = it.attr("data-src")
-            
-            if (url.isEmpty()) {
-                // Ambil URL pertama dari srcset (biasanya ada ukuran beda2 dipisah spasi)
-                url = it.attr("srcset").split(",").lastOrNull()?.trim()?.split(" ")?.firstOrNull() ?: ""
-            }
-            
-            if (url.isEmpty()) {
-                url = it.attr("src")
-            }
-            
-            fixUrl(url)
-        }
-    }
-
-    private fun fixUrl(url: String): String {
-        if (url.isEmpty()) return ""
-        if (url.startsWith("//")) return "https:$url"
-        if (url.startsWith("/")) return "$mainUrl$url"
-        return url
-    }
-
     private fun toSearchResult(element: Element): SearchResponse? {
         val title = element.selectFirst("h2.entry-title a")?.text() ?: return null
         val href = element.selectFirst("h2.entry-title a")?.attr("href") ?: return null
-        val posterUrl = getPosterUrl(element)
+        
+        val posterUrl = element.selectFirst("img")?.let { img ->
+            img.attr("src").ifEmpty { img.attr("data-src") }
+        }
+
         val quality = element.selectFirst(".gmr-quality-item a")?.text()
         
+        // Detect if it is a TV Show based on class or episode count presence
         val isTv = element.select(".gmr-posttype-item").text().contains("TV Show", true) || 
                    element.select(".gmr-numbeps").isNotEmpty()
 
         return if (isTv) {
             newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
                 this.posterUrl = posterUrl
-                if (!quality.isNullOrBlank()) addQuality(quality)
+                // FIX: Check for null/blank before adding quality
+                if (!quality.isNullOrBlank()) {
+                    addQuality(quality)
+                }
             }
         } else {
             newMovieSearchResponse(title, href, TvType.Movie) {
                 this.posterUrl = posterUrl
-                if (!quality.isNullOrBlank()) addQuality(quality)
+                // FIX: Check for null/blank before adding quality
+                if (!quality.isNullOrBlank()) {
+                    addQuality(quality)
+                }
             }
         }
     }
@@ -99,29 +80,27 @@ class NgeFilm : MainAPI() {
         val title = doc.selectFirst("h1.entry-title")?.text() ?: "No Title"
         val description = doc.selectFirst(".entry-content p")?.text()
         
-        // Fix Poster Detail: Cari di container khusus single page
-        val poster = getPosterUrl(doc.selectFirst("div.gmr-movie-data") ?: doc)
-        
-        // BACKDROP: Gunakan poster sebagai fallback jika tidak ada background khusus
-        val backdrop = doc.selectFirst("#muvipro_player_content_id img")?.attr("src") 
-            ?.let { fixUrl(it) } 
-            ?: poster
-
+        val poster = doc.selectFirst("div.gmr-movie-data img")?.attr("src") 
+            ?: doc.selectFirst("div.post-thumbnail img")?.attr("src")
+            
         val year = doc.select("div.gmr-moviedata a[href*='year']").text().toIntOrNull()
         
-        // Rating
+        // FIX: Use Score.from10() instead of deprecated 'rating' (int)
+        // [Reference: Adicinemax21.kt line 265/295]
         val ratingText = doc.select("span[itemprop=ratingValue]").text()
         val scoreVal = Score.from10(ratingText)
 
-        // Metadata: Genre & Actor (selector diperbaiki)
-        val tags = doc.select("div.gmr-moviedata:contains(Genre) a").map { it.text() }
+        val backdrop = doc.selectFirst("#muvipro_player_content_id img")?.attr("src") ?: poster
+
+        val tags = doc.select("div.gmr-moviedata a[href*='genre']").map { it.text() }
         
+        // FIX: Use List<ActorData> instead of List<String>
+        // [Reference: Adicinemax21.kt line 230]
         val actors = doc.select("span[itemprop=actors] a").map { 
             ActorData(Actor(it.text(), null)) 
         }
 
-        // Rekomendasi: Selector diperketat ke "Film Terkait"
-        val recommendations = doc.select("div.idmuvi-core:contains(Film Terkait) article.item").mapNotNull { 
+        val recommendations = doc.select("div.idmuvi-core .row.grid-container article.item").mapNotNull { 
             toSearchResult(it) 
         }
 
@@ -153,7 +132,7 @@ class NgeFilm : MainAPI() {
                 this.backgroundPosterUrl = backdrop
                 this.plot = description
                 this.year = year
-                this.score = scoreVal
+                this.score = scoreVal // Using the new Score system
                 this.tags = tags
                 this.actors = actors
                 this.recommendations = recommendations
@@ -164,7 +143,7 @@ class NgeFilm : MainAPI() {
                 this.backgroundPosterUrl = backdrop
                 this.plot = description
                 this.year = year
-                this.score = scoreVal
+                this.score = scoreVal // Using the new Score system
                 this.tags = tags
                 this.actors = actors
                 this.recommendations = recommendations
@@ -180,7 +159,7 @@ class NgeFilm : MainAPI() {
     ): Boolean {
         val doc = app.get(data, headers = mainHeaders).document
 
-        // 1. Link Download (FilePress/GDrive)
+        // 1. Link Download
         doc.select("ul.gmr-download-list li a").forEach { link ->
             val href = link.attr("href")
             if (href.startsWith("http")) {
@@ -188,42 +167,33 @@ class NgeFilm : MainAPI() {
             }
         }
 
-        // Fungsi internal untuk ekstrak link dari iframe
-        suspend fun extractFromIframe(iframeUrl: String) {
-            val fixedUrl = fixUrl(iframeUrl)
-            
-            // JIKA LINK ADALAH WRAPPER (rpmlive/player) -> Buka dulu isinya
-            if (fixedUrl.contains("rpmlive") || fixedUrl.contains("playerngefilm")) {
-                try {
-                    val wrapperDoc = app.get(fixedUrl, headers = mapOf("Referer" to mainUrl)).document
-                    val innerIframe = wrapperDoc.select("iframe").attr("src")
-                    if (innerIframe.isNotBlank()) {
-                        loadExtractor(fixUrl(innerIframe), fixedUrl, subtitleCallback, callback)
-                    }
-                } catch (e: Exception) {
-                    // Fail silently
-                }
-            } else if (!fixedUrl.contains("youtube.com") && !fixedUrl.contains("youtu.be")) {
-                // JIKA LINK LANGSUNG (StreamWish, Dood, dll)
-                loadExtractor(fixedUrl, data, subtitleCallback, callback)
-            }
-        }
-
         // 2. Iframe Utama
         doc.select("div.gmr-embed-responsive iframe").forEach { iframe ->
-            extractFromIframe(iframe.attr("src"))
+            var sourceUrl = iframe.attr("src")
+            if (sourceUrl.startsWith("//")) sourceUrl = "https:$sourceUrl"
+            
+            if (!sourceUrl.contains("youtube.com") && !sourceUrl.contains("youtu.be")) {
+                loadExtractor(sourceUrl, data, subtitleCallback, callback)
+            }
         }
         
         // 3. Tab Server Lain
         doc.select("ul.muvipro-player-tabs li a").forEach { tab ->
-            var link = fixUrl(tab.attr("href"))
+            var link = tab.attr("href")
+            if (link.startsWith("/")) link = mainUrl + link
             
-             if (link.isNotBlank() && link != data && !link.contains("#")) {
+             if (link.startsWith("http") && link != data && !link.contains("#")) {
                  try {
                      val embedPage = app.get(link, headers = mainHeaders).document
                      val iframeSrc = embedPage.select("div.gmr-embed-responsive iframe").attr("src")
+                     
                      if(iframeSrc.isNotBlank()) {
-                         extractFromIframe(iframeSrc)
+                         var realSrc = iframeSrc
+                         if (realSrc.startsWith("//")) realSrc = "https:$realSrc"
+                         
+                         if (!realSrc.contains("youtube.com") && !realSrc.contains("youtu.be")) {
+                             loadExtractor(realSrc, data, subtitleCallback, callback)
+                         }
                      }
                  } catch (e: Exception) {
                  }
