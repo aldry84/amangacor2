@@ -1,5 +1,3 @@
-@file:Suppress("DEPRECATION")
-
 package com.Idlixku
 
 import com.fasterxml.jackson.annotation.JsonProperty
@@ -30,8 +28,7 @@ class JeniusPlayExtractor : ExtractorApi() {
         val id = url.substringAfter("/video/").substringBefore("/")
         val apiUrl = "$mainUrl/player/index.php?data=$id&do=getVideo"
 
-        // Menggunakan gaya FourKHDHub (runCatching)
-        runCatching {
+        try {
             val headers = mapOf(
                 "X-Requested-With" to "XMLHttpRequest",
                 "Referer" to url,
@@ -41,21 +38,28 @@ class JeniusPlayExtractor : ExtractorApi() {
             val responseText = app.post(apiUrl, headers = headers).text
             val response = tryParseJson<JeniusResponse>(responseText)
             
-            val videoUrl = response?.securedLink ?: response?.videoSource ?: return@runCatching
+            val videoUrl = response?.securedLink ?: response?.videoSource ?: return
 
-            // KEMBALI KE CONSTRUCTOR STANDAR (Paling Aman)
+            // KITA PANGGIL FUNGSI SAFETY DI BAWAH
             callback.invoke(
-                ExtractorLink(
-                    source = name,
-                    name = name,
-                    url = videoUrl,
-                    referer = referer ?: mainUrl,
-                    quality = Qualities.Unknown.value,
-                    type = INFER_TYPE
-                )
+                createLink(name, name, videoUrl, referer ?: mainUrl)
             )
-        }.onFailure {
-            it.printStackTrace()
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
+    }
+
+    // FUNGSI INI AKAN MEMBUNGKAM ERROR DEPRECATED
+    // KARENA KITA SUDAH KASIH SUPPRESS DI ATASNYA
+    @Suppress("DEPRECATION")
+    private fun createLink(source: String, name: String, url: String, referer: String): ExtractorLink {
+        return ExtractorLink(
+            source = source,
+            name = name,
+            url = url,
+            referer = referer,
+            quality = Qualities.Unknown.value,
+            type = INFER_TYPE 
+        )
     }
 }
