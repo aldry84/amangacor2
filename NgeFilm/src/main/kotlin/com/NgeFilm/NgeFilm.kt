@@ -14,7 +14,6 @@ class NgeFilm : MainAPI() {
     override var lang = "id"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
-    // Headers standar untuk browsing situs utama
     val mainHeaders = mapOf(
         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Referer" to "$mainUrl/"
@@ -42,7 +41,6 @@ class NgeFilm : MainAPI() {
         return doc.select("article.item").mapNotNull { toSearchResult(it) }
     }
 
-    // --- FUNGSI BANTUAN GAMBAR ---
     private fun getPosterUrl(element: Element): String? {
         val img = element.selectFirst("img.wp-post-image") ?: element.selectFirst("img")
         return img?.let {
@@ -87,19 +85,18 @@ class NgeFilm : MainAPI() {
         }
     }
 
-    // --- LOAD DETAIL ---
     override suspend fun load(url: String): LoadResponse {
         val doc = app.get(url, headers = mainHeaders).document
 
         val title = doc.selectFirst("h1.entry-title")?.text() ?: "No Title"
         val description = doc.selectFirst(".entry-content p")?.text()
         val poster = getPosterUrl(doc.selectFirst("div.gmr-movie-data") ?: doc)
-
-        // BACKDROP FIX: Pakai poster jika backdrop kosong
+        
         val backdropUrlRaw = doc.selectFirst("#muvipro_player_content_id img")?.attr("src")
         val backdrop = if (!backdropUrlRaw.isNullOrBlank()) fixUrl(backdropUrlRaw) else poster
 
         val year = doc.select("div.gmr-moviedata a[href*='year']").text().toIntOrNull()
+        
         val ratingText = doc.select("span[itemprop=ratingValue]").text()
         val scoreVal = Score.from10(ratingText)
 
@@ -159,7 +156,6 @@ class NgeFilm : MainAPI() {
         }
     }
 
-    // --- LOAD LINKS (TXT & M3U8 HUNTER) ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -168,14 +164,12 @@ class NgeFilm : MainAPI() {
     ): Boolean {
         val doc = app.get(data, headers = mainHeaders).document
 
-        // 1. LINK DOWNLOAD
+        // 1. LINK DOWNLOAD (Simple & Clean)
+        // Kita biarkan extractor default menangani penamaannya agar tidak error 'copy'
         doc.select("ul.gmr-download-list li a").forEach { link ->
             val href = link.attr("href")
-            val text = link.text() 
             if (href.startsWith("http")) {
-                loadExtractor(href, data, subtitleCallback) { linkData ->
-                    callback(linkData.copy(name = "NgeFilm - $text"))
-                }
+                loadExtractor(href, data, subtitleCallback, callback)
             }
         }
 
@@ -185,18 +179,15 @@ class NgeFilm : MainAPI() {
             
             if (fixedUrl.contains("rpmlive") || fixedUrl.contains("playerngefilm")) {
                 try {
-                    // Ambil source HTML player
                     val response = app.get(fixedUrl, headers = mapOf("Referer" to data)).text
                     
-                    // CARA 1 (UPDATE): Cari link .txt atau .m3u8 di dalam script
-                    // Regex ini menangkap link yang berakhiran .txt atau .m3u8
+                    // CARA 1 (TXT HUNTER): Cari link .txt atau .m3u8
                     val regex = Regex("[\"'](https?://.*?(?:\\.txt|\\.m3u8).*?)[\"']")
                     val matches = regex.findAll(response)
                     
                     matches.forEach { match ->
                         val streamUrl = match.groupValues[1]
                         
-                        // Header "Sakti" sesuai temuan CURL kamu
                         val streamHeaders = mapOf(
                             "Origin" to "https://playerngefilm21.rpmlive.online",
                             "Referer" to "https://playerngefilm21.rpmlive.online/",
@@ -204,7 +195,6 @@ class NgeFilm : MainAPI() {
                             "Accept" to "*/*"
                         )
 
-                        // Jika ketemu file .txt (seperti di curl), kita paksa generate M3U8
                         if (streamUrl.contains(".txt") || streamUrl.contains(".m3u8")) {
                             M3u8Helper.generateM3u8(
                                 "NgeFilm-VIP",
@@ -217,7 +207,7 @@ class NgeFilm : MainAPI() {
                         }
                     }
                     
-                    // CARA 2: Cari Iframe lain di dalamnya (Fallback)
+                    // CARA 2: Cari Iframe lain
                     val wrapperDoc = org.jsoup.Jsoup.parse(response)
                     val innerIframe = wrapperDoc.select("iframe").attr("src")
                     if (innerIframe.isNotBlank()) {
