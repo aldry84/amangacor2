@@ -42,16 +42,14 @@ class NgeFilm : MainAPI() {
         return doc.select("article.item").mapNotNull { toSearchResult(it) }
     }
 
-    // --- FUNGSI PENGAMBIL GAMBAR (DIPERKUAT) ---
+    // --- FUNGSI GAMBAR HD (Canggih) ---
     private fun getPosterUrl(element: Element): String? {
-        // Cari gambar dengan beberapa selector cadangan
         val img = element.selectFirst("img.wp-post-image") 
             ?: element.selectFirst("div.content-thumbnail img")
             ?: element.selectFirst("figure img")
             ?: element.selectFirst("img")
             
         return img?.let {
-            // Prioritas URL gambar
             var url = it.attr("data-src")
             if (url.isEmpty()) {
                 url = it.attr("srcset").split(",").lastOrNull()?.trim()?.split(" ")?.firstOrNull() ?: ""
@@ -60,10 +58,18 @@ class NgeFilm : MainAPI() {
                 url = it.attr("src")
             }
             
-            // Hapus parameter resize agar dapat resolusi asli
-            if (url.contains("?resize")) {
+            // 1. Hapus parameter query (?resize=...)
+            if (url.contains("?")) {
                 url = url.substringBefore("?")
             }
+            
+            // 2. Hapus suffix dimensi dari nama file (contoh: gambar-150x200.jpg -> gambar.jpg)
+            // Regex ini mencari pola "-angkaXangka" tepat sebelum ekstensi file
+            val dimensionRegex = Regex("-\\d+x\\d+(?=\\.\\w{3,4}$)")
+            if (dimensionRegex.containsMatchIn(url)) {
+                url = url.replace(dimensionRegex, "")
+            }
+            
             fixUrl(url)
         }
     }
@@ -98,18 +104,16 @@ class NgeFilm : MainAPI() {
         }
     }
 
-    // --- LOAD DETAIL (BACKDROP & POSTER FIX) ---
     override suspend fun load(url: String): LoadResponse {
         val doc = app.get(url, headers = mainHeaders).document
 
         val title = doc.selectFirst("h1.entry-title")?.text() ?: "No Title"
         val description = doc.selectFirst(".entry-content p")?.text()
         
-        // Poster: Cari di area gmr-movie-data atau fallback ke dokumen utama
         val posterContainer = doc.selectFirst("div.gmr-movie-data") ?: doc
         val poster = getPosterUrl(posterContainer)
 
-        // Backdrop: Cari elemen khusus backdrop, kalau tidak ada pakai poster
+        // Gunakan poster sebagai fallback backdrop agar tidak gelap
         val backdropUrlRaw = doc.selectFirst("#muvipro_player_content_id img")?.attr("src")
         val backdrop = if (!backdropUrlRaw.isNullOrBlank()) fixUrl(backdropUrlRaw) else poster
 
@@ -173,7 +177,6 @@ class NgeFilm : MainAPI() {
         }
     }
 
-    // --- LOAD LINKS (THE HEADER & TXT FIX) ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -182,7 +185,7 @@ class NgeFilm : MainAPI() {
     ): Boolean {
         val doc = app.get(data, headers = mainHeaders).document
 
-        // 1. LINK DOWNLOAD (Priority)
+        // 1. LINK DOWNLOAD
         doc.select("ul.gmr-download-list li a").forEach { link ->
             val href = link.attr("href")
             val text = link.text() 
@@ -193,50 +196,41 @@ class NgeFilm : MainAPI() {
             }
         }
 
-        // Fungsi Helper: Ekstrak player dari wrapper
+        // Fungsi Helper untuk Player Wrapper (RPMLIVE)
         suspend fun extractWrapper(url: String) {
             val fixedUrl = fixUrl(url)
             
-            // Cek player wrapper (rpmlive/playerngefilm)
             if (fixedUrl.contains("rpmlive") || fixedUrl.contains("playerngefilm")) {
                 try {
-                    // Ambil HTML wrapper
                     val response = app.get(fixedUrl, headers = mapOf("Referer" to data)).text
                     
-                    // REGEX: Cari link .txt atau .m3u8 di dalam script JS
-                    // Sesuai temuan curl: https://.../index-f1-v1-a1.txt
+                    // CARA 1: Cari link .txt ATAU .m3u8 (Sesuai temuan log kamu)
                     val regex = Regex("""["'](https?://[^"']+\.(?:txt|m3u8)[^"']*)["']""")
                     val matches = regex.findAll(response)
                     
                     matches.forEach { match ->
                         val streamUrl = match.groupValues[1]
-                        
-                        // HEADERS DINAMIS: Ambil domain dari URL wrapper untuk Origin & Referer
-                        // Ini agar aman jika domainnya ganti (misal playerngefilm22)
                         val wrapperUri = URI(fixedUrl)
                         val origin = "${wrapperUri.scheme}://${wrapperUri.host}"
                         
                         val streamHeaders = mapOf(
                             "Origin" to origin,
-                            "Referer" to "$origin/", // Wajib ada slash di akhir biasanya
-                            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                            "Accept" to "*/*"
+                            "Referer" to "$origin/",
+                            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
                         )
 
-                        // Jika ketemu .txt atau .m3u8, eksekusi sebagai HLS
-                        if (streamUrl.contains(".txt") || streamUrl.contains(".m3u8")) {
-                            M3u8Helper.generateM3u8(
-                                "NgeFilm-VIP",
-                                streamUrl,
-                                "$origin/", 
-                                headers = streamHeaders
-                            ).forEach { link ->
-                                callback(link)
-                            }
+                        // Proses sebagai HLS Streaming
+                        M3u8Helper.generateM3u8(
+                            "NgeFilm-VIP",
+                            streamUrl,
+                            "$origin/", 
+                            headers = streamHeaders
+                        ).forEach { link ->
+                            callback(link)
                         }
                     }
                     
-                    // Fallback: Cari Iframe biasa di dalam wrapper
+                    // CARA 2: Fallback Iframe (jika ada iframe lain di dalam wrapper)
                     val wrapperDoc = org.jsoup.Jsoup.parse(response)
                     val innerIframe = wrapperDoc.select("iframe").attr("src")
                     if (innerIframe.isNotBlank()) {
