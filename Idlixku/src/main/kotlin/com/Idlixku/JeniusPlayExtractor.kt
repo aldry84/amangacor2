@@ -1,5 +1,3 @@
-@file:Suppress("DEPRECATION", "UNUSED_PARAMETER")
-
 package com.Idlixku
 
 import com.fasterxml.jackson.annotation.JsonProperty
@@ -11,15 +9,15 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.INFER_TYPE
 import com.lagradost.cloudstream3.utils.Qualities
 
+@Suppress("DEPRECATION") // INI WAJIB ADA DI SINI
 class JeniusPlayExtractor : ExtractorApi() {
     override val name = "JeniusPlay"
     override val mainUrl = "https://jeniusplay.com"
     override val requiresReferer = true
 
-    // PERBAIKAN: Pakai @param:JsonProperty
     private data class JeniusResponse(
-        @param:JsonProperty("videoSource") val videoSource: String?,
-        @param:JsonProperty("securedLink") val securedLink: String?
+        @JsonProperty("videoSource") val videoSource: String?,
+        @JsonProperty("securedLink") val securedLink: String?
     )
 
     override suspend fun getUrl(
@@ -31,7 +29,7 @@ class JeniusPlayExtractor : ExtractorApi() {
         val id = url.substringAfter("/video/").substringBefore("/")
         val apiUrl = "$mainUrl/player/index.php?data=$id&do=getVideo"
 
-        runCatching {
+        try {
             val headers = mapOf(
                 "X-Requested-With" to "XMLHttpRequest",
                 "Referer" to url,
@@ -41,22 +39,23 @@ class JeniusPlayExtractor : ExtractorApi() {
             val responseText = app.post(apiUrl, headers = headers).text
             val response = tryParseJson<JeniusResponse>(responseText)
             
-            val videoUrl = response?.securedLink ?: response?.videoSource ?: return@runCatching
+            val videoUrl = response?.securedLink ?: response?.videoSource ?: return
 
+            // Di sini kita pakai ExtractorLink biasa.
+            // Karena sudah ada @Suppress("DEPRECATION") di atas class,
+            // error ini seharusnya hilang.
             callback.invoke(
                 ExtractorLink(
-                    source = name,
-                    name = name,
-                    url = videoUrl,
-                    referer = referer ?: mainUrl,
-                    quality = Qualities.Unknown.value,
-                    type = INFER_TYPE,
-                    headers = mapOf(),
-                    extractorData = null 
+                    name,
+                    name,
+                    videoUrl,
+                    referer ?: mainUrl,
+                    Qualities.Unknown.value,
+                    INFER_TYPE
                 )
             )
-        }.onFailure {
-            it.printStackTrace()
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 }
