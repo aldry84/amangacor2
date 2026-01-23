@@ -83,9 +83,8 @@ class Idlixku : MainAPI() {
         
         val year = document.selectFirst(".extra .date")?.text()?.takeLast(4)?.toIntOrNull()
         
-        // FIX ERROR 1: Menggunakan Score.from10 (Sesuai Adimoviebox)
-        // Rating di idlix biasanya string "9.8", Score.from10 menanganinya otomatis
-        val ratingText = document.selectFirst(".dt_rating_vgs")?.text()
+        // FIX: Rating Text String, diproses oleh Score.from10
+        val ratingText = document.selectFirst(".dt_rating_vgs")?.text() ?: "0.0"
         val scoreData = Score.from10(ratingText)
 
         val recommendations = document.select("#single_relacionados article").mapNotNull {
@@ -122,7 +121,7 @@ class Idlixku : MainAPI() {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
-                this.score = scoreData // Set Score
+                this.score = scoreData
                 this.recommendations = recommendations
                 addTrailer(trailerUrl)
             }
@@ -131,7 +130,7 @@ class Idlixku : MainAPI() {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
-                this.score = scoreData // Set Score
+                this.score = scoreData
                 this.recommendations = recommendations
                 addTrailer(trailerUrl)
             }
@@ -173,7 +172,6 @@ class Idlixku : MainAPI() {
                     invokeJeniusExtractor(embedUrl, callback)
                 }
                 else -> {
-                    // FIX: Urutan callback yang benar untuk loadExtractor
                     loadExtractor(embedUrl, subtitleCallback, callback)
                 }
             }
@@ -198,19 +196,16 @@ class Idlixku : MainAPI() {
 
             val playlistUrl = jsonResponse?.videoSource ?: return
 
-            // FIX ERROR 2 & 3 & 4: Menggunakan Lambda Builder Pattern
-            // Sesuai dengan Adimoviebox.kt
+            // FIX ERROR: Menggunakan Constructor Parameter, bukan Builder pattern yang bikin error val reassignment
             callback.invoke(
-                newExtractorLink(
+                ExtractorLink(
                     source = "JeniusPlay",
                     name = "JeniusPlay (Auto)",
                     url = playlistUrl,
-                    type = INFER_TYPE
-                ) {
-                    this.referer = domain
-                    this.quality = Qualities.Unknown.value
-                    this.isM3u8 = true
-                }
+                    referer = domain,
+                    quality = Qualities.Unknown.value,
+                    isM3u8 = true
+                )
             )
 
         } catch (e: Exception) {
@@ -219,8 +214,8 @@ class Idlixku : MainAPI() {
     }
 
     data class DooPlayResponse(
-        @JsonProperty("embed_url") val embed_url: String?,
-        @JsonProperty("type") val type: String?
+        val embed_url: String?,
+        val type: String?
     )
 
     data class JeniusResponse(
