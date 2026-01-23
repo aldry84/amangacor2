@@ -10,8 +10,6 @@ import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.INFER_TYPE
 import com.lagradost.cloudstream3.utils.Qualities
-// Import penting
-import com.lagradost.cloudstream3.newExtractorLink
 
 class JeniusPlayExtractor : ExtractorApi() {
     override val name = "JeniusPlay"
@@ -32,7 +30,7 @@ class JeniusPlayExtractor : ExtractorApi() {
         val id = url.substringAfter("/video/").substringBefore("/")
         val apiUrl = "$mainUrl/player/index.php?data=$id&do=getVideo"
 
-        // Menggunakan runCatching ala FourKHDHub
+        // Menggunakan gaya FourKHDHub (runCatching)
         runCatching {
             val headers = mapOf(
                 "X-Requested-With" to "XMLHttpRequest",
@@ -45,19 +43,18 @@ class JeniusPlayExtractor : ExtractorApi() {
             
             val videoUrl = response?.securedLink ?: response?.videoSource ?: return@runCatching
 
-            // Callback dengan gaya baru (newExtractorLink)
+            // KEMBALI KE CONSTRUCTOR STANDAR (Paling Aman)
             callback.invoke(
-                newExtractorLink(
-                    name,
-                    name,
-                    videoUrl,
-                    referer ?: mainUrl,
-                    Qualities.Unknown.value,
-                    INFER_TYPE
+                ExtractorLink(
+                    source = name,
+                    name = name,
+                    url = videoUrl,
+                    referer = referer ?: mainUrl,
+                    quality = Qualities.Unknown.value,
+                    type = INFER_TYPE
                 )
             )
         }.onFailure {
-            // Log error jika diperlukan, mirip dengan: Log.e(name, "Failed: ${it.message}")
             it.printStackTrace()
         }
     }
