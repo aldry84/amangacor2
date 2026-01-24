@@ -40,15 +40,14 @@ class NgeFilm : MainAPI() {
 
         val title = document.selectFirst("h1.entry-title")?.text()?.trim() ?: return null
         val poster = document.selectFirst(".gmr-movie-view .attachment-thumbnail")?.attr("src") 
-            ?: document.selectFirst(".gmr-movie-view .attachment-thumbnail")?.attr("data-src")
-            ?: "" // Fix: Pastikan tidak null
+            ?: document.selectFirst(".gmr-movie-view .attachment-thumbnail")?.attr("data-src") 
+            ?: ""
 
         val plot = document.select(".entry-content p").text()
         val year = document.selectFirst("span.year")?.text()?.toIntOrNull()
         
         val tags = document.select(".gmr-movie-on a[rel='category tag']").map { it.text() }
         
-        // Fix: Gunakan ActorData
         val actors = document.select("[itemprop='actor'] span[itemprop='name']").map { 
             ActorData(Actor(it.text())) 
         }
@@ -95,10 +94,10 @@ class NgeFilm : MainAPI() {
         val url = fixUrl(titleElement.attr("href"))
         
         val imgElement = element.selectFirst(".content-thumbnail img")
-        // FIX CRITICAL ERROR DI SINI: Tambahkan ?: "" agar tidak null
         val posterUrl = imgElement?.attr("src") ?: imgElement?.attr("data-src") ?: ""
         
-        val quality = element.selectFirst(".gmr-quality-item a")?.text()
+        // PERBAIKAN: Tambahkan ?: "" agar tidak null (String? -> String)
+        val quality = element.selectFirst(".gmr-quality-item a")?.text() ?: ""
 
         return newMovieSearchResponse(title, url, TvType.Movie) {
             this.posterUrl = posterUrl
