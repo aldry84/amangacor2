@@ -24,27 +24,44 @@ class NgeFilmProvider : MainAPI() {
         "$mainUrl/year/2026/" to "Film Terbaru 2026",
         "$mainUrl/populer/" to "Populer",
         "$mainUrl/Genre/action/" to "Action",
+        "$mainUrl/Genre/horror/" to "Horror",
         "$mainUrl/country/indonesia/" to "Indonesia",
         "$mainUrl/country/korea/" to "Drama Korea"
     )
 
+    // --- ENGINE GAMBAR ANTI-BLUR & BYPASS LAZY LOAD ---
     private fun String?.toHighDef(): String? {
         val url = this ?: return null
-        return url.substringBefore("?").replace(Regex("-\\d+x\\d+"), "")
+        val fullUrl = if (url.startsWith("//")) "https:$url" else url
+        // Hapus penanda ukuran (misal -152x228) agar gambar jernih HD
+        return fullUrl.substringBefore("?").replace(Regex("-\\d+x\\d+"), "")
     }
 
     private fun Element.toSearchResponse(): SearchResponse? {
         val titleElement = this.selectFirst(".entry-title a") ?: return null
         val title = titleElement.text().trim()
         val href = titleElement.attr("href")
+        val isTv = this.select(".gmr-numbeps").isNotEmpty() || href.contains("/tv/") || href.contains("/eps/")
         
+        // Ambil atribut poster yang bener (data-src atau src)
         val img = this.selectFirst("img")
         val rawPoster = img?.attr("data-src").takeIf { !it.isNullOrBlank() } 
                      ?: img?.attr("data-lazy-src").takeIf { !it.isNullOrBlank() }
                      ?: img?.attr("src")
         
-        return newMovieSearchResponse(title, href, TvType.Movie) {
-            this.posterUrl = rawPoster.toHighDef()
+        val posterUrl = rawPoster.toHighDef()
+        val quality = this.selectFirst(".gmr-quality-item")?.text() ?: "HD"
+
+        return if (isTv) {
+            newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
+                this.posterUrl = posterUrl
+                addQuality(quality)
+            }
+        } else {
+            newMovieSearchResponse(title, href, TvType.Movie) {
+                this.posterUrl = posterUrl
+                addQuality(quality)
+            }
         }
     }
 
@@ -64,15 +81,19 @@ class NgeFilmProvider : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url, headers = mainHeaders).document
         val title = document.selectFirst("h1.entry-title")?.text()?.trim() ?: "Unknown"
-        val poster = document.selectFirst("meta[property=\"og:image\"]")?.attr("content")?.toHighDef()
-        val plot = document.select(".entry-content p").text().trim()
         
+        // Poster HD dari meta tag og:image agar pasti muncul
+        val poster = document.selectFirst("meta[property=\"og:image\"]")?.attr("content")?.toHighDef()
+        val description = document.select(".entry-content p").text().trim()
+        val year = document.select(".gmr-moviedata:contains(Tahun) a").text().toIntOrNull()
+        
+        // Trailer yang bener-bener akurat dari popup
         val trailer = document.selectFirst(".gmr-trailer-popup")?.attr("href")
-                   ?: document.selectFirst("a[href*='youtube.com/watch']")?.attr("href")
 
         val episodes = document.select(".gmr-listseries a").filter { 
             !it.text().contains("Pilih Episode", true) && !it.hasClass("gmr-all-serie")
         }.map {
+            // Gunakan newEpisode sesuai standar terbaru agar tidak error build
             newEpisode(it.attr("href")) {
                 this.name = it.text().trim()
             }
@@ -81,14 +102,16 @@ class NgeFilmProvider : MainAPI() {
         return if (episodes.isNotEmpty()) {
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                 this.posterUrl = poster
-                this.plot = plot
-                addTrailer(trailer)
+                this.year = year
+                this.plot = description
+                addTrailer(trailer) // FIX TRAILER
             }
         } else {
             newMovieLoadResponse(title, url, TvType.Movie, url) {
                 this.posterUrl = poster
-                this.plot = plot
-                addTrailer(trailer)
+                this.year = year
+                this.plot = description
+                addTrailer(trailer) // FIX TRAILER
             }
         }
     }
@@ -100,11 +123,13 @@ class NgeFilmProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val document = app.get(data, headers = mainHeaders).document
+        
+        // 1. Ambil ID Post buat AJAX player
         val postId = document.selectFirst("#muvipro_player_content_id")?.attr("data-id")
         
         if (postId != null) {
             val ajaxUrl = "$mainUrl/wp-admin/admin-ajax.php"
-            // Loop semua tab server (p1 sampai p6) sesuai temuan log
+            // Loop tab p1 sampe p6 buat dapet link streaming sakti
             (1..6).forEach { i ->
                 try {
                     val response = app.post(
@@ -113,8 +138,13 @@ class NgeFilmProvider : MainAPI() {
                         headers = mainHeaders
                     ).text
 
+                    // REGEX HUNTER: Ambil link iframe atau m3u8 dari respon AJAX
                     val iframeSrc = Regex("""<iframe.*?src=["'](.*?)["']""").find(response)?.groupValues?.get(1)
-                    if (!iframeSrc.isNullOrBlank()) {
+                    val directM3u8 = Regex("""["'](https?://.*?\.m3u8.*?)["']""").find(response)?.groupValues?.get(1)
+
+                    if (!directM3u8.isNullOrBlank()) {
+                        M3u8Helper.generateM3u8("NgeFilm VIP $i", directM3u8, "$mainUrl/").forEach { link -> callback(link) }
+                    } else if (!iframeSrc.isNullOrBlank()) {
                         val finalSrc = if (iframeSrc.startsWith("//")) "https:$iframeSrc" else iframeSrc
                         loadExtractor(finalSrc, data, subtitleCallback, callback)
                     }
@@ -122,7 +152,7 @@ class NgeFilmProvider : MainAPI() {
             }
         }
 
-        // Cek link download sebagai cadangan tautan pemutaran
+        // 2. Link Download Box sebagai cadangan
         document.select(".gmr-download-list a").forEach { 
             loadExtractor(it.attr("href"), data, subtitleCallback, callback)
         }
