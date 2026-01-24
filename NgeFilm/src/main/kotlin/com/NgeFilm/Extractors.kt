@@ -6,7 +6,6 @@ import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.INFER_TYPE
 import com.lagradost.cloudstream3.utils.Qualities
-// PERBAIKAN: Import yang benar untuk newExtractorLink
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import javax.crypto.Cipher
@@ -51,18 +50,16 @@ class RpmLive : ExtractorApi() {
                 val label = source["label"]?.asText() ?: "Auto"
                 
                 if (m3u8Url != null && m3u8Url.contains(".m3u8")) {
-                    // PERBAIKAN DI SINI: Sesuai contoh ContohExtractors.kt
                     callback.invoke(
                         newExtractorLink(
                             source = name,
                             name = "$name $label",
                             url = m3u8Url,
-                            referer = mainUrl,
                             type = INFER_TYPE
                         ).apply {
+                            // PERBAIKAN: referer dipindah ke sini
+                            this.referer = mainUrl 
                             this.quality = Qualities.Unknown.value
-                            // headers juga bisa ditambahkan di sini jika perlu
-                            // this.headers = headers
                         }
                     )
                 }
