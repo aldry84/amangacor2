@@ -4,7 +4,6 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.*
 import org.jsoup.nodes.Element
-import org.jsoup.Jsoup
 
 class NgeFilmProvider : MainAPI() {
     override var mainUrl = "https://new31.ngefilm.site"
@@ -29,7 +28,7 @@ class NgeFilmProvider : MainAPI() {
         "$mainUrl/country/korea/" to "Drama Korea"
     )
 
-    // --- ENGINE GAMBAR ANTI-BLUR & BYPASS LAZY LOAD ---
+    // --- ENGINE ANTI-BLUR & BYPASS LAZY LOAD ---
     private fun String?.toHighDef(): String? {
         val url = this ?: return null
         val fullUrl = if (url.startsWith("//")) "https:$url" else url
@@ -43,7 +42,7 @@ class NgeFilmProvider : MainAPI() {
         val href = titleElement.attr("href")
         val isTv = this.select(".gmr-numbeps").isNotEmpty() || href.contains("/tv/") || href.contains("/eps/")
         
-        // Ambil atribut poster yang bener (data-src atau src)
+        // FIX POSTER KOSONG: Ambil atribut data-src atau data-lazy-src
         val img = this.selectFirst("img")
         val rawPoster = img?.attr("data-src").takeIf { !it.isNullOrBlank() } 
                      ?: img?.attr("data-lazy-src").takeIf { !it.isNullOrBlank() }
@@ -82,18 +81,16 @@ class NgeFilmProvider : MainAPI() {
         val document = app.get(url, headers = mainHeaders).document
         val title = document.selectFirst("h1.entry-title")?.text()?.trim() ?: "Unknown"
         
-        // Poster HD dari meta tag og:image agar pasti muncul
+        // Poster HD dari meta tag og:image
         val poster = document.selectFirst("meta[property=\"og:image\"]")?.attr("content")?.toHighDef()
         val description = document.select(".entry-content p").text().trim()
         val year = document.select(".gmr-moviedata:contains(Tahun) a").text().toIntOrNull()
-        
-        // Trailer yang bener-bener akurat dari popup
         val trailer = document.selectFirst(".gmr-trailer-popup")?.attr("href")
 
+        // FIX EPISODE: Menggunakan newEpisode agar tidak deprecated
         val episodes = document.select(".gmr-listseries a").filter { 
             !it.text().contains("Pilih Episode", true) && !it.hasClass("gmr-all-serie")
         }.map {
-            // Gunakan newEpisode sesuai standar terbaru agar tidak error build
             newEpisode(it.attr("href")) {
                 this.name = it.text().trim()
             }
@@ -123,13 +120,11 @@ class NgeFilmProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val document = app.get(data, headers = mainHeaders).document
-        
-        // 1. Ambil ID Post buat AJAX player
         val postId = document.selectFirst("#muvipro_player_content_id")?.attr("data-id")
         
         if (postId != null) {
             val ajaxUrl = "$mainUrl/wp-admin/admin-ajax.php"
-            // Loop tab p1 sampe p6 buat dapet link streaming sakti
+            // Loop tab p1 sampai p6 untuk menarik semua server player
             (1..6).forEach { i ->
                 try {
                     val response = app.post(
@@ -138,7 +133,7 @@ class NgeFilmProvider : MainAPI() {
                         headers = mainHeaders
                     ).text
 
-                    // REGEX HUNTER: Ambil link iframe atau m3u8 dari respon AJAX
+                    // Regex untuk ambil link iframe atau m3u8 dari respon AJAX
                     val iframeSrc = Regex("""<iframe.*?src=["'](.*?)["']""").find(response)?.groupValues?.get(1)
                     val directM3u8 = Regex("""["'](https?://.*?\.m3u8.*?)["']""").find(response)?.groupValues?.get(1)
 
@@ -152,7 +147,7 @@ class NgeFilmProvider : MainAPI() {
             }
         }
 
-        // 2. Link Download Box sebagai cadangan
+        // Cek link download sebagai cadangan tautan pemutaran
         document.select(".gmr-download-list a").forEach { 
             loadExtractor(it.attr("href"), data, subtitleCallback, callback)
         }
