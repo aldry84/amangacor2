@@ -63,7 +63,6 @@ class KisskhProvider : MainAPI() {
 
     private fun Media.toSearchResponse(): SearchResponse? {
         if (!settingsForProvider.enableAdult && this.label!!.contains("RAW")) {
-            // Skip RAW entries when adult is disabled
             return null
         }
 
@@ -76,7 +75,6 @@ class KisskhProvider : MainAPI() {
             addSub(episodesCount)
         }
     }
-
 
     override suspend fun search(query: String): List<SearchResponse> {
         val searchResponse =
@@ -101,7 +99,6 @@ class KisskhProvider : MainAPI() {
             ?: throw ErrorLoadingException("Invalid Json reponse")
 
         val episodes = res.episodes?.map { eps ->
-
             val displayNumber = eps.number?.let { num ->
                 if (num % 1.0 == 0.0) num.toInt().toString() else num.toString()
             } ?: ""
@@ -109,9 +106,7 @@ class KisskhProvider : MainAPI() {
             newEpisode(Data(res.title, eps.number?.toInt(), res.id, eps.id).toJson()) {
                 this.name = "Episode $displayNumber"
             }
-
         } ?: throw ErrorLoadingException("No Episode")
-
 
         return newTvSeriesLoadResponse(
             res.title ?: return null,
@@ -129,7 +124,6 @@ class KisskhProvider : MainAPI() {
                 else -> null
             }
         }
-
     }
 
     private fun getLanguage(str: String): String {
@@ -145,10 +139,15 @@ class KisskhProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val KisskhAPI = BuildConfig.KissKh
-        val KisskhSub = BuildConfig.KisskhSub
+        // Menggunakan URL yang ditemukan dari analisa file binary
+        val kisskhAPI = "https://script.google.com/macros/s/AKfycbyq6hTj0ZhlinYC6xbggtgo166tp6XaDKBCGtnYk8uOfYBUFwwxBui0sGXiu_zIFmA/exec?id="
+        val kisskhSub = "https://script.google.com/macros/s/AKfycbzn8B31PuDxzaMa9_CQ0VGEDasFqfzI5bXvjaIZH4DM8DNq9q6xj1ALvZNz_JT3jF0suA/exec?id="
+        
         val loadData = parseJson<Data>(data)
-        val kkey = app.get("$KisskhAPI${loadData.epsId}&version=2.8.10", timeout = 10000).parsedSafe<Key>()?.key ?:""
+        
+        // Mendapatkan kkey untuk Video
+        val kkey = app.get("$kisskhAPI${loadData.epsId}&version=2.8.10", timeout = 10000).parsedSafe<Key>()?.key ?: ""
+        
         app.get(
             "$mainUrl/api/DramaList/Episode/${loadData.epsId}.png?err=false&ts=&time=&kkey=$kkey",
             referer = "$mainUrl/Drama/${getTitle("${loadData.title}")}/Episode-${loadData.eps}?id=${loadData.id}&ep=${loadData.epsId}&page=0&pageSize=100"
@@ -174,7 +173,6 @@ class KisskhProvider : MainAPI() {
                                 this.quality = Qualities.P720.value
                             }
                         )
-
                     } else {
                         loadExtractor(
                             link?.substringBefore("=http") ?: return@safeApiCall,
@@ -187,51 +185,29 @@ class KisskhProvider : MainAPI() {
             }
         }
 
-        val kkey1=app.get("$KisskhSub${loadData.epsId}&version=2.8.10", timeout = 10000).parsedSafe<Key>()?.key ?:""
+        // Mendapatkan kkey untuk Subtitle
+        val kkey1 = app.get("$kisskhSub${loadData.epsId}&version=2.8.10", timeout = 10000).parsedSafe<Key>()?.key ?: ""
+        
         app.get("$mainUrl/api/Sub/${loadData.epsId}?kkey=$kkey1").text.let { res ->
             tryParseJson<List<Subtitle>>(res)?.map { sub ->
-                if (sub.src!!.contains(".txt")) {
-                    subtitleCallback.invoke(
-                        newSubtitleFile(
-                            getLanguage(sub.label ?: return@map),
-                            sub.src
-                        )
-                    )
-                }
-                else
                 subtitleCallback.invoke(
                     newSubtitleFile(
                         getLanguage(sub.label ?: return@map),
-                        sub.src
+                        sub.src ?: ""
                     )
                 )
             }
         }
 
         return true
-
     }
-    // SubDecryptor Code from Thanks to https://github.com/Kohi-den/extensions-source/blob/515590ecfec6af2b915d23508266536f7f5a3ab8/src/en/kisskh/src/eu/kanade/tachiyomi/animeextension/en/kisskh/SubDecryptor.kt
-
-
-    //OLD Method
-    /*
-    val decrypted = chunks.mapIndexed { index, chunk ->
-    val parts = chunk.split("\n")
-    val text = parts.slice(1 until parts.size)
-    val d = text.map { decrypt(it) }.joinToString("\n")
-    arrayOf(index + 1, parts.first(), d).joinToString("\n")
-    }.joinToString("\n\n")
-     */
-
 
     private val CHUNK_REGEX1 by lazy { Regex("^\\d+$", RegexOption.MULTILINE) }
+    
     override fun getVideoInterceptor(extractorLink: ExtractorLink): Interceptor {
         return object : Interceptor {
             override fun intercept(chain: Interceptor.Chain): Response {
-                val request = chain.request()
-                    .newBuilder()
-                    .build()
+                val request = chain.request().newBuilder().build()
                 val response = chain.proceed(request)
                 if (response.request.url.toString().contains(".txt")) {
                     val responseBody = response.body.string()
@@ -256,51 +232,30 @@ class KisskhProvider : MainAPI() {
                     }.filter { it.isNotEmpty() }
                         .joinToString("\n\n")
                     val newBody = decrypted.toResponseBody(response.body.contentType())
-                    return response.newBuilder()
-                        .body(newBody)
-                        .build()
+                    return response.newBuilder().body(newBody).build()
                 }
                 return response
             }
         }
     }
 
-
-    data class Data(
-        val title: String?,
-        val eps: Int?,
-        val id: Int?,
-        val epsId: Int?,
-    )
-
-    data class Sources(
-        @JsonProperty("Video") val video: String?,
-        @JsonProperty("ThirdParty") val thirdParty: String?,
-    )
-
-    data class Subtitle(
-        @JsonProperty("src") val src: String?,
-        @JsonProperty("label") val label: String?,
-    )
-
-    data class Responses(
-        @JsonProperty("data") val data: ArrayList<Media>? = arrayListOf(),
-    )
-
+    // Data Classes
+    data class Data(val title: String?, val eps: Int?, val id: Int?, val epsId: Int?)
+    data class Sources(@JsonProperty("Video") val video: String?, @JsonProperty("ThirdParty") val thirdParty: String?)
+    data class Subtitle(@JsonProperty("src") val src: String?, @JsonProperty("label") val label: String?)
+    data class Responses(@JsonProperty("data") val data: ArrayList<Media>? = arrayListOf())
     data class Media(
         @JsonProperty("episodesCount") val episodesCount: Int?,
         @JsonProperty("thumbnail") val thumbnail: String?,
         @JsonProperty("label") val label: String?,
         @JsonProperty("id") val id: Int?,
-        @JsonProperty("title") val title: String?,
+        @JsonProperty("title") val title: String?
     )
-
     data class Episodes(
         @JsonProperty("id") val id: Int?,
         @JsonProperty("number") val number: Double?,
-        @JsonProperty("sub") val sub: Int?,
+        @JsonProperty("sub") val sub: Int?
     )
-
     data class MediaDetail(
         @JsonProperty("description") val description: String?,
         @JsonProperty("releaseDate") val releaseDate: String?,
@@ -310,12 +265,7 @@ class KisskhProvider : MainAPI() {
         @JsonProperty("episodes") val episodes: ArrayList<Episodes>? = arrayListOf(),
         @JsonProperty("thumbnail") val thumbnail: String?,
         @JsonProperty("id") val id: Int?,
-        @JsonProperty("title") val title: String?,
+        @JsonProperty("title") val title: String?
     )
-
-    data class Key(
-        val id: String,
-        val version: String,
-        val key: String,
-    )
+    data class Key(val id: String, val version: String, val key: String)
 }
