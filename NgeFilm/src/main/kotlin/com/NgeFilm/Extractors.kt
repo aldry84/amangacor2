@@ -6,6 +6,7 @@ import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.INFER_TYPE
 import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.newExtractorLink
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import javax.crypto.Cipher
 import javax.crypto.spec.IvParameterSpec
@@ -16,8 +17,6 @@ class RpmLive : ExtractorApi() {
     override val mainUrl = "https://playerngefilm21.rpmlive.online"
     override val requiresReferer = true
 
-    // Suppress warning agar build tidak gagal karena deprecated
-    @Suppress("DEPRECATION")
     override suspend fun getUrl(
         url: String,
         referer: String?,
@@ -52,14 +51,16 @@ class RpmLive : ExtractorApi() {
                 
                 if (m3u8Url != null && m3u8Url.contains(".m3u8")) {
                     callback.invoke(
-                        ExtractorLink(
+                        // PERBAIKAN: Menggunakan newExtractorLink dengan lambda di belakang
+                        newExtractorLink(
                             source = name,
                             name = "$name $label",
                             url = m3u8Url,
                             referer = mainUrl,
-                            quality = Qualities.Unknown.value,
-                            type = INFER_TYPE
-                        )
+                            quality = Qualities.Unknown.value
+                        ) {
+                            this.type = INFER_TYPE
+                        }
                     )
                 }
             }
