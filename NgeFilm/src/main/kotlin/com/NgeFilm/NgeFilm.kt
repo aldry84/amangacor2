@@ -4,8 +4,6 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import org.jsoup.nodes.Element
 
-// PERBAIKAN 1: Mengganti nama class menjadi 'NgeFilmProvider' agar sesuai dengan Plugin.kt
-// PERBAIKAN 2: Mengganti 'ParsableHttpProvider' menjadi 'MainAPI'
 class NgeFilmProvider : MainAPI() { 
     override var mainUrl = "https://new31.ngefilm.site"
     override var name = "NgeFilm"
@@ -55,13 +53,12 @@ class NgeFilmProvider : MainAPI() {
         
         val year = document.selectFirst("span.year")?.text()?.toIntOrNull()
         
-        // PERBAIKAN 3: Menggunakan toIntOrNull() manual karena toRatingInt() deprecated/bermasalah
-        val ratingText = document.selectFirst(".gmr-rating-item span")?.text()
-        val rating = ratingText?.toDoubleOrNull()?.times(1000)?.toInt() // Konversi skala 10 ke skala internal CS
+        // BAGIAN RATING DIHAPUS DULU BIAR TIDAK ERROR
+        // val ratingText = document.selectFirst(".gmr-rating-item span")?.text()
         
         val tags = document.select(".gmr-movie-on a[rel='category tag']").map { it.text() }
         
-        // PERBAIKAN 4: Mengubah List<String> menjadi List<ActorData>
+        // Perbaikan ActorData tetap diperlukan agar tidak error type mismatch
         val actors = document.select("[itemprop='actor'] span[itemprop='name']").map { 
             ActorData(Actor(it.text()))
         }
@@ -75,7 +72,7 @@ class NgeFilmProvider : MainAPI() {
             this.year = year
             this.plot = plot
             this.tags = tags
-            this.rating = rating
+            // this.rating = rating // DIHAPUS
             this.actors = actors
             this.recommendations = recommendations
         }
@@ -100,7 +97,7 @@ class NgeFilmProvider : MainAPI() {
             }
 
             if (sourceUrl.isNotBlank()) {
-                // PERBAIKAN 5: Menukar posisi argument (url, subtitleCallback, callback)
+                // Parameter callback ditukar posisinya sesuai update terbaru
                 loadExtractor(sourceUrl, subtitleCallback, callback)
             }
         }
@@ -123,7 +120,6 @@ class NgeFilmProvider : MainAPI() {
 
         return newMovieSearchResponse(title, url, TvType.Movie) {
             this.posterUrl = posterUrl
-            // PERBAIKAN 6: Menangani nilai null pada quality
             addQuality(quality ?: "")
         }
     }
