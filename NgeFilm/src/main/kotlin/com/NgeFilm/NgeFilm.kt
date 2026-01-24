@@ -40,7 +40,7 @@ class NgeFilm : MainAPI() {
 
         val title = document.selectFirst("h1.entry-title")?.text()?.trim() ?: return null
         val poster = document.selectFirst(".gmr-movie-view .attachment-thumbnail")?.attr("src") 
-            ?: document.selectFirst(".gmr-movie-view .attachment-thumbnail")?.attr("data-src") 
+            ?: document.selectFirst(".gmr-movie-view .attachment-thumbnail")?.attr("data-src")
             ?: ""
 
         val plot = document.select(".entry-content p").text()
@@ -92,11 +92,11 @@ class NgeFilm : MainAPI() {
         val titleElement = element.selectFirst(".entry-title a") ?: return null
         val title = titleElement.text().replace("Nonton ", "").trim()
         val url = fixUrl(titleElement.attr("href"))
-        
         val imgElement = element.selectFirst(".content-thumbnail img")
+        
         val posterUrl = imgElement?.attr("src") ?: imgElement?.attr("data-src") ?: ""
         
-        // PERBAIKAN: Tambahkan ?: "" agar tidak null (String? -> String)
+        // Pastikan tidak null agar tidak error Type Mismatch
         val quality = element.selectFirst(".gmr-quality-item a")?.text() ?: ""
 
         return newMovieSearchResponse(title, url, TvType.Movie) {
