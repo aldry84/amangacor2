@@ -7,7 +7,11 @@ import android.content.Context
 @CloudstreamPlugin
 class NgeFilmPlugin: Plugin() {
     override fun load(context: Context) {
-        // Mendaftarkan provider utama kita
-        registerMainAPI(NgeFilmProvider())
+        // 1. Daftarkan Provider (Wajib)
+        registerMainAPI(NgeFilm())
+
+        // 2. Daftarkan Extractor (Opsional, tapi Good Practice)
+        // Ini berguna jika nanti kamu mau menghapus logika "if" manual di NgeFilm.kt
+        registerExtractorAPI(RpmLive())
     }
 }
