@@ -1,15 +1,16 @@
-package com.NgeFilm
+package com.Klikxxi // DISAMAKAN DENGAN PLUGIN
 
 import com.lagradost.cloudstream3.*
+import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer // FIX UNRESOLVED TRAILER
 import com.lagradost.cloudstream3.utils.*
 import org.jsoup.nodes.Element
-import java.net.URI
 
-class NgeFilm : MainAPI() {
-    override var mainUrl = "https://new31.ngefilm.site"
-    override var name = "NgeFilm21"
+class KlikxxiProvider : MainAPI() { // Ganti nama class agar deskriptif
+    override var mainUrl = "https://new31.ngefilm.site" // URL Klikxxi kamu
+    override var name = "Klikxxi"
     override val hasMainPage = true
     override var lang = "id"
+    override val hasQuickSearch = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
     val mainHeaders = mapOf(
@@ -37,7 +38,7 @@ class NgeFilm : MainAPI() {
         val titleElement = this.selectFirst(".entry-title a") ?: return null
         val title = titleElement.text().trim()
         val href = titleElement.attr("href")
-        val isTv = this.select(".gmr-numbeps").isNotEmpty() || href.contains("/tv/")
+        val isTv = this.select(".gmr-numbeps").isNotEmpty() || href.contains("/tv/") || href.contains("/eps/")
         val imgElement = this.selectFirst("img")
         val rawPoster = imgElement?.attr("data-src") ?: imgElement?.attr("src") ?: imgElement?.attr("data-lazy-src")
         val posterUrl = rawPoster.toLargeUrl()
@@ -84,12 +85,14 @@ class NgeFilm : MainAPI() {
         val year = document.select("time[itemprop=dateCreated]").text().takeLast(4).toIntOrNull()
         val ratingText = document.selectFirst("span[itemprop=ratingValue]")?.text()?.trim()
         val scoreVal = ratingText?.toDoubleOrNull()
+        val trailer = document.selectFirst(".gmr-trailer-popup")?.attr("href")
 
         val episodes = ArrayList<Episode>()
         document.select(".gmr-listseries a").forEach { eps ->
             val epsUrl = eps.attr("href")
             val epsName = eps.text().trim() 
             if (!epsName.contains("Pilih Episode", true) && !eps.hasClass("gmr-all-serie")) {
+                // FIX ERROR EPISODE: Pakai newEpisode
                 episodes.add(newEpisode(epsUrl) {
                     this.name = epsName
                     this.episode = epsName.filter { it.isDigit() }.toIntOrNull()
@@ -104,6 +107,7 @@ class NgeFilm : MainAPI() {
                 this.year = year
                 this.plot = description
                 if (scoreVal != null) this.score = Score.from10(scoreVal)
+                addTrailer(trailer) // FIX TRAILER
             }
         } else {
             newMovieLoadResponse(title, url, TvType.Movie, url) {
@@ -112,6 +116,7 @@ class NgeFilm : MainAPI() {
                 this.year = year
                 this.plot = description
                 if (scoreVal != null) this.score = Score.from10(scoreVal)
+                addTrailer(trailer) // FIX TRAILER
             }
         }
     }
@@ -127,7 +132,6 @@ class NgeFilm : MainAPI() {
 
         if (postId != null) {
             val ajaxUrl = "$mainUrl/wp-admin/admin-ajax.php"
-            // Loop tab p1 sampai p5
             (1..5).forEach { index ->
                 try {
                     val response = app.post(
@@ -140,55 +144,35 @@ class NgeFilm : MainAPI() {
                         headers = mapOf("X-Requested-With" to "XMLHttpRequest", "Referer" to data)
                     ).text
 
-                    // --- SUPER REGEX HUNTER (UNTUK LINK .TXT / .M3U8) ---
-                    // Ini menangkap link video rahasia yang muncul di log uBlock kamu
                     val regex = Regex("""["'](https?://[^"']+\.(?:txt|m3u8)[^"']*)["']""")
                     val matches = regex.findAll(response)
                     
                     matches.forEach { match ->
                         val streamUrl = match.groupValues[1]
-                        val wrapperHost = "playerngefilm21.rpmlive.online"
-                        
                         M3u8Helper.generateM3u8(
-                            "NgeFilm VIP Tab $index",
+                            "Klikxxi VIP Tab $index",
                             streamUrl,
-                            "https://$wrapperHost/",
+                            "https://playerngefilm21.rpmlive.online/",
                             headers = mapOf(
-                                "Origin" to "https://$wrapperHost",
-                                "Referer" to "https://$wrapperHost/",
-                                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                                "Origin" to "https://playerngefilm21.rpmlive.online",
+                                "Referer" to "https://playerngefilm21.rpmlive.online/"
                             )
                         ).forEach { link -> callback(link) }
                     }
 
-                    // Fallback: Jika isinya iframe (Klikxxi Style)
                     val ajaxDoc = org.jsoup.Jsoup.parse(response)
                     ajaxDoc.select("iframe").forEach { iframe ->
                         var src = iframe.attr("src")
                         if (src.startsWith("//")) src = "https:$src"
-                        if (src.contains("rpmlive") || src.contains("playerngefilm")) {
-                           // Jika di dalam tab ada iframe wrapper lagi, kita bongkar isinya
-                           val innerRes = app.get(src, headers = mapOf("Referer" to data)).text
-                           val innerMatches = regex.findAll(innerRes)
-                           innerMatches.forEach { m ->
-                               val innerUrl = m.groupValues[1]
-                               M3u8Helper.generateM3u8("NgeFilm VIP Inner", innerUrl, src, 
-                                   headers = mapOf("Origin" to "https://playerngefilm21.rpmlive.online", "Referer" to "https://playerngefilm21.rpmlive.online/"))
-                                   .forEach { link -> callback(link) }
-                           }
-                        } else {
-                            loadExtractor(src, data, subtitleCallback, callback)
-                        }
+                        loadExtractor(src, data, subtitleCallback, callback)
                     }
                 } catch (e: Exception) { }
             }
         }
 
-        // Ambil link download (UserDrive, Voe, dll)
         document.select(".gmr-download-list a").forEach { link ->
             loadExtractor(link.attr("href"), data, subtitleCallback, callback)
         }
-
         return true
     }
 }
