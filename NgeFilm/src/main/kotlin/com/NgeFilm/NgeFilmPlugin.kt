@@ -7,7 +7,7 @@ import android.content.Context
 @CloudstreamPlugin
 class NgeFilmPlugin: Plugin() {
     override fun load(context: Context) {
-        // FIX ERROR 3: Menggunakan nama class NgeFilmProvider yang benar
+        // Mendaftarkan provider utama kita
         registerMainAPI(NgeFilmProvider())
     }
 }
