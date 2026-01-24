@@ -14,7 +14,9 @@ import javax.crypto.spec.SecretKeySpec
 class RpmLive : ExtractorApi() {
     override val name = "RpmLive"
     override val mainUrl = "https://playerngefilm21.rpmlive.online"
-    override val requiresReferrer = true
+    
+    // PERBAIKAN: Typo 'Referrer' -> 'Referer' (satu r di tengah)
+    override val requiresReferer = true
 
     override suspend fun getUrl(
         url: String,
@@ -22,10 +24,7 @@ class RpmLive : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        // Ambil ID Video dari URL (misal: .../3gexrk -> 3gexrk)
         val videoId = url.substringAfterLast("/").substringBefore("?")
-        
-        // Request ke API Video
         val apiUrl = "$mainUrl/api/v1/video?id=$videoId"
         val headers = mapOf(
             "Referer" to "$mainUrl/",
@@ -38,20 +37,12 @@ class RpmLive : ExtractorApi() {
             val response = app.get(apiUrl, headers = headers).text
             if (response.isBlank()) return
 
-            // ==========================================
-            // KUNCI & IV HASIL JEBAKAN CONSOLE
-            // ==========================================
-            // KEY: [107, 105, 101, 109, 116, 105, 101, 110, 109, 117, 97, 57, 49, 49, 99, 97]
             val keyBytes = byteArrayOf(107, 105, 101, 109, 116, 105, 101, 110, 109, 117, 97, 57, 49, 49, 99, 97)
-            
-            // IV: [49, 50, 51, 52, 53, 54, 55, 56, 57, 48, 111, 105, 117, 121, 116, 114]
             val ivBytes = byteArrayOf(49, 50, 51, 52, 53, 54, 55, 56, 57, 48, 111, 105, 117, 121, 116, 114)
 
-            // Dekripsi Response (Hex String -> JSON)
             val encryptedBytes = hexToBytes(response)
             val decryptedJson = decryptAes(encryptedBytes, keyBytes, ivBytes)
 
-            // Parsing JSON untuk ambil link M3U8
             val mapper = jacksonObjectMapper()
             val jsonNode = mapper.readTree(decryptedJson)
             
@@ -78,7 +69,6 @@ class RpmLive : ExtractorApi() {
         }
     }
 
-    // --- FUNGSI BANTUAN ---
     private fun hexToBytes(hex: String): ByteArray {
         val len = hex.length
         val data = ByteArray(len / 2)
