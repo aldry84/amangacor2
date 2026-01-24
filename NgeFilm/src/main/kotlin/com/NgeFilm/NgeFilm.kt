@@ -4,7 +4,6 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import org.jsoup.nodes.Element
 
-// PERBAIKAN: Ganti ParsableHttpProvider ke MainAPI agar fungsi bawaan (fixUrl, dll) jalan
 class NgeFilm : MainAPI() {
     override var mainUrl = "https://new31.ngefilm.site"
     override var name = "NgeFilm"
@@ -40,16 +39,16 @@ class NgeFilm : MainAPI() {
         val document = app.get(url).document
 
         val title = document.selectFirst("h1.entry-title")?.text()?.trim() ?: return null
-        val poster = document.selectFirst(".gmr-movie-view .attachment-thumbnail")?.attr("src")
+        val poster = document.selectFirst(".gmr-movie-view .attachment-thumbnail")?.attr("src") 
+            ?: document.selectFirst(".gmr-movie-view .attachment-thumbnail")?.attr("data-src")
+            ?: "" // Fix: Pastikan tidak null
+
         val plot = document.select(".entry-content p").text()
         val year = document.selectFirst("span.year")?.text()?.toIntOrNull()
         
-        // PERBAIKAN: Hapus rating lama yg bikin error, fokus ke core fungsi dulu
-        // val rating = ... 
-
         val tags = document.select(".gmr-movie-on a[rel='category tag']").map { it.text() }
         
-        // PERBAIKAN: Mapping Aktor harus menggunakan objek ActorData, bukan String
+        // Fix: Gunakan ActorData
         val actors = document.select("[itemprop='actor'] span[itemprop='name']").map { 
             ActorData(Actor(it.text())) 
         }
@@ -63,7 +62,6 @@ class NgeFilm : MainAPI() {
             this.year = year
             this.plot = plot
             this.tags = tags
-            // this.rating = rating // disable rating sementara
             this.actors = actors
             this.recommendations = recommendations
         }
@@ -95,8 +93,11 @@ class NgeFilm : MainAPI() {
         val titleElement = element.selectFirst(".entry-title a") ?: return null
         val title = titleElement.text().replace("Nonton ", "").trim()
         val url = fixUrl(titleElement.attr("href"))
+        
         val imgElement = element.selectFirst(".content-thumbnail img")
-        val posterUrl = imgElement?.attr("src") ?: imgElement?.attr("data-src")
+        // FIX CRITICAL ERROR DI SINI: Tambahkan ?: "" agar tidak null
+        val posterUrl = imgElement?.attr("src") ?: imgElement?.attr("data-src") ?: ""
+        
         val quality = element.selectFirst(".gmr-quality-item a")?.text()
 
         return newMovieSearchResponse(title, url, TvType.Movie) {
