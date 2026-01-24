@@ -7,7 +7,7 @@ import android.content.Context
 @CloudstreamPlugin
 class KlikxxiPlugin: Plugin() {
     override fun load(context: Context) {
-        // Mendaftarkan class provider utama
-        registerMainAPI(Klikxxi())
+        // PERBAIKAN: Meregistrasi KlikxxiProvider()
+        registerMainAPI(KlikxxiProvider())
     }
 }
