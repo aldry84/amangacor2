@@ -62,7 +62,7 @@ class KisskhProvider : MainAPI() {
     }
 
     private fun Media.toSearchResponse(): SearchResponse? {
-        if (!settingsForProvider.enableAdult && this.label!!.contains("RAW")) {
+        if (!settingsForProvider.enableAdult && (this.label ?: "").contains("RAW")) {
             return null
         }
 
@@ -92,9 +92,7 @@ class KisskhProvider : MainAPI() {
         val id = url.split("/")
         val res = app.get(
             "$mainUrl/api/DramaList/Drama/${id.last()}?isq=false",
-            referer = "$mainUrl/Drama/${
-                getTitle(id.first())
-            }?id=${id.last()}"
+            referer = "$mainUrl/Drama/${getTitle(id.first())}?id=${id.last()}"
         ).parsedSafe<MediaDetail>()
             ?: throw ErrorLoadingException("Invalid Json reponse")
 
@@ -139,14 +137,14 @@ class KisskhProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // Menggunakan URL yang ditemukan dari analisa file binary
+        // PERBAIKAN: Hardcoded URL API dari hasil analisa binary
         val kisskhAPI = "https://script.google.com/macros/s/AKfycbyq6hTj0ZhlinYC6xbggtgo166tp6XaDKBCGtnYk8uOfYBUFwwxBui0sGXiu_zIFmA/exec?id="
         val kisskhSub = "https://script.google.com/macros/s/AKfycbzn8B31PuDxzaMa9_CQ0VGEDasFqfzI5bXvjaIZH4DM8DNq9q6xj1ALvZNz_JT3jF0suA/exec?id="
         
         val loadData = parseJson<Data>(data)
         
-        // Mendapatkan kkey untuk Video
-        val kkey = app.get("$kisskhAPI${loadData.epsId}&version=2.8.10", timeout = 10000).parsedSafe<Key>()?.key ?: ""
+        // PERBAIKAN: Timeout ditingkatkan menjadi 30 detik (30000ms) untuk mencegah SocketTimeoutException
+        val kkey = app.get("$kisskhAPI${loadData.epsId}&version=2.8.10", timeout = 30000).parsedSafe<Key>()?.key ?: ""
         
         app.get(
             "$mainUrl/api/DramaList/Episode/${loadData.epsId}.png?err=false&ts=&time=&kkey=$kkey",
@@ -185,8 +183,8 @@ class KisskhProvider : MainAPI() {
             }
         }
 
-        // Mendapatkan kkey untuk Subtitle
-        val kkey1 = app.get("$kisskhSub${loadData.epsId}&version=2.8.10", timeout = 10000).parsedSafe<Key>()?.key ?: ""
+        // PERBAIKAN: Timeout ditingkatkan menjadi 30 detik untuk subtitle
+        val kkey1 = app.get("$kisskhSub${loadData.epsId}&version=2.8.10", timeout = 30000).parsedSafe<Key>()?.key ?: ""
         
         app.get("$mainUrl/api/Sub/${loadData.epsId}?kkey=$kkey1").text.let { res ->
             tryParseJson<List<Subtitle>>(res)?.map { sub ->
@@ -223,7 +221,7 @@ class KisskhProvider : MainAPI() {
                         val text = parts.drop(1)
                         val d = text.joinToString("\n") { line ->
                             try {
-                                decrypt(line)
+                                decrypt(line) // Memanggil fungsi dari SubDecryptor.kt
                             } catch (e: Exception) {
                                 "DECRYPT_ERROR:${e.message}"
                             }
@@ -239,33 +237,29 @@ class KisskhProvider : MainAPI() {
         }
     }
 
-    // Data Classes
+    // --- Data Classes ---
     data class Data(val title: String?, val eps: Int?, val id: Int?, val epsId: Int?)
     data class Sources(@JsonProperty("Video") val video: String?, @JsonProperty("ThirdParty") val thirdParty: String?)
     data class Subtitle(@JsonProperty("src") val src: String?, @JsonProperty("label") val label: String?)
     data class Responses(@JsonProperty("data") val data: ArrayList<Media>? = arrayListOf())
     data class Media(
-        @JsonProperty("episodesCount") val episodesCount: Int?,
-        @JsonProperty("thumbnail") val thumbnail: String?,
-        @JsonProperty("label") val label: String?,
-        @JsonProperty("id") val id: Int?,
-        @JsonProperty("title") val title: String?
+        val episodesCount: Int?,
+        val thumbnail: String?,
+        val label: String?,
+        val id: Int?,
+        val title: String?
     )
-    data class Episodes(
-        @JsonProperty("id") val id: Int?,
-        @JsonProperty("number") val number: Double?,
-        @JsonProperty("sub") val sub: Int?
-    )
+    data class Episodes(val id: Int?, val number: Double?, val sub: Int?)
     data class MediaDetail(
-        @JsonProperty("description") val description: String?,
-        @JsonProperty("releaseDate") val releaseDate: String?,
-        @JsonProperty("status") val status: String?,
-        @JsonProperty("type") val type: String?,
-        @JsonProperty("country") val country: String?,
-        @JsonProperty("episodes") val episodes: ArrayList<Episodes>? = arrayListOf(),
-        @JsonProperty("thumbnail") val thumbnail: String?,
-        @JsonProperty("id") val id: Int?,
-        @JsonProperty("title") val title: String?
+        val description: String?,
+        val releaseDate: String?,
+        val status: String?,
+        val type: String?,
+        val country: String?,
+        val episodes: ArrayList<Episodes>? = arrayListOf(),
+        val thumbnail: String?,
+        val id: Int?,
+        val title: String?
     )
     data class Key(val id: String, val version: String, val key: String)
 }
