@@ -14,10 +14,10 @@ import javax.crypto.spec.SecretKeySpec
 class RpmLive : ExtractorApi() {
     override val name = "RpmLive"
     override val mainUrl = "https://playerngefilm21.rpmlive.online"
-    
-    // PERBAIKAN: Typo 'Referrer' -> 'Referer' (satu r di tengah)
     override val requiresReferer = true
 
+    // Suppress warning agar build tidak gagal karena deprecated
+    @Suppress("DEPRECATION")
     override suspend fun getUrl(
         url: String,
         referer: String?,
