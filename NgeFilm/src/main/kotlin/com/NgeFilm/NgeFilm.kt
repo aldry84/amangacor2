@@ -1,157 +1,135 @@
 package com.NgeFilm
 
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.*
 import org.jsoup.nodes.Element
 
-class NgeFilmProvider : MainAPI() {
+class NgeFilm : ParsableHttpProvider() {
     override var mainUrl = "https://new31.ngefilm.site"
-    override var name = "NGEFILM21"
+    override var name = "NgeFilm"
     override val hasMainPage = true
     override var lang = "id"
-    override val hasQuickSearch = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
-    private val mainHeaders = mapOf(
-        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Referer" to "$mainUrl/",
-        "X-Requested-With" to "XMLHttpRequest"
-    )
-
+    // ==============================
+    // 1. HALAMAN UTAMA (HOME)
+    // ==============================
     override val mainPage = mainPageOf(
-        "$mainUrl/year/2026/" to "Film Terbaru 2026",
-        "$mainUrl/populer/" to "Populer",
-        "$mainUrl/Genre/action/" to "Action",
-        "$mainUrl/Genre/horror/" to "Horror",
-        "$mainUrl/country/indonesia/" to "Indonesia",
-        "$mainUrl/country/korea/" to "Drama Korea"
+        "$mainUrl/" to "Terbaru",
+        // Kamu bisa menambahkan halaman lain nanti, misalnya:
+        // "$mainUrl/populer" to "Populer"
     )
 
-    // --- ENGINE ANTI-BLUR & BYPASS LAZY LOAD ---
-    private fun String?.toHighDef(): String? {
-        val url = this ?: return null
-        val fullUrl = if (url.startsWith("//")) "https:$url" else url
-        // Hapus penanda ukuran (misal -152x228) agar gambar jernih HD
-        return fullUrl.substringBefore("?").replace(Regex("-\\d+x\\d+"), "")
-    }
-
-    private fun Element.toSearchResponse(): SearchResponse? {
-        val titleElement = this.selectFirst(".entry-title a") ?: return null
-        val title = titleElement.text().trim()
-        val href = titleElement.attr("href")
-        val isTv = this.select(".gmr-numbeps").isNotEmpty() || href.contains("/tv/") || href.contains("/eps/")
-        
-        // FIX POSTER KOSONG: Ambil atribut data-src atau data-lazy-src
-        val img = this.selectFirst("img")
-        val rawPoster = img?.attr("data-src").takeIf { !it.isNullOrBlank() } 
-                     ?: img?.attr("data-lazy-src").takeIf { !it.isNullOrBlank() }
-                     ?: img?.attr("src")
-        
-        val posterUrl = rawPoster.toHighDef()
-        val quality = this.selectFirst(".gmr-quality-item")?.text() ?: "HD"
-
-        return if (isTv) {
-            newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
-                this.posterUrl = posterUrl
-                addQuality(quality)
-            }
-        } else {
-            newMovieSearchResponse(title, href, TvType.Movie) {
-                this.posterUrl = posterUrl
-                addQuality(quality)
-            }
+    override suspend fun getMainPage(
+        page: Int,
+        request: MainPageRequest
+    ): HomePageResponse {
+        val document = app.get(request.data).document
+        // Mengambil daftar film dari halaman utama
+        val home = document.select("#gmr-main-load article.item-infinite").mapNotNull {
+            toSearchResult(it)
         }
-    }
-
-    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val url = if (page > 1) "${request.data}page/$page/" else request.data
-        val doc = app.get(url, headers = mainHeaders).document
-        val home = doc.select("article").mapNotNull { it.toSearchResponse() }
         return newHomePageResponse(request.name, home)
     }
 
+    // ==============================
+    // 2. PENCARIAN (SEARCH)
+    // ==============================
     override suspend fun search(query: String): List<SearchResponse> {
+        // Menambahkan parameter post_type[] agar Film & TV Series muncul semua dalam pencarian
         val url = "$mainUrl/?s=$query&post_type[]=post&post_type[]=tv"
-        val doc = app.get(url, headers = mainHeaders).document
-        return doc.select("article").mapNotNull { it.toSearchResponse() }
-    }
-
-    override suspend fun load(url: String): LoadResponse {
-        val document = app.get(url, headers = mainHeaders).document
-        val title = document.selectFirst("h1.entry-title")?.text()?.trim() ?: "Unknown"
+        val document = app.get(url).document
         
-        // Poster HD dari meta tag og:image
-        val poster = document.selectFirst("meta[property=\"og:image\"]")?.attr("content")?.toHighDef()
-        val description = document.select(".entry-content p").text().trim()
-        val year = document.select(".gmr-moviedata:contains(Tahun) a").text().toIntOrNull()
-        val trailer = document.selectFirst(".gmr-trailer-popup")?.attr("href")
-
-        // FIX EPISODE: Menggunakan newEpisode agar tidak deprecated
-        val episodes = document.select(".gmr-listseries a").filter { 
-            !it.text().contains("Pilih Episode", true) && !it.hasClass("gmr-all-serie")
-        }.map {
-            newEpisode(it.attr("href")) {
-                this.name = it.text().trim()
-            }
-        }
-
-        return if (episodes.isNotEmpty()) {
-            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
-                this.posterUrl = poster
-                this.year = year
-                this.plot = description
-                addTrailer(trailer) // FIX TRAILER
-            }
-        } else {
-            newMovieLoadResponse(title, url, TvType.Movie, url) {
-                this.posterUrl = poster
-                this.year = year
-                this.plot = description
-                addTrailer(trailer) // FIX TRAILER
-            }
+        return document.select("#gmr-main-load article.item-infinite").mapNotNull {
+            toSearchResult(it)
         }
     }
 
+    // ==============================
+    // 3. DETAIL FILM (LOAD)
+    // ==============================
+    override suspend fun load(url: String): LoadResponse? {
+        val document = app.get(url).document
+
+        // Mengambil Metadata Film
+        val title = document.selectFirst("h1.entry-title")?.text()?.trim() ?: return null
+        val poster = document.selectFirst(".gmr-movie-view .attachment-thumbnail")?.attr("src")
+        val plot = document.select(".entry-content p").text()
+        
+        // Mengambil Tahun & Rating
+        val year = document.selectFirst("span.year")?.text()?.toIntOrNull()
+        val rating = document.selectFirst(".gmr-rating-item span")?.text()?.toRatingInt()
+        
+        // Mengambil Genre & Aktor
+        val tags = document.select(".gmr-movie-on a[rel='category tag']").map { it.text() }
+        val actors = document.select("[itemprop='actor'] span[itemprop='name']").map { it.text() }
+
+        // Mengambil Rekomendasi Film (Related Posts)
+        val recommendations = document.select("#gmr-related-post article").mapNotNull {
+            toSearchResult(it)
+        }
+
+        return newMovieLoadResponse(title, url, TvType.Movie, url) {
+            this.posterUrl = poster
+            this.year = year
+            this.plot = plot
+            this.tags = tags
+            this.rating = rating
+            this.actors = actors
+            this.recommendations = recommendations
+        }
+    }
+
+    // ==============================
+    // 4. MEMUTAR VIDEO (LINKS)
+    // ==============================
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val document = app.get(data, headers = mainHeaders).document
-        val postId = document.selectFirst("#muvipro_player_content_id")?.attr("data-id")
-        
-        if (postId != null) {
-            val ajaxUrl = "$mainUrl/wp-admin/admin-ajax.php"
-            // Loop tab p1 sampai p6 untuk menarik semua server player
-            (1..6).forEach { i ->
-                try {
-                    val response = app.post(
-                        ajaxUrl,
-                        data = mapOf("action" to "muvipro_player_content", "tab" to "p$i", "post_id" to postId),
-                        headers = mainHeaders
-                    ).text
+        val document = app.get(data).document
 
-                    // Regex untuk ambil link iframe atau m3u8 dari respon AJAX
-                    val iframeSrc = Regex("""<iframe.*?src=["'](.*?)["']""").find(response)?.groupValues?.get(1)
-                    val directM3u8 = Regex("""["'](https?://.*?\.m3u8.*?)["']""").find(response)?.groupValues?.get(1)
+        // Mencari iframe di dalam kotak player (class .gmr-embed-responsive)
+        document.select("div.gmr-embed-responsive iframe").forEach { iframe ->
+            var sourceUrl = iframe.attr("src")
+            
+            // Perbaikan URL jika formatnya protokol relatif (diawali //)
+            if (sourceUrl.startsWith("//")) {
+                sourceUrl = "https:$sourceUrl"
+            }
 
-                    if (!directM3u8.isNullOrBlank()) {
-                        M3u8Helper.generateM3u8("NgeFilm VIP $i", directM3u8, "$mainUrl/").forEach { link -> callback(link) }
-                    } else if (!iframeSrc.isNullOrBlank()) {
-                        val finalSrc = if (iframeSrc.startsWith("//")) "https:$iframeSrc" else iframeSrc
-                        loadExtractor(finalSrc, data, subtitleCallback, callback)
-                    }
-                } catch (e: Exception) { }
+            // Cloudstream akan otomatis mencoba mengekstrak video dari URL tersebut
+            // (misalnya jika linknya dari streamwish, doodstream, atau player bawaan mereka)
+            if (sourceUrl.isNotBlank()) {
+                loadExtractor(sourceUrl, callback, subtitleCallback)
             }
         }
 
-        // Cek link download sebagai cadangan tautan pemutaran
-        document.select(".gmr-download-list a").forEach { 
-            loadExtractor(it.attr("href"), data, subtitleCallback, callback)
-        }
-
         return true
+    }
+
+    // ==============================
+    // FUNGSI BANTUAN (HELPER)
+    // ==============================
+    private fun toSearchResult(element: Element): SearchResponse? {
+        // Mengambil Judul & Link
+        val titleElement = element.selectFirst(".entry-title a") ?: return null
+        val title = titleElement.text().replace("Nonton ", "").trim()
+        val url = fixUrl(titleElement.attr("href"))
+        
+        // Mengambil Poster
+        val imgElement = element.selectFirst(".content-thumbnail img")
+        // Prioritas ambil src, kalau tidak ada ambil data-src (lazy load)
+        val posterUrl = imgElement?.attr("src") ?: imgElement?.attr("data-src")
+        
+        // Mengambil Kualitas (WEB-DL, HD, dll)
+        val quality = element.selectFirst(".gmr-quality-item a")?.text()
+
+        return newMovieSearchResponse(title, url, TvType.Movie) {
+            this.posterUrl = posterUrl
+            addQuality(quality)
+        }
     }
 }
