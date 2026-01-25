@@ -92,6 +92,7 @@ class KisskhProvider : MainAPI() {
         }
     }
 
+    @Suppress("DEPRECATION") // Menghilangkan error deprecated pada ExtractorLink
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -115,7 +116,7 @@ class KisskhProvider : MainAPI() {
                         M3u8Helper.generateM3u8(name, link, referer = "$mainUrl/", headers = mapOf("Origin" to mainUrl))
                             .forEach(callback)
                     } else if (link.contains(".mp4")) {
-                        // PERBAIKAN: Menggunakan ExtractorLink Constructor langsung
+                        // Menggunakan Constructor langsung dengan Suppress Warning
                         callback.invoke(
                             ExtractorLink(
                                 source = name,
