@@ -742,7 +742,7 @@ object Lateri3PlayExtractor {
                 val url = "$Player4uApi/embed?key=$encodedQuery" + if (page > 0) "&page=$page" else ""
                 val doc = try { app.get(url, timeout = 10).document } catch(e:Exception) { null }
                 doc?.select(".playbtnx")?.forEach { element ->
-                    val titleText = element.text()?.split(" | ")?.lastOrNull() ?: ""
+                    val titleText = element.text().split(" | ").lastOrNull() ?: ""
                     var match = false
                     if (season == null && episode == null) {
                          if (year != null && (titleText.startsWith("$title $year", ignoreCase = true) || titleText.startsWith("$title ($year)", ignoreCase = true))) match = true
