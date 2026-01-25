@@ -18,7 +18,7 @@ class KisskhProvider : MainAPI() {
     override val hasDownloadSupport = true
     override val supportedTypes = setOf(TvType.AsianDrama, TvType.Anime)
 
-    // URL Google Script yang kita temukan dari file Java dekompilasi
+    // URL Google Script
     private val videoScriptUrl = "https://script.google.com/macros/s/AKfycbzn8B31PuDxzaMa9_CQ0VGEDasFqfzI5bXvjaIZH4DM8DNq9q6xj1ALvZNz_JT3jF0suA/exec"
     private val subScriptUrl = "https://script.google.com/macros/s/AKfycbyq6hTj0ZhlinYC6xbggtgo166tp6XaDKBCGtnYk8uOfYBUFwwxBui0sGXiu_zIFmA/exec"
 
@@ -115,10 +115,16 @@ class KisskhProvider : MainAPI() {
                         M3u8Helper.generateM3u8(name, link, referer = "$mainUrl/", headers = mapOf("Origin" to mainUrl))
                             .forEach(callback)
                     } else if (link.contains(".mp4")) {
+                        // PERBAIKAN: Menggunakan ExtractorLink Constructor langsung
                         callback.invoke(
-                            newExtractorLink(name, name, link, INFER_TYPE, Qualities.P720.value) {
-                                this.referer = mainUrl
-                            }
+                            ExtractorLink(
+                                source = name,
+                                name = name,
+                                url = link,
+                                referer = mainUrl,
+                                quality = Qualities.P720.value,
+                                type = INFER_TYPE
+                            )
                         )
                     } else {
                         loadExtractor(link, "$mainUrl/", subtitleCallback, callback)
