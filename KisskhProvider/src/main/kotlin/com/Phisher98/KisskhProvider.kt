@@ -92,7 +92,6 @@ class KisskhProvider : MainAPI() {
         }
     }
 
-    @Suppress("DEPRECATION") // Menghilangkan error deprecated pada ExtractorLink
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -116,16 +115,12 @@ class KisskhProvider : MainAPI() {
                         M3u8Helper.generateM3u8(name, link, referer = "$mainUrl/", headers = mapOf("Origin" to mainUrl))
                             .forEach(callback)
                     } else if (link.contains(".mp4")) {
-                        // Menggunakan Constructor langsung dengan Suppress Warning
+                        // PERBAIKAN: Menggunakan lambda di belakang (Trailling Lambda)
                         callback.invoke(
-                            ExtractorLink(
-                                source = name,
-                                name = name,
-                                url = link,
-                                referer = mainUrl,
-                                quality = Qualities.P720.value,
-                                type = INFER_TYPE
-                            )
+                            newExtractorLink(name, name, link, INFER_TYPE) {
+                                referer = mainUrl
+                                quality = Qualities.P720.value
+                            }
                         )
                     } else {
                         loadExtractor(link, "$mainUrl/", subtitleCallback, callback)
