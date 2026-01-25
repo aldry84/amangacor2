@@ -18,6 +18,7 @@ class KisskhProvider : MainAPI() {
     override val hasDownloadSupport = true
     override val supportedTypes = setOf(TvType.AsianDrama, TvType.Anime)
 
+    // URL Google Script
     private val videoScriptUrl = "https://script.google.com/macros/s/AKfycbzn8B31PuDxzaMa9_CQ0VGEDasFqfzI5bXvjaIZH4DM8DNq9q6xj1ALvZNz_JT3jF0suA/exec"
     private val subScriptUrl = "https://script.google.com/macros/s/AKfycbyq6hTj0ZhlinYC6xbggtgo166tp6XaDKBCGtnYk8uOfYBUFwwxBui0sGXiu_zIFmA/exec"
 
@@ -42,18 +43,30 @@ class KisskhProvider : MainAPI() {
     }
 
     private fun Media.toSearchResponse(): SearchResponse? {
+        // PERBAIKAN BUG: Menggunakan safe call (?.) bukan assertion (!!.)
+        // Jika label null, kode ini tidak akan crash lagi.
         if (!settingsForProvider.enableAdult && this.label?.contains("RAW") == true) return null
-        return newAnimeSearchResponse(title ?: return null, "$title/$id", TvType.TvSeries) {
-            this.posterUrl = thumbnail
-            addSub(episodesCount)
+        
+        val title = this.title ?: return null
+        val id = this.id ?: return null
+        
+        return newAnimeSearchResponse(title, "$title/$id", TvType.TvSeries) {
+            this.posterUrl = this@toSearchResponse.thumbnail
+            addSub(this@toSearchResponse.episodesCount)
         }
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        // PERBAIKAN: Menggunakan params map untuk menangani URL Encoding (spasi, simbol, dll) secara otomatis
+        // PERBAIKAN: Menggunakan params map untuk menangani URL Encoding secara otomatis
+        // Ini memastikan query seperti "One Piece" dikirim sebagai "One%20Piece"
         val url = "$mainUrl/api/DramaList/Search"
-        return app.get(url, params = mapOf("q" to query, "type" to "0"), referer = "$mainUrl/")
-            .parsedSafe<List<Media>>()?.mapNotNull { it.toSearchResponse() }
+        val res = app.get(
+            url, 
+            params = mapOf("q" to query, "type" to "0"), 
+            referer = "$mainUrl/"
+        ).text
+        
+        return tryParseJson<ArrayList<Media>>(res)?.mapNotNull { it.toSearchResponse() }
             ?: throw ErrorLoadingException("Invalid Json response")
     }
 
@@ -186,7 +199,7 @@ class KisskhProvider : MainAPI() {
         }
     }
 
-    // PERBAIKAN: Menambahkan kembali @JsonProperty untuk memastikan parsing JSON aman dari obfuscation
+    // Data Classes
     data class Data(val title: String?, val eps: Int?, val id: Int?, val epsId: Int?)
 
     data class Sources(
