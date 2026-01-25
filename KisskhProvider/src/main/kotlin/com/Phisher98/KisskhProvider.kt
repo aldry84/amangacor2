@@ -18,18 +18,23 @@ class KisskhProvider : MainAPI() {
     override val hasDownloadSupport = true
     override val supportedTypes = setOf(TvType.AsianDrama, TvType.Anime)
 
-    // URL Google Script (Pastikan tidak ada typo)
+    // URL Google Script
     private val videoScriptUrl = "https://script.google.com/macros/s/AKfycbzn8B31PuDxzaMa9_CQ0VGEDasFqfzI5bXvjaIZH4DM8DNq9q6xj1ALvZNz_JT3jF0suA/exec"
     private val subScriptUrl = "https://script.google.com/macros/s/AKfycbyq6hTj0ZhlinYC6xbggtgo166tp6XaDKBCGtnYk8uOfYBUFwwxBui0sGXiu_zIFmA/exec"
 
+    // UPDATE: Kategori Halaman Depan Sesuai Permintaan
     override val mainPage = mainPageOf(
         "&type=0&sub=0&country=0&status=0&order=2" to "Latest",
         "&type=0&sub=0&country=2&status=0&order=1" to "Top K-Drama",
         "&type=0&sub=0&country=1&status=0&order=1" to "Top C-Drama",
         "&type=2&sub=0&country=2&status=0&order=1" to "Movie Popular",
         "&type=1&sub=0&country=2&status=0&order=1" to "TVSeries Popular",
-        "&type=3&sub=0&country=0&status=0&order=1" to "Anime Popular",
-        "&type=0&sub=0&country=0&status=3&order=2" to "Upcoming"
+        // Kategori Baru:
+        "&type=2&sub=0&order=2&status=0&country=2" to "Movie Korea",
+        "&type=2&sub=0&order=2&status=0&country=1" to "Movie Ahok",
+        "&type=2&sub=0&order=1&status=0&country=5" to "Thailand",
+        "&type=2&sub=0&order=1&status=0&country=8" to "Filipina Popular",
+        "&type=2&sub=0&order=2&status=0&country=8" to "Filipina Last Update"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -43,7 +48,6 @@ class KisskhProvider : MainAPI() {
     }
 
     private fun Media.toSearchResponse(): SearchResponse? {
-        // PERBAIKAN: Menggunakan safe call (?.) untuk mencegah crash jika label null
         if (!settingsForProvider.enableAdult && this.label?.contains("RAW") == true) return null
         
         val title = this.title ?: return null
@@ -56,7 +60,6 @@ class KisskhProvider : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        // PERBAIKAN: Menggunakan params map untuk stabilitas pencarian
         val url = "$mainUrl/api/DramaList/Search"
         val res = app.get(
             url, 
@@ -148,7 +151,6 @@ class KisskhProvider : MainAPI() {
         // 4. Get Subtitles
         val subApiUrl = "$mainUrl/api/Sub/${loadData.epsId}?kkey=$subKey"
         app.get(subApiUrl).text.let { res ->
-            // PERBAIKAN: Menggunakan ArrayList agar parsing lebih kuat, dan handling bahasa
             tryParseJson<ArrayList<Subtitle>>(res)?.forEach { sub ->
                 val label = sub.label ?: "Unknown"
                 val lang = if (label == "Indonesia") "Indonesian" else label
@@ -176,7 +178,6 @@ class KisskhProvider : MainAPI() {
                         if (parts.size > 1) {
                             val header = parts.first()
                             val content = parts.drop(1).joinToString("\n")
-                            // Dekripsi baris per baris menggunakan SubDecryptor
                             val decryptedContent = content.split("\n").joinToString("\n") { line ->
                                 try {
                                     SubDecryptor.decrypt(line)
@@ -199,7 +200,7 @@ class KisskhProvider : MainAPI() {
         }
     }
 
-    // --- DATA CLASSES (Restored to Full Spec to avoid parsing errors) ---
+    // Data Classes
     
     data class Data(val title: String?, val eps: Int?, val id: Int?, val epsId: Int?)
 
@@ -243,7 +244,6 @@ class KisskhProvider : MainAPI() {
         @param:JsonProperty("title") val title: String?
     )
 
-    // PERBAIKAN: Mengembalikan field id dan version agar parsing Key tidak gagal
     data class Key(
         @param:JsonProperty("id") val id: String? = null,
         @param:JsonProperty("version") val version: String? = null,
