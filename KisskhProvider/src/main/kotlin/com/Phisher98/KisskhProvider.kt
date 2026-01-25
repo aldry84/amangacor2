@@ -22,7 +22,7 @@ class KisskhProvider : MainAPI() {
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val data = app.get("$mainUrl/api/DramaList/List?page=$page${request.data}").parsedSafe<Responses>()
-        val home = data?.data?.mapNotNull { it.toSearchResponse() } ?: throw ErrorLoadingException("Gagal load data")
+        val home = data?.data?.mapNotNull { it.toSearchResponse() } ?: throw ErrorLoadingException("Gagal memuat data halaman utama")
         return newHomePageResponse(request.name, home)
     }
 
@@ -50,10 +50,16 @@ class KisskhProvider : MainAPI() {
         }
     }
 
-    override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
+    override suspend fun loadLinks(
+        data: String, 
+        isCasting: Boolean, 
+        subtitleCallback: (SubtitleFile) -> Unit, 
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
         val loadData = AppUtils.parseJson<Data>(data)
         
-        val kkey = app.get("${BuildConfig.KissKh}${loadData.epsId}&version=2.8.10").parsedSafe<Key>()?.key ?: ""
+        // Mengambil kunci video menggunakan variabel dari build.gradle.kts
+        val kkey = app.get("${BuildConfig.KISSKH_API}${loadData.epsId}&version=2.8.10").parsedSafe<Key>()?.key ?: ""
         val sources = app.get("$mainUrl/api/DramaList/Episode/${loadData.epsId}.png?kkey=$kkey").parsedSafe<Sources>()
         
         sources?.run {
@@ -64,7 +70,8 @@ class KisskhProvider : MainAPI() {
             }
         }
 
-        val skey = app.get("${BuildConfig.KisskhSub}${loadData.epsId}&version=2.8.10").parsedSafe<Key>()?.key ?: ""
+        // Mengambil kunci subtitle menggunakan variabel dari build.gradle.kts
+        val skey = app.get("${BuildConfig.KISSKH_SUB}${loadData.epsId}&version=2.8.10").parsedSafe<Key>()?.key ?: ""
         app.get("$mainUrl/api/Sub/${loadData.epsId}?kkey=$skey").parsedSafe<List<Subtitle>>()?.forEach { sub ->
             subtitleCallback.invoke(SubtitleFile(sub.label ?: "Unknown", sub.src ?: ""))
         }
@@ -89,6 +96,7 @@ class KisskhProvider : MainAPI() {
         }
     }
 
+    [span_1](start_span)// Model Data[span_1](end_span)
     data class Data(val title: String?, val eps: Int?, val id: Int?, val epsId: Int?)
     data class Key(val key: String)
     data class Responses(val data: List<Media>?)
