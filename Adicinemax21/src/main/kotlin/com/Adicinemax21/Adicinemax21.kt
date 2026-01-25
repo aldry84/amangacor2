@@ -65,7 +65,10 @@ open class Adicinemax21 : TmdbProvider() {
         const val mappleAPI = "https://mapple.uk"
         const val vidlinkAPI = "https://vidlink.pro"
         const val vidfastAPI = "https://vidfast.pro"
-        const val wyzieAPI = "https://sub.wyzie.ru"
+        
+        // UPDATED WYZIE API URL (Using 'subs' instead of 'sub')
+        const val wyzieAPI = "https://subs.wyzie.ru" 
+        
         const val vixsrcAPI = "https://vixsrc.to"
         const val vidsrccxAPI = "https://vidsrc.cx"
         const val superembedAPI = "https://multiembed.mov"
@@ -442,7 +445,8 @@ open class Adicinemax21 : TmdbProvider() {
                 invokeMapple(res.id, res.season, res.episode, subtitleCallback, callback)
             },
             {
-                invokeWyzie(res.id, res.season, res.episode, subtitleCallback)
+                // UPDATED: Prioritize IMDB ID for better subtitle match
+                invokeWyzie(res.imdbId ?: res.id, res.season, res.episode, subtitleCallback)
             },
             {
                 invokeSuperembed(
