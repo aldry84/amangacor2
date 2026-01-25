@@ -1,4 +1,4 @@
-package com.phisher98
+package com.Phisher98
 
 import com.lagradost.cloudstream3.base64DecodeArray
 import javax.crypto.Cipher
@@ -6,7 +6,6 @@ import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 object SubDecryptor {
-    [span_4](start_span)[span_5](start_span)// Kunci dan IV dari sumber asli[span_4](end_span)[span_5](end_span)
     private val KEYS = listOf("AmSmZVcH93UQUezi", "8056483646328763", "sWODXX04QRTkHdlZ")
     private val IVS = listOf(
         intArrayOf(1382367819, 1465333859, 1902406224, 1164854838),
