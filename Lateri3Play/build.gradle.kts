@@ -1,29 +1,9 @@
 @file:Suppress("UnstableApiUsage")
 
 android {
-    // Namespace wajib untuk resource ID agar tidak crash
+    // Cukup sisakan namespace saja.
+    // compileSdk, minSdk, kotlinOptions, dll sudah diatur otomatis oleh Root build.gradle.kts
     namespace = "com.AdiManuLateri3"
-    
-    compileSdk = 34
-
-    defaultConfig {
-        minSdk = 21
-        // targetSdk, versionCode, dan versionName dihapus karena menyebabkan error di Library Module
-    }
-
-    buildFeatures {
-        buildConfig = true
-        viewBinding = true
-    }
-
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
-    }
-
-    kotlinOptions {
-        jvmTarget = "1.8"
-    }
 }
 
 cloudstream {
