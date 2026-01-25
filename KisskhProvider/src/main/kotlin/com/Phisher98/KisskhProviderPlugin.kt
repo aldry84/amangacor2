@@ -1,4 +1,4 @@
-package com.phisher98
+package com.Phisher98 // Pastikan package ini SAMA dengan KisskhProvider.kt
 
 import com.lagradost.cloudstream3.plugins.BasePlugin
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
@@ -6,7 +6,7 @@ import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 @CloudstreamPlugin
 class KisskhProviderPlugin: BasePlugin() {
     override fun load() {
-        // All providers should be added in this manner. Please don't edit the providers list directly.
+        // Pastikan nama kelasnya benar: KisskhProvider
         registerMainAPI(KisskhProvider())
     }
 }
