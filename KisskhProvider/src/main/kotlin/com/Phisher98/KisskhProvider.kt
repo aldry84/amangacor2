@@ -1,4 +1,4 @@
-package com.phisher98
+package com.Phisher98
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
@@ -53,7 +53,6 @@ class KisskhProvider : MainAPI() {
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
         val loadData = AppUtils.parseJson<Data>(data)
         
-        [span_7](start_span)// Ambil link video[span_7](end_span)
         val kkey = app.get("${BuildConfig.KissKh}${loadData.epsId}&version=2.8.10").parsedSafe<Key>()?.key ?: ""
         val sources = app.get("$mainUrl/api/DramaList/Episode/${loadData.epsId}.png?kkey=$kkey").parsedSafe<Sources>()
         
@@ -65,7 +64,6 @@ class KisskhProvider : MainAPI() {
             }
         }
 
-        [span_8](start_span)// Ambil link subtitle[span_8](end_span)
         val skey = app.get("${BuildConfig.KisskhSub}${loadData.epsId}&version=2.8.10").parsedSafe<Key>()?.key ?: ""
         app.get("$mainUrl/api/Sub/${loadData.epsId}?kkey=$skey").parsedSafe<List<Subtitle>>()?.forEach { sub ->
             subtitleCallback.invoke(SubtitleFile(sub.label ?: "Unknown", sub.src ?: ""))
@@ -91,7 +89,6 @@ class KisskhProvider : MainAPI() {
         }
     }
 
-    // Data Models
     data class Data(val title: String?, val eps: Int?, val id: Int?, val epsId: Int?)
     data class Key(val key: String)
     data class Responses(val data: List<Media>?)
