@@ -18,7 +18,6 @@ class KisskhProvider : MainAPI() {
     override val hasDownloadSupport = true
     override val supportedTypes = setOf(TvType.AsianDrama, TvType.Anime)
 
-    // URL Google Script
     private val videoScriptUrl = "https://script.google.com/macros/s/AKfycbzn8B31PuDxzaMa9_CQ0VGEDasFqfzI5bXvjaIZH4DM8DNq9q6xj1ALvZNz_JT3jF0suA/exec"
     private val subScriptUrl = "https://script.google.com/macros/s/AKfycbyq6hTj0ZhlinYC6xbggtgo166tp6XaDKBCGtnYk8uOfYBUFwwxBui0sGXiu_zIFmA/exec"
 
@@ -51,8 +50,10 @@ class KisskhProvider : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val url = "$mainUrl/api/DramaList/Search?q=$query&type=0"
-        return app.get(url, referer = "$mainUrl/").parsedSafe<List<Media>>()?.mapNotNull { it.toSearchResponse() }
+        // PERBAIKAN: Menggunakan params map untuk menangani URL Encoding (spasi, simbol, dll) secara otomatis
+        val url = "$mainUrl/api/DramaList/Search"
+        return app.get(url, params = mapOf("q" to query, "type" to "0"), referer = "$mainUrl/")
+            .parsedSafe<List<Media>>()?.mapNotNull { it.toSearchResponse() }
             ?: throw ErrorLoadingException("Invalid Json response")
     }
 
@@ -147,14 +148,12 @@ class KisskhProvider : MainAPI() {
         return true
     }
 
-    // Interceptor untuk mendekripsi subtitle .txt
     override fun getVideoInterceptor(extractorLink: ExtractorLink): Interceptor {
         return Interceptor { chain ->
             val request = chain.request()
             val response = chain.proceed(request)
             if (response.request.url.toString().contains(".txt")) {
                 val bodyString = response.body.string()
-                // Logic dekripsi subtitle dari potongan teks
                 val decryptedBody = try {
                     val chunks = bodyString.split(Regex("^\\d+$", RegexOption.MULTILINE))
                         .filter { it.isNotBlank() }
@@ -163,22 +162,20 @@ class KisskhProvider : MainAPI() {
                     chunks.mapIndexed { index, chunk ->
                         val parts = chunk.split("\n")
                         if (parts.size > 1) {
-                            val header = parts.first() // Waktu/urutan sub
+                            val header = parts.first()
                             val content = parts.drop(1).joinToString("\n")
-                            // Dekripsi baris per baris
                             val decryptedContent = content.split("\n").joinToString("\n") { line ->
                                 try {
                                     SubDecryptor.decrypt(line)
                                 } catch (e: Exception) {
-                                    "" // Skip baris error
+                                    ""
                                 }
                             }
-                            // Susun ulang format SRT (Index -> Waktu -> Teks)
                             "${index + 1}\n$header\n$decryptedContent"
                         } else ""
                     }.filter { it.isNotBlank() }.joinToString("\n\n")
                 } catch (e: Exception) {
-                    bodyString // Return original jika gagal total
+                    bodyString
                 }
                 
                 return@Interceptor response.newBuilder()
@@ -189,19 +186,48 @@ class KisskhProvider : MainAPI() {
         }
     }
 
-    // Data Classes
+    // PERBAIKAN: Menambahkan kembali @JsonProperty untuk memastikan parsing JSON aman dari obfuscation
     data class Data(val title: String?, val eps: Int?, val id: Int?, val epsId: Int?)
-    
-    // Perbaikan: Tambahkan @param: sebelum JsonProperty untuk menghilangkan warning
+
     data class Sources(
-        @param:JsonProperty("Video") val video: String?, 
+        @param:JsonProperty("Video") val video: String?,
         @param:JsonProperty("ThirdParty") val thirdParty: String?
     )
-    
-    data class Subtitle(val src: String?, val label: String?)
-    data class Responses(val data: ArrayList<Media>? = arrayListOf())
-    data class Media(val episodesCount: Int?, val thumbnail: String?, val label: String?, val id: Int?, val title: String?)
-    data class Episodes(val id: Int?, val number: Double?, val sub: Int?)
-    data class MediaDetail(val description: String?, val releaseDate: String?, val status: String?, val type: String?, val country: String?, val episodes: ArrayList<Episodes>? = arrayListOf(), val thumbnail: String?, val id: Int?, val title: String?)
+
+    data class Subtitle(
+        @param:JsonProperty("src") val src: String?,
+        @param:JsonProperty("label") val label: String?
+    )
+
+    data class Responses(
+        @param:JsonProperty("data") val data: ArrayList<Media>? = arrayListOf()
+    )
+
+    data class Media(
+        @param:JsonProperty("episodesCount") val episodesCount: Int?,
+        @param:JsonProperty("thumbnail") val thumbnail: String?,
+        @param:JsonProperty("label") val label: String?,
+        @param:JsonProperty("id") val id: Int?,
+        @param:JsonProperty("title") val title: String?
+    )
+
+    data class Episodes(
+        @param:JsonProperty("id") val id: Int?,
+        @param:JsonProperty("number") val number: Double?,
+        @param:JsonProperty("sub") val sub: Int?
+    )
+
+    data class MediaDetail(
+        @param:JsonProperty("description") val description: String?,
+        @param:JsonProperty("releaseDate") val releaseDate: String?,
+        @param:JsonProperty("status") val status: String?,
+        @param:JsonProperty("type") val type: String?,
+        @param:JsonProperty("country") val country: String?,
+        @param:JsonProperty("episodes") val episodes: ArrayList<Episodes>? = arrayListOf(),
+        @param:JsonProperty("thumbnail") val thumbnail: String?,
+        @param:JsonProperty("id") val id: Int?,
+        @param:JsonProperty("title") val title: String?
+    )
+
     data class Key(val key: String?)
 }
