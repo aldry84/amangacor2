@@ -13,10 +13,8 @@ class JavHey : MainAPI() {
     override val supportedTypes = setOf(TvType.NSFW)
 
     override val mainPage = mainPageOf(
-        "$mainUrl/videos/paling-baru/page=" to "Paling Baru",
         "$mainUrl/videos/paling-dilihat/page=" to "Paling Dilihat",
-        "$mainUrl/videos/top-rating/page=" to "Top Rating",
-        "$mainUrl/videos/jav-sub-indo/page=" to "JAV Sub Indo"
+        "$mainUrl/videos/top-rating/page=" to "Top Rating"
     )
 
     override suspend fun getMainPage(
