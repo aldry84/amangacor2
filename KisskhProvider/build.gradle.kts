@@ -29,4 +29,7 @@ cloudstream {
     status = 1
     tvTypes = listOf("AsianDrama", "TvSeries", "Anime", "Movie")
     isCrossPlatform = true
+    
+    // Icon telah ditambahkan di sini
+    iconUrl = "https://www.google.com/s2/favicons?domain=kisskh.ovh&sz=%size%"
 }
