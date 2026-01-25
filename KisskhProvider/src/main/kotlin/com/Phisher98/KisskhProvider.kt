@@ -92,6 +92,7 @@ class KisskhProvider : MainAPI() {
         }
     }
 
+    @Suppress("DEPRECATION")
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -115,7 +116,6 @@ class KisskhProvider : MainAPI() {
                         M3u8Helper.generateM3u8(name, link, referer = "$mainUrl/", headers = mapOf("Origin" to mainUrl))
                             .forEach(callback)
                     } else if (link.contains(".mp4")) {
-                        // PERBAIKAN: Menggunakan lambda di belakang (Trailling Lambda)
                         callback.invoke(
                             newExtractorLink(name, name, link, INFER_TYPE) {
                                 referer = mainUrl
@@ -191,7 +191,13 @@ class KisskhProvider : MainAPI() {
 
     // Data Classes
     data class Data(val title: String?, val eps: Int?, val id: Int?, val epsId: Int?)
-    data class Sources(@JsonProperty("Video") val video: String?, @JsonProperty("ThirdParty") val thirdParty: String?)
+    
+    // Perbaikan: Tambahkan @param: sebelum JsonProperty untuk menghilangkan warning
+    data class Sources(
+        @param:JsonProperty("Video") val video: String?, 
+        @param:JsonProperty("ThirdParty") val thirdParty: String?
+    )
+    
     data class Subtitle(val src: String?, val label: String?)
     data class Responses(val data: ArrayList<Media>? = arrayListOf())
     data class Media(val episodesCount: Int?, val thumbnail: String?, val label: String?, val id: Int?, val title: String?)
