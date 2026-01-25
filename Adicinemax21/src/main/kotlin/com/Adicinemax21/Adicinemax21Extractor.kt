@@ -895,7 +895,7 @@ object Adicinemax21Extractor : Adicinemax21() {
             }
     }
 
-    // ================== WYZIE SOURCE (UPDATED) ==================
+    // ================== WYZIE SOURCE (UPDATED & FIXED) ==================
     suspend fun invokeWyzie(
         id: Any?, // Terima ID apa saja (String/Int)
         season: Int?,
@@ -923,7 +923,7 @@ object Adicinemax21Extractor : Adicinemax21() {
                 }
 
                 subtitleCallback(
-                    SubtitleFile(
+                    newSubtitleFile( // Updated: Pakai newSubtitleFile (FIX WARNING)
                         label,
                         subUrl
                     )
