@@ -18,248 +18,117 @@ import okhttp3.ResponseBody.Companion.toResponseBody
 import java.util.ArrayList
 
 class KisskhProvider : MainAPI() {
-    override var mainUrl = "https://kisskh.ovh"
-    override var name = "Kisskh"
-    override val hasMainPage = true
-    override val hasDownloadSupport = true
-    override val supportedTypes = setOf(
-        TvType.AsianDrama,
-        TvType.Anime
-    )
+    [span_18](start_span)override var mainUrl = "https://kisskh.ovh"[span_18](end_span)
+    [span_19](start_span)override var name = "Kisskh"[span_19](end_span)
+    [span_20](start_span)override val hasMainPage = true[span_20](end_span)
+    [span_21](start_span)override val hasDownloadSupport = true[span_21](end_span)
+    [span_22](start_span)override val supportedTypes = setOf(TvType.AsianDrama, TvType.Anime)[span_22](end_span)
+
+    [span_23](start_span)// URL API eksternal untuk mengambil kkey[span_23](end_span)
+    private val kisskhApiUrl = "https://script.google.com/macros/s/AKfycbzn8B31PuDxzaMa9_CQ0VGEDasFqfzI5bXvjaIZH4DM8DNq9q6xj1ALvZNz_JT3jF0suA/exec?id="
+    private val kisskhSubUrl = "https://script.google.com/macros/s/AKfycbyq6hTj0ZhlinYC6xbggtgo166tp6XaDKBCGtnYk8uOfYBUFwwxBui0sGXiu_zIFmA/exec?id="
 
     override val mainPage = mainPageOf(
         "&type=0&sub=0&country=0&status=0&order=2" to "Latest",
         "&type=0&sub=0&country=2&status=0&order=1" to "Top K-Drama",
-        "&type=0&sub=0&country=1&status=0&order=1" to "Top C-Drama",
-        "&type=2&sub=0&country=2&status=0&order=1" to "Movie Popular",
-        "&type=2&sub=0&country=2&status=0&order=2" to "Movie Last Update",
-        "&type=1&sub=0&country=2&status=0&order=1" to "TVSeries Popular",
-        "&type=1&sub=0&country=2&status=0&order=2" to "TVSeries Last Update",
-        "&type=3&sub=0&country=0&status=0&order=1" to "Anime Popular",
-        "&type=3&sub=0&country=0&status=0&order=2" to "Anime Latest Update",
-        "&type=4&sub=0&country=0&status=0&order=1" to "Hollywood Popular",
-        "&type=4&sub=0&country=0&status=0&order=2" to "Hollywood Last Update",
-        "&type=0&sub=0&country=0&status=3&order=2" to "Upcoming"
-    )
+        "&type=3&sub=0&country=0&status=0&order=1" to "Anime Popular"
+    [span_24](start_span))
 
-    override suspend fun getMainPage(
-        page: Int,
-        request: MainPageRequest
-    ): HomePageResponse {
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val home = app.get("$mainUrl/api/DramaList/List?page=$page${request.data}")
             .parsedSafe<Responses>()?.data
-            ?.mapNotNull { media ->
-                media.toSearchResponse()
-            } ?: throw ErrorLoadingException("Invalid Json reponse")
-        return newHomePageResponse(
-            list = HomePageList(
-                name = request.name,
-                list = home,
-                isHorizontalImages = true
-            ),
-            hasNext = true
-        )
+            ?.mapNotNull { it.toSearchResponse() } ?: throw ErrorLoadingException("Invalid Json response")
+        return newHomePageResponse(HomePageList(request.name, home, isHorizontalImages = true), true)[span_24](end_span)
     }
 
     private fun Media.toSearchResponse(): SearchResponse? {
-        if (!settingsForProvider.enableAdult && (this.label ?: "").contains("RAW")) {
-            return null
-        }
-
-        return newAnimeSearchResponse(
-            title ?: return null,
-            "$title/$id",
-            TvType.TvSeries,
-        ) {
+        [span_25](start_span)if (!settingsForProvider.enableAdult && this.label?.contains("RAW") == true) return null[span_25](end_span)
+        return newAnimeSearchResponse(title ?: return null, "$title/$id", TvType.TvSeries) {
             this.posterUrl = thumbnail
             addSub(episodesCount)
-        }
+        [span_26](start_span)}
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val searchResponse =
-            app.get("$mainUrl/api/DramaList/Search?q=$query&type=0", referer = "$mainUrl/").text
-        return tryParseJson<ArrayList<Media>>(searchResponse)?.mapNotNull { media ->
-            media.toSearchResponse()
-        } ?: throw ErrorLoadingException("Invalid Json reponse")
-    }
-
-    private fun getTitle(str: String): String {
-        return str.replace(Regex("[^a-zA-Z0-9]"), "-")
+        val searchResponse = app.get("$mainUrl/api/DramaList/Search?q=$query&type=0", referer = "$mainUrl/").text
+        return tryParseJson<ArrayList<Media>>(searchResponse)?.mapNotNull { it.toSearchResponse() } ?: emptyList()[span_26](end_span)
     }
 
     override suspend fun load(url: String): LoadResponse? {
         val id = url.split("/")
-        val res = app.get(
-            "$mainUrl/api/DramaList/Drama/${id.last()}?isq=false",
-            referer = "$mainUrl/Drama/${getTitle(id.first())}?id=${id.last()}"
-        ).parsedSafe<MediaDetail>()
-            ?: throw ErrorLoadingException("Invalid Json reponse")
+        val res = app.get("$mainUrl/api/DramaList/Drama/${id.last()}?isq=false").parsedSafe<MediaDetail>() 
+            [span_27](start_span)?: throw ErrorLoadingException("Invalid Json response")[span_27](end_span)
 
         val episodes = res.episodes?.map { eps ->
-            val displayNumber = eps.number?.let { num ->
-                if (num % 1.0 == 0.0) num.toInt().toString() else num.toString()
-            } ?: ""
-
+            val displayNumber = if (eps.number?.let { it % 1.0 == 0.0 } == true) eps.number.toInt().toString() else eps.number.toString()
             newEpisode(Data(res.title, eps.number?.toInt(), res.id, eps.id).toJson()) {
                 this.name = "Episode $displayNumber"
             }
-        } ?: throw ErrorLoadingException("No Episode")
+        [span_28](start_span)} ?: throw ErrorLoadingException("No Episode")[span_28](end_span)
 
-        return newTvSeriesLoadResponse(
-            res.title ?: return null,
-            url,
-            if (res.type == "Movie" || episodes.size == 1) TvType.Movie else TvType.TvSeries,
-            episodes.reversed()
-        ) {
+        return newTvSeriesLoadResponse(res.title ?: return null, url, TvType.TvSeries, episodes.reversed()) {
             this.posterUrl = res.thumbnail
-            this.year = res.releaseDate?.split("-")?.first()?.toIntOrNull()
             this.plot = res.description
-            this.tags = listOf("${res.country}", "${res.status}", "${res.type}")
-            this.showStatus = when (res.status) {
-                "Completed" -> ShowStatus.Completed
-                "Ongoing" -> ShowStatus.Ongoing
-                else -> null
-            }
-        }
+        [span_29](start_span)}
     }
 
-    private fun getLanguage(str: String): String {
-        return when (str) {
-            "Indonesia" -> "Indonesian"
-            else -> str
-        }
-    }
-
-    override suspend fun loadLinks(
-        data: String,
-        isCasting: Boolean,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ): Boolean {
-        // PERBAIKAN: Hardcoded URL API dari hasil analisa binary
-        val kisskhAPI = "https://script.google.com/macros/s/AKfycbyq6hTj0ZhlinYC6xbggtgo166tp6XaDKBCGtnYk8uOfYBUFwwxBui0sGXiu_zIFmA/exec?id="
-        val kisskhSub = "https://script.google.com/macros/s/AKfycbzn8B31PuDxzaMa9_CQ0VGEDasFqfzI5bXvjaIZH4DM8DNq9q6xj1ALvZNz_JT3jF0suA/exec?id="
-        
+    override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
         val loadData = parseJson<Data>(data)
         
-        // PERBAIKAN: Timeout ditingkatkan menjadi 30 detik (30000ms) untuk mencegah SocketTimeoutException
-        val kkey = app.get("$kisskhAPI${loadData.epsId}&version=2.8.10", timeout = 30000).parsedSafe<Key>()?.key ?: ""
+        // Ambil kkey untuk video[span_29](end_span)
+        val kkey = app.get("$kisskhApiUrl${loadData.epsId}&version=2.8.10").parsedSafe<Key>()?.key ?: ""
         
-        app.get(
-            "$mainUrl/api/DramaList/Episode/${loadData.epsId}.png?err=false&ts=&time=&kkey=$kkey",
-            referer = "$mainUrl/Drama/${getTitle("${loadData.title}")}/Episode-${loadData.eps}?id=${loadData.id}&ep=${loadData.epsId}&page=0&pageSize=100"
-        ).parsedSafe<Sources>()?.let { source ->
+        app.get("$mainUrl/api/DramaList/Episode/${loadData.epsId}.png?err=false&kkey=$kkey", referer = "$mainUrl/").parsedSafe<Sources>()?.let { source ->
             listOf(source.video, source.thirdParty).amap { link ->
                 safeApiCall {
                     if (link?.contains(".m3u8") == true) {
-                        M3u8Helper.generateM3u8(
-                            this.name,
-                            fixUrl(link),
-                            referer = "$mainUrl/",
-                            headers = mapOf("Origin" to mainUrl)
-                        ).forEach(callback)
+                        M3u8Helper.generateM3u8(this.name, link, referer = "$mainUrl/").forEach(callback)
                     } else if (link?.contains("mp4") == true) {
-                        callback.invoke(
-                            newExtractorLink(
-                                this.name,
-                                this.name,
-                                url = fixUrl(link),
-                                INFER_TYPE
-                            ) {
-                                this.referer = mainUrl
-                                this.quality = Qualities.P720.value
-                            }
-                        )
-                    } else {
-                        loadExtractor(
-                            link?.substringBefore("=http") ?: return@safeApiCall,
-                            "$mainUrl/",
-                            subtitleCallback,
-                            callback
-                        )
+                        callback.invoke(newExtractorLink(this.name, this.name, link, INFER_TYPE))
                     }
                 }
             }
         }
 
-        // PERBAIKAN: Timeout ditingkatkan menjadi 30 detik untuk subtitle
-        val kkey1 = app.get("$kisskhSub${loadData.epsId}&version=2.8.10", timeout = 30000).parsedSafe<Key>()?.key ?: ""
-        
-        app.get("$mainUrl/api/Sub/${loadData.epsId}?kkey=$kkey1").text.let { res ->
-            tryParseJson<List<Subtitle>>(res)?.map { sub ->
-                subtitleCallback.invoke(
-                    newSubtitleFile(
-                        getLanguage(sub.label ?: return@map),
-                        sub.src ?: ""
-                    )
-                )
-            }
-        }
+        [span_30](start_span)// Ambil kkey untuk subtitle[span_30](end_span)
+        val kkeySub = app.get("$kisskhSubUrl${loadData.epsId}&version=2.8.10").parsedSafe<Key>()?.key ?: ""
+        app.get("$mainUrl/api/Sub/${loadData.epsId}?kkey=$kkeySub").parsedSafe<List<Subtitle>>()?.forEach { sub ->
+            subtitleCallback.invoke(newSubtitleFile(sub.label ?: "Unknown", sub.src ?: ""))
+        [span_31](start_span)}
 
         return true
     }
 
-    private val CHUNK_REGEX1 by lazy { Regex("^\\d+$", RegexOption.MULTILINE) }
-    
-    override fun getVideoInterceptor(extractorLink: ExtractorLink): Interceptor {
-        return object : Interceptor {
-            override fun intercept(chain: Interceptor.Chain): Response {
-                val request = chain.request().newBuilder().build()
-                val response = chain.proceed(request)
-                if (response.request.url.toString().contains(".txt")) {
-                    val responseBody = response.body.string()
-                    val chunks = responseBody.split(CHUNK_REGEX1)
-                        .filter(String::isNotBlank)
-                        .map(String::trim)
-                    val decrypted = chunks.mapIndexed { index, chunk ->
-                        if (chunk.isBlank()) return@mapIndexed ""
-                        val parts = chunk.split("\n")
-                        if (parts.isEmpty()) return@mapIndexed ""
+    private val CHUNK_REGEX1 by lazy { Regex("^\\d+$", RegexOption.MULTILINE) }[span_31](end_span)
 
-                        val header = parts.first()
-                        val text = parts.drop(1)
-                        val d = text.joinToString("\n") { line ->
-                            try {
-                                decrypt(line) // Memanggil fungsi dari SubDecryptor.kt
-                            } catch (e: Exception) {
-                                "DECRYPT_ERROR:${e.message}"
-                            }
-                        }
-                        listOf(index + 1, header, d).joinToString("\n")
-                    }.filter { it.isNotEmpty() }
-                        .joinToString("\n\n")
-                    val newBody = decrypted.toResponseBody(response.body.contentType())
-                    return response.newBuilder().body(newBody).build()
-                }
-                return response
+    override fun getVideoInterceptor(extractorLink: ExtractorLink): Interceptor {
+        return Interceptor { chain ->
+            val response = chain.proceed(chain.request())
+            [span_32](start_span)if (response.request.url.toString().contains(".txt")) {[span_32](end_span)
+                val responseBody = response.body.string()
+                val chunks = responseBody.split(CHUNK_REGEX1).filter { it.isNotBlank() }.map { it.trim() }
+                val decrypted = chunks.mapIndexed { index, chunk ->
+                    val parts = chunk.split("\n")
+                    if (parts.size < 2) return@mapIndexed ""
+                    val header = parts.first()
+                    val d = parts.drop(1).joinToString("\n") { line ->
+                        try { decrypt(line) } catch (e: Exception) { line }
+                    }
+                    "${index + 1}\n$header\n$d"
+                }.joinToString("\n\n")
+                return@Interceptor response.newBuilder().body(decrypted.toResponseBody(response.body.contentType())).build()
             }
+            response
         }
     }
 
-    // --- Data Classes ---
+    [span_33](start_span)// Data Classes[span_33](end_span)
     data class Data(val title: String?, val eps: Int?, val id: Int?, val epsId: Int?)
     data class Sources(@JsonProperty("Video") val video: String?, @JsonProperty("ThirdParty") val thirdParty: String?)
     data class Subtitle(@JsonProperty("src") val src: String?, @JsonProperty("label") val label: String?)
     data class Responses(@JsonProperty("data") val data: ArrayList<Media>? = arrayListOf())
-    data class Media(
-        val episodesCount: Int?,
-        val thumbnail: String?,
-        val label: String?,
-        val id: Int?,
-        val title: String?
-    )
-    data class Episodes(val id: Int?, val number: Double?, val sub: Int?)
-    data class MediaDetail(
-        val description: String?,
-        val releaseDate: String?,
-        val status: String?,
-        val type: String?,
-        val country: String?,
-        val episodes: ArrayList<Episodes>? = arrayListOf(),
-        val thumbnail: String?,
-        val id: Int?,
-        val title: String?
-    )
-    data class Key(val id: String, val version: String, val key: String)
+    data class Media(@JsonProperty("episodesCount") val episodesCount: Int?, @JsonProperty("thumbnail") val thumbnail: String?, @JsonProperty("label") val label: String?, @JsonProperty("id") val id: Int?, @JsonProperty("title") val title: String?)
+    data class MediaDetail(@JsonProperty("description") val description: String?, val episodes: ArrayList<Episodes>? = arrayListOf(), val thumbnail: String?, val id: Int?, val title: String?)
+    data class Episodes(val id: Int?, val number: Double?)
+    data class Key(val key: String)
 }
