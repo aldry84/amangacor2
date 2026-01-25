@@ -18,8 +18,8 @@ android {
         val kissKhSubUrl = properties.getProperty("KisskhSub") 
             ?: "https://script.google.com/macros/s/AKfycbyq6hTj0ZhlinYC6xbggtgo166tp6XaDKBCGtnYk8uOfYBUFwwxBui0sGXiu_zIFmA/exec?id="
 
-        buildConfigField("String", "KissKh", "\"$kissKhUrl\"")
-        buildConfigField("String", "KisskhSub", "\"$kissKhSubUrl\"")
+        buildConfigField("String", "KISSKH_API", "\"$kissKhUrl\"")
+        buildConfigField("String", "KISSKH_SUB", "\"$kissKhSubUrl\"")
     }
 }
 
@@ -28,6 +28,5 @@ cloudstream {
     authors = listOf("aldry84")
     status = 1
     tvTypes = listOf("AsianDrama", "TvSeries", "Anime", "Movie")
-    iconUrl = "https://www.google.com/s2/favicons?domain=kisskh.co&sz=%size%"
     isCrossPlatform = true
 }
