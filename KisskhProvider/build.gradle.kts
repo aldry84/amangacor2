@@ -1,32 +1,30 @@
+android {
+    defaultConfig {
+        // Inisialisasi properti
+        val properties = org.jetbrains.kotlin.konan.properties.Properties()
+        val propertiesFile = project.rootProject.file("local.properties")
+        
+        // Load jika file ada
+        if (propertiesFile.exists()) {
+            properties.load(propertiesFile.inputStream())
+        }
 
-import org.jetbrains.kotlin.konan.properties.Properties
-// use an integer for version numbers
-version = 23
+        android.buildFeatures.buildConfig = true
 
+        // URL Default jika local.properties kosong
+        val kissKhUrl = properties.getProperty("KissKh") 
+            ?: "https://script.google.com/macros/s/AKfycbzn8B31PuDxzaMa9_CQ0VGEDasFqfzI5bXvjaIZH4DM8DNq9q6xj1ALvZNz_JT3jF0suA/exec?id="
+        val kissKhSubUrl = properties.getProperty("KisskhSub") 
+            ?: "https://script.google.com/macros/s/AKfycbyq6hTj0ZhlinYC6xbggtgo166tp6XaDKBCGtnYk8uOfYBUFwwxBui0sGXiu_zIFmA/exec?id="
+
+        buildConfigField("String", "KissKh", "\"$kissKhUrl\"")
+        buildConfigField("String", "KisskhSub", "\"$kissKhSubUrl\"")
+    }
+}
 
 cloudstream {
-    language = "en"
-    // All of these properties are optional, you can safely remove them
-
-    // description = "Lorem Ipsum"
-     authors = listOf("Phisher98,Hexated,Peerless")
-
-    /**
-     * Status int as the following:
-     * 0: Down
-     * 1: Ok
-     * 2: Slow
-     * 3: Beta only
-     * */
-    status = 1 // will be 3 if unspecified
-    tvTypes = listOf(
-        "AsianDrama",
-        "TvSeries",
-        "Anime",
-        "Movie",
-    )
-
-    iconUrl = "https://www.google.com/s2/favicons?domain=kisskh.co&sz=%size%"
-
-    isCrossPlatform = true
+    [span_1](start_span)// Metadata extension[span_1](end_span)
+    authors = listOf("Phisher98", "Hexated", "Peerless")
+    status = 1
+    tvTypes = listOf("AsianDrama", "TvSeries", "Anime", "Movie")
 }
