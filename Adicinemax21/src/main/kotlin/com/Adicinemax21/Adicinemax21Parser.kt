@@ -41,9 +41,13 @@ data class VidsrccxSource(
     @JsonProperty("secureUrl") val secureUrl: String? = null,
 )
 
+// === UPDATED WYZIE DATA CLASS ===
 data class WyzieSubtitle(
     @JsonProperty("display") val display: String? = null,
     @JsonProperty("url") val url: String? = null,
+    @JsonProperty("language") val language: String? = null,
+    @JsonProperty("isHearingImpaired") val isHearingImpaired: Boolean = false,
+    @JsonProperty("format") val format: String? = null
 )
 
 data class VidFastSources(
