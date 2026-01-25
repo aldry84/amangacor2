@@ -18,7 +18,7 @@ class KisskhProvider : MainAPI() {
     override val hasDownloadSupport = true
     override val supportedTypes = setOf(TvType.AsianDrama, TvType.Anime)
 
-    // URL Google Script
+    // URL Google Script (Pastikan tidak ada typo)
     private val videoScriptUrl = "https://script.google.com/macros/s/AKfycbzn8B31PuDxzaMa9_CQ0VGEDasFqfzI5bXvjaIZH4DM8DNq9q6xj1ALvZNz_JT3jF0suA/exec"
     private val subScriptUrl = "https://script.google.com/macros/s/AKfycbyq6hTj0ZhlinYC6xbggtgo166tp6XaDKBCGtnYk8uOfYBUFwwxBui0sGXiu_zIFmA/exec"
 
@@ -43,8 +43,7 @@ class KisskhProvider : MainAPI() {
     }
 
     private fun Media.toSearchResponse(): SearchResponse? {
-        // PERBAIKAN BUG: Menggunakan safe call (?.) bukan assertion (!!.)
-        // Jika label null, kode ini tidak akan crash lagi.
+        // PERBAIKAN: Menggunakan safe call (?.) untuk mencegah crash jika label null
         if (!settingsForProvider.enableAdult && this.label?.contains("RAW") == true) return null
         
         val title = this.title ?: return null
@@ -57,8 +56,7 @@ class KisskhProvider : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        // PERBAIKAN: Menggunakan params map untuk menangani URL Encoding secara otomatis
-        // Ini memastikan query seperti "One Piece" dikirim sebagai "One%20Piece"
+        // PERBAIKAN: Menggunakan params map untuk stabilitas pencarian
         val url = "$mainUrl/api/DramaList/Search"
         val res = app.get(
             url, 
@@ -150,7 +148,8 @@ class KisskhProvider : MainAPI() {
         // 4. Get Subtitles
         val subApiUrl = "$mainUrl/api/Sub/${loadData.epsId}?kkey=$subKey"
         app.get(subApiUrl).text.let { res ->
-            tryParseJson<List<Subtitle>>(res)?.forEach { sub ->
+            // PERBAIKAN: Menggunakan ArrayList agar parsing lebih kuat, dan handling bahasa
+            tryParseJson<ArrayList<Subtitle>>(res)?.forEach { sub ->
                 val label = sub.label ?: "Unknown"
                 val lang = if (label == "Indonesia") "Indonesian" else label
                 if (sub.src != null) {
@@ -177,6 +176,7 @@ class KisskhProvider : MainAPI() {
                         if (parts.size > 1) {
                             val header = parts.first()
                             val content = parts.drop(1).joinToString("\n")
+                            // Dekripsi baris per baris menggunakan SubDecryptor
                             val decryptedContent = content.split("\n").joinToString("\n") { line ->
                                 try {
                                     SubDecryptor.decrypt(line)
@@ -199,7 +199,8 @@ class KisskhProvider : MainAPI() {
         }
     }
 
-    // Data Classes
+    // --- DATA CLASSES (Restored to Full Spec to avoid parsing errors) ---
+    
     data class Data(val title: String?, val eps: Int?, val id: Int?, val epsId: Int?)
 
     data class Sources(
@@ -242,5 +243,10 @@ class KisskhProvider : MainAPI() {
         @param:JsonProperty("title") val title: String?
     )
 
-    data class Key(val key: String?)
+    // PERBAIKAN: Mengembalikan field id dan version agar parsing Key tidak gagal
+    data class Key(
+        @param:JsonProperty("id") val id: String? = null,
+        @param:JsonProperty("version") val version: String? = null,
+        @param:JsonProperty("key") val key: String?
+    )
 }
