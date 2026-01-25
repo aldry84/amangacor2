@@ -1,4 +1,4 @@
-package com.Phisher98
+package com.phisher98
 
 import com.lagradost.cloudstream3.base64DecodeArray
 import javax.crypto.Cipher
@@ -6,37 +6,48 @@ import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 object SubDecryptor {
-    private val KEYS = listOf("AmSmZVcH93UQUezi", "8056483646328763", "sWODXX04QRTkHdlZ")
-    private val IVS = listOf(
-        intArrayOf(1382367819, 1465333859, 1902406224, 1164854838),
-        intArrayOf(909653298, 909193779, 925905208, 892483379),
-        intArrayOf(946894696, 1634749029, 1127508082, 1396271183)
-    )
+    private const val KEY = "AmSmZVcH93UQUezi"
+    private const val KEY2 = "8056483646328763"
+    private const val KEY3 = "sWODXX04QRTkHdlZ"
 
-    fun decrypt(encryptedB64: String): String? {
-        val encryptedBytes = try { 
-            base64DecodeArray(encryptedB64) 
-        } catch (e: Exception) { return null }
+    private val IV = intArrayOf(1382367819, 1465333859, 1902406224, 1164854838)
+    private val IV2 = intArrayOf(909653298, 909193779, 925905208, 892483379)
+    private val IV3 = intArrayOf(946894696, 1634749029, 1127508082, 1396271183)
 
-        for (i in KEYS.indices) {
+    fun decrypt(encryptedB64: String): String {
+        val keyIvPairs = listOf(
+            Pair(KEY.toByteArray(Charsets.UTF_8), IV.toByteArray()),
+            Pair(KEY2.toByteArray(Charsets.UTF_8), IV2.toByteArray()),
+            Pair(KEY3.toByteArray(Charsets.UTF_8), IV3.toByteArray())
+        )
+
+        val encryptedBytes = base64DecodeArray(encryptedB64)
+
+        for ((keyBytes, ivBytes) in keyIvPairs) {
             try {
-                val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
-                val keySpec = SecretKeySpec(KEYS[i].toByteArray(), "AES")
-                val ivSpec = IvParameterSpec(IVS[i].toByteArr())
-                cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec)
-                return String(cipher.doFinal(encryptedBytes), Charsets.UTF_8)
-            } catch (e: Exception) { continue }
+                return decryptWithKeyIv(keyBytes, ivBytes, encryptedBytes)
+            } catch (ex: Exception) {
+                // Lanjut ke kunci berikutnya jika gagal
+            }
         }
-        return null
+        // Jika gagal semua, kembalikan string kosong atau error agar tidak crash
+        return "" 
     }
 
-    private fun IntArray.toByteArr(): ByteArray {
+    private fun decryptWithKeyIv(keyBytes: ByteArray, ivBytes: ByteArray, encryptedBytes: ByteArray): String {
+        val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+        cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(keyBytes, "AES"), IvParameterSpec(ivBytes))
+        return String(cipher.doFinal(encryptedBytes), Charsets.UTF_8)
+    }
+
+    private fun IntArray.toByteArray(): ByteArray {
         val bytes = ByteArray(size * 4)
-        forEachIndexed { index, value ->
-            bytes[index * 4] = (value shr 24).toByte()
-            bytes[index * 4 + 1] = (value shr 16).toByte()
-            bytes[index * 4 + 2] = (value shr 8).toByte()
-            bytes[index * 4 + 3] = value.toByte()
+        for (i in indices) {
+            val value = this[i]
+            bytes[i * 4] = (value ushr 24).toByte()
+            bytes[i * 4 + 1] = (value ushr 16).toByte()
+            bytes[i * 4 + 2] = (value ushr 8).toByte()
+            bytes[i * 4 + 3] = value.toByte()
         }
         return bytes
     }
