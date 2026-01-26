@@ -16,6 +16,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import java.net.URLEncoder
 import org.json.JSONObject 
@@ -895,42 +896,28 @@ object Adicinemax21Extractor : Adicinemax21() {
             }
     }
 
-    // ================== WYZIE SOURCE (UPDATED & FIXED) ==================
+    // ================== WYZIE SOURCE ==================
     suspend fun invokeWyzie(
-        id: Any?, // Terima ID apa saja (String/Int)
+        tmdbId: Int?,
         season: Int?,
         episode: Int?,
         subtitleCallback: (SubtitleFile) -> Unit,
     ) {
-        if (id == null) return
-        val strId = id.toString()
-
-        val url = if (season != null && episode != null) {
-            "${Adicinemax21.wyzieAPI}/search?id=$strId&season=$season&episode=$episode"
+        val url = if (season == null) {
+            "${Adicinemax21.wyzieAPI}/search?id=$tmdbId"
         } else {
-            "${Adicinemax21.wyzieAPI}/search?id=$strId"
+            "${Adicinemax21.wyzieAPI}/search?id=$tmdbId&season=$season&episode=$episode"
         }
 
-        try {
-            // Gunakan parsedSafe langsung ke List untuk menghandle JSON Array
-            app.get(url).parsedSafe<List<WyzieSubtitle>>()?.forEach { sub ->
-                val subUrl = sub.url ?: return@forEach
-                
-                // Logic Label: Bahasa + [HI] jika hearing impaired
-                var label = sub.display ?: sub.language ?: "Unknown"
-                if (sub.isHearingImpaired) {
-                    label += " [HI]"
-                }
+        val res = app.get(url).text
 
-                subtitleCallback(
-                    newSubtitleFile( // Updated: Pakai newSubtitleFile (FIX WARNING)
-                        label,
-                        subUrl
-                    )
+        tryParseJson<ArrayList<WyzieSubtitle>>(res)?.map { subtitle ->
+            subtitleCallback.invoke(
+                newSubtitleFile(
+                    subtitle.display ?: return@map,
+                    subtitle.url ?: return@map,
                 )
-            }
-        } catch (e: Exception) {
-            // Abaikan error (misal 1102 dari server Wyzie) agar aplikasi tidak crash
+            )
         }
     }
 
@@ -1261,7 +1248,7 @@ object Adicinemax21Extractor : Adicinemax21() {
 
     private fun extractPlayer4uLinks(document: Document, season:Int?, episode:Int?, title:String, year:Int?): List<Player4uLinkData> {
         return document.select(".playbtnx").mapNotNull { element ->
-            val titleText = element.text().split(" | ").lastOrNull() ?: return@mapNotNull null
+            val titleText = element.text()?.split(" | ")?.lastOrNull() ?: return@mapNotNull null
             if (season == null && episode == null) {
                 if (year != null && (titleText.startsWith("$title $year", ignoreCase = true) ||
                             titleText.startsWith("$title ($year)", ignoreCase = true))) {
@@ -1409,4 +1396,5 @@ object Adicinemax21Extractor : Adicinemax21() {
             }
         }
     }
+
 }
