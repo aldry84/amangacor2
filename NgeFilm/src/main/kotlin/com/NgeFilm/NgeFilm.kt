@@ -21,24 +21,14 @@ class NgeFilm : MainAPI() {
         "$mainUrl/Genre/horror/page/" to "Horror",
         "$mainUrl/Genre/drama/page/" to "Drama",
         "$mainUrl/Genre/comedy/page/" to "Comedy",
-        "$mainUrl/Genre/thriller/page/" to "Thriller",
-        "$mainUrl/Genre/romance/page/" to "Romance",
-        "$mainUrl/Genre/animation/page/" to "Animation",
         "$mainUrl/country/indonesia/page/" to "Indonesia",
         "$mainUrl/country/korea/page/" to "Drama Korea"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val url = if (page == 1) {
-            request.data.removeSuffix("page/")
-        } else {
-            "${request.data}$page/"
-        }
-
+        val url = if (page == 1) request.data.removeSuffix("page/") else "${request.data}$page/"
         val document = app.get(url, headers = commonHeaders).document
-        val home = document.select("article.item-infinite").mapNotNull {
-            it.toSearchResult()
-        }
+        val home = document.select("article.item-infinite").mapNotNull { it.toSearchResult() }
         return newHomePageResponse(request.name, home)
     }
 
@@ -46,11 +36,9 @@ class NgeFilm : MainAPI() {
         val titleElement = this.selectFirst("h2.entry-title a") ?: return null
         val title = titleElement.text()
         val href = titleElement.attr("href")
-        
-        val imgTag = this.selectFirst("img.attachment-medium")
-        val posterUrl = imgTag?.attr("data-src")?.ifEmpty { imgTag.attr("src") } 
-            ?: imgTag?.attr("src")
-
+        val posterUrl = this.selectFirst("img.attachment-medium")?.let { 
+            it.attr("data-src").ifEmpty { it.attr("src") } 
+        }
         val quality = this.select("div.gmr-quality-item a").text() 
         val isSeries = href.contains("/tv/") || this.select(".gmr-numbeps").isNotEmpty()
 
@@ -70,30 +58,25 @@ class NgeFilm : MainAPI() {
     override suspend fun search(query: String): List<SearchResponse> {
         val url = "$mainUrl/?s=$query&post_type[]=post&post_type[]=tv"
         val document = app.get(url, headers = commonHeaders).document
-        
-        return document.select("article.item-infinite").mapNotNull {
-            it.toSearchResult()
-        }
+        return document.select("article.item-infinite").mapNotNull { it.toSearchResult() }
     }
 
     override suspend fun load(url: String): LoadResponse? {
         val document = app.get(url, headers = commonHeaders).document
-        
         val title = document.selectFirst("h1.entry-title")?.text() ?: return null
         
-        // PERBAIKAN POSTER: Coba ambil dari IMG tag, kalau gagal ambil dari Meta Tag (Paling Aman)
-        var poster = document.selectFirst("div.gmr-poster img")?.let { img ->
-            img.attr("data-src").ifEmpty { img.attr("src") }
+        // Fix Poster Detail: Coba ambil dari Meta Tag jika img tag kosong
+        var poster = document.selectFirst("div.gmr-poster img")?.let { 
+            it.attr("data-src").ifEmpty { it.attr("src") }
         }
-        
         if (poster.isNullOrEmpty()) {
             poster = document.selectFirst("meta[property=og:image]")?.attr("content")
         }
 
         val plot = document.selectFirst("div.entry-content p")?.text()
-        val yearText = document.select("span.year").text()
-        val year = Regex("\\d{4}").find(yearText ?: document.text())?.value?.toIntOrNull()
-
+        val year = Regex("\\d{4}").find(document.select("span.year").text() ?: "")?.value?.toIntOrNull()
+        
+        // Fix Durasi
         val durationText = document.select("div.gmr-duration-item").text().trim()
         val durationMin = Regex("(\\d+)").find(durationText)?.groupValues?.get(1)?.toIntOrNull()
 
@@ -103,7 +86,6 @@ class NgeFilm : MainAPI() {
             val episodes = document.select("div.gmr-listseries a").map {
                 val epsName = it.text()
                 val epsNum = Regex("Ep\\.?\\s*(\\d+)").find(epsName)?.groupValues?.get(1)?.toIntOrNull()
-                
                 newEpisode(it.attr("href")) {
                     this.name = epsName
                     this.episode = epsNum
@@ -132,34 +114,41 @@ class NgeFilm : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val document = app.get(data, headers = commonHeaders).document
-        
-        // PERBAIKAN LINK: Ambil SEMUA iframe yang ada di area konten utama
-        // Kita tidak hanya membatasi di .gmr-embed-responsive karena kadang struktur berubah
-        val iframes = document.select("div.gmr-embed-responsive iframe, #pembed iframe, .entry-content iframe")
-        
-        iframes.forEach { iframe ->
-            var link = fixUrl(iframe.attr("src"))
-            
-            // Filter link sampah (iklan/kosong)
-            if (link.isNotBlank() && !link.contains("facebook") && !link.contains("twitter")) {
-                
-                // Unshorten logic
-                if (link.contains("short.icu") || link.contains("hglink.to")) {
-                    try {
-                        link = app.get(link, headers = commonHeaders).url
-                    } catch (e: Exception) {
-                        // Ignore error unshorten
-                    }
-                }
+        val collectedLinks = mutableListOf<String>()
 
-                // Routing logic
-                if (link.contains("rpmlive.online")) {
-                    RpmLive().getStreamUrl(link, callback)
-                } else {
-                    loadExtractor(link, data, subtitleCallback, callback)
-                }
+        // 1. Ambil dari Iframe Default
+        document.select("div.gmr-embed-responsive iframe, #pembed iframe").forEach { 
+            collectedLinks.add(fixUrl(it.attr("src")))
+        }
+
+        // 2. Ambil dari Tombol Server (gmr-player-nav)
+        document.select("ul.gmr-player-nav li a").forEach { 
+            val link = it.attr("data-post") // Biasanya link ada di data-post atau href
+            if (link.isNotEmpty()) {
+                // Kadang link di tombol server butuh request tambahan, tapi kita coba ambil link langsung jika ada
+                val directLink = it.attr("href")
+                if (directLink.contains("http")) collectedLinks.add(directLink)
             }
         }
+
+        // 3. Proses Semua Link yang Ditemukan
+        collectedLinks.distinct().forEach { rawUrl ->
+            var finalUrl = rawUrl
+            
+            // Unshorten jika perlu
+            if (finalUrl.contains("short.icu") || finalUrl.contains("hglink.to")) {
+                try {
+                    finalUrl = app.get(finalUrl, headers = commonHeaders).url
+                } catch (e: Exception) { }
+            }
+
+            if (finalUrl.contains("rpmlive.online")) {
+                RpmLive().getStreamUrl(finalUrl, callback)
+            } else if (finalUrl.isNotBlank() && !finalUrl.contains("facebook") && !finalUrl.contains("twitter")) {
+                loadExtractor(finalUrl, data, subtitleCallback, callback)
+            }
+        }
+
         return true
     }
 }
