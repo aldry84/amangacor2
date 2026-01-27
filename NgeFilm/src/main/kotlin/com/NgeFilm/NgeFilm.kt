@@ -47,7 +47,6 @@ class NgeFilm : MainAPI() {
         val title = titleElement.text()
         val href = titleElement.attr("href")
         
-        // Ambil gambar dengan prioritas data-src (lazy load)
         val imgTag = this.selectFirst("img.attachment-medium")
         val posterUrl = imgTag?.attr("data-src")?.ifEmpty { imgTag.attr("src") } 
             ?: imgTag?.attr("src")
@@ -82,18 +81,19 @@ class NgeFilm : MainAPI() {
         
         val title = document.selectFirst("h1.entry-title")?.text() ?: return null
         
-        // PERBAIKAN 1: Logika Poster Detail (Fix Gambar Hitam)
-        // Kita gunakan logika yang sama dengan search: cek data-src dulu
-        val imgTag = document.selectFirst("div.gmr-poster img")
-        val poster = imgTag?.attr("data-src")?.ifEmpty { imgTag.attr("src") } 
-            ?: imgTag?.attr("src")
-            
-        val plot = document.selectFirst("div.entry-content p")?.text()
+        // PERBAIKAN POSTER: Coba ambil dari IMG tag, kalau gagal ambil dari Meta Tag (Paling Aman)
+        var poster = document.selectFirst("div.gmr-poster img")?.let { img ->
+            img.attr("data-src").ifEmpty { img.attr("src") }
+        }
         
+        if (poster.isNullOrEmpty()) {
+            poster = document.selectFirst("meta[property=og:image]")?.attr("content")
+        }
+
+        val plot = document.selectFirst("div.entry-content p")?.text()
         val yearText = document.select("span.year").text()
         val year = Regex("\\d{4}").find(yearText ?: document.text())?.value?.toIntOrNull()
 
-        // Ambil durasi
         val durationText = document.select("div.gmr-duration-item").text().trim()
         val durationMin = Regex("(\\d+)").find(durationText)?.groupValues?.get(1)?.toIntOrNull()
 
@@ -133,22 +133,31 @@ class NgeFilm : MainAPI() {
     ): Boolean {
         val document = app.get(data, headers = commonHeaders).document
         
-        // PERBAIKAN 2: Mengambil iframe dengan lebih aman
-        // Terkadang iframe src tidak pakai https: atau relatif, kita pakai fixUrl()
-        document.select("div.gmr-embed-responsive iframe").forEach { iframe ->
+        // PERBAIKAN LINK: Ambil SEMUA iframe yang ada di area konten utama
+        // Kita tidak hanya membatasi di .gmr-embed-responsive karena kadang struktur berubah
+        val iframes = document.select("div.gmr-embed-responsive iframe, #pembed iframe, .entry-content iframe")
+        
+        iframes.forEach { iframe ->
             var link = fixUrl(iframe.attr("src"))
             
-            // Unshorten logic
-            if (link.contains("short.icu") || link.contains("hglink.to")) {
-                link = app.get(link, headers = commonHeaders).url
-            }
+            // Filter link sampah (iklan/kosong)
+            if (link.isNotBlank() && !link.contains("facebook") && !link.contains("twitter")) {
+                
+                // Unshorten logic
+                if (link.contains("short.icu") || link.contains("hglink.to")) {
+                    try {
+                        link = app.get(link, headers = commonHeaders).url
+                    } catch (e: Exception) {
+                        // Ignore error unshorten
+                    }
+                }
 
-            // Routing logic
-            if (link.contains("rpmlive.online")) {
-                RpmLive().getStreamUrl(link, callback)
-            } else if (link.isNotBlank()) {
-                // Load extractor bawaan dengan referer yang benar
-                loadExtractor(link, data, subtitleCallback, callback)
+                // Routing logic
+                if (link.contains("rpmlive.online")) {
+                    RpmLive().getStreamUrl(link, callback)
+                } else {
+                    loadExtractor(link, data, subtitleCallback, callback)
+                }
             }
         }
         return true
