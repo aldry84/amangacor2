@@ -1,70 +1,77 @@
 package com.NgeFilm
 
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.utils.*
+import com.lagradost.cloudstream3.utils.AppUtils
+import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.loadExtractor
 import org.jsoup.nodes.Element
 
 class NgeFilm : MainAPI() {
-    override var mainUrl = "https://new31.ngefilm.site"
+    override var mainUrl = "https://ngefilm21.pw"
     override var name = "NgeFilm"
     override val hasMainPage = true
     override var lang = "id"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
-    override val mainPage = mainPageOf(
-        "$mainUrl/" to "Terbaru",
-    )
-
-    override suspend fun getMainPage(
-        page: Int,
-        request: MainPageRequest
-    ): HomePageResponse {
-        val document = app.get(request.data).document
-        val home = document.select("#gmr-main-load article.item-infinite").mapNotNull {
-            toSearchResult(it)
+    // === PARSING UTAMA ===
+    
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+        // Menggunakan halaman utama sebagai feed
+        val document = app.get(mainUrl).document
+        val home = document.select("article.item-infinite").mapNotNull {
+            it.toSearchResult()
         }
-        return newHomePageResponse(request.name, home)
+        return newHomePageResponse(
+            list = HomePageList("Latest Movies", home),
+            hasNext = false
+        )
+    }
+
+    private fun Element.toSearchResult(): SearchResponse? {
+        val titleElement = this.selectFirst("h2.entry-title a") ?: return null
+        val title = titleElement.text()
+        val href = titleElement.attr("href")
+        val posterUrl = this.selectFirst("img.attachment-medium")?.attr("src")
+        
+        return newMovieSearchResponse(title, href, TvType.Movie) {
+            this.posterUrl = posterUrl
+        }
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val url = "$mainUrl/?s=$query&post_type[]=post&post_type[]=tv"
-        val document = app.get(url).document
+        val searchUrl = "$mainUrl/?s=$query"
+        val document = app.get(searchUrl).document
         
-        return document.select("#gmr-main-load article.item-infinite").mapNotNull {
-            toSearchResult(it)
+        return document.select("article.item-infinite").mapNotNull {
+            it.toSearchResult()
         }
     }
 
-    override suspend fun load(url: String): LoadResponse? {
+    override suspend fun load(url: String): LoadResponse {
         val document = app.get(url).document
 
-        val title = document.selectFirst("h1.entry-title")?.text()?.trim() ?: return null
-        val poster = document.selectFirst(".gmr-movie-view .attachment-thumbnail")?.attr("src") 
-            ?: document.selectFirst(".gmr-movie-view .attachment-thumbnail")?.attr("data-src")
-            ?: ""
-
-        val plot = document.select(".entry-content p").text()
-        val year = document.selectFirst("span.year")?.text()?.toIntOrNull()
+        // Selektor Detail
+        val title = document.selectFirst("h1.entry-title")?.text()?.trim() ?: "Unknown"
+        val desc = document.select("div.entry-content p").text()
+        val poster = document.selectFirst("div.gmr-poster img")?.attr("src")
         
-        val tags = document.select(".gmr-movie-on a[rel='category tag']").map { it.text() }
-        
-        val actors = document.select("[itemprop='actor'] span[itemprop='name']").map { 
-            ActorData(Actor(it.text())) 
-        }
+        // Tahun (Parsing text dari div.gmr-moviedata)
+        val metaText = document.select("div.gmr-moviedata").text()
+        val yearRegex = """\d{4}""".toRegex()
+        val year = yearRegex.find(metaText)?.value?.toIntOrNull()
 
-        val recommendations = document.select("#gmr-related-post article").mapNotNull {
-            toSearchResult(it)
-        }
+        // Mendapatkan link iframe
+        // Kita ambil 'src' dari iframe. Ini akan diproses di loadLinks
+        val iframeSrc = document.selectFirst("div.gmr-embed-responsive iframe")?.attr("src")
 
-        return newMovieLoadResponse(title, url, TvType.Movie, url) {
+        return newMovieLoadResponse(title, url, TvType.Movie, iframeSrc) {
             this.posterUrl = poster
             this.year = year
-            this.plot = plot
-            this.tags = tags
-            this.actors = actors
-            this.recommendations = recommendations
+            this.plot = desc
         }
     }
+
+    // === LOGIKA HANDLING SERVER ===
 
     override suspend fun loadLinks(
         data: String,
@@ -72,36 +79,32 @@ class NgeFilm : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val document = app.get(data).document
+        
+        var currentUrl = data
 
-        document.select("div.gmr-embed-responsive iframe").forEach { iframe ->
-            var sourceUrl = iframe.attr("src")
-            if (sourceUrl.startsWith("//")) sourceUrl = "https:$sourceUrl"
-
-            if (sourceUrl.contains("rpmlive.online")) {
-                RpmLive().getUrl(sourceUrl, data, subtitleCallback, callback)
-            } else {
-                loadExtractor(sourceUrl, data, subtitleCallback, callback)
+        // A. Tahap Unshorten (Wajib untuk Server 2 & 3 / Redirects)
+        // Jika link mengandung short.icu atau hglink.to, kita request dulu untuk dapat real URL
+        if (currentUrl.contains("short.icu") || currentUrl.contains("hglink.to")) {
+            try {
+                // app.get(url).url akan memberikan URL akhir setelah redirect
+                currentUrl = app.get(currentUrl).url
+            } catch (e: Exception) {
+                // Jika gagal unshorten, biarkan lanjut siapa tahu bisa dihandle extractor
             }
         }
 
-        return true
-    }
-
-    private fun toSearchResult(element: Element): SearchResponse? {
-        val titleElement = element.selectFirst(".entry-title a") ?: return null
-        val title = titleElement.text().replace("Nonton ", "").trim()
-        val url = fixUrl(titleElement.attr("href"))
-        val imgElement = element.selectFirst(".content-thumbnail img")
+        // B. Routing Server
         
-        val posterUrl = imgElement?.attr("src") ?: imgElement?.attr("data-src") ?: ""
-        
-        // Pastikan tidak null agar tidak error Type Mismatch
-        val quality = element.selectFirst(".gmr-quality-item a")?.text() ?: ""
-
-        return newMovieSearchResponse(title, url, TvType.Movie) {
-            this.posterUrl = posterUrl
-            addQuality(quality)
+        // 1. Server 1 (RpmLive) - Gunakan Custom Extractor yang kita buat di Extractors.kt
+        if (currentUrl.contains("rpmlive.online")) {
+             RpmLive().getUrl(currentUrl, null, subtitleCallback, callback)
+        } 
+        // 2. Server General (Abyss, Xenolyzb, Kraken, Hxfile, dll)
+        // loadExtractor bawaan Cloudstream sudah support server-server ini + ReCaptcha mereka
+        else {
+            loadExtractor(currentUrl, subtitleCallback, callback)
         }
+
+        return true
     }
 }
