@@ -53,7 +53,6 @@ class NgeFilm : MainAPI() {
             ?: imgTag?.attr("src")
 
         val quality = this.select("div.gmr-quality-item a").text() 
-        val durationText = this.select("div.gmr-duration-item").text().trim() // contoh: "148 min"
         
         val isSeries = href.contains("/tv/") || this.select(".gmr-numbeps").isNotEmpty()
 
@@ -66,10 +65,7 @@ class NgeFilm : MainAPI() {
             newMovieSearchResponse(title, href, TvType.Movie) {
                 this.posterUrl = posterUrl
                 addQuality(quality)
-                
-                // PERBAIKAN: Parsing manual durasi (String -> Long Milliseconds)
-                // Mengambil angka dari "148 min" -> 148 * 60 * 1000 = ms
-                this.duration = Regex("(\\d+)").find(durationText)?.groupValues?.get(1)?.toLongOrNull()?.times(60000L)
+                // HAPUS: this.duration (SearchResponse tidak punya properti duration)
             }
         }
     }
@@ -93,6 +89,11 @@ class NgeFilm : MainAPI() {
         val yearText = document.select("span.year").text()
         val year = Regex("\\d{4}").find(yearText ?: document.text())?.value?.toIntOrNull()
 
+        // PERBAIKAN: Ambil Durasi di sini (Halaman Detail)
+        // LoadResponse mendukung 'duration' dalam satuan menit (Int)
+        val durationText = document.select("div.gmr-duration-item").text().trim()
+        val durationMin = Regex("(\\d+)").find(durationText)?.groupValues?.get(1)?.toIntOrNull()
+
         val isSeries = url.contains("/tv/") || document.select("div.gmr-listseries").isNotEmpty()
 
         if (isSeries) {
@@ -109,12 +110,14 @@ class NgeFilm : MainAPI() {
                 this.posterUrl = poster
                 this.plot = plot
                 this.year = year
+                this.duration = durationMin 
             }
         } else {
             return newMovieLoadResponse(title, url, TvType.Movie, url) {
                 this.posterUrl = poster
                 this.plot = plot
                 this.year = year
+                this.duration = durationMin
             }
         }
     }
