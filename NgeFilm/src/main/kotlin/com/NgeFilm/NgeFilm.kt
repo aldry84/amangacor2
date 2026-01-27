@@ -65,7 +65,6 @@ class NgeFilm : MainAPI() {
         val document = app.get(url, headers = commonHeaders).document
         val title = document.selectFirst("h1.entry-title")?.text() ?: return null
         
-        // Fix Poster Detail: Coba ambil dari Meta Tag jika img tag kosong
         var poster = document.selectFirst("div.gmr-poster img")?.let { 
             it.attr("data-src").ifEmpty { it.attr("src") }
         }
@@ -76,7 +75,6 @@ class NgeFilm : MainAPI() {
         val plot = document.selectFirst("div.entry-content p")?.text()
         val year = Regex("\\d{4}").find(document.select("span.year").text() ?: "")?.value?.toIntOrNull()
         
-        // Fix Durasi
         val durationText = document.select("div.gmr-duration-item").text().trim()
         val durationMin = Regex("(\\d+)").find(durationText)?.groupValues?.get(1)?.toIntOrNull()
 
@@ -116,33 +114,31 @@ class NgeFilm : MainAPI() {
         val document = app.get(data, headers = commonHeaders).document
         val collectedLinks = mutableListOf<String>()
 
-        // 1. Ambil dari Iframe Default
-        document.select("div.gmr-embed-responsive iframe, #pembed iframe").forEach { 
-            collectedLinks.add(fixUrl(it.attr("src")))
+        // 1. Cari di Iframe (Prioritas)
+        document.select("iframe").forEach { 
+            val src = it.attr("src")
+            if(src.isNotBlank()) collectedLinks.add(fixUrl(src))
         }
 
-        // 2. Ambil dari Tombol Server (gmr-player-nav)
+        // 2. Cari di Tombol Server (Backup)
         document.select("ul.gmr-player-nav li a").forEach { 
-            val link = it.attr("data-post") // Biasanya link ada di data-post atau href
-            if (link.isNotEmpty()) {
-                // Kadang link di tombol server butuh request tambahan, tapi kita coba ambil link langsung jika ada
-                val directLink = it.attr("href")
-                if (directLink.contains("http")) collectedLinks.add(directLink)
-            }
+            val href = it.attr("href")
+            if(href.isNotBlank()) collectedLinks.add(fixUrl(href))
         }
 
-        // 3. Proses Semua Link yang Ditemukan
         collectedLinks.distinct().forEach { rawUrl ->
             var finalUrl = rawUrl
             
-            // Unshorten jika perlu
+            // Unshorten link pendek
             if (finalUrl.contains("short.icu") || finalUrl.contains("hglink.to")) {
                 try {
                     finalUrl = app.get(finalUrl, headers = commonHeaders).url
                 } catch (e: Exception) { }
             }
 
-            if (finalUrl.contains("rpmlive.online")) {
+            // Routing ke Extractor
+            // Cek semua kemungkinan domain RpmLive
+            if (finalUrl.contains("rpmlive.online") || finalUrl.contains("playerngefilm21")) {
                 RpmLive().getStreamUrl(finalUrl, callback)
             } else if (finalUrl.isNotBlank() && !finalUrl.contains("facebook") && !finalUrl.contains("twitter")) {
                 loadExtractor(finalUrl, data, subtitleCallback, callback)
