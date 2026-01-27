@@ -2,6 +2,7 @@ package com.NgeFilm
 
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.SubtitleFile
+import com.lagradost.cloudstream3.newExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.Qualities
@@ -37,15 +38,17 @@ class RpmLive : ExtractorApi() {
             try {
                 val decryptedUrl = decrypt(encryptedData)
                 
+                // Menggunakan newExtractorLink dengan lambda syntax sesuai permintaan
                 callback.invoke(
-                    ExtractorLink(
+                    newExtractorLink(
                         source = name,
                         name = name,
                         url = decryptedUrl,
                         referer = referer ?: mainUrl,
-                        quality = Qualities.Unknown.value,
-                        type = INFER_TYPE 
-                    )
+                        quality = Qualities.Unknown.value
+                    ) {
+                        this.type = INFER_TYPE
+                    }
                 )
             } catch (e: Exception) {
                 e.printStackTrace()
