@@ -2,7 +2,6 @@ package com.NgeFilm
 
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.SubtitleFile
-import com.lagradost.cloudstream3.newExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.Qualities
@@ -21,6 +20,8 @@ class RpmLive : ExtractorApi() {
     private val keyBytes = byteArrayOf(107, 105, 101, 109, 116, 105, 101, 110, 109, 117, 97, 57, 49, 49, 99, 97)
     private val ivBytes = byteArrayOf(49, 50, 51, 52, 53, 54, 55, 56, 57, 48, 111, 105, 117, 121, 116, 114)
 
+    // Kita tambahkan ini agar compiler mengabaikan peringatan 'deprecated'
+    @Suppress("DEPRECATION") 
     override suspend fun getUrl(
         url: String,
         referer: String?,
@@ -38,17 +39,17 @@ class RpmLive : ExtractorApi() {
             try {
                 val decryptedUrl = decrypt(encryptedData)
                 
-                // Menggunakan newExtractorLink dengan lambda syntax sesuai permintaan
+                // Kembali menggunakan Constructor langsung
+                // Ini pasti jalan di semua versi Cloudstream
                 callback.invoke(
-                    newExtractorLink(
+                    ExtractorLink(
                         source = name,
                         name = name,
                         url = decryptedUrl,
                         referer = referer ?: mainUrl,
-                        quality = Qualities.Unknown.value
-                    ) {
-                        this.type = INFER_TYPE
-                    }
+                        quality = Qualities.Unknown.value,
+                        type = INFER_TYPE 
+                    )
                 )
             } catch (e: Exception) {
                 e.printStackTrace()
