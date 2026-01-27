@@ -1,9 +1,9 @@
 package com.NgeFilm
 
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.utils.AppUtils
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
+import com.lagradost.cloudstream3.SubtitleFile
 import org.jsoup.nodes.Element
 
 class NgeFilm : MainAPI() {
@@ -16,7 +16,6 @@ class NgeFilm : MainAPI() {
     // === PARSING UTAMA ===
     
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        // Menggunakan halaman utama sebagai feed
         val document = app.get(mainUrl).document
         val home = document.select("article.item-infinite").mapNotNull {
             it.toSearchResult()
@@ -61,7 +60,6 @@ class NgeFilm : MainAPI() {
         val year = yearRegex.find(metaText)?.value?.toIntOrNull()
 
         // Mendapatkan link iframe
-        // Kita ambil 'src' dari iframe. Ini akan diproses di loadLinks
         val iframeSrc = document.selectFirst("div.gmr-embed-responsive iframe")?.attr("src")
 
         return newMovieLoadResponse(title, url, TvType.Movie, iframeSrc) {
@@ -82,26 +80,24 @@ class NgeFilm : MainAPI() {
         
         var currentUrl = data
 
-        // A. Tahap Unshorten (Wajib untuk Server 2 & 3 / Redirects)
-        // Jika link mengandung short.icu atau hglink.to, kita request dulu untuk dapat real URL
+        // A. Tahap Unshorten (Redirects)
         if (currentUrl.contains("short.icu") || currentUrl.contains("hglink.to")) {
             try {
                 // app.get(url).url akan memberikan URL akhir setelah redirect
                 currentUrl = app.get(currentUrl).url
             } catch (e: Exception) {
-                // Jika gagal unshorten, biarkan lanjut siapa tahu bisa dihandle extractor
+                // Jika gagal, lanjut dengan URL awal
             }
         }
 
         // B. Routing Server
-        
-        // 1. Server 1 (RpmLive) - Gunakan Custom Extractor yang kita buat di Extractors.kt
         if (currentUrl.contains("rpmlive.online")) {
+             // Memanggil Extractor RpmLive yang ada di Extractors.kt
+             // Karena tipe data subtitleCallback sudah di-import dengan benar, error overload akan hilang
              RpmLive().getUrl(currentUrl, null, subtitleCallback, callback)
         } 
-        // 2. Server General (Abyss, Xenolyzb, Kraken, Hxfile, dll)
-        // loadExtractor bawaan Cloudstream sudah support server-server ini + ReCaptcha mereka
         else {
+            // Server General (Abyss, Xenolyzb, Kraken, dll)
             loadExtractor(currentUrl, subtitleCallback, callback)
         }
 
