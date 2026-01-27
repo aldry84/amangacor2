@@ -36,7 +36,6 @@ class NgeFilm : MainAPI() {
         }
 
         val document = app.get(url, headers = commonHeaders).document
-        
         val home = document.select("article.item-infinite").mapNotNull {
             it.toSearchResult()
         }
@@ -48,12 +47,12 @@ class NgeFilm : MainAPI() {
         val title = titleElement.text()
         val href = titleElement.attr("href")
         
+        // Ambil gambar dengan prioritas data-src (lazy load)
         val imgTag = this.selectFirst("img.attachment-medium")
         val posterUrl = imgTag?.attr("data-src")?.ifEmpty { imgTag.attr("src") } 
             ?: imgTag?.attr("src")
 
         val quality = this.select("div.gmr-quality-item a").text() 
-        
         val isSeries = href.contains("/tv/") || this.select(".gmr-numbeps").isNotEmpty()
 
         return if (isSeries) {
@@ -65,7 +64,6 @@ class NgeFilm : MainAPI() {
             newMovieSearchResponse(title, href, TvType.Movie) {
                 this.posterUrl = posterUrl
                 addQuality(quality)
-                // HAPUS: this.duration (SearchResponse tidak punya properti duration)
             }
         }
     }
@@ -83,14 +81,19 @@ class NgeFilm : MainAPI() {
         val document = app.get(url, headers = commonHeaders).document
         
         val title = document.selectFirst("h1.entry-title")?.text() ?: return null
-        val poster = document.selectFirst("div.gmr-poster img")?.attr("src")
+        
+        // PERBAIKAN 1: Logika Poster Detail (Fix Gambar Hitam)
+        // Kita gunakan logika yang sama dengan search: cek data-src dulu
+        val imgTag = document.selectFirst("div.gmr-poster img")
+        val poster = imgTag?.attr("data-src")?.ifEmpty { imgTag.attr("src") } 
+            ?: imgTag?.attr("src")
+            
         val plot = document.selectFirst("div.entry-content p")?.text()
         
         val yearText = document.select("span.year").text()
         val year = Regex("\\d{4}").find(yearText ?: document.text())?.value?.toIntOrNull()
 
-        // PERBAIKAN: Ambil Durasi di sini (Halaman Detail)
-        // LoadResponse mendukung 'duration' dalam satuan menit (Int)
+        // Ambil durasi
         val durationText = document.select("div.gmr-duration-item").text().trim()
         val durationMin = Regex("(\\d+)").find(durationText)?.groupValues?.get(1)?.toIntOrNull()
 
@@ -130,16 +133,21 @@ class NgeFilm : MainAPI() {
     ): Boolean {
         val document = app.get(data, headers = commonHeaders).document
         
+        // PERBAIKAN 2: Mengambil iframe dengan lebih aman
+        // Terkadang iframe src tidak pakai https: atau relatif, kita pakai fixUrl()
         document.select("div.gmr-embed-responsive iframe").forEach { iframe ->
-            var link = iframe.attr("src")
+            var link = fixUrl(iframe.attr("src"))
             
+            // Unshorten logic
             if (link.contains("short.icu") || link.contains("hglink.to")) {
                 link = app.get(link, headers = commonHeaders).url
             }
 
+            // Routing logic
             if (link.contains("rpmlive.online")) {
                 RpmLive().getStreamUrl(link, callback)
-            } else {
+            } else if (link.isNotBlank()) {
+                // Load extractor bawaan dengan referer yang benar
                 loadExtractor(link, data, subtitleCallback, callback)
             }
         }
