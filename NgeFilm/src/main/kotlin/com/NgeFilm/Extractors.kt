@@ -1,21 +1,22 @@
 package com.NgeFilm
 
-import com.lagradost.cloudstream3.SubtitleFile
-import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.INFER_TYPE
 import com.lagradost.cloudstream3.utils.Qualities
-import com.lagradost.cloudstream3.utils.newExtractorLink
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.lagradost.cloudstream3.app
 import javax.crypto.Cipher
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
+import android.util.Base64
 
 class RpmLive : ExtractorApi() {
     override val name = "RpmLive"
-    override val mainUrl = "https://playerngefilm21.rpmlive.online"
+    override val mainUrl = "https://rpmlive.online"
     override val requiresReferer = true
+
+    // Data Enkripsi dari inspeksi elemen kamu
+    private val keyBytes = byteArrayOf(107, 105, 101, 109, 116, 105, 101, 110, 109, 117, 97, 57, 49, 49, 99, 97)
+    private val ivBytes = byteArrayOf(49, 50, 51, 52, 53, 54, 55, 56, 57, 48, 111, 105, 117, 121, 116, 114)
 
     override suspend fun getUrl(
         url: String,
@@ -23,69 +24,44 @@ class RpmLive : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        val videoId = url.substringAfterLast("/").substringBefore("?")
-        val apiUrl = "$mainUrl/api/v1/video?id=$videoId"
-        val headers = mapOf(
-            "Referer" to "$mainUrl/",
-            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept" to "*/*",
-            "Origin" to mainUrl
-        )
-
-        try {
-            val response = app.get(apiUrl, headers = headers).text
-            if (response.isBlank()) return
-
-            val keyBytes = byteArrayOf(107, 105, 101, 109, 116, 105, 101, 110, 109, 117, 97, 57, 49, 49, 99, 97)
-            val ivBytes = byteArrayOf(49, 50, 51, 52, 53, 54, 55, 56, 57, 48, 111, 105, 117, 121, 116, 114)
-
-            val encryptedBytes = hexToBytes(response)
-            val decryptedJson = decryptAes(encryptedBytes, keyBytes, ivBytes)
-
-            val mapper = jacksonObjectMapper()
-            val jsonNode = mapper.readTree(decryptedJson)
-            
-            jsonNode["source"]?.forEach { source ->
-                val m3u8Url = source["file"]?.asText()
-                val label = source["label"]?.asText() ?: "Auto"
+        val response = app.get(url).text
+        
+        // Target Regex: makePlayer("([^"]+)
+        val regex = """makePlayer\("([^"]+)""".toRegex()
+        val match = regex.find(response)
+        
+        if (match != null) {
+            val encryptedData = match.groupValues[1]
+            try {
+                val decryptedUrl = decrypt(encryptedData)
                 
-                if (m3u8Url != null && m3u8Url.contains(".m3u8")) {
-                    callback.invoke(
-                        newExtractorLink(
-                            source = name,
-                            name = "$name $label",
-                            url = m3u8Url,
-                            type = INFER_TYPE
-                        ).apply {
-                            // PERBAIKAN: referer dipindah ke sini
-                            this.referer = mainUrl 
-                            this.quality = Qualities.Unknown.value
-                        }
+                // Biasanya hasil dekripsi adalah URL .m3u8 langsung
+                callback.invoke(
+                    ExtractorLink(
+                        name,
+                        name,
+                        decryptedUrl,
+                        referer ?: mainUrl,
+                        Qualities.Unknown.value,
+                        type = INFER_TYPE // Biarkan CS mendeteksi HLS/MP4
                     )
-                }
+                )
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
-
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
     }
 
-    private fun hexToBytes(hex: String): ByteArray {
-        val len = hex.length
-        val data = ByteArray(len / 2)
-        var i = 0
-        while (i < len) {
-            data[i / 2] = ((Character.digit(hex[i], 16) shl 4) + Character.digit(hex[i + 1], 16)).toByte()
-            i += 2
-        }
-        return data
-    }
-
-    private fun decryptAes(data: ByteArray, key: ByteArray, iv: ByteArray): String {
-        val secretKey = SecretKeySpec(key, "AES")
-        val ivSpec = IvParameterSpec(iv)
+    private fun decrypt(encrypted: String): String {
         val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
-        cipher.init(Cipher.DECRYPT_MODE, secretKey, ivSpec)
-        return String(cipher.doFinal(data))
+        val secretKeySpec = SecretKeySpec(keyBytes, "AES")
+        val ivParameterSpec = IvParameterSpec(ivBytes)
+        
+        cipher.init(Cipher.DECRYPT_MODE, secretKeySpec, ivParameterSpec)
+        
+        val decodedBytes = Base64.decode(encrypted, Base64.DEFAULT)
+        val decryptedBytes = cipher.doFinal(decodedBytes)
+        
+        return String(decryptedBytes)
     }
 }
