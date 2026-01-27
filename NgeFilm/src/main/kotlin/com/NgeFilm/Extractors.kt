@@ -1,9 +1,11 @@
 package com.NgeFilm
 
+import com.lagradost.cloudstream3.app
+import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.Qualities
-import com.lagradost.cloudstream3.app
+import com.lagradost.cloudstream3.utils.INFER_TYPE
 import javax.crypto.Cipher
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
@@ -14,7 +16,7 @@ class RpmLive : ExtractorApi() {
     override val mainUrl = "https://rpmlive.online"
     override val requiresReferer = true
 
-    // Data Enkripsi dari inspeksi elemen kamu
+    // Data Enkripsi
     private val keyBytes = byteArrayOf(107, 105, 101, 109, 116, 105, 101, 110, 109, 117, 97, 57, 49, 49, 99, 97)
     private val ivBytes = byteArrayOf(49, 50, 51, 52, 53, 54, 55, 56, 57, 48, 111, 105, 117, 121, 116, 114)
 
@@ -35,15 +37,14 @@ class RpmLive : ExtractorApi() {
             try {
                 val decryptedUrl = decrypt(encryptedData)
                 
-                // Biasanya hasil dekripsi adalah URL .m3u8 langsung
                 callback.invoke(
                     ExtractorLink(
-                        name,
-                        name,
-                        decryptedUrl,
-                        referer ?: mainUrl,
-                        Qualities.Unknown.value,
-                        type = INFER_TYPE // Biarkan CS mendeteksi HLS/MP4
+                        source = name,
+                        name = name,
+                        url = decryptedUrl,
+                        referer = referer ?: mainUrl,
+                        quality = Qualities.Unknown.value,
+                        type = INFER_TYPE 
                     )
                 )
             } catch (e: Exception) {
