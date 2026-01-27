@@ -12,10 +12,11 @@ class RpmLive : ExtractorApi() {
     override val mainUrl = "https://playerngefilm21.rpmlive.online"
     override val requiresReferer = true
 
+    // Key & IV (Dikonfirmasi Benar dari Curl)
     private val key = byteArrayOf(107, 105, 101, 109, 116, 105, 101, 110, 109, 117, 97, 57, 49, 49, 99, 97)
     private val iv = byteArrayOf(49, 50, 51, 52, 53, 54, 55, 56, 57, 48, 111, 105, 117, 121, 116, 114)
 
-    // Header Persis CURL yang Berhasil
+    // Header Lengkap (Sesuai Curl Terakhir)
     private val apiHeaders = mapOf(
         "Authority" to "playerngefilm21.rpmlive.online",
         "Accept" to "*/*",
@@ -37,32 +38,32 @@ class RpmLive : ExtractorApi() {
 
     suspend fun getStreamUrl(url: String, callback: (ExtractorLink) -> Unit) {
         try {
-            var id = Regex("id=([^&]+)").find(url)?.groupValues?.get(1)
-            if (id == null) {
-                id = url.trimEnd('/').substringAfterLast('/')
-            }
+            // 1. Ambil ID (Regex lebih fleksibel)
+            val id = Regex("id=([^&]+)").find(url)?.groupValues?.get(1) 
+                ?: url.trimEnd('/').substringAfterLast('/')
 
-            if (id.isNullOrBlank()) return
+            if (id.isBlank()) return
 
-            // API Video (Sumber M3U8)
+            // 2. Tembak API Video
+            // Menggunakan parameter lengkap sesuai curl
             val apiUrl = "$mainUrl/api/v1/video?id=$id&w=100%25&h=100%25&r=new31.ngefilm.site"
             
-            // Request ke API untuk dapat HEX
             val response = app.get(apiUrl, headers = apiHeaders).text.trim()
 
-            if (response.isNotEmpty()) {
+            // 3. Validasi Respon (Harus HEX, bukan JSON error)
+            if (response.isNotEmpty() && !response.startsWith("{")) {
                 val decrypted = decryptAes(response)
                 
-                // Ambil link M3U8 dari JSON hasil dekripsi
+                // 4. Ambil Link M3U8 (Cari pola https://...m3u8)
                 val videoUrl = Regex("""file"\s*:\s*"([^"]+)""").find(decrypted)?.groupValues?.get(1)
                     ?: Regex("""file":"([^"]+)""").find(decrypted)?.groupValues?.get(1)
+                    ?: Regex("""https?://.*\.m3u8[^"]*""").find(decrypted)?.value // Fallback cari link m3u8 langsung
 
                 videoUrl?.let { link ->
                     val cleanedLink = link.replace("\\", "")
                     
                     callback.invoke(
                         newExtractorLink(this.name, this.name, cleanedLink, INFER_TYPE) {
-                            // Referer ini penting untuk request m3u8 pertama kali
                             this.referer = "https://playerngefilm21.rpmlive.online/"
                             this.headers = apiHeaders
                             this.quality = Qualities.P720.value
@@ -78,13 +79,14 @@ class RpmLive : ExtractorApi() {
 
     private fun decryptAes(encryptedHex: String): String {
         return try {
+            // Bersihkan string dari karakter aneh sebelum decode
+            val cleanHex = encryptedHex.replace(Regex("[^0-9a-fA-F]"), "")
+            
             val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
             val keySpec = SecretKeySpec(key, "AES")
             val ivSpec = IvParameterSpec(iv)
-            cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec)
             
-            // Bersihkan spasi/newline (Jaga-jaga)
-            val cleanHex = encryptedHex.replace(Regex("\\s"), "")
+            cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec)
             
             val encryptedBytes = cleanHex.decodeHex()
             val decryptedBytes = cipher.doFinal(encryptedBytes)
