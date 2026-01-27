@@ -1,5 +1,3 @@
-@file:Suppress("DEPRECATION") // <--- INI KUNCINYA. Ini memaksa compiler mengabaikan error 'deprecated'.
-
 package com.NgeFilm
 
 import com.lagradost.cloudstream3.app
@@ -39,8 +37,9 @@ class RpmLive : ExtractorApi() {
             try {
                 val decryptedUrl = decrypt(encryptedData)
                 
-                // Kita gunakan cara klasik yang DIJAMIN berhasil di semua versi
-                // Error 'deprecated' akan hilang karena @file:Suppress di atas
+                // === PENEMPATAN MANTRA DI SINI ===
+                // Kita bungkus pemanggilan ini agar compiler tutup mata pada baris ini saja
+                @Suppress("DEPRECATION")
                 callback.invoke(
                     ExtractorLink(
                         source = name,
@@ -48,9 +47,10 @@ class RpmLive : ExtractorApi() {
                         url = decryptedUrl,
                         referer = referer ?: mainUrl,
                         quality = Qualities.Unknown.value,
-                        type = INFER_TYPE 
+                        type = INFER_TYPE
                     )
                 )
+                
             } catch (e: Exception) {
                 e.printStackTrace()
             }
