@@ -215,7 +215,10 @@ open class Adicinemax21 : TmdbProvider() {
         val recommendations =
             res.recommendations?.results?.mapNotNull { media -> media.toSearchResponse() }
 
-        val trailer = res.videos?.results?.map { "https://www.youtube.com/watch?v=${it.key}" }
+        // PERBAIKAN: Memfilter hanya YouTube agar trailer valid
+        val trailer = res.videos?.results
+            ?.filter { it.site == "YouTube" }
+            ?.map { "https://www.youtube.com/watch?v=${it.key}" }
 
         return if (type == TvType.TvSeries) {
             val lastSeason = res.last_episode_to_air?.season_number
@@ -551,6 +554,8 @@ open class Adicinemax21 : TmdbProvider() {
 
     data class Trailers(
         @JsonProperty("key") val key: String? = null,
+        @JsonProperty("site") val site: String? = null, // PERBAIKAN: Menambah field site
+        @JsonProperty("type") val type: String? = null, // PERBAIKAN: Menambah field type
     )
 
     data class ResultsTrailer(
