@@ -53,11 +53,10 @@ class Adimoviebox : MainAPI() {
         return "$timestamp,$hash"
     }
 
-    // FIX: Signature Generator yang aman untuk Java/Kotlin murni
+    // Signature Generator (Aman untuk Java/Kotlin murni tanpa Android Import)
     private fun generateXTrSignature(method: String, url: String, body: String? = null): String {
         val timestamp = System.currentTimeMillis()
         
-        // Parsing URL manual tanpa Android URI
         val uri = URI(url)
         val path = uri.path ?: ""
         val query = uri.query
@@ -70,10 +69,9 @@ class Adimoviebox : MainAPI() {
                     (parts.getOrNull(0) ?: "") to (parts.getOrNull(1) ?: "")
                 }
                 .filter { it.first.isNotEmpty() }
-                .groupBy { it.first } // Group by key
-                .toSortedMap() // Sort by key
+                .groupBy { it.first }
+                .toSortedMap()
                 .flatMap { (key, values) ->
-                    // Sort values dan gabungkan kembali
                     values.map { it.second }.sorted().map { value -> "$key=$value" }
                 }
                 .joinToString("&")
@@ -85,7 +83,6 @@ class Adimoviebox : MainAPI() {
         val bodyHash = if (body != null) md5(body.toByteArray()) else ""
         val bodyLength = body?.toByteArray()?.size?.toString() ?: ""
 
-        // Format Canonical String
         val canonical = "${method.uppercase()}\n\n\n$bodyLength\n$timestamp\n$bodyHash\n$canonicalUrl"
 
         val mac = Mac.getInstance("HmacMD5")
@@ -131,21 +128,33 @@ class Adimoviebox : MainAPI() {
         return newHomePageResponse(request.name, home)
     }
 
+    // --- UPGRADE PENCARIAN (V2) ---
     override suspend fun search(query: String): List<SearchResponse> {
-        val targetUrl = "$apiUrl/wefeed-h5api-bff/subject/search"
+        // Menggunakan endpoint V2 (sama seperti MovieBox) agar hasil lebih banyak/akurat
+        val targetUrl = "$apiUrl/wefeed-h5api-bff/subject/search/v2"
+        
         val body = mapOf(
             "keyword" to query,
-            "page" to "1",
-            "perPage" to "20",
-            "subjectType" to "0",
+            "page" to 1,
+            "perPage" to 20,
+            "subjectType" to 0
         ).toJson()
 
         val headers = getSignedHeaders("POST", targetUrl, body)
-        return app.post(
+        
+        val response = app.post(
             targetUrl, 
             headers = headers,
             requestBody = body.toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
-        ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
+        ).parsedSafe<Media>()
+        
+        // Logika Parsing V2: Data ada di dalam results -> subjects
+        val resultsV2 = response?.data?.results?.flatMap { it.subjects ?: emptyList() }
+        
+        // Fallback: Jika V2 kosong, coba cek di 'items' (format lama)
+        val finalItems = if (!resultsV2.isNullOrEmpty()) resultsV2 else response?.data?.items
+
+        return finalItems?.map { it.toSearchResponse(this) }
             ?: throw ErrorLoadingException("Pencarian tidak ditemukan.")
     }
 
@@ -225,19 +234,14 @@ class Adimoviebox : MainAPI() {
     ): Boolean {
         val media = parseJson<LoadData>(data)
         
-        // 1. Ambil list ID yang valid (Original + Dubbing/Multi-Audio)
-        // Kita panggil API Detail dulu untuk melihat apakah ada versi Dubbing
+        // Cek Detail dulu untuk Dubbing
         val checkUrl = "$homeApiUrl/wefeed-h5api-bff/detail?detailPath=${media.detailPath}"
         val checkHeaders = getSignedHeaders("GET", checkUrl)
         val detailData = app.get(checkUrl, headers = checkHeaders).parsedSafe<MediaDetail>()?.data
         
-        // List ID yang akan discan (Original ID + Dubbing IDs)
-        val idsToCheck = ArrayList<Pair<String, String>>() // Pair of ID to Language Name
-        
-        // Tambah ID Original (Default)
+        val idsToCheck = ArrayList<Pair<String, String>>() 
         idsToCheck.add((media.id ?: "") to "Original")
 
-        // Tambah Dubbing jika ada (Fitur penting agar link muncul!)
         detailData?.dubs?.forEach { dub ->
             val dubId = dub.subjectId
             val lang = dub.lanName ?: "Dub"
@@ -246,7 +250,6 @@ class Adimoviebox : MainAPI() {
             }
         }
 
-        // 2. Loop semua ID untuk mencari Stream
         var foundAnyLink = false
         
         idsToCheck.forEach { (currentId, langName) ->
@@ -270,7 +273,7 @@ class Adimoviebox : MainAPI() {
                     foundAnyLink = true
                 }
 
-                // Subtitle logic (hanya ambil dari sumber yang valid)
+                // Subtitle
                 val streamId = streams?.firstOrNull()?.id
                 val format = streams?.firstOrNull()?.format
                 if (streamId != null && format != null) {
@@ -281,7 +284,6 @@ class Adimoviebox : MainAPI() {
                     }
                 }
             } catch (e: Exception) {
-                // Abaikan error pada ID dubbing tertentu, lanjut ke ID berikutnya
             }
         }
 
@@ -301,7 +303,10 @@ data class LoadData(
 data class Media(@param:JsonProperty("data") val data: Data? = null) {
     data class Data(
         @param:JsonProperty("subjectList") val subjectList: ArrayList<Items>? = arrayListOf(),
+        // Support V1 (items) dan V2 (results)
         @param:JsonProperty("items") val items: ArrayList<Items>? = arrayListOf(),
+        @param:JsonProperty("results") val results: ArrayList<SearchResult>? = arrayListOf(),
+        
         @param:JsonProperty("streams") val streams: ArrayList<Streams>? = arrayListOf(),
         @param:JsonProperty("captions") val captions: ArrayList<Captions>? = arrayListOf(),
     ) {
@@ -318,12 +323,16 @@ data class Media(@param:JsonProperty("data") val data: Data? = null) {
     }
 }
 
+// Struktur baru untuk Search V2
+data class SearchResult(
+    @param:JsonProperty("subjects") val subjects: ArrayList<Items>? = arrayListOf()
+)
+
 data class MediaDetail(@param:JsonProperty("data") val data: Data? = null) {
     data class Data(
         @param:JsonProperty("subject") val subject: Items? = null, 
         @param:JsonProperty("stars") val stars: ArrayList<Stars>? = arrayListOf(), 
         @param:JsonProperty("resource") val resource: Resource? = null,
-        // Ditambahkan untuk menangani Multi-Audio/Dubbing
         @param:JsonProperty("dubs") val dubs: ArrayList<Dubs>? = arrayListOf()
     ) {
         data class Stars(
