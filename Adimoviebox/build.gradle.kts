@@ -1,13 +1,34 @@
-import com.lagradost.cloudstream3.gradle.CloudstreamExtension
+// use an integer for version numbers
+version = 5
 
-version = 10 // Versi diperbarui karena perubahan besar pada API
+android {
+    buildFeatures {
+        buildConfig = true
+    }
+}
 
 cloudstream {
-    description = "Nonton sampe biji mata kaluar"
-    language    = "id"
-    authors = listOf("AdiManuLateri3")
-    status = 1
-    tvTypes = listOf("Movie", "TvSeries", "Anime", "AsianDrama")
-    iconUrl = "https://raw.githubusercontent.com/michat88/Zaneta/refs/heads/main/Icons/adi.png"
-    isCrossPlatform = true
+    language = "hi"
+    // All of these properties are optional, you can safely remove them
+
+    description = "Multi Language Movies and Series Provider"
+    authors = listOf("NivinCNC,Phisher98")
+
+    /**
+     * Status int as the following:
+     * 0: Down
+     * 1: Ok
+     * 2: Slow
+     * 3: Beta only
+     * */
+    status = 1 // will be 3 if unspecified
+    tvTypes = listOf(
+        "Movie",
+        "TvSeries"
+    )
+
+    iconUrl = "https://github.com/NivinCNC/CNCVerse-Cloud-Stream-Extension/raw/refs/heads/master/MovieBoxProvider/icon.png"
+
+    requiresResources = true
+    isCrossPlatform = false
 }
