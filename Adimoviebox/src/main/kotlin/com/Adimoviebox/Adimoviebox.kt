@@ -31,10 +31,10 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
-    // KUNCI RAHASIA UNTUK SIGNATURE (Diambil dari MovieBoxProvider)
+    // --- KEAMANAN (SIGNATURE) ---
+    // Key rahasia ini diambil dari MovieBoxProvider agar server mengenali kita sebagai aplikasi resmi
     private val secretKeyDefault = "NzZpUmwwN3MweFNOOWpxbUVXQXQ3OUVCSlp1bElRSXNWNjRGWnIyTw=="
 
-    // HEADER DASAR
     private val commonHeaders = mapOf(
         "origin" to mainUrl,
         "referer" to "$mainUrl/",
@@ -42,32 +42,27 @@ class Adimoviebox : MainAPI() {
         "accept-language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7"
     )
 
-    // --- FUNGSI KEAMANAN (ADAPTASI DARI MOVIEBOXPROVIDER) ---
-
     private fun md5(input: ByteArray): String {
         return MessageDigest.getInstance("MD5").digest(input)
-            .joinToString("") { "%02x".format(it) } //
+            .joinToString("") { "%02x".format(it) }
     }
 
     private fun generateXClientToken(): String {
         val timestamp = System.currentTimeMillis().toString()
-        val hash = md5(timestamp.reversed().toByteArray()) //
+        val hash = md5(timestamp.reversed().toByteArray())
         return "$timestamp,$hash"
     }
 
-    private fun generateXTrSignature(
-        method: String,
-        url: String,
-        body: String? = null
-    ): String {
+    private fun generateXTrSignature(method: String, url: String, body: String? = null): String {
         val timestamp = System.currentTimeMillis()
         val parsed = Uri.parse(url)
         val path = parsed.path ?: ""
         
-        // Canonical String logic
+        // Mengurutkan query agar signature valid (Logic dari MovieBox)
         val bodyHash = if (body != null) md5(body.toByteArray()) else ""
         val bodyLength = body?.toByteArray()?.size?.toString() ?: ""
 
+        // Format string kanonikal yang ketat
         val canonical = "${method.uppercase()}\n\n\n$bodyLength\n$timestamp\n$bodyHash\n$path"
 
         val mac = Mac.getInstance("HmacMD5")
@@ -75,9 +70,10 @@ class Adimoviebox : MainAPI() {
         mac.init(SecretKeySpec(secretBytes, "HmacMD5"))
         val signature = base64Encode(mac.doFinal(canonical.toByteArray()))
 
-        return "$timestamp|2|$signature" //
+        return "$timestamp|2|$signature"
     }
 
+    // Helper function untuk membuat header dengan mudah
     private fun getSignedHeaders(method: String, url: String, body: String? = null): Map<String, String> {
         return commonHeaders + mapOf(
             "x-client-token" to generateXClientToken(),
@@ -85,7 +81,7 @@ class Adimoviebox : MainAPI() {
         )
     }
 
-    // --- BAGIAN KATEGORI ASLI ADIMOVIEBOX ---
+    // --- KATEGORI ASLI ---
     override val mainPage: List<MainPageData> = mainPageOf(
         "5283462032510044280" to "Indonesian Drama",
         "6528093688173053896" to "Indonesian Movies",
@@ -102,8 +98,8 @@ class Adimoviebox : MainAPI() {
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val id = request.data 
         val targetUrl = "$homeApiUrl/wefeed-h5api-bff/ranking-list/content?id=$id&page=$page&perPage=12"
-        
         val headers = getSignedHeaders("GET", targetUrl)
+
         val responseData = app.get(targetUrl, headers = headers).parsedSafe<Media>()?.data
         val listFilm = responseData?.subjectList ?: responseData?.items
 
@@ -140,8 +136,30 @@ class Adimoviebox : MainAPI() {
         val document = response?.data ?: throw ErrorLoadingException("Gagal memuat detail.")
         
         val subject = document.subject
+        val title = subject?.title ?: ""
+        val poster = subject?.cover?.url
+        val tags = subject?.genre?.split(",")?.map { it.trim() }
+        val year = subject?.releaseDate?.substringBefore("-")?.toIntOrNull()
+        val description = subject?.description
+        val trailer = subject?.trailer?.videoAddress?.url
+        val score = Score.from10(subject?.imdbRatingValue)
+        
         val realId = subject?.subjectId ?: id
         val detailPath = subject?.detailPath ?: id
+
+        // Parsing Aktor (Restored)
+        val actors = document.stars?.mapNotNull { cast ->
+            ActorData(
+                Actor(cast.name ?: return@mapNotNull null, cast.avatarUrl),
+                roleString = cast.character
+            )
+        }?.distinctBy { it.actor.name }
+
+        // Parsing Rekomendasi (Restored & Secured)
+        val recUrl = "$apiUrl/wefeed-h5api-bff/subject/detail-rec?subjectId=$realId&page=1&perPage=12"
+        val recHeaders = getSignedHeaders("GET", recUrl)
+        val recommendations = app.get(recUrl, headers = recHeaders)
+            .parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
 
         return if (subject?.subjectType == 2) {
             val episodes = document.resource?.seasons?.flatMap { seasons ->
@@ -155,18 +173,26 @@ class Adimoviebox : MainAPI() {
                 }
             } ?: emptyList()
 
-            newTvSeriesLoadResponse(subject.title ?: "", url, TvType.TvSeries, episodes) {
-                this.posterUrl = subject.cover?.url
-                this.year = subject.releaseDate?.substringBefore("-")?.toIntOrNull()
-                this.plot = subject.description
-                this.score = Score.from10(subject.imdbRatingValue)
+            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+                this.posterUrl = poster
+                this.year = year
+                this.plot = description
+                this.tags = tags
+                this.score = score
+                this.actors = actors
+                this.recommendations = recommendations
+                addTrailer(trailer)
             }
         } else {
-            newMovieLoadResponse(subject?.title ?: "", url, TvType.Movie, LoadData(realId, detailPath = detailPath).toJson()) {
-                this.posterUrl = subject?.cover?.url
-                this.year = subject?.releaseDate?.substringBefore("-")?.toIntOrNull()
-                this.plot = subject?.description
-                this.score = Score.from10(subject?.imdbRatingValue)
+            newMovieLoadResponse(title, url, TvType.Movie, LoadData(realId, detailPath = detailPath).toJson()) {
+                this.posterUrl = poster
+                this.year = year
+                this.plot = description
+                this.tags = tags
+                this.score = score
+                this.actors = actors
+                this.recommendations = recommendations
+                addTrailer(trailer)
             }
         }
     }
@@ -181,7 +207,8 @@ class Adimoviebox : MainAPI() {
         val playUrl = "$apiUrl/wefeed-h5api-bff/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}&detailPath=${media.detailPath}"
         
         val headers = getSignedHeaders("GET", playUrl)
-        val streams = app.get(playUrl, headers = headers).parsedSafe<Media>()?.data?.streams
+        val responseData = app.get(playUrl, headers = headers).parsedSafe<Media>()?.data
+        val streams = responseData?.streams
 
         streams?.forEach { source ->
             callback.invoke(
@@ -191,32 +218,57 @@ class Adimoviebox : MainAPI() {
                 }
             )
         }
+
+        // Subtitle logic (Secured)
+        val streamId = streams?.firstOrNull()?.id
+        val format = streams?.firstOrNull()?.format
+        if (streamId != null && format != null) {
+            val subUrl = "$apiUrl/wefeed-h5api-bff/subject/caption?format=$format&id=$streamId&subjectId=${media.id}"
+            val subHeaders = getSignedHeaders("GET", subUrl)
+            
+            app.get(subUrl, headers = subHeaders).parsedSafe<Media>()?.data?.captions?.forEach { subtitle ->
+                subtitleCallback.invoke(newSubtitleFile(subtitle.lanName ?: "Unknown", subtitle.url ?: return@forEach))
+            }
+        }
         return true
     }
 }
 
 // --- DATA CLASSES ---
 data class LoadData(val id: String?, val season: Int?, val episode: Int?, val detailPath: String?)
+
 data class Media(@param:JsonProperty("data") val data: Data? = null) {
     data class Data(
         val subjectList: ArrayList<Items>? = arrayListOf(),
         val items: ArrayList<Items>? = arrayListOf(),
-        val streams: ArrayList<Streams>? = arrayListOf()
+        val streams: ArrayList<Streams>? = arrayListOf(),
+        val captions: ArrayList<Captions>? = arrayListOf(),
     ) {
-        data class Streams(val url: String?, val resolutions: String?)
+        data class Streams(
+            val id: String?, val format: String?, val url: String?, val resolutions: String?
+        )
+        data class Captions(val lanName: String?, val url: String?)
     }
 }
+
 data class MediaDetail(@param:JsonProperty("data") val data: Data? = null) {
-    data class Data(val subject: Items? = null, val resource: Resource? = null) {
+    data class Data(
+        val subject: Items? = null, 
+        val stars: ArrayList<Stars>? = arrayListOf(), 
+        val resource: Resource? = null
+    ) {
+        data class Stars(val name: String?, val character: String?, val avatarUrl: String?)
         data class Resource(val seasons: ArrayList<Seasons>?) {
             data class Seasons(val se: Int?, val maxEp: Int?, val allEp: String?)
         }
     }
 }
+
 data class Items(
     val subjectId: String?, val subjectType: Int?, val title: String?, 
     val description: String?, val releaseDate: String?, val cover: Cover?, 
-    val imdbRatingValue: String?, val detailPath: String?
+    val imdbRatingValue: String?, val detailPath: String?,
+    val genre: String?, val trailer: Trailer?
 ) {
     fun toSearchResponse(provider: Adimoviebox): SearchResponse {
         val url = "${provider.mainUrl}/detail/${detailPath ?: subjectId}"
@@ -227,4 +279,7 @@ data class Items(
         }
     }
     data class Cover(val url: String?)
+    data class Trailer(val videoAddress: VideoAddress?) {
+        data class VideoAddress(val url: String?)
+    }
 }
