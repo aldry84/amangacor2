@@ -1,6 +1,5 @@
 package com.Adimoviebox
 
-import android.net.Uri
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
@@ -10,6 +9,7 @@ import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.nicehttp.RequestBodyTypes
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.net.URI
 import java.security.MessageDigest
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
@@ -33,7 +33,6 @@ class Adimoviebox : MainAPI() {
     )
 
     // --- KEAMANAN (SIGNATURE SYSTEM) ---
-    // Kunci rahasia agar dianggap aplikasi resmi (diambil dari MovieBox)
     private val secretKeyDefault = "NzZpUmwwN3MweFNOOWpxbUVXQXQ3OUVCSlp1bElRSXNWNjRGWnIyTw=="
 
     private val commonHeaders = mapOf(
@@ -54,16 +53,40 @@ class Adimoviebox : MainAPI() {
         return "$timestamp,$hash"
     }
 
+    // FIX: Signature Generator yang aman untuk Java/Kotlin murni
     private fun generateXTrSignature(method: String, url: String, body: String? = null): String {
         val timestamp = System.currentTimeMillis()
-        val parsed = Uri.parse(url)
-        val path = parsed.path ?: ""
         
-        // Logika canonical string yang ketat
+        // Parsing URL manual tanpa Android URI
+        val uri = URI(url)
+        val path = uri.path ?: ""
+        val query = uri.query
+        
+        // Logika Pengurutan Query (Wajib agar signature valid)
+        val sortedQuery = if (!query.isNullOrEmpty()) {
+            query.split("&")
+                .map { 
+                    val parts = it.split("=", limit = 2)
+                    (parts.getOrNull(0) ?: "") to (parts.getOrNull(1) ?: "")
+                }
+                .filter { it.first.isNotEmpty() }
+                .groupBy { it.first } // Group by key
+                .toSortedMap() // Sort by key
+                .flatMap { (key, values) ->
+                    // Sort values dan gabungkan kembali
+                    values.map { it.second }.sorted().map { value -> "$key=$value" }
+                }
+                .joinToString("&")
+        } else {
+            ""
+        }
+
+        val canonicalUrl = if (sortedQuery.isNotEmpty()) "$path?$sortedQuery" else path
         val bodyHash = if (body != null) md5(body.toByteArray()) else ""
         val bodyLength = body?.toByteArray()?.size?.toString() ?: ""
 
-        val canonical = "${method.uppercase()}\n\n\n$bodyLength\n$timestamp\n$bodyHash\n$path"
+        // Format Canonical String
+        val canonical = "${method.uppercase()}\n\n\n$bodyLength\n$timestamp\n$bodyHash\n$canonicalUrl"
 
         val mac = Mac.getInstance("HmacMD5")
         val secretBytes = base64DecodeArray(secretKeyDefault)
@@ -73,7 +96,6 @@ class Adimoviebox : MainAPI() {
         return "$timestamp|2|$signature"
     }
 
-    // Fungsi pembantu untuk membuat header dengan tanda tangan
     private fun getSignedHeaders(method: String, url: String, body: String? = null): Map<String, String> {
         return commonHeaders + mapOf(
             "x-client-token" to generateXClientToken(),
@@ -81,7 +103,7 @@ class Adimoviebox : MainAPI() {
         )
     }
 
-    // --- KATEGORI UTAMA (ASLI) ---
+    // --- KATEGORI ---
     override val mainPage: List<MainPageData> = mainPageOf(
         "5283462032510044280" to "Indonesian Drama",
         "6528093688173053896" to "Indonesian Movies",
@@ -147,7 +169,6 @@ class Adimoviebox : MainAPI() {
         val realId = subject?.subjectId ?: id
         val detailPath = subject?.detailPath ?: id
 
-        // Parsing Aktor
         val actors = document.stars?.mapNotNull { cast ->
             ActorData(
                 Actor(cast.name ?: return@mapNotNull null, cast.avatarUrl),
@@ -155,7 +176,6 @@ class Adimoviebox : MainAPI() {
             )
         }?.distinctBy { it.actor.name }
 
-        // Parsing Rekomendasi
         val recUrl = "$apiUrl/wefeed-h5api-bff/subject/detail-rec?subjectId=$realId&page=1&perPage=12"
         val recHeaders = getSignedHeaders("GET", recUrl)
         val recommendations = app.get(recUrl, headers = recHeaders)
@@ -166,7 +186,6 @@ class Adimoviebox : MainAPI() {
                 val epList = if (seasons.allEp.isNullOrEmpty()) (1..(seasons.maxEp ?: 1)).toList() 
                              else seasons.allEp.split(",").map { it.toInt() }
                 epList.map { ep ->
-                    // Fix: LoadData sekarang memiliki default value, jadi aman
                     newEpisode(LoadData(realId, seasons.se, ep, detailPath).toJson()) {
                         this.season = seasons.se
                         this.episode = ep
@@ -185,7 +204,6 @@ class Adimoviebox : MainAPI() {
                 addTrailer(trailer)
             }
         } else {
-            // Fix: LoadData aman dipanggil tanpa season/episode
             newMovieLoadResponse(title, url, TvType.Movie, LoadData(realId, detailPath = detailPath).toJson()) {
                 this.posterUrl = poster
                 this.year = year
@@ -206,39 +224,73 @@ class Adimoviebox : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val media = parseJson<LoadData>(data)
-        val playUrl = "$apiUrl/wefeed-h5api-bff/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}&detailPath=${media.detailPath}"
         
-        val headers = getSignedHeaders("GET", playUrl)
-        val responseData = app.get(playUrl, headers = headers).parsedSafe<Media>()?.data
-        val streams = responseData?.streams
+        // 1. Ambil list ID yang valid (Original + Dubbing/Multi-Audio)
+        // Kita panggil API Detail dulu untuk melihat apakah ada versi Dubbing
+        val checkUrl = "$homeApiUrl/wefeed-h5api-bff/detail?detailPath=${media.detailPath}"
+        val checkHeaders = getSignedHeaders("GET", checkUrl)
+        val detailData = app.get(checkUrl, headers = checkHeaders).parsedSafe<MediaDetail>()?.data
+        
+        // List ID yang akan discan (Original ID + Dubbing IDs)
+        val idsToCheck = ArrayList<Pair<String, String>>() // Pair of ID to Language Name
+        
+        // Tambah ID Original (Default)
+        idsToCheck.add((media.id ?: "") to "Original")
 
-        streams?.forEach { source ->
-            callback.invoke(
-                newExtractorLink(this.name, this.name, source.url ?: return@forEach, INFER_TYPE) {
-                    this.quality = getQualityFromName(source.resolutions)
-                    this.referer = mainUrl
-                }
-            )
-        }
-
-        // Subtitle logic
-        val streamId = streams?.firstOrNull()?.id
-        val format = streams?.firstOrNull()?.format
-        if (streamId != null && format != null) {
-            val subUrl = "$apiUrl/wefeed-h5api-bff/subject/caption?format=$format&id=$streamId&subjectId=${media.id}"
-            val subHeaders = getSignedHeaders("GET", subUrl)
-            
-            app.get(subUrl, headers = subHeaders).parsedSafe<Media>()?.data?.captions?.forEach { subtitle ->
-                subtitleCallback.invoke(newSubtitleFile(subtitle.lanName ?: "Unknown", subtitle.url ?: return@forEach))
+        // Tambah Dubbing jika ada (Fitur penting agar link muncul!)
+        detailData?.dubs?.forEach { dub ->
+            val dubId = dub.subjectId
+            val lang = dub.lanName ?: "Dub"
+            if (!dubId.isNullOrEmpty() && dubId != media.id) {
+                idsToCheck.add(dubId to lang)
             }
         }
-        return true
+
+        // 2. Loop semua ID untuk mencari Stream
+        var foundAnyLink = false
+        
+        idsToCheck.forEach { (currentId, langName) ->
+            val playUrl = "$apiUrl/wefeed-h5api-bff/subject/play?subjectId=$currentId&se=${media.season ?: 0}&ep=${media.episode ?: 0}&detailPath=${media.detailPath}"
+            val headers = getSignedHeaders("GET", playUrl)
+            
+            try {
+                val responseData = app.get(playUrl, headers = headers).parsedSafe<Media>()?.data
+                val streams = responseData?.streams
+
+                streams?.forEach { source ->
+                    val qualityName = getQualityFromName(source.resolutions)
+                    val sourceName = "Adimoviebox - $langName"
+                    
+                    callback.invoke(
+                        newExtractorLink(sourceName, sourceName, source.url ?: return@forEach, INFER_TYPE) {
+                            this.quality = qualityName
+                            this.referer = mainUrl
+                        }
+                    )
+                    foundAnyLink = true
+                }
+
+                // Subtitle logic (hanya ambil dari sumber yang valid)
+                val streamId = streams?.firstOrNull()?.id
+                val format = streams?.firstOrNull()?.format
+                if (streamId != null && format != null) {
+                    val subUrl = "$apiUrl/wefeed-h5api-bff/subject/caption?format=$format&id=$streamId&subjectId=$currentId"
+                    val subHeaders = getSignedHeaders("GET", subUrl)
+                    app.get(subUrl, headers = subHeaders).parsedSafe<Media>()?.data?.captions?.forEach { subtitle ->
+                        subtitleCallback.invoke(newSubtitleFile(subtitle.lanName ?: "Unknown", subtitle.url ?: return@forEach))
+                    }
+                }
+            } catch (e: Exception) {
+                // Abaikan error pada ID dubbing tertentu, lanjut ke ID berikutnya
+            }
+        }
+
+        return foundAnyLink
     }
 }
 
-// --- DATA CLASSES (DIPERBAIKI) ---
+// --- DATA CLASSES ---
 
-// Fix Utama: Menambahkan = null pada semua field
 data class LoadData(
     val id: String? = null,
     val season: Int? = null,
@@ -270,7 +322,9 @@ data class MediaDetail(@param:JsonProperty("data") val data: Data? = null) {
     data class Data(
         @param:JsonProperty("subject") val subject: Items? = null, 
         @param:JsonProperty("stars") val stars: ArrayList<Stars>? = arrayListOf(), 
-        @param:JsonProperty("resource") val resource: Resource? = null
+        @param:JsonProperty("resource") val resource: Resource? = null,
+        // Ditambahkan untuk menangani Multi-Audio/Dubbing
+        @param:JsonProperty("dubs") val dubs: ArrayList<Dubs>? = arrayListOf()
     ) {
         data class Stars(
             @param:JsonProperty("name") val name: String? = null, 
@@ -286,6 +340,10 @@ data class MediaDetail(@param:JsonProperty("data") val data: Data? = null) {
                 @param:JsonProperty("allEp") val allEp: String? = null
             )
         }
+        data class Dubs(
+            @param:JsonProperty("subjectId") val subjectId: String? = null,
+            @param:JsonProperty("lanName") val lanName: String? = null
+        )
     }
 }
 
