@@ -15,6 +15,7 @@ import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
 class Adimoviebox : MainAPI() {
+    // URL Utama dan API
     override var mainUrl = "https://lok-lok.cc"
     private val apiUrl = "https://lok-lok.cc" 
     private val homeApiUrl = "https://h5-api.aoneroom.com"
@@ -31,8 +32,8 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
-    // --- KEAMANAN (SIGNATURE) ---
-    // Key rahasia ini diambil dari MovieBoxProvider agar server mengenali kita sebagai aplikasi resmi
+    // --- KEAMANAN (SIGNATURE SYSTEM) ---
+    // Kunci rahasia agar dianggap aplikasi resmi (diambil dari MovieBox)
     private val secretKeyDefault = "NzZpUmwwN3MweFNOOWpxbUVXQXQ3OUVCSlp1bElRSXNWNjRGWnIyTw=="
 
     private val commonHeaders = mapOf(
@@ -58,11 +59,10 @@ class Adimoviebox : MainAPI() {
         val parsed = Uri.parse(url)
         val path = parsed.path ?: ""
         
-        // Mengurutkan query agar signature valid (Logic dari MovieBox)
+        // Logika canonical string yang ketat
         val bodyHash = if (body != null) md5(body.toByteArray()) else ""
         val bodyLength = body?.toByteArray()?.size?.toString() ?: ""
 
-        // Format string kanonikal yang ketat
         val canonical = "${method.uppercase()}\n\n\n$bodyLength\n$timestamp\n$bodyHash\n$path"
 
         val mac = Mac.getInstance("HmacMD5")
@@ -73,7 +73,7 @@ class Adimoviebox : MainAPI() {
         return "$timestamp|2|$signature"
     }
 
-    // Helper function untuk membuat header dengan mudah
+    // Fungsi pembantu untuk membuat header dengan tanda tangan
     private fun getSignedHeaders(method: String, url: String, body: String? = null): Map<String, String> {
         return commonHeaders + mapOf(
             "x-client-token" to generateXClientToken(),
@@ -81,7 +81,7 @@ class Adimoviebox : MainAPI() {
         )
     }
 
-    // --- KATEGORI ASLI ---
+    // --- KATEGORI UTAMA (ASLI) ---
     override val mainPage: List<MainPageData> = mainPageOf(
         "5283462032510044280" to "Indonesian Drama",
         "6528093688173053896" to "Indonesian Movies",
@@ -147,7 +147,7 @@ class Adimoviebox : MainAPI() {
         val realId = subject?.subjectId ?: id
         val detailPath = subject?.detailPath ?: id
 
-        // Parsing Aktor (Restored)
+        // Parsing Aktor
         val actors = document.stars?.mapNotNull { cast ->
             ActorData(
                 Actor(cast.name ?: return@mapNotNull null, cast.avatarUrl),
@@ -155,7 +155,7 @@ class Adimoviebox : MainAPI() {
             )
         }?.distinctBy { it.actor.name }
 
-        // Parsing Rekomendasi (Restored & Secured)
+        // Parsing Rekomendasi
         val recUrl = "$apiUrl/wefeed-h5api-bff/subject/detail-rec?subjectId=$realId&page=1&perPage=12"
         val recHeaders = getSignedHeaders("GET", recUrl)
         val recommendations = app.get(recUrl, headers = recHeaders)
@@ -166,6 +166,7 @@ class Adimoviebox : MainAPI() {
                 val epList = if (seasons.allEp.isNullOrEmpty()) (1..(seasons.maxEp ?: 1)).toList() 
                              else seasons.allEp.split(",").map { it.toInt() }
                 epList.map { ep ->
+                    // Fix: LoadData sekarang memiliki default value, jadi aman
                     newEpisode(LoadData(realId, seasons.se, ep, detailPath).toJson()) {
                         this.season = seasons.se
                         this.episode = ep
@@ -184,6 +185,7 @@ class Adimoviebox : MainAPI() {
                 addTrailer(trailer)
             }
         } else {
+            // Fix: LoadData aman dipanggil tanpa season/episode
             newMovieLoadResponse(title, url, TvType.Movie, LoadData(realId, detailPath = detailPath).toJson()) {
                 this.posterUrl = poster
                 this.year = year
@@ -219,7 +221,7 @@ class Adimoviebox : MainAPI() {
             )
         }
 
-        // Subtitle logic (Secured)
+        // Subtitle logic
         val streamId = streams?.firstOrNull()?.id
         val format = streams?.firstOrNull()?.format
         if (streamId != null && format != null) {
@@ -234,41 +236,70 @@ class Adimoviebox : MainAPI() {
     }
 }
 
-// --- DATA CLASSES ---
-data class LoadData(val id: String?, val season: Int?, val episode: Int?, val detailPath: String?)
+// --- DATA CLASSES (DIPERBAIKI) ---
+
+// Fix Utama: Menambahkan = null pada semua field
+data class LoadData(
+    val id: String? = null,
+    val season: Int? = null,
+    val episode: Int? = null,
+    val detailPath: String? = null
+)
 
 data class Media(@param:JsonProperty("data") val data: Data? = null) {
     data class Data(
-        val subjectList: ArrayList<Items>? = arrayListOf(),
-        val items: ArrayList<Items>? = arrayListOf(),
-        val streams: ArrayList<Streams>? = arrayListOf(),
-        val captions: ArrayList<Captions>? = arrayListOf(),
+        @param:JsonProperty("subjectList") val subjectList: ArrayList<Items>? = arrayListOf(),
+        @param:JsonProperty("items") val items: ArrayList<Items>? = arrayListOf(),
+        @param:JsonProperty("streams") val streams: ArrayList<Streams>? = arrayListOf(),
+        @param:JsonProperty("captions") val captions: ArrayList<Captions>? = arrayListOf(),
     ) {
         data class Streams(
-            val id: String?, val format: String?, val url: String?, val resolutions: String?
+            @param:JsonProperty("id") val id: String? = null, 
+            @param:JsonProperty("format") val format: String? = null, 
+            @param:JsonProperty("url") val url: String? = null, 
+            @param:JsonProperty("resolutions") val resolutions: String? = null
         )
-        data class Captions(val lanName: String?, val url: String?)
+        data class Captions(
+            @param:JsonProperty("lanName") val lanName: String? = null, 
+            @param:JsonProperty("url") val url: String? = null
+        )
     }
 }
 
 data class MediaDetail(@param:JsonProperty("data") val data: Data? = null) {
     data class Data(
-        val subject: Items? = null, 
-        val stars: ArrayList<Stars>? = arrayListOf(), 
-        val resource: Resource? = null
+        @param:JsonProperty("subject") val subject: Items? = null, 
+        @param:JsonProperty("stars") val stars: ArrayList<Stars>? = arrayListOf(), 
+        @param:JsonProperty("resource") val resource: Resource? = null
     ) {
-        data class Stars(val name: String?, val character: String?, val avatarUrl: String?)
-        data class Resource(val seasons: ArrayList<Seasons>?) {
-            data class Seasons(val se: Int?, val maxEp: Int?, val allEp: String?)
+        data class Stars(
+            @param:JsonProperty("name") val name: String? = null, 
+            @param:JsonProperty("character") val character: String? = null, 
+            @param:JsonProperty("avatarUrl") val avatarUrl: String? = null
+        )
+        data class Resource(
+            @param:JsonProperty("seasons") val seasons: ArrayList<Seasons>? = arrayListOf()
+        ) {
+            data class Seasons(
+                @param:JsonProperty("se") val se: Int? = null, 
+                @param:JsonProperty("maxEp") val maxEp: Int? = null, 
+                @param:JsonProperty("allEp") val allEp: String? = null
+            )
         }
     }
 }
 
 data class Items(
-    val subjectId: String?, val subjectType: Int?, val title: String?, 
-    val description: String?, val releaseDate: String?, val cover: Cover?, 
-    val imdbRatingValue: String?, val detailPath: String?,
-    val genre: String?, val trailer: Trailer?
+    @param:JsonProperty("subjectId") val subjectId: String? = null, 
+    @param:JsonProperty("subjectType") val subjectType: Int? = null, 
+    @param:JsonProperty("title") val title: String? = null, 
+    @param:JsonProperty("description") val description: String? = null, 
+    @param:JsonProperty("releaseDate") val releaseDate: String? = null, 
+    @param:JsonProperty("cover") val cover: Cover? = null, 
+    @param:JsonProperty("imdbRatingValue") val imdbRatingValue: String? = null, 
+    @param:JsonProperty("detailPath") val detailPath: String? = null,
+    @param:JsonProperty("genre") val genre: String? = null, 
+    @param:JsonProperty("trailer") val trailer: Trailer? = null
 ) {
     fun toSearchResponse(provider: Adimoviebox): SearchResponse {
         val url = "${provider.mainUrl}/detail/${detailPath ?: subjectId}"
@@ -278,8 +309,8 @@ data class Items(
             this.score = Score.from10(imdbRatingValue)
         }
     }
-    data class Cover(val url: String?)
-    data class Trailer(val videoAddress: VideoAddress?) {
-        data class VideoAddress(val url: String?)
+    data class Cover(@param:JsonProperty("url") val url: String? = null)
+    data class Trailer(@param:JsonProperty("videoAddress") val videoAddress: VideoAddress? = null) {
+        data class VideoAddress(@param:JsonProperty("url") val url: String? = null)
     }
 }
