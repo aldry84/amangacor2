@@ -11,8 +11,8 @@ cloudstream {
     language = "id"
     // All of these properties are optional, you can safely remove them
 
-    description = "Multi Language Movies and Series Provider"
-    authors = listOf("NivinCNC,Phisher98")
+    description = "mantap bro"
+    authors = listOf("aldrymanu")
 
     /**
      * Status int as the following:
