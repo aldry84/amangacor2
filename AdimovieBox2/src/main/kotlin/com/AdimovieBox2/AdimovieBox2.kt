@@ -148,17 +148,8 @@ class AdimovieBox2Provider : MainAPI() {
         "1|2;country=Philippines" to "Philippines (Series)",
         "1|1;country=Thailand" to "Thailand(Movies)",
         "1|2;country=Thailand" to "Thailand(Series)",
-        "1|1;country=Nigeria" to "Nollywood (Movies)",
-        "1|2;country=Nigeria" to "Nollywood (Series)",
         "1|1;country=Korea" to "South Korean (Movies)",
         "1|2;country=Korea" to "South Korean (Series)",
-        "1|1;classify=Hindi dub;genre=Action" to "Action (Movies)",
-        "1|1;classify=Hindi dub;genre=Crime" to "Crime (Movies)",
-        "1|1;classify=Hindi dub;genre=Comedy" to "Comedy (Movies)",
-        "1|1;classify=Hindi dub;genre=Romance" to "Romance (Movies)",
-        "1|2;classify=Hindi dub;genre=Crime" to "Crime (Series)",
-        "1|2;classify=Hindi dub;genre=Comedy" to "Comedy (Series)",
-        "1|2;classify=Hindi dub;genre=Romance" to "Romance (Series)",
         )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
