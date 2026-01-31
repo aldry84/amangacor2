@@ -8,7 +8,7 @@ android {
 }
 
 cloudstream {
-    language = "hi"
+    language = "id"
     // All of these properties are optional, you can safely remove them
 
     description = "Multi Language Movies and Series Provider"
@@ -27,7 +27,7 @@ cloudstream {
         "TvSeries"
     )
 
-    iconUrl = "https://github.com/NivinCNC/CNCVerse-Cloud-Stream-Extension/raw/refs/heads/master/MovieBoxProvider/icon.png"
+    iconUrl = "https://moviebox.ph/favicon.ico"
 
     requiresResources = true
     isCrossPlatform = false
