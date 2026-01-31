@@ -13,6 +13,7 @@ import com.lagradost.cloudstream3.HomePageResponse
 import com.lagradost.cloudstream3.LoadResponse
 import com.lagradost.cloudstream3.LoadResponse.Companion.addImdbId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTMDbId
+import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer // PERBAIKAN 1: Import ditambahkan
 import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.MainPageRequest
 import com.lagradost.cloudstream3.Score
@@ -209,7 +210,7 @@ class AdimovieBox2Provider : MainAPI() {
             "x-tr-signature" to getxTrSignature,
             "x-client-info" to """{"package_name":"com.community.mbox.in","version_name":"3.0.03.0529.03","version_code":50020042,"os":"android","os_version":"16","device_id":"da2b99c821e6ea023e4be55b54d5f7d8","install_store":"ps","gaid":"d7578036d13336cc","brand":"google","model":"sdk_gphone64_x86_64","system_language":"en","net":"NETWORK_WIFI","region":"IN","timezone":"Asia/Calcutta","sp_code":""}""",
             "x-client-status" to "0",
-        )
+       )
 
             val requestBody = jsonBody.toRequestBody("application/json".toMediaType())
             val response = if (request.data.contains("|")) app.post(url, headers = headers, requestBody = requestBody) else app.get(url, headers = getheaders)
@@ -349,6 +350,9 @@ class AdimovieBox2Provider : MainAPI() {
 
         val coverUrl = data["cover"]?.get("url")?.asText()
         val backgroundUrl = data["cover"]?.get("url")?.asText()
+
+        // PERBAIKAN 2: Mengambil URL trailer
+        val trailerUrl = data["trailer"]?.get("videoAddress")?.get("url")?.asText()
 
         val subjectType = data["subjectType"]?.asInt() ?: 1
 
@@ -490,6 +494,9 @@ class AdimovieBox2Provider : MainAPI() {
                 this.duration = durationMinutes
                 addImdbId(imdbId)
                 addTMDbId(tmdbId.toString())
+
+                // PERBAIKAN 3: Menambahkan Trailer ke response
+                addTrailer(trailerUrl)
             }
         }
 
@@ -505,6 +512,9 @@ class AdimovieBox2Provider : MainAPI() {
             this.duration = durationMinutes
             addImdbId(imdbId)
             addTMDbId(tmdbId.toString())
+
+            // PERBAIKAN 3: Menambahkan Trailer ke response
+            addTrailer(trailerUrl)
         }
     }
 
