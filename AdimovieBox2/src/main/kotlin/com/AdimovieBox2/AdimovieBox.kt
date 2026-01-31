@@ -50,7 +50,7 @@ class AdimovieBox2Provider : MainAPI() {
     override var mainUrl = "https://api.inmoviebox.com"
     override var name = "AdimovieBox2" // Nama provider diubah
     override val hasMainPage = true
-    override var lang = "hi"
+    override var lang = "id"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
     private val secretKeyDefault = base64Decode("NzZpUmwwN3MweFNOOWpxbUVXQXQ3OUVCSlp1bElRSXNWNjRGWnIyTw==")
