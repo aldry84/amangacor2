@@ -48,9 +48,9 @@ import kotlin.math.max
 
 class AdimovieBox2Provider : MainAPI() {
     override var mainUrl = "https://api.inmoviebox.com"
-    override var name = "AdimovieBox2" // Nama provider diubah
+    override var name = "AdimovieBox2"
     override val hasMainPage = true
-    override var lang = "id"
+    override var lang = "hi"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
     private val secretKeyDefault = base64Decode("NzZpUmwwN3MweFNOOWpxbUVXQXQ3OUVCSlp1bElRSXNWNjRGWnIyTw==")
@@ -967,6 +967,4 @@ suspend fun fetchTmdbLogoUrl(
     }
 
     return logoUrlAt(0)
-}
-
 }
