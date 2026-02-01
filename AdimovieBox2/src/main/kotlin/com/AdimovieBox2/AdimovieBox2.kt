@@ -2,7 +2,7 @@ package com.AdimovieBox2
 
 import android.annotation.SuppressLint
 import android.net.Uri
-import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.JsonNode // Fix: Import JsonNode agar tidak error
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addImdbId
@@ -67,7 +67,7 @@ class AdimovieBox2Provider : MainAPI() {
         return "$timestamp|2|$signatureB64"
     }
 
-    // Header Aman
+    // Header Aman (Anti 407)
     private fun getSafeHeaders(xClientToken: String, xTrSignature: String): Map<String, String> {
         return mapOf(
             "User-Agent" to "com.community.mbox.in/50020042 (Linux; U; Android 11; en_US; pixel_5; Build/RQ3A.211001.001; Cronet/133.0.6876.3)",
@@ -155,7 +155,10 @@ class AdimovieBox2Provider : MainAPI() {
         val type = if (subject["subjectType"]?.asInt() == 2) TvType.TvSeries else TvType.Movie
         val detailPath = subject["detailPath"]?.asText() ?: ""
 
-        val trailerUrl = subject["trailer"]?.get("videoAddress")?.get("url")?.asText() ?: subject["trailer"]?.get("url")?.asText()
+        // Fix Trailer logic
+        val trailerUrl = subject["trailer"]?.get("videoAddress")?.get("url")?.asText()
+            ?: subject["trailer"]?.get("url")?.asText()
+
         val actors = (data["stars"] ?: data["staffList"])?.mapNotNull { star ->
             ActorData(Actor(star["name"].asText(), star["avatarUrl"]?.asText()), roleString = star["character"]?.asText())
         } ?: emptyList()
@@ -203,6 +206,7 @@ class AdimovieBox2Provider : MainAPI() {
             val ep = parts.getOrNull(2)?.toIntOrNull() ?: 0
             val detailPath = parts.getOrNull(3) ?: ""
 
+            // Cek Dubbing (Header Aman)
             val xClientToken = generateXClientToken()
             val subUrl = "$mainUrl/wefeed-mobile-bff/subject-api/get?subjectId=$originalId"
             val sigSub = generateXTrSignature("GET", "application/json", "application/json", subUrl)
@@ -218,6 +222,7 @@ class AdimovieBox2Provider : MainAPI() {
                 ids.add(originalId to "Original")
             }
 
+            // Loop untuk Stream
             ids.filter { it.first.isNotBlank() }.forEach { (id, lang) ->
                 try {
                     val playUrl = "https://lok-lok.cc/wefeed-h5api-bff/subject/play?subjectId=$id&se=$se&ep=$ep&detailPath=$detailPath"
@@ -243,15 +248,16 @@ class AdimovieBox2Provider : MainAPI() {
                         val qualityVal = getHighestQuality(resolution)
                         val typeVal = if (url.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
                         
-                        // FIX: Menggunakan Positional Arguments agar tidak error
+                        // FIX ARGUMENTS: Menggunakan Builder Pattern {} untuk parameter opsional
                         callback.invoke(newExtractorLink(
-                            "LokLok $lang",
-                            "LokLok $lang",
-                            url,
-                            "https://lok-lok.cc/",
-                            qualityVal ?: Qualities.Unknown.value,
-                            typeVal
-                        ))
+                            source = "LokLok $lang",
+                            name = "LokLok $lang",
+                            url = url,
+                            type = typeVal
+                        ) {
+                            this.quality = qualityVal ?: Qualities.Unknown.value
+                            this.headers = mapOf("Referer" to "https://lok-lok.cc/")
+                        })
                     }
                 } catch (e: Exception) {}
             }
@@ -271,7 +277,7 @@ class AdimovieBox2Provider : MainAPI() {
 
     private suspend fun identifyID(title: String, year: Int?, imdbRatingValue: Double?): Pair<Int?, String?> { return Pair(null, null) }
     
-    // FIX: Import JsonNode sudah ada di atas
+    // Fix: Tipe JsonNode sekarang sudah dikenali
     private suspend fun fetchMetaData(imdbId: String?, type: TvType): JsonNode? {
         if (imdbId.isNullOrBlank()) return null
         val metaType = if (type == TvType.TvSeries) "series" else "movie"
