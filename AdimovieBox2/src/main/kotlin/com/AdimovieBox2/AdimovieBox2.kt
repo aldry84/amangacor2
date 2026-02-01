@@ -2,46 +2,19 @@ package com.AdimovieBox2
 
 import android.annotation.SuppressLint
 import android.net.Uri
+import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import com.lagradost.cloudstream3.Actor
-import com.lagradost.cloudstream3.ActorData
-import com.lagradost.cloudstream3.Episode
-import com.lagradost.cloudstream3.ErrorLoadingException
-import com.lagradost.cloudstream3.HomePageList
-import com.lagradost.cloudstream3.HomePageResponse
-import com.lagradost.cloudstream3.LoadResponse
+import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addImdbId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTMDbId
-import com.lagradost.cloudstream3.MainAPI
-import com.lagradost.cloudstream3.MainPageRequest
-import com.lagradost.cloudstream3.Score
-import com.lagradost.cloudstream3.SearchResponse
-import com.lagradost.cloudstream3.SubtitleFile
-import com.lagradost.cloudstream3.TvType
-import com.lagradost.cloudstream3.addDate
-import com.lagradost.cloudstream3.app
-import com.lagradost.cloudstream3.base64Decode
-import com.lagradost.cloudstream3.base64DecodeArray
-import com.lagradost.cloudstream3.base64Encode
-import com.lagradost.cloudstream3.mainPageOf
-import com.lagradost.cloudstream3.mapper
-import com.lagradost.cloudstream3.newEpisode
-import com.lagradost.cloudstream3.newHomePageResponse
-import com.lagradost.cloudstream3.newMovieLoadResponse
-import com.lagradost.cloudstream3.newMovieSearchResponse
-import com.lagradost.cloudstream3.newSubtitleFile
-import com.lagradost.cloudstream3.newTvSeriesLoadResponse
-// --- IMPORT FIX ---
-import com.lagradost.cloudstream3.addTrailer
-import com.lagradost.cloudstream3.addYoutubeTrailer
-// ------------------
-import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.ExtractorLinkType
-import com.lagradost.cloudstream3.utils.INFER_TYPE
-import com.lagradost.cloudstream3.utils.Qualities
-import com.lagradost.cloudstream3.utils.newExtractorLink
+import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
+import com.lagradost.cloudstream3.utils.*
+import com.lagradost.cloudstream3.utils.AppUtils.parseJson
+import com.lagradost.cloudstream3.utils.AppUtils.toJson
+import com.lagradost.nicehttp.RequestBodyTypes
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.net.URLEncoder
@@ -85,7 +58,6 @@ class AdimovieBox2Provider : MainAPI() {
     ): String {
         val parsed = Uri.parse(url)
         val path = parsed.path ?: ""
-        
         val query = if (parsed.queryParameterNames.isNotEmpty()) {
             parsed.queryParameterNames.sorted().joinToString("&") { key ->
                 parsed.getQueryParameters(key).joinToString("&") { value ->
@@ -95,7 +67,6 @@ class AdimovieBox2Provider : MainAPI() {
         } else ""
         
         val canonicalUrl = if (query.isNotEmpty()) "$path?$query" else path
-
         val bodyBytes = body?.toByteArray(Charsets.UTF_8)
         val bodyHash = if (bodyBytes != null) {
             val trimmed = if (bodyBytes.size > 102400) bodyBytes.copyOfRange(0, 102400) else bodyBytes
@@ -103,13 +74,7 @@ class AdimovieBox2Provider : MainAPI() {
         } else ""
 
         val bodyLength = bodyBytes?.size?.toString() ?: ""
-        return "${method.uppercase()}\n" +
-                "${accept ?: ""}\n" +
-                "${contentType ?: ""}\n" +
-                "$bodyLength\n" +
-                "$timestamp\n" +
-                "$bodyHash\n" +
-                canonicalUrl
+        return "${method.uppercase()}\n${accept ?: ""}\n${contentType ?: ""}\n$bodyLength\n$timestamp\n$bodyHash\n$canonicalUrl"
     }
 
     private fun generateXTrSignature(
@@ -144,42 +109,30 @@ class AdimovieBox2Provider : MainAPI() {
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val perPage = 15
-        val url = if (request.data.contains("|")) "$mainUrl/wefeed-mobile-bff/subject-api/list" else "$mainUrl/wefeed-mobile-bff/tab/ranking-list?tabId=0&categoryType=${request.data}&page=$page&perPage=$perPage"
-
+        val url = if (request.data.contains("|")) "$mainUrl/wefeed-mobile-bff/subject-api/list" else "$mainUrl/wefeed-mobile-bff/tab/ranking-list?tabId=0&categoryType=${request.data}&page=$page&perPage=15"
         val xClientToken = generateXClientToken()
         val getxTrSignature = generateXTrSignature("GET", "application/json", "application/json", url)
 
-        val getheaders = mapOf(
+        val headers = mapOf(
             "user-agent" to "com.community.mbox.in/50020042 (Linux; U; Android 16; en_IN; sdk_gphone64_x86_64)",
             "accept" to "application/json",
-            "content-type" to "application/json",
             "x-client-token" to xClientToken,
             "x-tr-signature" to getxTrSignature,
         )
 
-        val response = app.get(url, headers = getheaders)
-        val responseBody = response.body.string()
-        
+        val response = app.get(url, headers = headers)
         val data = try {
-            val mapper = jacksonObjectMapper()
-            val root = mapper.readTree(responseBody)
+            val root = mapper.readTree(response.body.string())
             val items = root["data"]?.get("items") ?: root["data"]?.get("subjects") ?: return newHomePageResponse(emptyList())
             items.mapNotNull { item ->
                 val title = item["title"]?.asText()?.substringBefore("[") ?: return@mapNotNull null
                 val id = item["subjectId"]?.asText() ?: return@mapNotNull null
-                val coverImg = item["cover"]?.get("url")?.asText()
-                val subjectType = item["subjectType"]?.asInt() ?: 1
-                val type = if (subjectType == 2) TvType.TvSeries else TvType.Movie
-                
-                newMovieSearchResponse(title, id, type) {
-                    this.posterUrl = coverImg
+                newMovieSearchResponse(title, id, TvType.Movie) {
+                    this.posterUrl = item["cover"]?.get("url")?.asText()
                     this.score = Score.from10(item["imdbRatingValue"]?.asText())
                 }
             }
-        } catch (_: Exception) {
-            emptyList()
-        }
+        } catch (_: Exception) { emptyList() }
 
         return newHomePageResponse(listOf(HomePageList(request.name, data)))
     }
@@ -195,19 +148,12 @@ class AdimovieBox2Provider : MainAPI() {
             "x-client-token" to xClientToken,
             "x-tr-signature" to xTrSignature,
         )
-        
         val response = app.post(url, headers = headers, requestBody = jsonBody.toRequestBody("application/json".toMediaType()))
-        val mapper = jacksonObjectMapper()
         val results = mapper.readTree(response.body.string())["data"]?.get("results") ?: return emptyList()
         val searchList = mutableListOf<SearchResponse>()
-        
         for (result in results) {
             result["subjects"]?.forEach { subject ->
-                val title = subject["title"]?.asText() ?: return@forEach
-                val id = subject["subjectId"]?.asText() ?: return@forEach
-                val type = if (subject["subjectType"]?.asInt() == 2) TvType.TvSeries else TvType.Movie
-                
-                searchList.add(newMovieSearchResponse(title, id, type) {
+                searchList.add(newMovieSearchResponse(subject["title"].asText(), subject["subjectId"].asText(), TvType.Movie) {
                     this.posterUrl = subject["cover"]?.get("url")?.asText()
                 })
             }
@@ -218,22 +164,14 @@ class AdimovieBox2Provider : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val id = if (url.contains("=")) url.substringAfterLast('=') else url.substringAfterLast('/')
         val finalUrl = "$mainUrl/wefeed-mobile-bff/subject-api/get?subjectId=$id"
-        
         val xClientToken = generateXClientToken()
         val xTrSignature = generateXTrSignature("GET", "application/json", "application/json", finalUrl)
-        val headers = mapOf(
-            "user-agent" to "com.community.mbox.in/50020042",
-            "x-client-token" to xClientToken,
-            "x-tr-signature" to xTrSignature
-        )
+        val headers = mapOf("user-agent" to "com.community.mbox.in/50020042", "x-client-token" to xClientToken, "x-tr-signature" to xTrSignature)
 
         val response = app.get(finalUrl, headers = headers)
-        val body = response.body.string()
-        val mapper = jacksonObjectMapper()
-        val root = mapper.readTree(body)
+        val root = mapper.readTree(response.body.string())
         val data = root["data"] ?: throw ErrorLoadingException("No data")
         
-        // --- Ekstraksi sesuai data CURL internal ---
         val subject = data["subject"] ?: data
         val title = subject["title"]?.asText()?.substringBefore("[") ?: throw ErrorLoadingException("No title found")
         val description = subject["description"]?.asText()
@@ -241,34 +179,24 @@ class AdimovieBox2Provider : MainAPI() {
         val imdbRating = subject["imdbRatingValue"]?.asText()?.toDoubleOrNull()?.times(10)?.toInt()
         val type = if (subject["subjectType"]?.asInt() == 2) TvType.TvSeries else TvType.Movie
 
-        // Trailer Internal
+        // Trailer: Menggunakan link MP4 dari API internal
         val internalTrailerUrl = subject["trailer"]?.get("videoAddress")?.get("url")?.asText()
 
-        // Aktor dari array 'stars'
+        // Aktor: Menggunakan data 'stars'
         val actors = data["stars"]?.mapNotNull { star ->
             val name = star["name"]?.asText() ?: return@mapNotNull null
-            ActorData(
-                Actor(name, star["avatarUrl"]?.asText()),
-                roleString = star["character"]?.asText()
-            )
+            ActorData(Actor(name, star["avatarUrl"]?.asText()), roleString = star["character"]?.asText())
         } ?: emptyList()
 
-        // Sync Metadata Tambahan
         val (tmdbId, imdbId) = identifyID(title, subject["releaseDate"]?.asText()?.take(4)?.toIntOrNull(), imdbRating?.toDouble())
-        val meta = if (!imdbId.isNullOrBlank()) fetchMetaData(imdbId, type) else null
-        val youtubeTrailerId = meta?.get("youtubeId")?.asText()
 
         if (type == TvType.TvSeries) {
-            val episodes = mutableListOf<Episode>()
-            // Implementasi season info ditaruh di sini jika diperlukan
-            return newTvSeriesLoadResponse(title, finalUrl, type, episodes) {
+            return newTvSeriesLoadResponse(title, finalUrl, type, emptyList<Episode>()) {
                 this.posterUrl = coverUrl
                 this.plot = description
                 this.actors = actors
-                if (!internalTrailerUrl.isNullOrBlank()) this.addTrailer(internalTrailerUrl)
-                else if (!youtubeTrailerId.isNullOrBlank()) this.addYoutubeTrailer(youtubeTrailerId)
+                if (!internalTrailerUrl.isNullOrBlank()) this.addTrailer(internalTrailerUrl) //
                 addImdbId(imdbId)
-                addTMDbId(tmdbId.toString())
             }
         }
 
@@ -277,33 +205,22 @@ class AdimovieBox2Provider : MainAPI() {
             this.plot = description
             this.actors = actors
             this.score = Score.from10(imdbRating)
-            if (!internalTrailerUrl.isNullOrBlank()) this.addTrailer(internalTrailerUrl)
-            else if (!youtubeTrailerId.isNullOrBlank()) this.addYoutubeTrailer(youtubeTrailerId)
+            if (!internalTrailerUrl.isNullOrBlank()) this.addTrailer(internalTrailerUrl) //
             addImdbId(imdbId)
             addTMDbId(tmdbId.toString())
         }
     }
 
-    override suspend fun loadLinks(
-        data: String,
-        isCasting: Boolean,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ): Boolean {
-        // Logika loadLinks tetap dipertahankan sesuai kebutuhan provider
-        return true
-    }
+    override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean = true
 
-    private suspend fun identifyID(title: String, year: Int?, rating: Double?): Pair<Int?, String?> {
-        return Pair(null, null) 
-    }
+    private suspend fun identifyID(title: String, year: Int?, rating: Double?): Pair<Int?, String?> = Pair(null, null)
 
     private suspend fun fetchMetaData(imdbId: String?, type: TvType): JsonNode? {
         if (imdbId.isNullOrBlank()) return null
         val metaType = if (type == TvType.TvSeries) "series" else "movie"
         return try {
             val resp = app.get("https://aiometadata.elfhosted.com/stremio/b7cb164b-074b-41d5-b458-b3a834e197bb/meta/$metaType/$imdbId.json").text
-            jacksonObjectMapper().readTree(resp)["meta"]
+            mapper.readTree(resp)["meta"]
         } catch (_: Exception) { null }
     }
 }
