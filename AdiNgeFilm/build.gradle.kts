@@ -6,9 +6,9 @@ cloudstream {
 
     // All of these properties are optional, you can safely remove them
 
-    description = "Ngefilm"
+    description = "Mantap Pace"
     language = "id"
-    authors = listOf("Hexated", "TeKuma25")
+    authors = listOf("aldry84")
 
     /**
      * Status int as the following:
