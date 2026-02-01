@@ -2,6 +2,7 @@ package com.AdimovieBox2
 
 import android.annotation.SuppressLint
 import android.net.Uri
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addImdbId
@@ -66,7 +67,7 @@ class AdimovieBox2Provider : MainAPI() {
         return "$timestamp|2|$signatureB64"
     }
 
-    // Header untuk API Lama (Search/Detail) - DIJAGA AGAR AMAN DARI 407
+    // Header Aman
     private fun getSafeHeaders(xClientToken: String, xTrSignature: String): Map<String, String> {
         return mapOf(
             "User-Agent" to "com.community.mbox.in/50020042 (Linux; U; Android 11; en_US; pixel_5; Build/RQ3A.211001.001; Cronet/133.0.6876.3)",
@@ -79,7 +80,6 @@ class AdimovieBox2Provider : MainAPI() {
         )
     }
 
-    // --- MAIN PAGE & SEARCH (LOGIKA ASLI DIPERTAHANKAN) ---
     override val mainPage = mainPageOf(
         "5283462032510044280" to "Indonesian Drama",
         "6528093688173053896" to "Indonesian Movies",
@@ -136,7 +136,6 @@ class AdimovieBox2Provider : MainAPI() {
         return searchList
     }
 
-    // --- LOAD DETAIL (DIPERBAIKI: HEADER AMAN + NO CRASH) ---
     override suspend fun load(url: String): LoadResponse {
         val id = Regex("""subjectId=([^&]+)""").find(url)?.groupValues?.get(1) ?: url.substringAfterLast('/')
         val finalUrl = "$mainUrl/wefeed-mobile-bff/subject-api/get?subjectId=$id"
@@ -191,7 +190,6 @@ class AdimovieBox2Provider : MainAPI() {
         }
     }
 
-    // --- LOAD LINKS BARU (SOURCE: LOK-LOK.CC) ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -203,9 +201,8 @@ class AdimovieBox2Provider : MainAPI() {
             val originalId = parts[0]
             val se = parts.getOrNull(1)?.toIntOrNull() ?: 0
             val ep = parts.getOrNull(2)?.toIntOrNull() ?: 0
-            val detailPath = parts.getOrNull(3) ?: "" // Fallback jika detailPath kosong
+            val detailPath = parts.getOrNull(3) ?: ""
 
-            // 1. Cek Dubbing (Menggunakan API lama untuk mapping ID bahasa)
             val xClientToken = generateXClientToken()
             val subUrl = "$mainUrl/wefeed-mobile-bff/subject-api/get?subjectId=$originalId"
             val sigSub = generateXTrSignature("GET", "application/json", "application/json", subUrl)
@@ -221,12 +218,9 @@ class AdimovieBox2Provider : MainAPI() {
                 ids.add(originalId to "Original")
             }
 
-            // 2. Loop setiap ID dan request ke SERVER BARU (LOK-LOK.CC)
             ids.filter { it.first.isNotBlank() }.forEach { (id, lang) ->
                 try {
-                    // Endpoint BARU sesuai CURL
                     val playUrl = "https://lok-lok.cc/wefeed-h5api-bff/subject/play?subjectId=$id&se=$se&ep=$ep&detailPath=$detailPath"
-                    
                     val headers = mapOf(
                         "authority" to "lok-lok.cc",
                         "accept" to "application/json",
@@ -246,20 +240,20 @@ class AdimovieBox2Provider : MainAPI() {
                     streams?.forEach { stream ->
                         val url = stream["url"]?.asText() ?: return@forEach
                         val resolution = stream["resolutions"]?.asText() ?: ""
-                        val quality = getHighestQuality(resolution)
+                        val qualityVal = getHighestQuality(resolution)
+                        val typeVal = if (url.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
                         
+                        // FIX: Menggunakan Positional Arguments agar tidak error
                         callback.invoke(newExtractorLink(
-                            source = "LokLok $lang",
-                            name = "LokLok $lang",
-                            url = url,
-                            referer = "https://lok-lok.cc/",
-                            quality = quality ?: Qualities.Unknown.value,
-                            type = if (url.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                            "LokLok $lang",
+                            "LokLok $lang",
+                            url,
+                            "https://lok-lok.cc/",
+                            qualityVal ?: Qualities.Unknown.value,
+                            typeVal
                         ))
                     }
-                } catch (e: Exception) { 
-                    // Ignore fail for this language
-                }
+                } catch (e: Exception) {}
             }
             return true
         } catch (e: Exception) { return false }
@@ -275,8 +269,17 @@ class AdimovieBox2Provider : MainAPI() {
         }
     }
 
-    // --- Helper TMDB & Meta (TETAP SAMA) ---
     private suspend fun identifyID(title: String, year: Int?, imdbRatingValue: Double?): Pair<Int?, String?> { return Pair(null, null) }
-    private suspend fun fetchMetaData(imdbId: String?, type: TvType): JsonNode? { return null }
+    
+    // FIX: Import JsonNode sudah ada di atas
+    private suspend fun fetchMetaData(imdbId: String?, type: TvType): JsonNode? {
+        if (imdbId.isNullOrBlank()) return null
+        val metaType = if (type == TvType.TvSeries) "series" else "movie"
+        return try {
+            val resp = app.get("https://aiometadata.elfhosted.com/stremio/b7cb164b-074b-41d5-b458-b3a834e197bb/meta/$metaType/$imdbId.json").text
+            jacksonObjectMapper().readTree(resp)["meta"]
+        } catch (_: Exception) { null }
+    }
+    
     suspend fun fetchTmdbLogoUrl(tmdbAPI: String, apiKey: String, type: TvType, tmdbId: Int?, appLangCode: String?): String? { return null }
 }
