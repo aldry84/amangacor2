@@ -4,14 +4,48 @@ import android.annotation.SuppressLint
 import android.net.Uri
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import com.lagradost.cloudstream3.*
+import com.lagradost.cloudstream3.Actor
+import com.lagradost.cloudstream3.ActorData
+import com.lagradost.cloudstream3.Episode
+import com.lagradost.cloudstream3.ErrorLoadingException
+import com.lagradost.cloudstream3.HomePageList
+import com.lagradost.cloudstream3.HomePageResponse
+import com.lagradost.cloudstream3.LoadResponse
 import com.lagradost.cloudstream3.LoadResponse.Companion.addImdbId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTMDbId
+// --- IMPORT TRAILER (Sesuai Request) ---
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
+// ---------------------------------------
+import com.lagradost.cloudstream3.MainAPI
+import com.lagradost.cloudstream3.MainPageRequest
+import com.lagradost.cloudstream3.Score
+import com.lagradost.cloudstream3.SearchResponse
+// --- IMPORT SUBTITLE (Sesuai Request) ---
+import com.lagradost.cloudstream3.SubtitleFile
+import com.lagradost.cloudstream3.newSubtitleFile
+// ----------------------------------------
+import com.lagradost.cloudstream3.TvType
+import com.lagradost.cloudstream3.addDate
+import com.lagradost.cloudstream3.app
+import com.lagradost.cloudstream3.base64Decode
+import com.lagradost.cloudstream3.base64DecodeArray
+import com.lagradost.cloudstream3.base64Encode
+import com.lagradost.cloudstream3.mainPageOf
+import com.lagradost.cloudstream3.mapper
+import com.lagradost.cloudstream3.newEpisode
+import com.lagradost.cloudstream3.newHomePageResponse
+import com.lagradost.cloudstream3.newMovieLoadResponse
+import com.lagradost.cloudstream3.newMovieSearchResponse
+import com.lagradost.cloudstream3.newTvSeriesLoadResponse
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.SubtitleFile
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
+import com.lagradost.cloudstream3.utils.INFER_TYPE
+import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.utils.newExtractorLink
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
+import java.net.URLEncoder
 import java.security.MessageDigest
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
@@ -114,7 +148,8 @@ class AdimovieBox2Provider : MainAPI() {
         )
 
         val response = app.get(finalUrl, headers = headers).body.string()
-        val data = mapper.readTree(response)["data"] ?: throw ErrorLoadingException("No data")
+        val root = mapper.readTree(response)
+        val data = root["data"] ?: throw ErrorLoadingException("No data")
         
         val subject = data["subject"] ?: data
         val title = subject["title"]?.asText()?.substringBefore("[") ?: "Unknown Title"
@@ -125,7 +160,8 @@ class AdimovieBox2Provider : MainAPI() {
 
         // Aktor dari 'stars'
         val actors = data["stars"]?.mapNotNull { star ->
-            ActorData(Actor(star["name"].asText(), star["avatarUrl"]?.asText()), roleString = star["character"]?.asText())
+            val actorName = star["name"]?.asText() ?: return@mapNotNull null
+            ActorData(Actor(actorName, star["avatarUrl"]?.asText()), roleString = star["character"]?.asText())
         } ?: emptyList()
 
         if (type == TvType.TvSeries) {
@@ -146,5 +182,13 @@ class AdimovieBox2Provider : MainAPI() {
         }
     }
 
-    override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean = true
+    override suspend fun loadLinks(
+        data: String, 
+        isCasting: Boolean, 
+        subtitleCallback: (SubtitleFile) -> Unit, 
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        // Implementasi loadLinks standar
+        return true
+    }
 }
