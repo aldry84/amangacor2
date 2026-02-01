@@ -33,7 +33,7 @@ class Adimoviebox : MainAPI() {
     )
 
     // UPDATED: Header disesuaikan dengan log curl terbaru
-    // Penambahan 'x-source' sangat penting untuk anti-bot
+    // Penambahan 'x-source' sangat penting untuk anti-bot dan validasi playback
     private val commonHeaders = mapOf(
         "origin" to mainUrl,
         "referer" to "$mainUrl/",
@@ -78,14 +78,16 @@ class Adimoviebox : MainAPI() {
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
     override suspend fun search(query: String): List<SearchResponse> {
-        // Target API: wefeed-h5api-bff/subject/search
+        // PERBAIKAN PENTING:
+        // perPage diubah ke "60" untuk mengambil lebih banyak data.
+        // Ini mengatasi masalah film "Unli Pop" yang tertimbun video musik atau konten dewasa.
         return app.post(
             "$apiUrl/wefeed-h5api-bff/subject/search", 
             headers = commonHeaders,
             requestBody = mapOf(
                 "keyword" to query,
                 "page" to "1",
-                "perPage" to "0", // 0 biasanya berarti "semua" atau default limit
+                "perPage" to "60", // WAJIB BESAR AGAR HASIL TERSEMBUNYI MUNCUL
                 "subjectType" to "0",
             ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
         ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
