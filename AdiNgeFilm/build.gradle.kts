@@ -24,5 +24,5 @@ cloudstream {
         "Movie",
     )
 
-    iconUrl = "https://new.ngefilm.site/wp-content/uploads/2022/06/20220602_221251.png"
+    iconUrl = "https://new31.ngefilm.site/wp-content/uploads/2023/08/cropped-imageedit_8_4481000408.png"
 }
