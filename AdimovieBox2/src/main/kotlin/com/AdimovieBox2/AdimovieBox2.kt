@@ -28,7 +28,6 @@ class AdimovieBox2Provider : MainAPI() {
 
     private val secretKeyDefault = base64Decode("NzZpUmwwN3MweFNOOWpxbUVXQXQ3OUVCSlp1bElRSXNWNjRGWnIyTw==")
 
-    // --- UTILS ---
     private fun md5(input: ByteArray): String {
         return MessageDigest.getInstance("MD5").digest(input)
             .joinToString("") { "%02x".format(it) }
@@ -65,20 +64,21 @@ class AdimovieBox2Provider : MainAPI() {
         return "$timestamp|2|$signatureB64"
     }
 
-    // --- HEADERS ANTI-BLOCK (Penting!) ---
+    // --- HEADER "AMAN" (ANTI 407) ---
+    // Gunakan ini di SEMUA request untuk menghindari blokir
     private fun getSafeHeaders(xClientToken: String, xTrSignature: String): Map<String, String> {
         return mapOf(
-            "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Mobile Safari/537.36",
+            "User-Agent" to "com.community.mbox.in/50020042 (Linux; U; Android 11; en_US; pixel_5; Build/RQ3A.211001.001; Cronet/133.0.6876.3)",
             "Accept" to "application/json",
             "Content-Type" to "application/json",
             "x-client-token" to xClientToken,
             "x-tr-signature" to xTrSignature,
-            // HANYA kirim timezone. JANGAN kirim device_id.
-            "x-client-info" to """{"timezone":"Asia/Jakarta"}"""
+            // HANYA kirim timezone. JANGAN kirim device_id yang hardcoded di file lama.
+            "x-client-info" to """{"timezone":"Asia/Jakarta"}""",
+            "x-client-status" to "0"
         )
     }
 
-    // --- MAIN PAGE ---
     override val mainPage = mainPageOf(
         "5283462032510044280" to "Indonesian Drama",
         "6528093688173053896" to "Indonesian Movies",
@@ -93,11 +93,18 @@ class AdimovieBox2Provider : MainAPI() {
         val url = if (request.data.contains("|")) "$mainUrl/wefeed-mobile-bff/subject-api/list" else "$mainUrl/wefeed-mobile-bff/tab/ranking-list?tabId=0&categoryType=${request.data}&page=$page&perPage=$perPage"
         
         val xClientToken = generateXClientToken()
-        val xTrSignature = generateXTrSignature("GET", "application/json", "application/json", url)
         
-        val response = app.get(url, headers = getSafeHeaders(xClientToken, xTrSignature)).body.string()
+        val responseBody = if (request.data.contains("|")) {
+            val jsonBody = """{"page":$page,"perPage":$perPage,"channelId":"${request.data.substringBefore(";").split("|").getOrNull(1)}"}"""
+            val xTrSignature = generateXTrSignature("POST", "application/json", "application/json; charset=utf-8", url, jsonBody)
+            app.post(url, headers = getSafeHeaders(xClientToken, xTrSignature), requestBody = jsonBody.toRequestBody("application/json".toMediaType())).body.string()
+        } else {
+            val xTrSignature = generateXTrSignature("GET", "application/json", "application/json", url)
+            app.get(url, headers = getSafeHeaders(xClientToken, xTrSignature)).body.string()
+        }
+
         val items = try {
-            val root = jacksonObjectMapper().readTree(response)
+            val root = jacksonObjectMapper().readTree(responseBody)
             root["data"]?.get("items") ?: root["data"]?.get("subjects")
         } catch (e: Exception) { null } ?: return newHomePageResponse(emptyList())
 
@@ -114,7 +121,6 @@ class AdimovieBox2Provider : MainAPI() {
         return newHomePageResponse(listOf(HomePageList(request.name, data)))
     }
 
-    // --- SEARCH ---
     override suspend fun search(query: String): List<SearchResponse> {
         val url = "$mainUrl/wefeed-mobile-bff/subject-api/search/v2"
         val jsonBody = """{"page": 1, "perPage": 10, "keyword": "$query"}"""
@@ -135,7 +141,6 @@ class AdimovieBox2Provider : MainAPI() {
         return searchList
     }
 
-    // --- LOAD DETAIL (FIX TRAILER & ACTORS) ---
     override suspend fun load(url: String): LoadResponse {
         val id = Regex("""subjectId=([^&]+)""").find(url)?.groupValues?.get(1) ?: url.substringAfterLast('/')
         val finalUrl = "$mainUrl/wefeed-mobile-bff/subject-api/get?subjectId=$id"
@@ -143,6 +148,7 @@ class AdimovieBox2Provider : MainAPI() {
         val xClientToken = generateXClientToken()
         val xTrSignature = generateXTrSignature("GET", "application/json", "application/json", finalUrl)
         
+        // GUNAKAN HEADER AMAN
         val response = app.get(finalUrl, headers = getSafeHeaders(xClientToken, xTrSignature))
         val body = response.body.string()
         val data = jacksonObjectMapper().readTree(body)["data"] ?: throw ErrorLoadingException("No Data")
@@ -155,7 +161,7 @@ class AdimovieBox2Provider : MainAPI() {
         val rating = subject["imdbRatingValue"]?.asText()?.toDoubleOrNull()?.times(10)?.toInt()
         val type = if (subject["subjectType"]?.asInt() == 2) TvType.TvSeries else TvType.Movie
 
-        // Trailer Fix: Cek beberapa kemungkinan lokasi URL
+        // --- TRAILER FIX ---
         val trailerUrl = subject["trailer"]?.get("videoAddress")?.get("url")?.asText()
             ?: subject["trailer"]?.get("url")?.asText()
 
@@ -185,6 +191,9 @@ class AdimovieBox2Provider : MainAPI() {
             return newTvSeriesLoadResponse(title, finalUrl, type, episodes) {
                 this.posterUrl = coverUrl; this.plot = description; this.year = year; this.actors = actors
                 this.score = Score.from10(rating)
+                
+                // LOGO DIHAPUS (Biar gak crash)
+                
                 if (!trailerUrl.isNullOrBlank()) addTrailer(trailerUrl)
             }
         }
@@ -192,11 +201,14 @@ class AdimovieBox2Provider : MainAPI() {
         return newMovieLoadResponse(title, finalUrl, type, id) {
             this.posterUrl = coverUrl; this.plot = description; this.year = year; this.actors = actors
             this.score = Score.from10(rating)
+            
+            // LOGO DIHAPUS (Biar gak crash)
+            
             if (!trailerUrl.isNullOrBlank()) addTrailer(trailerUrl)
         }
     }
 
-    // --- LOAD LINKS (FIX 407 & STREAM) ---
+    // --- LOGIKA "ORI" DENGAN HEADER "AMAN" ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -211,23 +223,29 @@ class AdimovieBox2Provider : MainAPI() {
 
             val xClientToken = generateXClientToken()
             
-            // 1. Ambil List ID (termasuk Dubbing)
+            // 1. Ambil List Dubbing (Gunakan Logika Ori tapi Header Baru)
             val subUrl = "$mainUrl/wefeed-mobile-bff/subject-api/get?subjectId=$originalId"
             val sigSub = generateXTrSignature("GET", "application/json", "application/json", subUrl)
+            
+            // PENTING: Gunakan getSafeHeaders! Kalau pakai header ori (da2b99c8...), link tidak akan muncul (407).
             val subResp = app.get(subUrl, headers = getSafeHeaders(xClientToken, sigSub))
             
             val ids = mutableListOf<Pair<String, String>>()
             val root = try { jacksonObjectMapper().readTree(subResp.body.string()) } catch(e: Exception) { null }
+            
+            // Logika Ori: Ambil dubs
             val dubs = root?.get("data")?.let { it["dubs"] ?: it["subject"]?.get("dubs") }
             
             ids.add(originalId to "Original")
             dubs?.forEach { ids.add((it["subjectId"]?.asText() ?: "") to (it["lanName"]?.asText() ?: "Dub")) }
 
-            // 2. Loop setiap ID untuk cari Stream
+            // 2. Loop setiap ID (Logika Ori)
             ids.filter { it.first.isNotBlank() }.forEach { (id, lang) ->
                 try {
                     val playUrl = "$mainUrl/wefeed-mobile-bff/subject-api/play-info?subjectId=$id&se=$se&ep=$ep"
                     val sigPlay = generateXTrSignature("GET", "application/json", "application/json", playUrl)
+                    
+                    // PENTING: Header Aman
                     val playResp = app.get(playUrl, headers = getSafeHeaders(xClientToken, sigPlay))
                     
                     val streams = jacksonObjectMapper().readTree(playResp.body.string())["data"]?.get("streams")
