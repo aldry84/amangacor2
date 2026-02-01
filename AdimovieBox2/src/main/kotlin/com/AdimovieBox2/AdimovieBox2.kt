@@ -2,19 +2,45 @@ package com.AdimovieBox2
 
 import android.annotation.SuppressLint
 import android.net.Uri
-import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import com.lagradost.cloudstream3.*
+import com.lagradost.cloudstream3.Actor
+import com.lagradost.cloudstream3.ActorData
+import com.lagradost.cloudstream3.Episode
+import com.lagradost.cloudstream3.ErrorLoadingException
+import com.lagradost.cloudstream3.HomePageList
+import com.lagradost.cloudstream3.HomePageResponse
+import com.lagradost.cloudstream3.LoadResponse
 import com.lagradost.cloudstream3.LoadResponse.Companion.addImdbId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTMDbId
+// --- TAMBAHAN IMPORT SPESIFIK ---
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
-import com.lagradost.cloudstream3.utils.*
-import com.lagradost.cloudstream3.utils.AppUtils.parseJson
-import com.lagradost.cloudstream3.utils.AppUtils.toJson
-import com.lagradost.nicehttp.RequestBodyTypes
+// --------------------------------
+import com.lagradost.cloudstream3.MainAPI
+import com.lagradost.cloudstream3.MainPageRequest
+import com.lagradost.cloudstream3.Score
+import com.lagradost.cloudstream3.SearchResponse
+import com.lagradost.cloudstream3.SubtitleFile
+import com.lagradost.cloudstream3.TvType
+import com.lagradost.cloudstream3.addDate
+import com.lagradost.cloudstream3.app
+import com.lagradost.cloudstream3.base64Decode
+import com.lagradost.cloudstream3.base64DecodeArray
+import com.lagradost.cloudstream3.base64Encode
+import com.lagradost.cloudstream3.mainPageOf
+import com.lagradost.cloudstream3.mapper
+import com.lagradost.cloudstream3.newEpisode
+import com.lagradost.cloudstream3.newHomePageResponse
+import com.lagradost.cloudstream3.newMovieLoadResponse
+import com.lagradost.cloudstream3.newMovieSearchResponse
+import com.lagradost.cloudstream3.newSubtitleFile
+import com.lagradost.cloudstream3.newTvSeriesLoadResponse
+import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
+import com.lagradost.cloudstream3.utils.INFER_TYPE
+import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.utils.newExtractorLink
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.net.URLEncoder
@@ -169,7 +195,8 @@ class AdimovieBox2Provider : MainAPI() {
         val headers = mapOf("user-agent" to "com.community.mbox.in/50020042", "x-client-token" to xClientToken, "x-tr-signature" to xTrSignature)
 
         val response = app.get(finalUrl, headers = headers)
-        val root = mapper.readTree(response.body.string())
+        val body = response.body.string()
+        val root = mapper.readTree(body)
         val data = root["data"] ?: throw ErrorLoadingException("No data")
         
         val subject = data["subject"] ?: data
@@ -179,10 +206,10 @@ class AdimovieBox2Provider : MainAPI() {
         val imdbRating = subject["imdbRatingValue"]?.asText()?.toDoubleOrNull()?.times(10)?.toInt()
         val type = if (subject["subjectType"]?.asInt() == 2) TvType.TvSeries else TvType.Movie
 
-        // Trailer: Menggunakan link MP4 dari API internal
+        // Trailer Internal
         val internalTrailerUrl = subject["trailer"]?.get("videoAddress")?.get("url")?.asText()
 
-        // Aktor: Menggunakan data 'stars'
+        // Aktor dari array 'stars'
         val actors = data["stars"]?.mapNotNull { star ->
             val name = star["name"]?.asText() ?: return@mapNotNull null
             ActorData(Actor(name, star["avatarUrl"]?.asText()), roleString = star["character"]?.asText())
