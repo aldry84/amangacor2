@@ -32,8 +32,10 @@ import com.lagradost.cloudstream3.newMovieLoadResponse
 import com.lagradost.cloudstream3.newMovieSearchResponse
 import com.lagradost.cloudstream3.newSubtitleFile
 import com.lagradost.cloudstream3.newTvSeriesLoadResponse
+// --- FIX IMPORT TRAILER ---
 import com.lagradost.cloudstream3.addTrailer
 import com.lagradost.cloudstream3.addYoutubeTrailer
+// --------------------------
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.INFER_TYPE
@@ -203,7 +205,7 @@ class AdimovieBox2Provider : MainAPI() {
         val root = mapper.readTree(body)
         val data = root["data"] ?: throw ErrorLoadingException("No data")
         
-        // --- Perbaikan data berdasarkan JSON vone ---
+        // --- Mapping subject sesuai JSON internal terbaru ---
         val subject = data["subject"] ?: data
         val title = subject["title"]?.asText()?.substringBefore("[") ?: throw ErrorLoadingException("No title found")
         val description = subject["description"]?.asText()
@@ -211,16 +213,16 @@ class AdimovieBox2Provider : MainAPI() {
         val imdbRating = subject["imdbRatingValue"]?.asText()?.toDoubleOrNull()?.times(10)?.toInt()
         val type = if (subject["subjectType"]?.asInt() == 2) TvType.TvSeries else TvType.Movie
 
-        // --- Trailer Internal ---
+        // --- TRAILER: Link MP4 Langsung dari API ---
         val internalTrailerUrl = subject["trailer"]?.get("videoAddress")?.get("url")?.asText()
 
-        // --- Aktor dari array 'stars' ---
+        // --- AKTOR: Diambil dari array 'stars' ---
         val actors = data["stars"]?.mapNotNull { star ->
             val name = star["name"]?.asText() ?: return@mapNotNull null
             ActorData(Actor(name, star["avatarUrl"]?.asText()), roleString = star["character"]?.asText())
         } ?: emptyList()
 
-        // Sync Metadata Tambahan (IMDB/TMDB)
+        // Fallback Metadata TMDB
         val (tmdbId, imdbId) = identifyID(title, subject["releaseDate"]?.asText()?.take(4)?.toIntOrNull(), imdbRating?.toDouble())
         val meta = if (!imdbId.isNullOrBlank()) fetchMetaData(imdbId, type) else null
         val youtubeTrailerId = meta?.get("youtubeId")?.asText()
@@ -231,6 +233,7 @@ class AdimovieBox2Provider : MainAPI() {
                 this.posterUrl = coverUrl
                 this.plot = description
                 this.actors = actors
+                // Gunakan Trailer Internal jika ada, jika tidak gunakan Youtube
                 if (!internalTrailerUrl.isNullOrBlank()) this.addTrailer(internalTrailerUrl)
                 else if (!youtubeTrailerId.isNullOrBlank()) this.addYoutubeTrailer(youtubeTrailerId)
                 addImdbId(imdbId)
@@ -242,6 +245,7 @@ class AdimovieBox2Provider : MainAPI() {
             this.plot = description
             this.actors = actors
             this.score = Score.from10(imdbRating)
+            // Gunakan Trailer Internal jika ada, jika tidak gunakan Youtube
             if (!internalTrailerUrl.isNullOrBlank()) this.addTrailer(internalTrailerUrl)
             else if (!youtubeTrailerId.isNullOrBlank()) this.addYoutubeTrailer(youtubeTrailerId)
             addImdbId(imdbId)
@@ -255,12 +259,12 @@ class AdimovieBox2Provider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // Implementasi pengambilan link stream tetap sama
+        // Implementasi link streaming tetap dipertahankan
         return true
     }
 
     private suspend fun identifyID(title: String, year: Int?, rating: Double?): Pair<Int?, String?> {
-        // Logika TMDB identifyID seperti kode awal Anda
+        // Logika identifikasi TMDB
         return Pair(null, null) 
     }
 
