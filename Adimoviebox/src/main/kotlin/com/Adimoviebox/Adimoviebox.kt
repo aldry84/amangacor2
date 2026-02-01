@@ -11,11 +11,13 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 
 class Adimoviebox : MainAPI() {
-    // Domain Frontend (Tetap 123movienow untuk referer playback)
-    override var mainUrl = "https://123movienow.cc"
+    // UPDATED: Main URL baru sesuai log
+    override var mainUrl = "https://lok-lok.cc"
     
-    // API Data Backend
-    // Kita gunakan domain backend tapi dengan PATH MOBILE yang baru Anda temukan
+    // UPDATED: API untuk Playback (lok-lok.cc)
+    private val apiUrl = "https://lok-lok.cc" 
+    
+    // UPDATED: API untuk Detail dan Home (aoneroom)
     private val homeApiUrl = "https://h5-api.aoneroom.com"
 
     override val instantLinkLoading = true
@@ -30,17 +32,15 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
-    // Header disesuaikan untuk Mobile API
+    // Header khusus agar request diterima server
     private val commonHeaders = mapOf(
         "origin" to mainUrl,
         "referer" to "$mainUrl/",
         "x-client-info" to "{\"timezone\":\"Asia/Jakarta\"}",
-        "accept-language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
-        // PENTING: Ganti x-source jadi 'android' karena kita pakai endpoint mobile
-        "x-source" to "android", 
-        "user-agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36"
+        "accept-language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7"
     )
 
+    // --- BAGIAN KATEGORI LENGKAP ---
     override val mainPage: List<MainPageData> = mainPageOf(
         "5283462032510044280" to "Indonesian Drama",
         "6528093688173053896" to "Indonesian Movies",
@@ -59,15 +59,16 @@ class Adimoviebox : MainAPI() {
         request: MainPageRequest,
     ): HomePageResponse {
         val id = request.data 
-        // UPDATED PATH: wefeed-mobile-bff
-        val targetUrl = "$homeApiUrl/wefeed-mobile-bff/ranking-list/content?id=$id&page=$page&perPage=12"
+        
+        // UPDATED: Path baru 'wefeed-h5api-bff'
+        val targetUrl = "$homeApiUrl/wefeed-h5api-bff/ranking-list/content?id=$id&page=$page&perPage=12"
 
         val responseData = app.get(targetUrl, headers = commonHeaders).parsedSafe<Media>()?.data
         val listFilm = responseData?.subjectList ?: responseData?.items
 
         val home = listFilm?.map {
             it.toSearchResponse(this)
-        } ?: throw ErrorLoadingException("Gagal memuat kategori.")
+        } ?: throw ErrorLoadingException("Gagal memuat kategori. Data kosong.")
 
         return newHomePageResponse(request.name, home)
     }
@@ -75,45 +76,36 @@ class Adimoviebox : MainAPI() {
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
     override suspend fun search(query: String): List<SearchResponse> {
-        // UPDATED PATH: wefeed-mobile-bff
-        val searchUrl = "$homeApiUrl/wefeed-mobile-bff/subject/search"
-        
-        suspend fun fetchResults(type: Int): List<SearchResponse> {
-            val body = mapOf(
+        // UPDATED: Path baru 'wefeed-h5api-bff' dan menghapus '/web'
+        return app.post(
+            "$apiUrl/wefeed-h5api-bff/subject/search", 
+            headers = commonHeaders,
+            requestBody = mapOf(
                 "keyword" to query,
-                "page" to 1,
-                "perPage" to 30,
-                "subjectType" to type // 1=Movie, 2=TV
-            )
-            return try {
-                app.post(
-                    searchUrl, 
-                    headers = commonHeaders,
-                    requestBody = body.toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
-                ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) } ?: emptyList()
-            } catch (e: Exception) {
-                emptyList()
-            }
-        }
-
-        val movies = fetchResults(1)
-        val tvShows = fetchResults(2)
-        val combined = (movies + tvShows).distinctBy { it.url }
-
-        if (combined.isEmpty()) throw ErrorLoadingException("Pencarian tidak ditemukan.")
-        return combined
+                "page" to "1",
+                "perPage" to "0",
+                "subjectType" to "0",
+            ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
+        ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
+            ?: throw ErrorLoadingException("Pencarian tidak ditemukan.")
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val id = url.substringAfterLast("?id=") 
-            .ifEmpty { url.substringAfterLast("/") } 
+        val id = url.substringAfterLast("?id=") // Mengambil ID jika format URL berubah
+            .ifEmpty { url.substringAfterLast("/") } // Fallback ke cara lama
         
-        // UPDATED PATH: wefeed-mobile-bff
-        // Coba detailPath dulu
-        val detailUrl = "$homeApiUrl/wefeed-mobile-bff/detail?detailPath=$id"
+        // UPDATED: Menggunakan API Detail baru
+        // Kita coba fetch detail menggunakan subjectId atau detailPath jika tersedia
+        val detailUrl = "$homeApiUrl/wefeed-h5api-bff/detail?detailPath=$id" // Coba pakai slug dulu
+        
+        // Logika fallback: Kadang ID di URL adalah numeric, kadang slug.
+        // API logs menunjukkan penggunaan parameter 'detailPath' tapi juga 'subjectId' di situasi lain.
+        // Kita coba request ke endpoint detail.
         
         val response = app.get(detailUrl, headers = commonHeaders).parsedSafe<MediaDetail>()
-        val document = response?.data ?: app.get("$homeApiUrl/wefeed-mobile-bff/subject/detail?subjectId=$id", headers = commonHeaders)
+        
+        // Jika gagal dengan detailPath, coba endpoint subject/detail lama dengan path baru
+        val document = response?.data ?: app.get("$apiUrl/wefeed-h5api-bff/subject/detail?subjectId=$id", headers = commonHeaders)
             .parsedSafe<MediaDetail>()?.data
             ?: throw ErrorLoadingException("Gagal memuat detail konten.")
         
@@ -126,10 +118,12 @@ class Adimoviebox : MainAPI() {
         val tvType = if (subject?.subjectType == 2) TvType.TvSeries else TvType.Movie
         val description = subject?.description
         val trailer = subject?.trailer?.videoAddress?.url
+        
+        // FIX: Menghapus .toString() yang redundant
         val score = Score.from10(subject?.imdbRatingValue) 
         
         val realId = subject?.subjectId ?: id
-        val detailPath = subject?.detailPath ?: id 
+        val detailPath = subject?.detailPath ?: id // Penting untuk link load
 
         val actors = document.stars?.mapNotNull { cast ->
             ActorData(
@@ -141,9 +135,8 @@ class Adimoviebox : MainAPI() {
             )
         }?.distinctBy { it.actor }
 
-        // UPDATED PATH: wefeed-mobile-bff
         val recommendations =
-            app.get("$homeApiUrl/wefeed-mobile-bff/subject/detail-rec?subjectId=$realId&page=1&perPage=12", headers = commonHeaders)
+            app.get("$apiUrl/wefeed-h5api-bff/subject/detail-rec?subjectId=$realId&page=1&perPage=12", headers = commonHeaders)
                 .parsedSafe<Media>()?.data?.items?.map {
                     it.toSearchResponse(this)
                 }
@@ -158,7 +151,7 @@ class Adimoviebox : MainAPI() {
                                 realId,
                                 seasons.se,
                                 episode,
-                                detailPath 
+                                detailPath // Kirim detailPath untuk loadLinks
                             ).toJson()
                         ) {
                             this.season = seasons.se
@@ -203,13 +196,13 @@ class Adimoviebox : MainAPI() {
     ): Boolean {
 
         val media = parseJson<LoadData>(data)
-        
+        // UPDATED: Referer harus sesuai log
         val referer = "$mainUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&lang=en"
         val specificHeaders = commonHeaders + ("referer" to referer)
 
-        // UPDATED PATH: wefeed-mobile-bff (Arahkan ke domain utama/frontend)
+        // UPDATED: Endpoint play baru memerlukan detailPath
         val streams = app.get(
-            "$mainUrl/wefeed-mobile-bff/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}&detailPath=${media.detailPath}",
+            "$apiUrl/wefeed-h5api-bff/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}&detailPath=${media.detailPath}",
             headers = specificHeaders
         ).parsedSafe<Media>()?.data?.streams
 
@@ -231,9 +224,9 @@ class Adimoviebox : MainAPI() {
         val format = streams?.firstOrNull()?.format
 
         if (id != null && format != null) {
-            // UPDATED PATH: wefeed-mobile-bff
+            // UPDATED: Endpoint caption path baru
             app.get(
-                "$homeApiUrl/wefeed-mobile-bff/subject/caption?format=$format&id=$id&subjectId=${media.id}&detailPath=${media.detailPath}",
+                "$apiUrl/wefeed-h5api-bff/subject/caption?format=$format&id=$id&subjectId=${media.id}",
                 headers = specificHeaders
             ).parsedSafe<Media>()?.data?.captions?.map { subtitle ->
                 subtitleCallback.invoke(
@@ -249,7 +242,7 @@ class Adimoviebox : MainAPI() {
     }
 }
 
-// --- DATA CLASSES ---
+// --- DATA CLASSES (Diperbaiki dengan @param:JsonProperty) ---
 
 data class LoadData(
     val id: String? = null,
@@ -323,7 +316,9 @@ data class Items(
     @param:JsonProperty("detailPath") val detailPath: String? = null,
 ) {
     fun toSearchResponse(provider: Adimoviebox): SearchResponse {
+        // Link detail sekarang menggunakan path
         val url = "${provider.mainUrl}/detail/${detailPath ?: subjectId}"
+        
         val posterImage = cover?.url
 
         return provider.newMovieSearchResponse(
@@ -333,6 +328,7 @@ data class Items(
             false
         ) {
             this.posterUrl = posterImage
+            // FIX TERAKHIR: Menghapus .toString() karena imdbRatingValue sudah String?
             this.score = Score.from10(imdbRatingValue)
             this.year = releaseDate?.substringBefore("-")?.toIntOrNull()
         }
