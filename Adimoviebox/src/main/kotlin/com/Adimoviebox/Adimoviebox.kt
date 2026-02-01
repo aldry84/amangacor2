@@ -11,14 +11,14 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 
 class Adimoviebox : MainAPI() {
-    // UPDATED: Domain aktif sesuai log curl terbaru Anda (123movienow.cc)
-    // Ini domain yang berhasil memutar video "Mamasan" di log Anda.
+    // UPDATED: Domain aktif sesuai analisa APK & Log (123movienow.cc)
+    // Jangan ubah ini ke moviebox.ph karena akan menyebabkan error 403/Redirect saat play.
     override var mainUrl = "https://123movienow.cc"
     
-    // API Playback mengikuti domain frontend (123movienow.cc)
+    // API Playback menggunakan domain frontend
     private val apiUrl = "https://123movienow.cc" 
     
-    // API Data (Search, Detail, Home) tetap ke backend Aoneroom
+    // API Data (Search, Detail, Home) menggunakan backend Aoneroom
     private val homeApiUrl = "https://h5-api.aoneroom.com"
 
     override val instantLinkLoading = true
@@ -33,13 +33,14 @@ class Adimoviebox : MainAPI() {
         TvType.AsianDrama
     )
 
-    // Header disesuaikan agar request terlihat seperti dari browser
+    // Header disesuaikan dengan pola trafik aplikasi asli
     private val commonHeaders = mapOf(
         "origin" to mainUrl,
         "referer" to "$mainUrl/",
         "x-client-info" to "{\"timezone\":\"Asia/Jakarta\"}",
         "accept-language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
-        "x-source" to "app-search" 
+        "x-source" to "app-search", // Header anti-bot penting
+        "user-agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36"
     )
 
     // --- KATEGORI HOME ---
@@ -61,7 +62,7 @@ class Adimoviebox : MainAPI() {
         request: MainPageRequest,
     ): HomePageResponse {
         val id = request.data 
-        // Menggunakan homeApiUrl (Backend)
+        // Menggunakan homeApiUrl (Backend) agar stabil
         val targetUrl = "$homeApiUrl/wefeed-h5api-bff/ranking-list/content?id=$id&page=$page&perPage=12"
 
         val responseData = app.get(targetUrl, headers = commonHeaders).parsedSafe<Media>()?.data
@@ -76,23 +77,42 @@ class Adimoviebox : MainAPI() {
 
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
+    // --- LOGIKA PENCARIAN JARAH GANDA ---
     override suspend fun search(query: String): List<SearchResponse> {
-        // FIX PENCARIAN:
-        // Menggunakan 'homeApiUrl' (Backend Aoneroom) agar data lengkap.
-        // perPage: 60 untuk mengambil data yang tertimbun.
-        // subjectType: 0 (All) agar tidak ada filter kategori yang salah.
+        val searchUrl = "$homeApiUrl/wefeed-h5api-bff/subject/search"
         
-        return app.post(
-            "$homeApiUrl/wefeed-h5api-bff/subject/search", 
-            headers = commonHeaders,
-            requestBody = mapOf(
+        // Helper untuk request per kategori
+        // Kita kirim Int (Angka) agar server merespon dengan benar
+        suspend fun fetchResults(type: Int): List<SearchResponse> {
+            val body = mapOf(
                 "keyword" to query,
-                "page" to "1",
-                "perPage" to "60", 
-                "subjectType" to "0", 
-            ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
-        ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) }
-            ?: throw ErrorLoadingException("Pencarian tidak ditemukan.")
+                "page" to 1,
+                "perPage" to 30,      // Ambil 30 item per kategori
+                "subjectType" to type // 1=Movie, 2=TV (Ini akan memblokir Musik)
+            )
+            return try {
+                app.post(
+                    searchUrl, 
+                    headers = commonHeaders,
+                    requestBody = body.toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
+                ).parsedSafe<Media>()?.data?.items?.map { it.toSearchResponse(this) } ?: emptyList()
+            } catch (e: Exception) {
+                emptyList()
+            }
+        }
+
+        // 1. Cari Khusus Movie (Untuk mendapatkan "Unli Pop" dkk)
+        val movies = fetchResults(1)
+        
+        // 2. Cari Khusus TV Series
+        val tvShows = fetchResults(2)
+
+        // Gabungkan hasil dan hapus duplikat
+        // Musik (Tipe 3) tidak diambil, jadi hasil pencarian akan bersih
+        val combined = (movies + tvShows).distinctBy { it.url }
+
+        if (combined.isEmpty()) throw ErrorLoadingException("Pencarian tidak ditemukan.")
+        return combined
     }
 
     override suspend fun load(url: String): LoadResponse {
@@ -119,6 +139,7 @@ class Adimoviebox : MainAPI() {
         
         val score = Score.from10(subject?.imdbRatingValue) 
         
+        // Simpan ID asli dan Slug
         val realId = subject?.subjectId ?: id
         val detailPath = subject?.detailPath ?: id 
 
@@ -194,11 +215,12 @@ class Adimoviebox : MainAPI() {
 
         val media = parseJson<LoadData>(data)
         
-        // REFERER FIX: Menggunakan mainUrl (123movienow.cc) agar sesuai log
+        // REFERER FIX: Menggunakan 123movienow.cc agar lolos validasi server
         val referer = "$mainUrl/spa/videoPlayPage/movies/${media.detailPath}?id=${media.id}&type=/movie/detail&lang=en"
         val specificHeaders = commonHeaders + ("referer" to referer)
 
         // REQUEST PLAY: Menggunakan apiUrl (123movienow.cc)
+        // Ini endpoint yang terbukti berhasil di log curl Anda
         val streams = app.get(
             "$apiUrl/wefeed-h5api-bff/subject/play?subjectId=${media.id}&se=${media.season ?: 0}&ep=${media.episode ?: 0}&detailPath=${media.detailPath}",
             headers = specificHeaders
@@ -222,7 +244,7 @@ class Adimoviebox : MainAPI() {
         val format = streams?.firstOrNull()?.format
 
         if (id != null && format != null) {
-            // Request Subtitle ke Backend (Aoneroom)
+            // Subtitle request tetap ke backend Aoneroom
             app.get(
                 "$homeApiUrl/wefeed-h5api-bff/subject/caption?format=$format&id=$id&subjectId=${media.id}&detailPath=${media.detailPath}",
                 headers = specificHeaders
@@ -315,7 +337,6 @@ data class Items(
 ) {
     fun toSearchResponse(provider: Adimoviebox): SearchResponse {
         val url = "${provider.mainUrl}/detail/${detailPath ?: subjectId}"
-        
         val posterImage = cover?.url
 
         return provider.newMovieSearchResponse(
