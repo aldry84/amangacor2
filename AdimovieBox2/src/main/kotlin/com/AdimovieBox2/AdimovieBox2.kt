@@ -25,7 +25,6 @@ class AdimovieBox2Provider : MainAPI() {
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
     private val secretKeyDefault = base64Decode("NzZpUmwwN3MweFNOOWpxbUVXQXQ3OUVCSlp1bElRSXNWNjRGWnIyTw==")
-    private val secretKeyAlt = base64Decode("WHFuMm5uTzQxL0w5Mm8xaXVYaFNMSFRiWHZZNFo1Wlo2Mm04bVNMQQ==")
 
     private fun md5(input: ByteArray): String {
         return MessageDigest.getInstance("MD5").digest(input)
@@ -72,7 +71,7 @@ class AdimovieBox2Provider : MainAPI() {
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val url = "$mainUrl/wefeed-mobile-bff/tab/ranking-list?tabId=0&categoryType=${request.data}&page=$page&perPage=15"
         val headers = mapOf(
-            "user-agent" to "com.community.mbox.in/50020042 (Linux; Android 13)",
+            "user-agent" to "com.community.mbox.in/50020042",
             "accept" to "application/json",
             "x-client-token" to generateXClientToken(),
             "x-tr-signature" to generateXTrSignature("GET", "application/json", "application/json", url)
@@ -115,10 +114,8 @@ class AdimovieBox2Provider : MainAPI() {
         )
 
         val response = app.get(finalUrl, headers = headers).body.string()
-        val root = mapper.readTree(response)
-        val data = root["data"] ?: throw ErrorLoadingException("No data")
+        val data = mapper.readTree(response)["data"] ?: throw ErrorLoadingException("No data")
         
-        // --- Perbaikan akses data yang aman ---
         val subject = data["subject"] ?: data
         val title = subject["title"]?.asText()?.substringBefore("[") ?: "Unknown Title"
         val type = if (subject["subjectType"]?.asInt() == 2) TvType.TvSeries else TvType.Movie
