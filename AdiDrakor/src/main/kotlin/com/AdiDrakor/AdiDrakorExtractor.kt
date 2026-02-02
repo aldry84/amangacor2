@@ -22,7 +22,9 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.jsoup.Jsoup
 import java.net.URLEncoder
-import org.json.JSONObject 
+import org.json.JSONObject
+// IMPORT BARU UNTUK HELPER
+import com.AdiDrakor.AdimovieBox2Helper 
 
 object AdiDrakorExtractor : AdiDrakor() {
 
@@ -53,6 +55,8 @@ object AdiDrakorExtractor : AdiDrakor() {
             val match = scriptRegex.find(script)
             val idlixNonce = match?.groups?.get(1)?.value ?: ""
             val idlixTime = match?.groups?.get(2)?.value ?: ""
+            
+            if (idlixNonce.isEmpty()) return // Safety check
 
             // 2. Iterate Servers
             document.select("ul#playeroptionsul > li").map {
@@ -124,7 +128,7 @@ object AdiDrakorExtractor : AdiDrakor() {
         return n
     }
 
-    // ================== ADIMOVIEBOX SOURCE (FIXED) ==================
+    // ================== ADIMOVIEBOX SOURCE (OLD/API 1) ==================
     suspend fun invokeAdimoviebox(
         title: String,
         year: Int?,
@@ -144,7 +148,6 @@ object AdiDrakorExtractor : AdiDrakor() {
         ).toJson().toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
 
         val searchRes = app.post(searchUrl, requestBody = searchBody).text
-        // Menggunakan AdimovieboxResponse dari Parser
         val items = tryParseJson<AdimovieboxResponse>(searchRes)?.data?.items ?: return
         
         val matchedMedia = items.find { item ->
@@ -190,6 +193,135 @@ object AdiDrakorExtractor : AdiDrakor() {
                     )
                 )
             }
+        }
+    }
+
+    // ================== ADIMOVIEBOX 2 SOURCE (NEW/API 2) ==================
+    suspend fun invokeAdimoviebox2(
+        title: String,
+        year: Int?,
+        season: Int?,
+        episode: Int?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val apiUrl = "https://api.inmoviebox.com"
+        val searchUrl = "$apiUrl/wefeed-mobile-bff/subject-api/search/v2"
+        val jsonBody = """{"page": 1, "perPage": 10, "keyword": "$title"}"""
+        
+        try {
+            // 1. SEARCH
+            val headers = AdimovieBox2Helper.getHeaders(searchUrl, "POST", jsonBody)
+            val searchRes = app.post(
+                searchUrl, 
+                headers = headers, 
+                requestBody = jsonBody.toRequestBody(RequestBodyTypes.JSON.toMediaTypeOrNull())
+            ).text
+
+            val mapper = com.fasterxml.jackson.module.kotlin.jacksonObjectMapper()
+            val root = mapper.readTree(searchRes)
+            val results = root["data"]?.get("results") ?: return
+
+            var matchedId: String? = null
+
+            // Logika pencarian ID
+            if (results.isArray) {
+                for (result in results) {
+                    val subjects = result["subjects"] ?: continue
+                    for (subject in subjects) {
+                        val sTitle = subject["title"]?.asText() ?: continue
+                        val sId = subject["subjectId"]?.asText() ?: continue
+                        
+                        // Simple matching
+                        if (sTitle.contains(title, true)) {
+                            matchedId = sId
+                            break
+                        }
+                    }
+                    if (matchedId != null) break
+                }
+            }
+            
+            val subjectId = matchedId ?: return
+
+            // 2. GET STREAMS (PLAY INFO)
+            val se = season ?: 0
+            val ep = episode ?: 0
+            
+            val playUrl = "$apiUrl/wefeed-mobile-bff/subject-api/play-info?subjectId=$subjectId&se=$se&ep=$ep"
+            val playHeaders = AdimovieBox2Helper.getHeaders(playUrl, "GET")
+            
+            val playRes = app.get(playUrl, headers = playHeaders).text
+            val playRoot = mapper.readTree(playRes)
+            val streams = playRoot["data"]?.get("streams") ?: return
+
+            if (streams.isArray) {
+                for (stream in streams) {
+                    val streamUrl = stream["url"]?.asText() ?: continue
+                    val resolutions = stream["resolutions"]?.asText() ?: ""
+                    
+                    // Helper lokal untuk konversi kualitas
+                    fun getHighestQualityLocal(input: String): Int {
+                        val qualities = listOf(
+                            "2160" to Qualities.P2160.value,
+                            "1080" to Qualities.P1080.value,
+                            "720"  to Qualities.P720.value,
+                            "480"  to Qualities.P480.value,
+                            "360"  to Qualities.P360.value
+                        )
+                        for ((label, mappedValue) in qualities) {
+                            if (input.contains(label, ignoreCase = true)) return mappedValue
+                        }
+                        return Qualities.Unknown.value
+                    }
+                    
+                    val qualityVal = getHighestQualityLocal(resolutions)
+                    
+                    callback.invoke(
+                        newExtractorLink(
+                            "AdimovieBox2",
+                            "AdimovieBox2",
+                            streamUrl,
+                            when {
+                                streamUrl.contains(".m3u8") -> ExtractorLinkType.M3U8
+                                else -> ExtractorLinkType.VIDEO
+                            }
+                        ) {
+                            this.quality = qualityVal
+                            this.headers = mapOf("Referer" to apiUrl)
+                        }
+                    )
+                    
+                    // 3. SUBTITLES
+                    val streamId = stream["id"]?.asText()
+                    if (streamId != null) {
+                        val subUrl = "$apiUrl/wefeed-mobile-bff/subject-api/get-stream-captions?subjectId=$subjectId&streamId=$streamId"
+                        val subHeaders = AdimovieBox2Helper.getHeaders(subUrl, "GET")
+                        
+                        try {
+                            val subRes = app.get(subUrl, headers = subHeaders).text
+                            val subJson = mapper.readTree(subRes)
+                            val captions = subJson["data"]?.get("extCaptions")
+                            
+                            if (captions != null && captions.isArray) {
+                                for (cap in captions) {
+                                    val capUrl = cap["url"]?.asText() ?: continue
+                                    val lang = cap["language"]?.asText() 
+                                        ?: cap["lanName"]?.asText()
+                                        ?: cap["lan"]?.asText()
+                                        ?: "Unknown"
+                                    subtitleCallback.invoke(
+                                        newSubtitleFile(lang, capUrl)
+                                    )
+                                }
+                            }
+                        } catch (_: Exception) {}
+                    }
+                }
+            }
+
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
     
@@ -308,7 +440,7 @@ object AdiDrakorExtractor : AdiDrakor() {
                         newExtractorLink(
                             name,
                             name,
-                            video.src.split("360", limit = 3).joinToString(it.toString()),
+                            video.src.split("360", limit = 10).joinToString(it.toString()),
                             ExtractorLinkType.VIDEO,
                         ) {
                             this.referer = "$api/"
@@ -1160,11 +1292,4 @@ object AdiDrakorExtractor : AdiDrakor() {
     }
 
     // Data Classes Khusus Kisskh (Private agar tidak konflik)
-    private data class KisskhMedia(@JsonProperty("id") val id: Int?, @JsonProperty("title") val title: String?)
-    private data class KisskhDetail(@JsonProperty("episodes") val episodes: ArrayList<KisskhEpisode>?)
-    private data class KisskhEpisode(@JsonProperty("id") val id: Int?, @JsonProperty("number") val number: Double?)
-    private data class KisskhKey(@JsonProperty("key") val key: String?)
-    private data class KisskhSources(@JsonProperty("Video") val video: String?, @JsonProperty("ThirdParty") val thirdParty: String?)
-    private data class KisskhSubtitle(@JsonProperty("src") val src: String?, @JsonProperty("label") val label: String?)
-
-}
+    private data class KisskhMedia(@JsonProperty("id") val id: Int?, @JsonProperty
