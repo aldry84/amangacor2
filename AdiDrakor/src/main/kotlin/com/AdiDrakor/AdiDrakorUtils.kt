@@ -1,6 +1,7 @@
 package com.AdiDrakor
 
 import android.util.Base64
+import android.net.Uri
 import com.AdiDrakor.AdiDrakor.Companion.anilistAPI
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.APIHolder.unixTimeMS
@@ -16,6 +17,7 @@ import java.security.MessageDigest
 import java.text.SimpleDateFormat
 import java.util.*
 import javax.crypto.Cipher
+import javax.crypto.Mac
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 import kotlin.text.isLowerCase
@@ -519,4 +521,106 @@ object VidsrcHelper {
         return base64UrlEncode(encrypted)
     }
 
+}
+
+// ================= ADIMOVIEBOX 2 HELPER =================
+object AdimovieBox2Helper {
+    // Kunci enkripsi (Base64 Encoded)
+    private const val SECRET_KEY_DEFAULT = "NzZpUmwwN3MweFNOOWpxbUVXQXQ3OUVCSlp1bElRSXNWNjRGWnIyTw=="
+    private const val SECRET_KEY_ALT = "WHFuMm5uTzQxL0w5Mm8xaXVYaFNMSFRiWHZZNFo1Wlo2Mm04bVNMQQ=="
+
+    fun md5(input: ByteArray): String {
+        return MessageDigest.getInstance("MD5").digest(input)
+            .joinToString("") { "%02x".format(it) }
+    }
+
+    private fun reverseString(input: String): String = input.reversed()
+
+    fun generateXClientToken(hardcodedTimestamp: Long? = null): String {
+        val timestamp = (hardcodedTimestamp ?: System.currentTimeMillis()).toString()
+        val reversed = reverseString(timestamp)
+        val hash = md5(reversed.toByteArray())
+        return "$timestamp,$hash"
+    }
+
+    private fun buildCanonicalString(
+        method: String,
+        accept: String?,
+        contentType: String?,
+        url: String,
+        body: String?,
+        timestamp: Long
+    ): String {
+        val parsed = Uri.parse(url)
+        val path = parsed.path ?: ""
+        
+        // Membangun query string yang diurutkan
+        val query = if (parsed.queryParameterNames.isNotEmpty()) {
+            parsed.queryParameterNames.sorted().joinToString("&") { key ->
+                parsed.getQueryParameters(key).joinToString("&") { value ->
+                    "$key=$value" 
+                }
+            }
+        } else ""
+        
+        val canonicalUrl = if (query.isNotEmpty()) "$path?$query" else path
+
+        val bodyBytes = body?.toByteArray(Charsets.UTF_8)
+        val bodyHash = if (bodyBytes != null) {
+            val trimmed = if (bodyBytes.size > 102400) bodyBytes.copyOfRange(0, 102400) else bodyBytes
+            md5(trimmed)
+        } else ""
+
+        val bodyLength = bodyBytes?.size?.toString() ?: ""
+        return "${method.uppercase()}\n" +
+                "${accept ?: ""}\n" +
+                "${contentType ?: ""}\n" +
+                "$bodyLength\n" +
+                "$timestamp\n" +
+                "$bodyHash\n" +
+                canonicalUrl
+    }
+
+    fun generateXTrSignature(
+        method: String,
+        accept: String?,
+        contentType: String?,
+        url: String,
+        body: String? = null,
+        useAltKey: Boolean = false,
+        hardcodedTimestamp: Long? = null
+    ): String {
+        val timestamp = hardcodedTimestamp ?: System.currentTimeMillis()
+        val canonical = buildCanonicalString(method, accept, contentType, url, body, timestamp)
+        
+        val secret = if (useAltKey) SECRET_KEY_ALT else SECRET_KEY_DEFAULT
+        // Gunakan Android Base64 untuk memastikan decoding ke ByteArray yang benar
+        val secretBytes = Base64.decode(secret, Base64.DEFAULT)
+
+        val mac = Mac.getInstance("HmacMD5")
+        mac.init(SecretKeySpec(secretBytes, "HmacMD5"))
+        val signature = mac.doFinal(canonical.toByteArray(Charsets.UTF_8))
+        // Encode kembali hasil signature ke Base64 (tanpa newline)
+        val signatureB64 = Base64.encodeToString(signature, Base64.NO_WRAP)
+
+        return "$timestamp|2|$signatureB64"
+    }
+
+    // Fungsi pembantu untuk membuat Header lengkap
+    fun getHeaders(url: String, method: String, body: String? = null): Map<String, String> {
+        val xClientToken = generateXClientToken()
+        val contentType = if(method == "POST") "application/json; charset=utf-8" else "application/json"
+        val xTrSignature = generateXTrSignature(method, "application/json", contentType, url, body)
+        
+        return mapOf(
+            "user-agent" to "com.community.mbox.in/50020042 (Linux; U; Android 16; en_IN; sdk_gphone64_x86_64; Build/BP22.250325.006; Cronet/133.0.6876.3)",
+            "accept" to "application/json",
+            "content-type" to contentType,
+            "connection" to "keep-alive",
+            "x-client-token" to xClientToken,
+            "x-tr-signature" to xTrSignature,
+            "x-client-info" to """{"package_name":"com.community.mbox.in","version_name":"3.0.03.0529.03","version_code":50020042,"os":"android","os_version":"16","device_id":"da2b99c821e6ea023e4be55b54d5f7d8","install_store":"ps","gaid":"d7578036d13336cc","brand":"google","model":"sdk_gphone64_x86_64","system_language":"en","net":"NETWORK_WIFI","region":"IN","timezone":"Asia/Calcutta","sp_code":""}""",
+            "x-client-status" to "0"
+        )
+    }
 }
