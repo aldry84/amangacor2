@@ -1,17 +1,15 @@
 package com.AdiDrakor
 
 import com.fasterxml.jackson.annotation.JsonProperty
-import org.jsoup.Jsoup
-import org.jsoup.nodes.Document
 
 // ================== IDLIX DATA CLASSES ==================
 data class AesData(
-    @JsonProperty("m") val m: String,
+    @JsonProperty("m") val m: String? = null,
 )
 
 data class ResponseHash(
-    @JsonProperty("embed_url") val embed_url: String,
-    @JsonProperty("key") val key: String,
+    @JsonProperty("embed_url") val embed_url: String? = null,
+    @JsonProperty("key") val key: String? = null,
 )
 
 // ================== EXISTING DATA CLASSES ==================
@@ -150,11 +148,6 @@ data class GpressSources(
     @JsonProperty("file") val file: String? = null,
     @JsonProperty("label") val label: Int? = null,
     @JsonProperty("max") val max: String,
-)
-
-data class KisskhEpisodes(
-    @JsonProperty("id") val id: Int?,
-    @JsonProperty("number") val number: Int?,
 )
 
 data class WatchsomuchTorrents(
@@ -484,4 +477,33 @@ data class AdimovieboxStreamItem(
 data class AdimovieboxCaptionItem(
     @JsonProperty("lanName") val lanName: String? = null,
     @JsonProperty("url") val url: String? = null,
+)
+
+// ================== KISSKH DATA CLASSES (MOVED FROM EXTRACTOR) ==================
+data class KisskhMedia(
+    @JsonProperty("id") val id: Int? = null, 
+    @JsonProperty("title") val title: String? = null
+)
+
+data class KisskhDetail(
+    @JsonProperty("episodes") val episodes: ArrayList<KisskhEpisode>? = arrayListOf()
+)
+
+data class KisskhEpisode(
+    @JsonProperty("id") val id: Int? = null, 
+    @JsonProperty("number") val number: Double? = null
+)
+
+data class KisskhKey(
+    @JsonProperty("key") val key: String? = null
+)
+
+data class KisskhSources(
+    @JsonProperty("Video") val video: String? = null, 
+    @JsonProperty("ThirdParty") val thirdParty: String? = null
+)
+
+data class KisskhSubtitle(
+    @JsonProperty("src") val src: String? = null, 
+    @JsonProperty("label") val label: String? = null
 )
