@@ -2,7 +2,7 @@ package com.AdiDrakor
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.AdiDrakor.AdiDrakorExtractor.invokeAdimoviebox
-import com.AdiDrakor.AdiDrakorExtractor.invokeAdimoviebox2 // IMPORT BARU
+import com.AdiDrakor.AdiDrakorExtractor.invokeAdimoviebox2 // PERBAIKAN: Import Sumber Baru
 import com.AdiDrakor.AdiDrakorExtractor.invokeAdiDewasa
 import com.AdiDrakor.AdiDrakorExtractor.invokeKisskh
 import com.AdiDrakor.AdiDrakorExtractor.invokeGomovies
@@ -45,7 +45,6 @@ open class AdiDrakor : TmdbProvider() {
 
     val wpRedisInterceptor by lazy { CloudflareKiller() }
 
-    /** AUTHOR : Hexated & AdiDrakor */
     companion object {
         /** TOOLS */
         private const val tmdbAPI = "https://api.themoviedb.org/3"
@@ -58,7 +57,7 @@ open class AdiDrakor : TmdbProvider() {
 
         /** ALL SOURCES */
         const val gomoviesAPI = "https://gomovies-online.cam"
-        const val idlixAPI = "https://tv10.idlixku.com" // Updated domain
+        const val idlixAPI = "https://tv10.idlixku.com"
         const val vidsrcccAPI = "https://vidsrc.cc"
         const val vidSrcAPI = "https://vidsrc.net"
         const val xprimeAPI = "https://backend.xprime.tv"
@@ -85,10 +84,8 @@ open class AdiDrakor : TmdbProvider() {
                 else -> ShowStatus.Completed
             }
         }
-
     }
 
-    // Menggunakan filter with_original_language=ko untuk konten Korea
     override val mainPage = mainPageOf(
         "$tmdbAPI/discover/tv?api_key=$apiKey&with_original_language=ko&sort_by=popularity.desc" to "Popular K-Dramas",
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_original_language=ko&sort_by=popularity.desc" to "Popular Korean Movies",
@@ -135,7 +132,6 @@ open class AdiDrakor : TmdbProvider() {
     override suspend fun quickSearch(query: String): List<SearchResponse>? = search(query)
 
     override suspend fun search(query: String): List<SearchResponse>? {
-        // Mencari dengan TMDB Multi Search
         return app.get("$tmdbAPI/search/multi?api_key=$apiKey&language=en-US&query=$query&page=1&include_adult=${settingsForProvider.enableAdult}")
             .parsedSafe<Results>()?.results?.mapNotNull { media ->
                 media.toSearchResponse()
@@ -353,7 +349,7 @@ open class AdiDrakor : TmdbProvider() {
                     callback
                 )
             },
-            // 4. Adimoviebox 2 (SUMBER BARU)
+            // 4. Adimoviebox2 (SUMBER BARU DITAMBAHKAN)
             {
                 invokeAdimoviebox2(
                     res.title ?: return@runAllAsync,
@@ -582,5 +578,4 @@ open class AdiDrakor : TmdbProvider() {
         @JsonProperty("alternative_titles") val alternative_titles: ResultsAltTitles? = null,
         @JsonProperty("production_countries") val production_countries: ArrayList<ProductionCountries>? = arrayListOf(),
     )
-
 }
