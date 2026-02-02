@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import com.Adicinemax21.Adicinemax21Extractor.invokeAdiDewasa
 import com.Adicinemax21.Adicinemax21Extractor.invokeKisskh 
 import com.Adicinemax21.Adicinemax21Extractor.invokeAdimoviebox
-import com.Adicinemax21.Adicinemax21Extractor.invokeAdimoviebox2 // Update: Import Provider Baru
+import com.Adicinemax21.Adicinemax21Extractor.invokeAdimoviebox2
 import com.Adicinemax21.Adicinemax21Extractor.invokeGomovies
 import com.Adicinemax21.Adicinemax21Extractor.invokeIdlix
 import com.Adicinemax21.Adicinemax21Extractor.invokeMapple
@@ -58,7 +58,7 @@ open class Adicinemax21 : TmdbProvider() {
 
         /** ALL SOURCES */
         const val gomoviesAPI = "https://gomovies-online.cam"
-        const val idlixAPI = "https://tv10.idlixku.com" // Update ke domain terbaru jika perlu
+        const val idlixAPI = "https://tv10.idlixku.com"
         const val vidsrcccAPI = "https://vidsrc.cc"
         const val vidSrcAPI = "https://vidsrc.net"
         const val xprimeAPI = "https://backend.xprime.tv"
@@ -88,7 +88,6 @@ open class Adicinemax21 : TmdbProvider() {
                 else -> ShowStatus.Completed
             }
         }
-
     }
 
     override val mainPage = mainPageOf(
@@ -216,6 +215,8 @@ open class Adicinemax21 : TmdbProvider() {
         val recommendations =
             res.recommendations?.results?.mapNotNull { media -> media.toSearchResponse() }
 
+        // --- TRAILER LOGIC ---
+        // Ini mengambil 'key' dari API JSON yang sama dengan 'data-id' di source HTML.
         val trailer = res.videos?.results?.map { "https://www.youtube.com/watch?v=${it.key}" }
 
         return if (type == TvType.TvSeries) {
@@ -240,8 +241,7 @@ open class Adicinemax21 : TmdbProvider() {
                                 epsTitle = eps.name,
                                 jpTitle = res.alternative_titles?.results?.find { it.iso_3166_1 == "JP" }?.title,
                                 date = season.airDate,
-                                airedDate = res.releaseDate
-                                    ?: res.firstAirDate,
+                                airedDate = res.releaseDate ?: res.firstAirDate,
                                 isAsian = isAsian,
                                 isBollywood = isBollywood,
                                 isCartoon = isCartoon
@@ -275,7 +275,7 @@ open class Adicinemax21 : TmdbProvider() {
                 this.recommendations = recommendations
                 this.actors = actors
                 this.contentRating = fetchContentRating(data.id, "US")
-                addTrailer(trailer)
+                addTrailer(trailer) // Menambahkan Trailer
                 addTMDbId(data.id.toString())
                 addImdbId(res.external_ids?.imdb_id)
             }
@@ -294,8 +294,7 @@ open class Adicinemax21 : TmdbProvider() {
                     orgTitle = orgTitle,
                     isAnime = isAnime,
                     jpTitle = res.alternative_titles?.results?.find { it.iso_3166_1 == "JP" }?.title,
-                    airedDate = res.releaseDate
-                        ?: res.firstAirDate,
+                    airedDate = res.releaseDate ?: res.firstAirDate,
                     isAsian = isAsian,
                     isBollywood = isBollywood
                 ).toJson(),
@@ -311,7 +310,7 @@ open class Adicinemax21 : TmdbProvider() {
                 this.recommendations = recommendations
                 this.actors = actors
                 this.contentRating = fetchContentRating(data.id, "US")
-                addTrailer(trailer)
+                addTrailer(trailer) // Menambahkan Trailer
                 addTMDbId(data.id.toString())
                 addImdbId(res.external_ids?.imdb_id)
             }
@@ -339,9 +338,9 @@ open class Adicinemax21 : TmdbProvider() {
                     callback
                 )
             },
-            // Update: Menambahkan Adimoviebox2 sebagai salah satu Prioritas
+            // 0.5 ADIMOVIEBOX 2 (PRIORITAS TAMBAHAN)
             {
-                invokeAdimoviebox2(
+                 invokeAdimoviebox2(
                     res.title ?: return@runAllAsync,
                     res.year,
                     res.season,
@@ -470,6 +469,7 @@ open class Adicinemax21 : TmdbProvider() {
         return true
     }
 
+    // --- DATA CLASSES ---
     data class LinkData(
         val id: Int? = null,
         val imdbId: String? = null,
@@ -628,5 +628,4 @@ open class Adicinemax21 : TmdbProvider() {
         @JsonProperty("alternative_titles") val alternative_titles: ResultsAltTitles? = null,
         @JsonProperty("production_countries") val production_countries: ArrayList<ProductionCountries>? = arrayListOf(),
     )
-
 }
