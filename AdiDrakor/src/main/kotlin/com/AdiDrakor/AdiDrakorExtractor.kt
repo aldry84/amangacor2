@@ -23,7 +23,6 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.jsoup.Jsoup
 import java.net.URLEncoder
 import org.json.JSONObject
-// IMPORT BARU UNTUK HELPER
 import com.AdiDrakor.AdimovieBox2Helper 
 
 object AdiDrakorExtractor : AdiDrakor() {
@@ -49,14 +48,14 @@ object AdiDrakorExtractor : AdiDrakor() {
             val document = response.document
             val directUrl = getBaseUrl(response.url)
 
-            // 1. Extract Nonce and Time (New Logic)
+            // 1. Extract Nonce and Time
             val scriptRegex = """window\.idlixNonce=['"]([a-f0-9]+)['"].*?window\.idlixTime=(\d+).*?""".toRegex(RegexOption.DOT_MATCHES_ALL)
             val script = document.select("script:containsData(window.idlix)").toString()
             val match = scriptRegex.find(script)
             val idlixNonce = match?.groups?.get(1)?.value ?: ""
             val idlixTime = match?.groups?.get(2)?.value ?: ""
             
-            if (idlixNonce.isEmpty()) return // Safety check
+            if (idlixNonce.isEmpty()) return 
 
             // 2. Iterate Servers
             document.select("ul#playeroptionsul > li").map {
@@ -83,8 +82,8 @@ object AdiDrakorExtractor : AdiDrakor() {
                 ).parsedSafe<ResponseHash>() ?: return@amap
 
                 // 4. Decrypt Logic
-                val metrix = parseJson<AesData>(json.embed_url).m
-                val password = createIdlixKey(json.key, metrix)
+                val metrix = parseJson<AesData>(json.embed_url ?: return@amap).m ?: return@amap
+                val password = createIdlixKey(json.key ?: return@amap, metrix)
                 val decrypted = AesHelper.cryptoAESHandler(json.embed_url, password.toByteArray(), false)
                     ?.fixUrlBloat() ?: return@amap
 
@@ -137,7 +136,7 @@ object AdiDrakorExtractor : AdiDrakor() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        val apiUrl = "https://filmboom.top" // API Baru
+        val apiUrl = "https://filmboom.top"
         val searchUrl = "$apiUrl/wefeed-h5-bff/web/subject/search"
         
         val searchBody = mapOf(
@@ -232,7 +231,6 @@ object AdiDrakorExtractor : AdiDrakor() {
                         val sTitle = subject["title"]?.asText() ?: continue
                         val sId = subject["subjectId"]?.asText() ?: continue
                         
-                        // Simple matching
                         if (sTitle.contains(title, true)) {
                             matchedId = sId
                             break
@@ -244,7 +242,7 @@ object AdiDrakorExtractor : AdiDrakor() {
             
             val subjectId = matchedId ?: return
 
-            // 2. GET STREAMS (PLAY INFO)
+            // 2. GET STREAMS
             val se = season ?: 0
             val ep = episode ?: 0
             
@@ -260,7 +258,6 @@ object AdiDrakorExtractor : AdiDrakor() {
                     val streamUrl = stream["url"]?.asText() ?: continue
                     val resolutions = stream["resolutions"]?.asText() ?: ""
                     
-                    // Helper lokal untuk konversi kualitas
                     fun getHighestQualityLocal(input: String): Int {
                         val qualities = listOf(
                             "2160" to Qualities.P2160.value,
@@ -554,7 +551,6 @@ object AdiDrakorExtractor : AdiDrakor() {
         }
 
     }
-
     suspend fun invokeVidsrc(
         imdbId: String?,
         season: Int?,
@@ -1097,16 +1093,13 @@ object AdiDrakorExtractor : AdiDrakor() {
     ) {
         val baseUrl = "https://dramafull.cc"
         
-        // 1. PEMBERSIHAN JUDUL
         val cleanQuery = AdiDewasaHelper.normalizeQuery(title)
         val encodedQuery = URLEncoder.encode(cleanQuery, "UTF-8").replace("+", "%20")
         val searchUrl = "$baseUrl/api/live-search/$encodedQuery"
 
         try {
-            // Gunakan Header untuk SEARCHING (Wajib ada)
             val searchRes = app.get(searchUrl, headers = AdiDewasaHelper.headers).parsedSafe<AdiDewasaSearchResponse>()
             
-            // 2. PENCOCOKAN JUDUL
             val matchedItem = searchRes?.data?.find { item ->
                 val itemTitle = item.title ?: item.name ?: ""
                 AdiDewasaHelper.isFuzzyMatch(title, itemTitle)
@@ -1117,11 +1110,9 @@ object AdiDrakorExtractor : AdiDrakor() {
             val slug = matchedItem.slug ?: return
             var targetUrl = "$baseUrl/film/$slug"
 
-            // 3. LOAD HALAMAN FILM
             val doc = app.get(targetUrl, headers = AdiDewasaHelper.headers).document
 
             if (season != null && episode != null) {
-                // SERIAL TV
                 val episodeHref = doc.select("div.episode-item a, .episode-list a").find { 
                     val text = it.text().trim()
                     val epNum = Regex("""(\d+)""").find(text)?.groupValues?.get(1)?.toIntOrNull()
@@ -1131,7 +1122,6 @@ object AdiDrakorExtractor : AdiDrakor() {
                 if (episodeHref == null) return
                 targetUrl = fixUrl(episodeHref, baseUrl)
             } else {
-                // FILM MOVIE
                 val selectors = listOf(
                     "a.btn-watch", 
                     "a.watch-now", 
@@ -1154,7 +1144,6 @@ object AdiDrakorExtractor : AdiDrakor() {
                 if (foundUrl != null) targetUrl = foundUrl
             }
 
-            // 5. EKSTRAKSI VIDEO (HEADER PLAYER DIHAPUS)
             val docPage = app.get(targetUrl, headers = AdiDewasaHelper.headers).document
             val allScripts = docPage.select("script").joinToString(" ") { it.data() }
             
@@ -1168,7 +1157,6 @@ object AdiDrakorExtractor : AdiDrakor() {
             videoSource.forEach { (quality, url) ->
                  if (url.isNotEmpty()) {
                     callback.invoke(
-                        // Hapus Referer di link video agar bisa diputar
                         newExtractorLink(
                             "AdiDewasa",
                             "AdiDewasa ($quality)",
@@ -1179,7 +1167,6 @@ object AdiDrakorExtractor : AdiDrakor() {
                 }
             }
              
-             // SUBTITLE
              val bestQualityKey = videoSource.keys.maxByOrNull { it.toIntOrNull() ?: 0 } ?: return
              val subJson = jsonObject["sub"] as? Map<String, Any>
              val subs = subJson?.get(bestQualityKey) as? List<String>
@@ -1196,8 +1183,6 @@ object AdiDrakorExtractor : AdiDrakor() {
     }
 
     // ================== KISSKH SOURCE (INTEGRATED) ==================
-    // NEW ADDITION: Asian Drama & Anime Source from Kisskh
-    
     suspend fun invokeKisskh(
         title: String,
         year: Int?,
@@ -1207,44 +1192,32 @@ object AdiDrakorExtractor : AdiDrakor() {
         callback: (ExtractorLink) -> Unit
     ) {
         val mainUrl = "https://kisskh.ovh"
-        // Kunci API Rahasia yang ditemukan di classes.dex (Source 294 & 332)
         val KISSKH_API = "https://script.google.com/macros/s/AKfycbzn8B31PuDxzaMa9_CQ0VGEDasFqfzI5bXvjaIZH4DM8DNq9q6xj1ALvZNz_JT3jF0suA/exec?id="
         val KISSKH_SUB_API = "https://script.google.com/macros/s/AKfycbyq6hTj0ZhlinYC6xbggtgo166tp6XaDKBCGtnYk8uOfYBUFwwxBui0sGXiu_zIFmA/exec?id="
 
         try {
-            // 1. SEARCH
             val searchRes = app.get("$mainUrl/api/DramaList/Search?q=$title&type=0").text
             val searchList = tryParseJson<ArrayList<KisskhMedia>>(searchRes) ?: return
 
-            // 2. MATCHING
             val matched = searchList.find { 
                 it.title.equals(title, true) 
             } ?: searchList.firstOrNull { it.title?.contains(title, true) == true } ?: return
 
             val dramaId = matched.id ?: return
             
-            // 3. GET EPISODE LIST
             val detailRes = app.get("$mainUrl/api/DramaList/Drama/$dramaId?isq=false").parsedSafe<KisskhDetail>() ?: return
             val episodes = detailRes.episodes ?: return
 
-            // 4. FIND TARGET EPISODE
             val targetEp = if (season == null) {
-                // Movie: Ambil episode terakhir/satu-satunya
                 episodes.lastOrNull()
             } else {
-                // Series: Hitung berdasarkan season & episode
-                // Kisskh biasanya list flat, jadi kita coba cari berdasarkan urutan atau asumsi
-                // Logika sederhana: Episode request user harus match dengan 'number' di API
                 episodes.find { it.number?.toInt() == episode }
             } ?: return
 
             val epsId = targetEp.id ?: return
 
-            // 5. GET KKEY (Video Token)
             val kkeyVideo = app.get("$KISSKH_API$epsId&version=2.8.10").parsedSafe<KisskhKey>()?.key ?: ""
 
-            // 6. GET VIDEO SOURCES
-            // Endpoint disamarkan sebagai .png
             val videoUrl = "$mainUrl/api/DramaList/Episode/$epsId.png?err=false&ts=&time=&kkey=$kkeyVideo"
             val sources = app.get(videoUrl).parsedSafe<KisskhSources>()
 
@@ -1273,7 +1246,6 @@ object AdiDrakorExtractor : AdiDrakor() {
                 }
             }
 
-            // 7. GET SUBTITLES
             val kkeySub = app.get("$KISSKH_SUB_API$epsId&version=2.8.10").parsedSafe<KisskhKey>()?.key ?: ""
             val subJson = app.get("$mainUrl/api/Sub/$epsId?kkey=$kkeySub").text
             
@@ -1291,5 +1263,4 @@ object AdiDrakorExtractor : AdiDrakor() {
         }
     }
 
-    // Data Classes Khusus Kisskh (Private agar tidak konflik)
-    private data class KisskhMedia(@JsonProperty("id") val id: Int?, @JsonProperty
+}
