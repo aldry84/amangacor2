@@ -2,6 +2,7 @@ package com.AdiDrakor
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.AdiDrakor.AdiDrakorExtractor.invokeAdimoviebox
+import com.AdiDrakor.AdiDrakorExtractor.invokeAdimoviebox2 // IMPORT BARU
 import com.AdiDrakor.AdiDrakorExtractor.invokeAdiDewasa
 import com.AdiDrakor.AdiDrakorExtractor.invokeKisskh
 import com.AdiDrakor.AdiDrakorExtractor.invokeGomovies
@@ -352,11 +353,22 @@ open class AdiDrakor : TmdbProvider() {
                     callback
                 )
             },
-            // 4. Vidlink
+            // 4. Adimoviebox 2 (SUMBER BARU)
+            {
+                invokeAdimoviebox2(
+                    res.title ?: return@runAllAsync,
+                    res.year,
+                    res.season,
+                    res.episode,
+                    subtitleCallback,
+                    callback
+                )
+            },
+            // 5. Vidlink
             {
                 invokeVidlink(res.id, res.season, res.episode, callback)
             },
-            // 5. Vidplay (via Vidsrccc)
+            // 6. Vidplay (via Vidsrccc)
             {
                 invokeVidsrccc(
                     res.id,
@@ -367,11 +379,11 @@ open class AdiDrakor : TmdbProvider() {
                     callback
                 )
             },
-            // 6. Vixsrc (Alpha)
+            // 7. Vixsrc (Alpha)
             {
                 invokeVixsrc(res.id, res.season, res.episode, callback)
             },
-            // 7. Sumber Lainnya
+            // 8. Sumber Lainnya
             {
                 invokeVidsrc(
                     res.imdbId,
