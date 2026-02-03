@@ -11,7 +11,10 @@ class Adicinemax21Plugin : Plugin() {
         registerMainAPI(Adicinemax21())
         
         // Register Extractors
-        // Mendaftarkan Jeniusplay yang baru (dari IdlixProvider)
+        // 1. Jeniusplay (Untuk Idlix)
         registerExtractorAPI(Jeniusplay())
+        
+        // 2. YtDownExtractor (Untuk Trailer YouTube Anti-Error)
+        registerExtractorAPI(YtDownExtractor()) 
     }
 }
