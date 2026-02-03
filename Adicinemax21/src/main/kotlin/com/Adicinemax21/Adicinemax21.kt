@@ -45,9 +45,7 @@ open class Adicinemax21 : TmdbProvider() {
 
     val wpRedisInterceptor by lazy { CloudflareKiller() }
 
-    /** AUTHOR : Hexated & Adicinemax21 */
     companion object {
-        /** TOOLS */
         private const val tmdbAPI = "https://api.themoviedb.org/3"
         const val gdbot = "https://gdtot.pro"
         const val anilistAPI = "https://graphql.anilist.co"
@@ -56,7 +54,6 @@ open class Adicinemax21 : TmdbProvider() {
 
         private const val apiKey = "b030404650f279792a8d3287232358e3"
 
-        /** ALL SOURCES */
         const val gomoviesAPI = "https://gomovies-online.cam"
         const val idlixAPI = "https://tv10.idlixku.com"
         const val vidsrcccAPI = "https://vidsrc.cc"
@@ -88,7 +85,6 @@ open class Adicinemax21 : TmdbProvider() {
                 else -> ShowStatus.Completed
             }
         }
-
     }
 
     override val mainPage = mainPageOf(
@@ -159,6 +155,94 @@ open class Adicinemax21 : TmdbProvider() {
                 media.toSearchResponse()
             }
     }
+
+    override suspend fun load(url: String): LoadResponse? {
+        val data = try {
+            if (url.contains("imdb.com")) {
+                val imdbId = Regex("""(tt\d+)""").find(url)?.value
+                    ?: throw ErrorLoadingException("Could not find IMDb ID")
+                
+                val findUrl = "$tmdbAPI/find/$imdbId?api_key=$apiKey&external_source=imdb_id"
+                val findRes = app.get(findUrl).parsedSafe<TmdbFindResponse>()
+                
+                val movie = findRes?.movie_results?.firstOrNull()
+                val tv = findRes?.tv_results?.firstOrNull()
+                
+                if (movie != null) {
+                    Data(id = movie.id, type = "movie")
+                } else if (tv != null) {
+                    Data(id = tv.id, type = "tv")
+                } else {
+                    throw ErrorLoadingException("Content not found on TMDB")
+                }
+
+            } else if (url.startsWith("https://www.themoviedb.org/")) {
+                val segments = url.removeSuffix("/").split("/")
+                val id = segments.lastOrNull()?.toIntOrNull()
+                val type = when {
+                    url.contains("/movie/") -> "movie"
+                    url.contains("/tv/") -> "tv"
+                    else -> null
+                }
+                Data(id = id, type = type)
+            } else {
+                parseJson<Data>(url)
+            }
+        } catch (e: Exception) {
+            throw ErrorLoadingException("Invalid URL or JSON data: ${e.message}")
+        } ?: throw ErrorLoadingException("Invalid data format")
+
+        val type = getType(data.type)
+        val append = "alternative_titles,credits,external_ids,keywords,videos,recommendations"
+        val resUrl = if (type == TvType.Movie) {
+            "$tmdbAPI/movie/${data.id}?api_key=$apiKey&append_to_response=$append"
+        } else {
+            "$tmdbAPI/tv/${data.id}?api_key=$apiKey&append_to_response=$append"
+        }
+        val res = app.get(resUrl).parsedSafe<MediaDetail>()
+            ?: throw ErrorLoadingException("Invalid Json Response")
+
+        val title = res.title ?: res.name ?: return null
+        val poster = getOriImageUrl(res.posterPath)
+        val bgPoster = getOriImageUrl(res.backdropPath)
+        val orgTitle = res.originalTitle ?: res.originalName ?: return null
+        val releaseDate = res.releaseDate ?: res.firstAirDate
+        val year = releaseDate?.split("-")?.first()?.toIntOrNull()
+        
+        val genres = res.genres?.mapNotNull { it.name }
+
+        val isCartoon = genres?.contains("Animation") ?: false
+        val isAnime = isCartoon && (res.original_language == "zh" || res.original_language == "ja")
+        val isAsian = !isAnime && (res.original_language == "zh" || res.original_language == "ko")
+        val isBollywood = res.production_countries?.any { it.name == "India" } ?: false
+
+        val keywords = res.keywords?.results?.mapNotNull { it.name }.orEmpty()
+            .ifEmpty { res.keywords?.keywords?.mapNotNull { it.name } }
+
+        val actors = res.credits?.cast?.mapNotNull { cast ->
+            ActorData(
+                Actor(
+                    cast.name ?: cast.originalName
+                    ?: return@mapNotNull null, getImageUrl(cast.profilePath)
+                ), roleString = cast.character
+            )
+        } ?: return null
+        val recommendations =
+            res.recommendations?.results?.mapNotNull { media -> media.toSearchResponse() }
+
+        // --- TRAILER FIX (SMART YOUTUBE) ---
+        val tmdbTrailers = res.videos?.results
+            ?.filter { it.site == "YouTube" }
+            ?.map { "https://www.youtube.com/watch?v=${it.key}" }
+
+        val trailer = if (tmdbTrailers.isNullOrEmpty()) {
+            val searchId = res.external_ids?.imdb_id ?: "$title $year"
+            val query = "$searchId Trailer".replace(" ", "+")
+            listOf("https://www.youtube.com/results?search_query=$query")
+        } else {
+            tmdbTrailers
+        }
+
         return if (type == TvType.TvSeries) {
             val lastSeason = res.last_episode_to_air?.season_number
             val episodes = res.seasons?.mapNotNull { season ->
@@ -243,12 +327,8 @@ open class Adicinemax21 : TmdbProvider() {
             ) {
                 this.posterUrl = poster
                 this.backgroundPosterUrl = bgPoster
-                
-                // --- FIX PENTING: PAKSA TOMBOL PLAY MUNCUL ---
-                // Film 2026 seperti "The Wrecking Crew" akan disembunyikan tombolnya 
-                // jika menggunakan isUpcoming(). Kita ubah jadi false.
+                // FIX: Paksa tombol play muncul (disable coming soon check)
                 this.comingSoon = false 
-                // ---------------------------------------------
                 
                 this.year = year
                 this.plot = res.overview
@@ -275,7 +355,6 @@ open class Adicinemax21 : TmdbProvider() {
         val res = parseJson<LinkData>(data)
 
         runAllAsync(
-            // 0. IDLIX / JENIUSPLAY (PRIORITAS UTAMA)
             {
                 invokeIdlix(
                     res.title,
@@ -286,7 +365,6 @@ open class Adicinemax21 : TmdbProvider() {
                     callback
                 )
             },
-            // Update: Menambahkan Adimoviebox2 sebagai salah satu Prioritas
             {
                 invokeAdimoviebox2(
                     res.title ?: return@runAllAsync,
@@ -297,7 +375,6 @@ open class Adicinemax21 : TmdbProvider() {
                     callback
                 )
             },
-            // 1. AdiDewasa (Asian Drama Priority)
             {
                 invokeAdiDewasa(
                     res.title ?: return@runAllAsync,
@@ -308,7 +385,6 @@ open class Adicinemax21 : TmdbProvider() {
                     callback
                 )
             },
-            // 2. KISSKH (Asian Drama/Anime)
             {
                 invokeKisskh(
                     res.title ?: return@runAllAsync,
@@ -319,7 +395,6 @@ open class Adicinemax21 : TmdbProvider() {
                     callback
                 )
             },
-            // 3. Adimoviebox (Direct Source)
             {
                 invokeAdimoviebox(
                     res.title ?: return@runAllAsync,
@@ -330,11 +405,9 @@ open class Adicinemax21 : TmdbProvider() {
                     callback
                 )
             },
-            // 4. Vidlink
             {
                 invokeVidlink(res.id, res.season, res.episode, callback)
             },
-            // 5. Vidplay (via Vidsrccc)
             {
                 invokeVidsrccc(
                     res.id,
@@ -345,11 +418,9 @@ open class Adicinemax21 : TmdbProvider() {
                     callback
                 )
             },
-            // 6. Vixsrc (Alpha)
             {
                 invokeVixsrc(res.id, res.season, res.episode, callback)
             },
-            // 7. CinemaOS (Smart Filtered)
             {
                 invokeCinemaOS(
                     res.imdbId,
@@ -362,7 +433,6 @@ open class Adicinemax21 : TmdbProvider() {
                     subtitleCallback
                 )
             },
-            // 8. Player4U
             {
                 if (!res.isAnime) invokePlayer4U(
                     res.title,
@@ -372,11 +442,9 @@ open class Adicinemax21 : TmdbProvider() {
                     callback
                 )
             },
-            // 9. RiveStream
             {
                 if (!res.isAnime) invokeRiveStream(res.id, res.season, res.episode, callback)
             },
-            // Sumber-sumber lain
             {
                 invokeVidsrc(
                     res.imdbId,
