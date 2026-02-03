@@ -216,8 +216,7 @@ open class Adicinemax21 : TmdbProvider() {
         val recommendations =
             res.recommendations?.results?.mapNotNull { media -> media.toSearchResponse() }
 
-        // --- FIX TRAILER AGAR TIDAK ERROR DI LOGCAT ---
-        // Filter hanya YouTube untuk mencegah error, dan Fallback jika kosong
+        // --- TRAILER FIX ---
         val tmdbTrailers = res.videos?.results
             ?.filter { it.site == "YouTube" }
             ?.map { "https://www.youtube.com/watch?v=${it.key}" }
@@ -229,7 +228,7 @@ open class Adicinemax21 : TmdbProvider() {
         } else {
             tmdbTrailers
         }
-        // ----------------------------------------------
+        // ------------------
 
         return if (type == TvType.TvSeries) {
             val lastSeason = res.last_episode_to_air?.season_number
@@ -315,10 +314,9 @@ open class Adicinemax21 : TmdbProvider() {
             ) {
                 this.posterUrl = poster
                 this.backgroundPosterUrl = bgPoster
-                
-                // FIX: Paksa tombol play muncul (disable coming soon check)
+                // FIX TOMBOL PLAY HILANG DI FILM 2026:
+                // Jangan gunakan isUpcoming(releaseDate) karena akan menyembunyikan tombol play
                 this.comingSoon = false 
-                // Awalnya: isUpcoming(releaseDate) <- ini yang bikin tombol hilang di 2026
                 
                 this.year = year
                 this.plot = res.overview
@@ -577,19 +575,11 @@ open class Adicinemax21 : TmdbProvider() {
     data class MediaDetailEpisodes(
         @JsonProperty("episodes") val episodes: ArrayList<Episodes>? = arrayListOf(),
     )
-    
-    // Trailer Class sudah didefinisikan di Parser.kt, jadi disini dihapus/tidak perlu double
-    // Namun jika Parser.kt belum diupdate, pastikan sesuai.
-    // Kode ini mengasumsikan Parser.kt yang sudah diperbaiki sebelumnya digunakan.
-    // Jika tidak menggunakan Parser.kt, Anda perlu definisi Trailer disini.
-    // Karena kode ini menggunakan com.Adicinemax21.Adicinemax21Parser.kt, 
-    // struktur MediaDetail diambil dari sana atau disini.
-    // Dalam kode yang Anda kirim, MediaDetail ada DI DALAM file ini.
-    // SAYA AKAN MEMPERBAIKI MediaDetail DISINI AGAR FILTER TRAILER BEKERJA.
 
+    // Menambahkan field 'site' agar kita bisa memfilter YouTube di Adicinemax21.kt
     data class Trailers(
         @JsonProperty("key") val key: String? = null,
-        @JsonProperty("site") val site: String? = null, // Tambahkan site untuk filter YouTube
+        @JsonProperty("site") val site: String? = null, 
     )
 
     data class ResultsTrailer(
