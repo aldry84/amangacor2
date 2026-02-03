@@ -2,17 +2,6 @@ package com.Adicinemax21
 
 import com.fasterxml.jackson.annotation.JsonProperty
 
-// ================== TMDB & IMDB SUPPORT (NEW) ==================
-data class TmdbFindResponse(
-    @JsonProperty("movie_results") val movie_results: ArrayList<TmdbFindResult>? = arrayListOf(),
-    @JsonProperty("tv_results") val tv_results: ArrayList<TmdbFindResult>? = arrayListOf(),
-)
-
-data class TmdbFindResult(
-    @JsonProperty("id") val id: Int? = null,
-    @JsonProperty("media_type") val media_type: String? = null,
-)
-
 // ================== IDLIX DATA CLASSES ==================
 data class AesData(
     @JsonProperty("m") val m: String,
@@ -571,7 +560,7 @@ data class Adimoviebox2Stream(
     @JsonProperty("url") val url: String? = null,
     @JsonProperty("format") val format: String? = null,
     @JsonProperty("resolutions") val resolutions: String? = null,
-    @JsonProperty("signCookie") val signCookie: String? = null
+    @JsonProperty("signCookie") val signCookie: String? = null // <--- Wajib ada
 )
 
 data class Adimoviebox2SubtitleResponse(
@@ -594,7 +583,7 @@ data class Adimoviebox2Caption(
 // FIX: Menambahkan 'site' untuk filter YouTube
 data class Trailers(
     @JsonProperty("key") val key: String? = null,
-    @JsonProperty("site") val site: String? = null,
+    @JsonProperty("site") val site: String? = null, // Tambahkan ini
 )
 
 data class ResultsTrailer(
