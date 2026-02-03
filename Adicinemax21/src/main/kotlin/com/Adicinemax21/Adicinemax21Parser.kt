@@ -577,15 +577,3 @@ data class Adimoviebox2Caption(
     @JsonProperty("lanName") val lanName: String? = null,
     @JsonProperty("lan") val lan: String? = null
 )
-
-// ================== ADDED FOR TRAILER FIX ==================
-
-data class Trailers(
-    @JsonProperty("key") val key: String? = null,
-    @JsonProperty("site") val site: String? = null, // Tambahan untuk filter
-    @JsonProperty("type") val type: String? = null  // Tambahan untuk filter
-)
-
-data class ResultsTrailer(
-    @JsonProperty("results") val results: ArrayList<Trailers>? = arrayListOf(),
-)

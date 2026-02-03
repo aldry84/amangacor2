@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import com.Adicinemax21.Adicinemax21Extractor.invokeAdiDewasa
 import com.Adicinemax21.Adicinemax21Extractor.invokeKisskh 
 import com.Adicinemax21.Adicinemax21Extractor.invokeAdimoviebox
-import com.Adicinemax21.Adicinemax21Extractor.invokeAdimoviebox2 
+import com.Adicinemax21.Adicinemax21Extractor.invokeAdimoviebox2 // Update: Import Provider Baru
 import com.Adicinemax21.Adicinemax21Extractor.invokeGomovies
 import com.Adicinemax21.Adicinemax21Extractor.invokeIdlix
 import com.Adicinemax21.Adicinemax21Extractor.invokeMapple
@@ -58,7 +58,7 @@ open class Adicinemax21 : TmdbProvider() {
 
         /** ALL SOURCES */
         const val gomoviesAPI = "https://gomovies-online.cam"
-        const val idlixAPI = "https://tv10.idlixku.com" 
+        const val idlixAPI = "https://tv10.idlixku.com" // Update ke domain terbaru jika perlu
         const val vidsrcccAPI = "https://vidsrc.cc"
         const val vidSrcAPI = "https://vidsrc.net"
         const val xprimeAPI = "https://backend.xprime.tv"
@@ -216,17 +216,7 @@ open class Adicinemax21 : TmdbProvider() {
         val recommendations =
             res.recommendations?.results?.mapNotNull { media -> media.toSearchResponse() }
 
-        // ==========================
-        // FIX TOMBOL TRAILER 
-        // ==========================
-        // Cari video yang SITE-nya YOUTUBE dan TYPE-nya TRAILER
-        val trailerKey = res.videos?.results?.find { 
-            it.site == "YouTube" && it.type == "Trailer" 
-        }?.key ?: res.videos?.results?.find { 
-             it.site == "YouTube" 
-        }?.key // Fallback: ambil youtube apa saja kalau ga ada yang labelnya Trailer
-
-        val trailerUrl = trailerKey?.let { "https://www.youtube.com/watch?v=$it" }
+        val trailer = res.videos?.results?.map { "https://www.youtube.com/watch?v=${it.key}" }
 
         return if (type == TvType.TvSeries) {
             val lastSeason = res.last_episode_to_air?.season_number
@@ -285,10 +275,7 @@ open class Adicinemax21 : TmdbProvider() {
                 this.recommendations = recommendations
                 this.actors = actors
                 this.contentRating = fetchContentRating(data.id, "US")
-                
-                // Tambahkan trailer yang sudah difilter
-                addTrailer(trailerUrl)
-
+                addTrailer(trailer)
                 addTMDbId(data.id.toString())
                 addImdbId(res.external_ids?.imdb_id)
             }
@@ -324,10 +311,7 @@ open class Adicinemax21 : TmdbProvider() {
                 this.recommendations = recommendations
                 this.actors = actors
                 this.contentRating = fetchContentRating(data.id, "US")
-                
-                // Tambahkan trailer yang sudah difilter
-                addTrailer(trailerUrl)
-
+                addTrailer(trailer)
                 addTMDbId(data.id.toString())
                 addImdbId(res.external_ids?.imdb_id)
             }
