@@ -216,7 +216,8 @@ open class Adicinemax21 : TmdbProvider() {
         val recommendations =
             res.recommendations?.results?.mapNotNull { media -> media.toSearchResponse() }
 
-        val trailer = res.videos?.results?.map { "https://www.youtube.com/watch?v=${it.key}" }
+        // PERUBAHAN DISINI: Mengambil satu trailer dan menyimpannya sebagai String (Logika Adimoviebox)
+        val trailer = res.videos?.results?.firstOrNull()?.key?.let { "https://www.youtube.com/watch?v=$it" }
 
         return if (type == TvType.TvSeries) {
             val lastSeason = res.last_episode_to_air?.season_number
@@ -275,7 +276,8 @@ open class Adicinemax21 : TmdbProvider() {
                 this.recommendations = recommendations
                 this.actors = actors
                 this.contentRating = fetchContentRating(data.id, "US")
-                addTrailer(trailer)
+                // PERUBAHAN DISINI: Menggunakan addRaw = true (Logika Adimoviebox)
+                addTrailer(trailer, addRaw = true)
                 addTMDbId(data.id.toString())
                 addImdbId(res.external_ids?.imdb_id)
             }
@@ -311,7 +313,8 @@ open class Adicinemax21 : TmdbProvider() {
                 this.recommendations = recommendations
                 this.actors = actors
                 this.contentRating = fetchContentRating(data.id, "US")
-                addTrailer(trailer)
+                // PERUBAHAN DISINI: Menggunakan addRaw = true (Logika Adimoviebox)
+                addTrailer(trailer, addRaw = true)
                 addTMDbId(data.id.toString())
                 addImdbId(res.external_ids?.imdb_id)
             }
