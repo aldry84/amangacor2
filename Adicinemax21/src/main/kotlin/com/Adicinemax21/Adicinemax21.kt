@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import com.Adicinemax21.Adicinemax21Extractor.invokeAdiDewasa
 import com.Adicinemax21.Adicinemax21Extractor.invokeKisskh 
 import com.Adicinemax21.Adicinemax21Extractor.invokeAdimoviebox
-import com.Adicinemax21.Adicinemax21Extractor.invokeAdimoviebox2 // Update: Import Provider Baru
+import com.Adicinemax21.Adicinemax21Extractor.invokeAdimoviebox2 
 import com.Adicinemax21.Adicinemax21Extractor.invokeGomovies
 import com.Adicinemax21.Adicinemax21Extractor.invokeIdlix
 import com.Adicinemax21.Adicinemax21Extractor.invokeMapple
@@ -58,7 +58,7 @@ open class Adicinemax21 : TmdbProvider() {
 
         /** ALL SOURCES */
         const val gomoviesAPI = "https://gomovies-online.cam"
-        const val idlixAPI = "https://tv10.idlixku.com" // Update ke domain terbaru jika perlu
+        const val idlixAPI = "https://tv10.idlixku.com" 
         const val vidsrcccAPI = "https://vidsrc.cc"
         const val vidSrcAPI = "https://vidsrc.net"
         const val xprimeAPI = "https://backend.xprime.tv"
@@ -216,7 +216,7 @@ open class Adicinemax21 : TmdbProvider() {
         val recommendations =
             res.recommendations?.results?.mapNotNull { media -> media.toSearchResponse() }
 
-        // PERUBAHAN DISINI: Mengambil satu trailer dan menyimpannya sebagai String (Logika Adimoviebox)
+        // MENGAMBIL SINGLE TRAILER (Paling atas)
         val trailer = res.videos?.results?.firstOrNull()?.key?.let { "https://www.youtube.com/watch?v=$it" }
 
         return if (type == TvType.TvSeries) {
@@ -276,8 +276,11 @@ open class Adicinemax21 : TmdbProvider() {
                 this.recommendations = recommendations
                 this.actors = actors
                 this.contentRating = fetchContentRating(data.id, "US")
-                // PERUBAHAN DISINI: Menggunakan addRaw = true (Logika Adimoviebox)
-                addTrailer(trailer, addRaw = true)
+                
+                // FIX: Menghapus addRaw=true. 
+                // Biarkan CloudStream yang handle link YouTube-nya.
+                addTrailer(trailer)
+
                 addTMDbId(data.id.toString())
                 addImdbId(res.external_ids?.imdb_id)
             }
@@ -313,8 +316,11 @@ open class Adicinemax21 : TmdbProvider() {
                 this.recommendations = recommendations
                 this.actors = actors
                 this.contentRating = fetchContentRating(data.id, "US")
-                // PERUBAHAN DISINI: Menggunakan addRaw = true (Logika Adimoviebox)
-                addTrailer(trailer, addRaw = true)
+                
+                // FIX: Menghapus addRaw=true.
+                // Biarkan CloudStream yang handle link YouTube-nya.
+                addTrailer(trailer)
+
                 addTMDbId(data.id.toString())
                 addImdbId(res.external_ids?.imdb_id)
             }
