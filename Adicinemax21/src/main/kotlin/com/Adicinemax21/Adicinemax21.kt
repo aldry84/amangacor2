@@ -216,8 +216,17 @@ open class Adicinemax21 : TmdbProvider() {
         val recommendations =
             res.recommendations?.results?.mapNotNull { media -> media.toSearchResponse() }
 
-        // MENGAMBIL SINGLE TRAILER (Paling atas)
-        val trailer = res.videos?.results?.firstOrNull()?.key?.let { "https://www.youtube.com/watch?v=$it" }
+        // ==========================
+        // FIX TOMBOL TRAILER 
+        // ==========================
+        // Cari video yang SITE-nya YOUTUBE dan TYPE-nya TRAILER
+        val trailerKey = res.videos?.results?.find { 
+            it.site == "YouTube" && it.type == "Trailer" 
+        }?.key ?: res.videos?.results?.find { 
+             it.site == "YouTube" 
+        }?.key // Fallback: ambil youtube apa saja kalau ga ada yang labelnya Trailer
+
+        val trailerUrl = trailerKey?.let { "https://www.youtube.com/watch?v=$it" }
 
         return if (type == TvType.TvSeries) {
             val lastSeason = res.last_episode_to_air?.season_number
@@ -277,9 +286,8 @@ open class Adicinemax21 : TmdbProvider() {
                 this.actors = actors
                 this.contentRating = fetchContentRating(data.id, "US")
                 
-                // FIX: Menghapus addRaw=true. 
-                // Biarkan CloudStream yang handle link YouTube-nya.
-                addTrailer(trailer)
+                // Tambahkan trailer yang sudah difilter
+                addTrailer(trailerUrl)
 
                 addTMDbId(data.id.toString())
                 addImdbId(res.external_ids?.imdb_id)
@@ -317,9 +325,8 @@ open class Adicinemax21 : TmdbProvider() {
                 this.actors = actors
                 this.contentRating = fetchContentRating(data.id, "US")
                 
-                // FIX: Menghapus addRaw=true.
-                // Biarkan CloudStream yang handle link YouTube-nya.
-                addTrailer(trailer)
+                // Tambahkan trailer yang sudah difilter
+                addTrailer(trailerUrl)
 
                 addTMDbId(data.id.toString())
                 addImdbId(res.external_ids?.imdb_id)
