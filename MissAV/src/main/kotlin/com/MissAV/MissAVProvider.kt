@@ -14,10 +14,9 @@ class MissAVProvider : MainAPI() {
     override val supportedTypes       = setOf(TvType.NSFW)
     override val vpnStatus            = VPNStatus.MightBeNeeded
     
-    // URL Subtitle
     private val subtitleCatUrl = "https://www.subtitlecat.com"
 
-    // HEADERS: Penting agar tidak diblokir Cloudflare/Server
+    // HEADERS: Wajib ada supaya tidak diblokir Cloudflare
     private val headers = mapOf(
         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Referer" to "$mainUrl/"
@@ -36,7 +35,6 @@ class MissAVProvider : MainAPI() {
         )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-            // Gunakan headers
             val document = app.get("$mainUrl${request.data}?page=$page", headers = headers).document
             val responseList  = document.select(".thumbnail").mapNotNull { it.toSearchResult() }
             return newHomePageResponse(HomePageList(request.name, responseList, isHorizontalImages = true), hasNext = true)
@@ -59,10 +57,9 @@ class MissAVProvider : MainAPI() {
     override suspend fun search(query: String): List<SearchResponse> {
         val searchResponse = mutableListOf<SearchResponse>()
 
-        // OPTIMALISASI: Loop dikurangi jadi 2 halaman agar tidak berat
+        // Mengurangi loop agar loading tidak lama (cukup 2 halaman)
         for (i in 1..2) {
             try {
-                // Gunakan headers
                 val document = app.get("$mainUrl/en/search/$query?page=$i", headers = headers).document
                 val results = document.select(".thumbnail").mapNotNull { it.toSearchResult() }
 
@@ -75,12 +72,10 @@ class MissAVProvider : MainAPI() {
                 e.printStackTrace()
             }
         }
-        // Hapus duplikat
         return searchResponse.distinctBy { it.url }
     }
 
     override suspend fun load(url: String): LoadResponse {
-        // Gunakan headers
         val document = app.get(url, headers = headers).document
 
         val title = document.selectFirst("meta[property=og:title]")?.attr("content")?.trim() ?: "No Title"
@@ -94,11 +89,10 @@ class MissAVProvider : MainAPI() {
     }
 
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
-        // Gunakan headers
         val response = app.get(data, headers = headers)
         val doc = response.document
         
-        // --- LOGIKA EKSTRAKSI VIDEO ---
+        // --- LOGIKA EKSTRAKSI VIDEO (Jurus Anti-Error) ---
         try {
             getAndUnpack(response.text).let { unpackedText ->
                 // Regex fleksibel (menangani kutip satu ' atau dua ")
@@ -107,16 +101,20 @@ class MissAVProvider : MainAPI() {
                 val m3u8Url = match?.groupValues?.get(1)
 
                 if (m3u8Url != null) {
+                    // FIX UTAMA: 
+                    // Kita tidak menggunakan named arguments (referer=..., quality=...) di dalam kurung
+                    // untuk menghindari error "No parameter found".
+                    // Kita set referer menggunakan .apply { } yang aman untuk semua versi.
                     callback.invoke(
-                        // PERBAIKAN UTAMA: Menggunakan Class ExtractorLink langsung agar parameter referer & quality dikenali
-                        ExtractorLink(
-                            source = name,
-                            name = "$name HLS",
-                            url = m3u8Url,
-                            referer = data, 
-                            quality = Qualities.Unknown.value,
-                            type = ExtractorLinkType.M3U8
-                        )
+                        newExtractorLink(
+                            name,           // source
+                            "$name HLS",    // name
+                            m3u8Url,        // url
+                            Qualities.Unknown.value, // quality (urutan parameter standar)
+                            ExtractorLinkType.M3U8   // type
+                        ).apply {
+                            this.referer = data
+                        }
                     )
                 }
             }
@@ -131,11 +129,9 @@ class MissAVProvider : MainAPI() {
             
             if (!javCode.isNullOrEmpty()) {
                 val query = "$subtitleCatUrl/index.php?search=$javCode"
-                // Tambahkan headers browser
                 val subDoc = app.get(query, headers = headers, timeout = 20).document 
                 
                 val subList = subDoc.select("td a")
-                // Batasi pencarian subtitle maksimal 3 hasil teratas
                 for (item in subList.take(3)) {
                     if (item.text().contains(javCode, ignoreCase = true)) {
                         val fullUrl = "$subtitleCatUrl/${item.attr("href")}"
@@ -155,16 +151,12 @@ class MissAVProvider : MainAPI() {
                                         SubtitleFile(langName, url)
                                     )
                                 }
-                            } catch (e: Exception) { 
-                                // Abaikan error per item subtitle
-                            }
+                            } catch (e: Exception) { }
                         }
                     }
                 }
             }
-        } catch (e: Exception) {
-            // Abaikan error subtitle secara global agar video tetap jalan
-        }
+        } catch (e: Exception) { }
 
         return true
     }
