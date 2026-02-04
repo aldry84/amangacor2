@@ -47,12 +47,13 @@ class AdiNgeFilm : MainAPI() {
         
         val items = ArrayList<SearchResponse>()
 
-        // LOGIKA SLIDER (POSTER BESAR): Mengambil resolusi HD
+        // LOGIKA SLIDER (POSTER BESAR): Paksa ambil resolusi HD
         if (request.name == "Terbaru" && page == 1) {
             document.select("div.gmr-owl-carousel .gmr-slider-content").forEach { element ->
                 val title = element.selectFirst(".gmr-slide-title a")?.text()?.trim() ?: return@forEach
                 val href = element.selectFirst("a")?.attr("href") ?: return@forEach
-                // FIX: Paksa bersihkan URL gambar slider agar tajam (hapus -152x228 dll)
+                
+                // FIX: Bersihkan URL gambar slider secara agresif agar tajam
                 val posterUrl = element.selectFirst("img")?.getImageAttr()?.fixImageQuality()
                 
                 val quality = element.selectFirst(".gmr-quality-item a")?.text()?.replace("-", "")
@@ -141,7 +142,7 @@ class AdiNgeFilm : MainAPI() {
         val title = document.selectFirst("h1.entry-title")?.text()?.substringBefore("Season")
             ?.substringBefore("Episode")?.trim().toString()
         
-        // 1. Poster Vertical (Untuk Cover Depan)
+        // 1. Poster Vertical (Untuk Cover Depan) - Prioritas Meta Tag HD
         val poster = document.selectFirst("meta[property=og:image]")?.attr("content")
             ?: document.selectFirst("link[rel=image_src]")?.attr("href")
             ?: document.selectFirst("figure.pull-left img")?.getImageAttr()?.fixImageQuality()
@@ -152,14 +153,23 @@ class AdiNgeFilm : MainAPI() {
         val tvType = if (url.contains("/tv/")) TvType.TvSeries else TvType.Movie
         val description = document.selectFirst("div[itemprop=description] > p")?.text()?.trim()
         
-        // Cari Trailer URL dari berbagai kemungkinan
+        // Cari Trailer URL (Popup link ATAU Direct Iframe)
+        // Ini penting untuk Serial TV yang sering pakai embed langsung
         val trailer = document.selectFirst("ul.gmr-player-nav li a.gmr-trailer-popup")?.attr("href")
             ?: document.selectFirst("iframe[src*='youtube.com']")?.attr("src")
             ?: document.selectFirst("iframe[src*='youtu.be']")?.attr("src")
 
         // 2. LOGIKA BACKGROUND (Solusi Kepala Kepotong):
-        // Menggunakan Thumbnail Youtube (Landscape) agar pas di layar TV/HP
-        val background = getYoutubeThumbnail(trailer) ?: poster
+        // Ambil ID Youtube dengan parser manual yang lebih kuat
+        val youtubeId = getYoutubeId(trailer)
+        
+        // Jika ID ketemu, pakai thumbnail Youtube maxres (Pasti Landscape & Tajam)
+        val background = if (youtubeId != null) {
+            "https://img.youtube.com/vi/$youtubeId/maxresdefault.jpg"
+        } else {
+            // Fallback: Jika tidak ada trailer, pakai poster (apa boleh buat)
+            poster
+        }
 
         val rating = document.selectFirst("div.gmr-meta-rating > span[itemprop=ratingValue]")
             ?.text()?.trim()
@@ -181,7 +191,6 @@ class AdiNgeFilm : MainAPI() {
 
                     val formattedName = epNum?.let { "Episode $it" } ?: cleanTitle
                     
-                    // Coba ambil thumbnail episode jika ada, kalau tidak pakai poster utama
                     val epThumb = eps.selectFirst("img")?.getImageAttr()?.fixImageQuality() ?: poster
 
                     newEpisode(href) {
@@ -193,7 +202,7 @@ class AdiNgeFilm : MainAPI() {
 
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                 this.posterUrl = poster
-                this.backgroundPosterUrl = background // Ini kuncinya agar tidak terpotong
+                this.backgroundPosterUrl = background // Pakai background landscape
                 this.year = year
                 this.plot = description
                 this.tags = tags
@@ -206,7 +215,7 @@ class AdiNgeFilm : MainAPI() {
         } else {
             newMovieLoadResponse(title, url, TvType.Movie, url) {
                 this.posterUrl = poster
-                this.backgroundPosterUrl = background // Ini kuncinya agar tidak terpotong
+                this.backgroundPosterUrl = background // Pakai background landscape
                 this.year = year
                 this.plot = description
                 this.tags = tags
@@ -276,16 +285,20 @@ class AdiNgeFilm : MainAPI() {
 
     private fun String?.fixImageQuality(): String? {
         if (this == null) return null
-        val regex = Regex("(-\\d+x\\d+)").find(this)?.groupValues?.get(0) ?: return this
+        // Regex ini menghapus format dimensi (misal -300x400) dari nama file
+        val regex = Regex("(-\\d+x\\d+)(?=\\.\\w{3,4}$)")
         return this.replace(regex, "")
     }
 
-    // UPDATE: Regex Youtube yang lebih kuat untuk menangkap ID dari URL embed/share
-    private fun getYoutubeThumbnail(url: String?): String? {
+    // Helper: Ekstrak ID Youtube dengan parsing string manual (Lebih reliable dari Regex kompleks)
+    private fun getYoutubeId(url: String?): String? {
         if (url == null) return null
-        val regex = Regex("""(?:youtube(?:-nocookie)?\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})""")
-        val id = regex.find(url)?.groupValues?.get(1)
-        return if (id != null) "https://img.youtube.com/vi/$id/maxresdefault.jpg" else null
+        return when {
+            url.contains("/embed/") -> url.substringAfter("/embed/").substringBefore("?").substringBefore("\"")
+            url.contains("v=") -> url.substringAfter("v=").substringBefore("&")
+            url.contains("youtu.be/") -> url.substringAfter("youtu.be/").substringBefore("?")
+            else -> null
+        }
     }
 
     private fun getBaseUrl(url: String): String {
