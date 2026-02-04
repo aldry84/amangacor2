@@ -51,7 +51,9 @@ class AdiNgeFilm : MainAPI() {
     private fun Element.toSearchResult(): SearchResponse? {
         val title = this.selectFirst("h2.entry-title > a")?.text()?.trim() ?: return null
         val href = fixUrl(this.selectFirst("a")!!.attr("href"))
-        val posterUrl = fixUrlNull(this.selectFirst("a > img")?.getImageAttr()).fixImageQuality()
+        // Bersihkan URL gambar dari dimensi (misal -152x228) untuk search result
+        val posterUrl = this.selectFirst("img")?.getImageAttr()?.fixImageQuality()
+        
         val quality = this.select("div.gmr-qual, div.gmr-quality-item > a").text().trim().replace("-", "")
         val ratingText = this.selectFirst("div.gmr-rating-item")?.ownText()?.trim()
         val eps = selectFirst(".gmr-numbeps span")?.text()?.trim()?.toIntOrNull()
@@ -85,7 +87,7 @@ class AdiNgeFilm : MainAPI() {
     private fun Element.toRecommendResult(): SearchResponse? {
         val title = this.selectFirst("h2.entry-title > a")?.text()?.trim() ?: return null
         val href = fixUrl(this.selectFirst("a")!!.attr("href"))
-        val posterUrl = fixUrlNull(this.selectFirst("a > img")?.getImageAttr()).fixImageQuality()
+        val posterUrl = this.selectFirst("img")?.getImageAttr()?.fixImageQuality()
         val quality = this.select("div.gmr-qual, div.gmr-quality-item > a").text().trim().replace("-", "")
         val ratingText = this.selectFirst("div.gmr-rating-item")?.ownText()?.trim()
         val eps = selectFirst(".gmr-numbeps span")?.text()?.trim()?.toIntOrNull()
@@ -117,13 +119,11 @@ class AdiNgeFilm : MainAPI() {
         val title = document.selectFirst("h1.entry-title")?.text()?.substringBefore("Season")
             ?.substringBefore("Episode")?.trim().toString()
         
-        // UPDATE: Coba ambil link resolusi penuh dari tag <a> pembungkus dulu
-        val posterElement = document.selectFirst("figure.pull-left")
-        val posterSrc = posterElement?.selectFirst("a")?.attr("href") 
-            ?: posterElement?.selectFirst("img")?.getImageAttr()
-            
-        val poster = fixUrlNull(posterSrc)?.fixImageQuality()
-
+        // UPDATE TERBARU: Ambil poster langsung dari Meta Tag 'og:image'
+        // Ini adalah cara paling akurat untuk mendapatkan gambar resolusi penuh (bukan thumbnail 60x90)
+        val poster = document.selectFirst("meta[property=og:image]")?.attr("content")
+            ?: document.selectFirst("figure.pull-left img")?.getImageAttr()?.fixImageQuality()
+        
         val tags = document.select("div.gmr-moviedata a").map { it.text() }
         val year = document.select("div.gmr-moviedata strong:contains(Year:) > a").text()
             .trim().toIntOrNull()
@@ -229,7 +229,6 @@ class AdiNgeFilm : MainAPI() {
         return when {
             this.hasAttr("data-src") -> this.attr("abs:data-src")
             this.hasAttr("data-lazy-src") -> this.attr("abs:data-lazy-src")
-            // UPDATE: Hapus srcset karena sering mengambil gambar resolusi rendah
             else -> this.attr("abs:src")
         }
     }
@@ -239,10 +238,10 @@ class AdiNgeFilm : MainAPI() {
                 ?: this?.attr("src")
     }
 
+    // UPDATE: Regex diperketat agar hanya menghapus format dimensi (misal: -152x228)
     private fun String?.fixImageQuality(): String? {
         if (this == null) return null
-        // UPDATE: Regex ini akan menghapus suffix dimensi seperti -152x228
-        val regex = Regex("(-\\d*x\\d*)").find(this)?.groupValues?.get(0) ?: return this
+        val regex = Regex("(-\\d+x\\d+)").find(this)?.groupValues?.get(0) ?: return this
         return this.replace(regex, "")
     }
 
