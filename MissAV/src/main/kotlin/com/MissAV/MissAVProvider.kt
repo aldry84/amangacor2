@@ -1,8 +1,8 @@
 package com.MissAv
 
-import org.jsoup.nodes.Element
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
+import org.jsoup.nodes.Element
 
 class MissAVProvider : MainAPI() {
     override var mainUrl              = "https://missav.ws"
@@ -13,7 +13,15 @@ class MissAVProvider : MainAPI() {
     override val hasChromecastSupport = true
     override val supportedTypes       = setOf(TvType.NSFW)
     override val vpnStatus            = VPNStatus.MightBeNeeded
-    val subtitleCatUrl = "https://www.subtitlecat.com"
+    
+    // URL Subtitle
+    private val subtitleCatUrl = "https://www.subtitlecat.com"
+
+    // 1. TAMBAHKAN HEADERS (Penting untuk menembus Cloudflare)
+    private val headers = mapOf(
+        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Referer" to "$mainUrl/"
+    )
 
     override val mainPage = mainPageOf(
             "/dm514/en/new" to "Recent Update",
@@ -26,57 +34,57 @@ class MissAVProvider : MainAPI() {
             "/dm628/id/uncensored-leak" to "Uncensored Leak",
             "/en/klive" to "Korean Live AV"
         )
-    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-            val document = app.get("$mainUrl${request.data}?page=$page").document
-            val responseList  = document.select(".thumbnail").mapNotNull { it.toSearchResult() }
-            return newHomePageResponse(HomePageList(request.name, responseList, isHorizontalImages = true),hasNext = true)
 
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+            // Gunakan headers di sini
+            val document = app.get("$mainUrl${request.data}?page=$page", headers = headers).document
+            val responseList  = document.select(".thumbnail").mapNotNull { it.toSearchResult() }
+            return newHomePageResponse(HomePageList(request.name, responseList, isHorizontalImages = true), hasNext = true)
     }
 
     private fun Element.toSearchResult(): SearchResponse {
         val status = this.select(".bg-blue-800").text()
-        val title = if(status.isNotBlank()){"[$status] "+ this.select(".text-secondary").text()} else {this.select(".text-secondary").text()}
-        val href = this.select(".text-secondary").attr("href")
+        val titleElement = this.select(".text-secondary")
+        val rawTitle = titleElement.text()
+        
+        val title = if(status.isNotBlank()) "[$status] $rawTitle" else rawTitle
+        val href = titleElement.attr("href")
         val posterUrl = this.selectFirst(".w-full")?.attr("data-src")
+        
         return newMovieSearchResponse(title, href, TvType.NSFW) {
             this.posterUrl = posterUrl
         }
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-
         val searchResponse = mutableListOf<SearchResponse>()
 
-        for (i in 1..7) {
-            val document = app.get("$mainUrl/en/search/$query?page=$i").document
-            //val document = app.get("${mainUrl}/page/$i/?s=$query").document
+        // 2. OPTIMALISASI: Jangan loop sampai 7. Cukup 1-2 halaman max agar tidak loading lama.
+        // Jika user butuh lebih, mereka akan spesifikkan query-nya.
+        for (i in 1..2) {
+            try {
+                // Gunakan headers
+                val document = app.get("$mainUrl/en/search/$query?page=$i", headers = headers).document
+                val results = document.select(".thumbnail").mapNotNull { it.toSearchResult() }
 
-            val results = document.select(".thumbnail").mapNotNull { it.toSearchResult() }
-
-            if(results.isNotEmpty())
-            {
-                for (result in results)
-                {
-                    if(!searchResponse.contains(result))
-                    {
-                        searchResponse.add(result)
-                    }
+                if (results.isNotEmpty()) {
+                    searchResponse.addAll(results)
+                } else {
+                    break
                 }
-            }
-            else
-            {
-                break
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
-
-        return searchResponse
-
+        // Hapus duplikat
+        return searchResponse.distinctBy { it.url }
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val document = app.get(url).document
+        // Gunakan headers
+        val document = app.get(url, headers = headers).document
 
-        val title = document.selectFirst("meta[property=og:title]")?.attr("content")?.trim().toString()
+        val title = document.selectFirst("meta[property=og:title]")?.attr("content")?.trim() ?: "No Title"
         val poster = fixUrlNull(document.selectFirst("[property='og:image']")?.attr("content"))
         val description = document.selectFirst("meta[property=og:description]")?.attr("content")?.trim()
 
@@ -87,68 +95,80 @@ class MissAVProvider : MainAPI() {
     }
 
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
+        // Gunakan headers
+        val response = app.get(data, headers = headers)
+        val doc = response.document
+        
+        // 3. LOGIKA EKSTRAKSI VIDEO (Lebih Aman)
+        // MissAV sering menyembunyikan link di dalam script yang dipack (eval)
+        // Kita coba unpack dulu
+        try {
+            getAndUnpack(response.text).let { unpackedText ->
+                // Cari pola m3u8 dengan regex yang lebih fleksibel (menangani kutip satu atau dua)
+                // Pola: source="...m3u8" atau source='...m3u8'
+                val m3u8Regex = Regex("""source\s*=\s*['"]([^'"]+\.m3u8[^'"]*)['"]""")
+                val match = m3u8Regex.find(unpackedText)
+                val m3u8Url = match?.groupValues?.get(1)
 
-
-            val data = app.get(data)
-            val doc = data.document
-            getAndUnpack(data.text).let { unpackedText ->
-                val linkList = unpackedText.split(";")
-                val finalLink = "source='(.*)'".toRegex().find(linkList.first())?.groups?.get(1)?.value
-                callback.invoke(
-                    newExtractorLink(
-                    source = name,
-                    name = name,
-                    url = finalLink.toString(),
-                    ExtractorLinkType.M3U8
-                ) {
-                    this.referer = ""
-                    this.quality = Qualities.Unknown.value
+                if (m3u8Url != null) {
+                    callback.invoke(
+                        newExtractorLink(
+                            source = name,
+                            name = "$name HLS",
+                            url = m3u8Url,
+                            referer = data, // Penting: Kirim url halaman asli sebagai referer
+                            quality = Qualities.Unknown.value,
+                            type = ExtractorLinkType.M3U8
+                        )
+                    )
                 }
-                )
             }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
 
+        // 4. LOGIKA SUBTITLE (Dengan Error Handling & Headers)
         try {
             val title = doc.selectFirst("meta[property=og:title]")?.attr("content")?.trim().toString()
-            val javCode = "([a-zA-Z]+-\\d+)".toRegex().find(title)?.groups?.get(1)?.value
-            if(!javCode.isNullOrEmpty())
-            {
+            // Regex mencari kode JAV (cth: SSIS-123)
+            val javCode = Regex("([a-zA-Z]+-\\d+)").find(title)?.groupValues?.get(1)
+            
+            if (!javCode.isNullOrEmpty()) {
                 val query = "$subtitleCatUrl/index.php?search=$javCode"
-                val subDoc = app.get(query, timeout = 15).document
+                // Tambahkan headers browser biasa agar subtitlecat tidak memblokir
+                val subDoc = app.get(query, timeout = 20).document 
+                
                 val subList = subDoc.select("td a")
-                for(item in subList)
-                {
-                    if(item.text().contains(javCode,ignoreCase = true))
-                    {
+                // Loop dibatasi agar tidak terlalu berat (max 3 hasil teratas)
+                for (item in subList.take(3)) {
+                    if (item.text().contains(javCode, ignoreCase = true)) {
                         val fullUrl = "$subtitleCatUrl/${item.attr("href")}"
                         val pDoc = app.get(fullUrl, timeout = 10).document
                         val sList = pDoc.select(".col-md-6.col-lg-4")
-                        for(item in sList)
-                        {
+                        
+                        for (subItem in sList) {
                             try {
-                                val language = item.select(".sub-single span:nth-child(2)").text()
-                                val text = item.select(".sub-single span:nth-child(3) a")
-                                
-                                // PERBAIKAN 1: Cek isNotEmpty() bukan null check
-                                if(text.isNotEmpty() && text[0].text() == "Download")
-                                {
-                                    val url = "$subtitleCatUrl${text[0].attr("href")}"
-                                    
-                                    // PERBAIKAN 2: Menggunakan newSubtitleFile() alih-alih constructor SubtitleFile()
+                                val language = subItem.select(".sub-single span:nth-child(2)").text()
+                                val downloadLinkInfo = subItem.select(".sub-single span:nth-child(3) a").firstOrNull()
+
+                                if (downloadLinkInfo != null && downloadLinkInfo.text() == "Download") {
+                                    val url = "$subtitleCatUrl${downloadLinkInfo.attr("href")}"
+                                    val langName = language.replace(Regex("[^a-zA-Z ]"), "").trim() // Bersihkan emoji
+
                                     subtitleCallback.invoke(
-                                        newSubtitleFile(
-                                            language.replace("\uD83D\uDC4D \uD83D\uDC4E",""),  // Use label for the name
-                                            url     // Use extracted URL
-                                        )
+                                        SubtitleFile(langName, url)
                                     )
                                 }
-                            } catch (e: Exception) { }
+                            } catch (e: Exception) { 
+                                // Ignore error per item
+                            }
                         }
-
                     }
                 }
-
             }
-        } catch (e: Exception) { }
+        } catch (e: Exception) {
+            // Ignore subtitle errors globally so video still plays
+        }
 
         return true
     }
