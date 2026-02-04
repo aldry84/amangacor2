@@ -16,7 +16,8 @@ import org.jsoup.nodes.Element
 
 class AdiNgeFilm : MainAPI() {
 
-    override var mainUrl = "https://new28.ngefilm.site"
+    // UPDATE: Menggunakan URL terbaru new31
+    override var mainUrl = "https://new31.ngefilm.site" 
     private var directUrl: String? = null
     override var name = "AdiNgeFilm"
     override val hasMainPage = true
@@ -41,7 +42,11 @@ class AdiNgeFilm : MainAPI() {
     )
     
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val document = app.get("$mainUrl/${request.data.format(page)}").document
+        // UPDATE: Menangkap respons untuk update URL otomatis jika terjadi redirect
+        val response = app.get("$mainUrl/${request.data.format(page)}")
+        mainUrl = getBaseUrl(response.url) // Logika pintar mirip Idlix
+        
+        val document = response.document
         val items = document.select("article.item-infinite").mapNotNull { it.toSearchResult() }
         return newHomePageResponse(request.name, items)
     }
@@ -74,7 +79,11 @@ class AdiNgeFilm : MainAPI() {
     }    
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val document = app.get("$mainUrl?s=$query&post_type[]=post&post_type[]=tv").document
+        // UPDATE: Menangkap respons di sini juga untuk update URL otomatis
+        val response = app.get("$mainUrl?s=$query&post_type[]=post&post_type[]=tv")
+        mainUrl = getBaseUrl(response.url) // Logika pintar mirip Idlix
+        
+        val document = response.document
         return document.select("article.item-infinite").mapNotNull { it.toSearchResult() }
     }
 
