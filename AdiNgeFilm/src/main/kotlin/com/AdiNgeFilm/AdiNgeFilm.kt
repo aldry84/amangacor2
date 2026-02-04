@@ -51,7 +51,7 @@ class AdiNgeFilm : MainAPI() {
     private fun Element.toSearchResult(): SearchResponse? {
         val title = this.selectFirst("h2.entry-title > a")?.text()?.trim() ?: return null
         val href = fixUrl(this.selectFirst("a")!!.attr("href"))
-        // Bersihkan URL gambar dari dimensi (misal -152x228) untuk search result
+        // FIX: Membersihkan URL gambar thumbnail di halaman depan/pencarian
         val posterUrl = this.selectFirst("img")?.getImageAttr()?.fixImageQuality()
         
         val quality = this.select("div.gmr-qual, div.gmr-quality-item > a").text().trim().replace("-", "")
@@ -119,9 +119,9 @@ class AdiNgeFilm : MainAPI() {
         val title = document.selectFirst("h1.entry-title")?.text()?.substringBefore("Season")
             ?.substringBefore("Episode")?.trim().toString()
         
-        // UPDATE TERBARU: Ambil poster langsung dari Meta Tag 'og:image'
-        // Ini adalah cara paling akurat untuk mendapatkan gambar resolusi penuh (bukan thumbnail 60x90)
+        // UPDATE PENTING: Prioritaskan gambar dari Meta Tag (og:image) agar dapat resolusi HD
         val poster = document.selectFirst("meta[property=og:image]")?.attr("content")
+            ?: document.selectFirst("link[rel=image_src]")?.attr("href")
             ?: document.selectFirst("figure.pull-left img")?.getImageAttr()?.fixImageQuality()
         
         val tags = document.select("div.gmr-moviedata a").map { it.text() }
@@ -238,9 +238,9 @@ class AdiNgeFilm : MainAPI() {
                 ?: this?.attr("src")
     }
 
-    // UPDATE: Regex diperketat agar hanya menghapus format dimensi (misal: -152x228)
     private fun String?.fixImageQuality(): String? {
         if (this == null) return null
+        // Regex untuk menghapus dimensi seperti -152x228, -60x90 dll
         val regex = Regex("(-\\d+x\\d+)").find(this)?.groupValues?.get(0) ?: return this
         return this.replace(regex, "")
     }
