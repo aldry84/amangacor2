@@ -14,7 +14,6 @@ class FreePornVideos : MainAPI() {
     override val supportedTypes       = setOf(TvType.NSFW)
     override val vpnStatus            = VPNStatus.MightBeNeeded
 
-    // Perbaikan: Menghapus duplikasi "Brazzers"
     override val mainPage = mainPageOf(
         "most-popular/week" to "Most Popular",
         "networks/brazzers-com" to "Brazzers",
@@ -27,7 +26,6 @@ class FreePornVideos : MainAPI() {
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        // Menggunakan try-catch agar jika halaman gagal dimuat, app tidak crash
         return try {
             val document = app.get("$mainUrl/${request.data}/${page+1}/").document
             val home = document.select("#list_videos_common_videos_list_items > div.item").mapNotNull {
@@ -47,7 +45,6 @@ class FreePornVideos : MainAPI() {
         }
     }
 
-    // Perbaikan: Menggunakan ?.let dan ?: untuk mencegah crash jika elemen HTML berubah
     private fun Element.toSearchResult(): SearchResponse? {
         val linkTag = this.selectFirst("a") ?: return null
         val href = linkTag.attr("href") ?: return null
@@ -70,8 +67,7 @@ class FreePornVideos : MainAPI() {
         val searchResponse = mutableListOf<SearchResponse>()
         val searchquery = query.createSlug() ?: return emptyList()
 
-        // Perbaikan: Mengurangi loop agar search lebih cepat. 
-        // Mengambil 1 halaman biasanya cukup, atau maksimal 2.
+        // Loop dikurangi jadi 1-2 halaman saja agar tidak lemot
         for (i in 1..1) { 
             try {
                 val document = app.get("${mainUrl}/search/$searchquery/$i").document
@@ -102,7 +98,6 @@ class FreePornVideos : MainAPI() {
         val actors          = document.selectXpath("//div[contains(text(), 'Models:')]/a").map { it.text() }
         val recommendations = document.select("div#list_videos_related_videos_items div.item").mapNotNull { it.toSearchResult() }
 
-        // Perbaikan: Mencegah crash jika judul terlalu pendek
         val year = if (full_title.length >= 4) {
              full_title.takeLast(4).toIntOrNull()
         } else null
@@ -146,26 +141,24 @@ class FreePornVideos : MainAPI() {
             val srcUrl = res.attr("src")
             val qualityLabel = res.attr("label")
             
-            // Perbaikan: Menjalankan request redirect di dalam try-catch
-            // agar jika satu link error, proses tidak berhenti total.
             try {
-                // Request HEAD atau GET tanpa body untuk mempercepat jika server mendukungnya
-                // Namun karena kita butuh header location, GET standar ok tapi timeout perlu diperhatikan
                 val response = app.get(srcUrl, allowRedirects = false)
                 val finalUrl = response.headers["location"] ?: srcUrl
                 
+                // INI BAGIAN YANG SUDAH DIPERBAIKI
                 callback(
                     newExtractorLink(
                         source = "FPV",
                         name = "FPV $qualityLabel",
                         url = finalUrl,
-                        referer = data,
-                        quality = getQualityFromName(qualityLabel)
-                    )
+                        type = INFER_TYPE
+                    ) {
+                        this.referer = data
+                        this.quality = getQualityFromName(qualityLabel)
+                    }
                 )
             } catch (e: Exception) {
-                // Log error jika perlu, atau abaikan link yang rusak
-                // e.printStackTrace()
+                // Abaikan jika error link
             }
         }
 
