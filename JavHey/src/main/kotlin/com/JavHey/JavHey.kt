@@ -34,7 +34,9 @@ class JavHey : MainAPI() {
         val titleElement = this.selectFirst("div.item_content h3 a") ?: return null
         val title = titleElement.text().trim()
         val href = fixUrl(titleElement.attr("href"))
-        val posterUrl = this.selectFirst("div.item_header img")?.attr("src")
+        
+        // LOGIKA BARU: Cari gambar HD
+        val posterUrl = this.selectFirst("div.item_header img")?.getHighQualityImageAttr()
         
         return newMovieSearchResponse(title, href, TvType.NSFW) {
             this.posterUrl = posterUrl
@@ -56,10 +58,10 @@ class JavHey : MainAPI() {
         val title = document.selectFirst("h1.product_title")?.text()?.trim() ?: "No Title"
         val description = document.select("p.video-description").text()
             .replace("Description: ", "", ignoreCase = true).trim()
-        val poster = document.selectFirst("div.images img")?.attr("src")
         
-        // PERBAIKAN DI SINI:
-        // Mengubah List<String> menjadi List<ActorData>
+        // LOGIKA BARU: Cari gambar HD di halaman detail
+        val poster = document.selectFirst("div.images img")?.getHighQualityImageAttr()
+        
         val actors = document.select("div.product_meta a[href*='/actor/']").map { 
             ActorData(Actor(it.text(), "")) 
         }
@@ -72,7 +74,7 @@ class JavHey : MainAPI() {
         return newMovieLoadResponse(title, url, TvType.NSFW, url) {
             this.posterUrl = poster
             this.plot = description
-            this.actors = actors // Sekarang tipe datanya sudah cocok (List<ActorData>)
+            this.actors = actors
             this.year = year
             this.tags = tags
         }
@@ -86,7 +88,6 @@ class JavHey : MainAPI() {
     ): Boolean {
         val document = app.get(data).document
 
-        // Decode Base64 dari Hidden Input
         val hiddenLinksEncrypted = document.selectFirst("input#links")?.attr("value")
         
         if (!hiddenLinksEncrypted.isNullOrEmpty()) {
@@ -105,7 +106,6 @@ class JavHey : MainAPI() {
             }
         }
 
-        // Backup Link dari tombol download
         document.select("div.links-download a").forEach { linkTag ->
             val downloadUrl = linkTag.attr("href")
             if (downloadUrl.isNotBlank()) {
@@ -114,5 +114,24 @@ class JavHey : MainAPI() {
         }
 
         return true
+    }
+
+    // --- HELPER FUNCTION UNTUK GAMBAR HD ---
+    
+    // Fungsi ekstensi untuk mengambil atribut gambar terbaik
+    private fun Element.getHighQualityImageAttr(): String? {
+        val url = when {
+            this.hasAttr("data-src") -> this.attr("data-src")
+            this.hasAttr("data-original") -> this.attr("data-original")
+            this.hasAttr("srcset") -> this.attr("srcset").substringBefore(" ") // Ambil link pertama dari srcset
+            else -> this.attr("src")
+        }
+        return url.toHighRes()
+    }
+
+    // Fungsi regex untuk membersihkan URL dari ukuran thumbnail
+    private fun String?.toHighRes(): String? {
+        return this?.replace(Regex("-\\d+x\\d+(?=\\.[a-zA-Z]+$)"), "") // Hapus -300x200 sebelum ekstensi file
+                   ?.replace("-scaled", "") // Hapus suffix -scaled jika ada
     }
 }
