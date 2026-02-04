@@ -12,8 +12,6 @@ class JavHey : MainAPI() {
     override var lang = "id"
     override val supportedTypes = setOf(TvType.NSFW)
 
-    // PERBAIKAN DI SINI:
-    // Mengubah suffix dari '/page/' menjadi '/page=' sesuai struktur HTML javhey asli.
     override val mainPage = mainPageOf(
         "$mainUrl/videos/paling-dilihat/page=" to "Paling Dilihat",
         "$mainUrl/videos/top-rating/page=" to "Top Rating",
@@ -30,7 +28,6 @@ class JavHey : MainAPI() {
         page: Int,
         request: MainPageRequest
     ): HomePageResponse {
-        // Karena request.data sekarang berakhiran 'page=', ditambah page (int) jadi 'page=1', 'page=2', dst.
         val url = request.data + page
         val document = app.get(url).document
         
@@ -41,13 +38,9 @@ class JavHey : MainAPI() {
     }
 
     private fun Element.toSearchResult(): SearchResponse? {
-        // Selektor ini sudah cocok dengan HTML yang kamu kirim:
-        // <div class="item_content"> <h3><a href="...">
         val titleElement = this.selectFirst("div.item_content h3 a") ?: return null
         val title = titleElement.text().trim()
         val href = fixUrl(titleElement.attr("href"))
-        
-        // Selektor gambar juga sudah cocok: <div class="item_header"> <img ...>
         val posterUrl = this.selectFirst("div.item_header img")?.getHighQualityImageAttr()
         
         return newMovieSearchResponse(title, href, TvType.NSFW) {
@@ -68,6 +61,8 @@ class JavHey : MainAPI() {
         val document = app.get(url).document
 
         val title = document.selectFirst("h1.product_title")?.text()?.trim() ?: "No Title"
+        
+        // Pembersihan deskripsi
         val description = document.select("p.video-description").text()
             .replace("Description: ", "", ignoreCase = true).trim()
         
@@ -77,8 +72,12 @@ class JavHey : MainAPI() {
             ActorData(Actor(it.text(), "")) 
         }
 
+        // PERBAIKAN 1: Menggunakan Regex untuk mencari tahun (lebih aman daripada split)
         val yearText = document.selectFirst("div.product_meta span:contains(Release Day)")?.text()
-        val year = yearText?.split(":")?.lastOrNull()?.trim()?.take(4)?.toIntOrNull()
+        val year = yearText?.let {
+            Regex("\\d{4}").find(it)?.value?.toIntOrNull()
+        }
+
         val tags = document.select("div.product_meta span:contains(Category) a, div.product_meta span:contains(Tag) a")
             .map { it.text() }
 
@@ -99,27 +98,33 @@ class JavHey : MainAPI() {
     ): Boolean {
         val document = app.get(data).document
 
+        // PERBAIKAN 2: Penanganan Error (Try-Catch) dan Validasi URL
         val hiddenLinksEncrypted = document.selectFirst("input#links")?.attr("value")
         
         if (!hiddenLinksEncrypted.isNullOrEmpty()) {
             try {
+                // Decode Base64 dengan aman
                 val decodedBytes = Base64.getDecoder().decode(hiddenLinksEncrypted)
                 val decodedString = String(decodedBytes)
                 val urls = decodedString.split(",,,")
                 
                 urls.forEach { sourceUrl ->
-                    if (sourceUrl.isNotBlank()) {
-                        loadExtractor(sourceUrl, subtitleCallback, callback)
+                    val cleanUrl = sourceUrl.trim()
+                    // Pastikan hanya memproses jika link diawali dengan http/https
+                    if (cleanUrl.isNotBlank() && cleanUrl.startsWith("http")) {
+                        loadExtractor(cleanUrl, subtitleCallback, callback)
                     }
                 }
             } catch (e: Exception) {
+                // Mencatat error ke log tanpa membuat aplikasi crash
                 e.printStackTrace()
             }
         }
 
+        // Mengambil link download reguler
         document.select("div.links-download a").forEach { linkTag ->
             val downloadUrl = linkTag.attr("href")
-            if (downloadUrl.isNotBlank()) {
+            if (downloadUrl.isNotBlank() && downloadUrl.startsWith("http")) {
                 loadExtractor(downloadUrl, subtitleCallback, callback)
             }
         }
@@ -127,7 +132,7 @@ class JavHey : MainAPI() {
         return true
     }
 
-    // --- HELPER FUNCTION UNTUK GAMBAR HD ---
+    // --- HELPER FUNCTIONS ---
     private fun Element.getHighQualityImageAttr(): String? {
         val url = when {
             this.hasAttr("data-src") -> this.attr("data-src")
@@ -139,6 +144,7 @@ class JavHey : MainAPI() {
     }
 
     private fun String?.toHighRes(): String? {
+        // Regex ini menghapus bagian resolusi (contoh: -300x200) sebelum ekstensi file
         return this?.replace(Regex("-\\d+x\\d+(?=\\.[a-zA-Z]+$)"), "")
                    ?.replace("-scaled", "")
     }
