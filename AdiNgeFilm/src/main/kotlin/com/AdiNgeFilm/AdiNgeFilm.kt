@@ -44,14 +44,35 @@ class AdiNgeFilm : MainAPI() {
         val response = app.get("$mainUrl/${request.data.format(page)}")
         mainUrl = getBaseUrl(response.url)
         val document = response.document
-        val items = document.select("article.item-infinite").mapNotNull { it.toSearchResult() }
+        
+        val items = ArrayList<SearchResponse>()
+
+        // LOGIKA BARU: Ambil Slider (Poster Besar) hanya di halaman 1 menu "Terbaru"
+        if (request.name == "Terbaru" && page == 1) {
+            document.select("div.gmr-owl-carousel .gmr-slider-content").forEach { element ->
+                val title = element.selectFirst(".gmr-slide-title a")?.text()?.trim() ?: return@forEach
+                val href = element.selectFirst("a")?.attr("href") ?: return@forEach
+                val posterUrl = element.selectFirst("img")?.getImageAttr()?.fixImageQuality()
+                
+                // Ambil quality label jika ada
+                val quality = element.selectFirst(".gmr-quality-item a")?.text()?.replace("-", "")
+
+                items.add(newMovieSearchResponse(title, href, TvType.Movie) {
+                    this.posterUrl = posterUrl
+                    addQuality(quality)
+                })
+            }
+        }
+
+        // Ambil item regular (Grid)
+        document.select("article.item-infinite").mapNotNullTo(items) { it.toSearchResult() }
+        
         return newHomePageResponse(request.name, items)
     }
 
     private fun Element.toSearchResult(): SearchResponse? {
         val title = this.selectFirst("h2.entry-title > a")?.text()?.trim() ?: return null
         val href = fixUrl(this.selectFirst("a")!!.attr("href"))
-        // FIX: Membersihkan URL gambar thumbnail di halaman depan/pencarian
         val posterUrl = this.selectFirst("img")?.getImageAttr()?.fixImageQuality()
         
         val quality = this.select("div.gmr-qual, div.gmr-quality-item > a").text().trim().replace("-", "")
@@ -119,9 +140,8 @@ class AdiNgeFilm : MainAPI() {
         val title = document.selectFirst("h1.entry-title")?.text()?.substringBefore("Season")
             ?.substringBefore("Episode")?.trim().toString()
         
-        // UPDATE PENTING: Prioritaskan gambar dari Meta Tag (og:image) agar dapat resolusi HD
+        // 1. Ambil Poster Vertical (Untuk Cover)
         val poster = document.selectFirst("meta[property=og:image]")?.attr("content")
-            ?: document.selectFirst("link[rel=image_src]")?.attr("href")
             ?: document.selectFirst("figure.pull-left img")?.getImageAttr()?.fixImageQuality()
         
         val tags = document.select("div.gmr-moviedata a").map { it.text() }
@@ -130,6 +150,11 @@ class AdiNgeFilm : MainAPI() {
         val tvType = if (url.contains("/tv/")) TvType.TvSeries else TvType.Movie
         val description = document.selectFirst("div[itemprop=description] > p")?.text()?.trim()
         val trailer = document.selectFirst("ul.gmr-player-nav li a.gmr-trailer-popup")?.attr("href")
+        
+        // 2. SOLUSI LEHER KEPOTONG: Gunakan Thumbnail YouTube sebagai Backdrop (Landscape)
+        // Jika tidak ada trailer, fallback ke poster (tetap akan terpotong, tapi ini solusi terbaik)
+        val background = getYoutubeThumbnail(trailer) ?: poster
+
         val rating = document.selectFirst("div.gmr-meta-rating > span[itemprop=ratingValue]")
             ?.text()?.trim()
         val actors = document.select("div.gmr-moviedata").last()?.select("span[itemprop=actors]")
@@ -159,6 +184,7 @@ class AdiNgeFilm : MainAPI() {
 
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                 this.posterUrl = poster
+                this.backgroundPosterUrl = background // Set Background Landscape
                 this.year = year
                 this.plot = description
                 this.tags = tags
@@ -171,6 +197,7 @@ class AdiNgeFilm : MainAPI() {
         } else {
             newMovieLoadResponse(title, url, TvType.Movie, url) {
                 this.posterUrl = poster
+                this.backgroundPosterUrl = background // Set Background Landscape
                 this.year = year
                 this.plot = description
                 this.tags = tags
@@ -240,9 +267,15 @@ class AdiNgeFilm : MainAPI() {
 
     private fun String?.fixImageQuality(): String? {
         if (this == null) return null
-        // Regex untuk menghapus dimensi seperti -152x228, -60x90 dll
         val regex = Regex("(-\\d+x\\d+)").find(this)?.groupValues?.get(0) ?: return this
         return this.replace(regex, "")
+    }
+
+    // Helper untuk mengambil thumbnail YouTube HD
+    private fun getYoutubeThumbnail(url: String?): String? {
+        if (url == null) return null
+        val id = Regex("(?:v=|/)([0-9A-Za-z_-]{11}).*").find(url)?.groupValues?.get(1)
+        return if (id != null) "https://img.youtube.com/vi/$id/maxresdefault.jpg" else null
     }
 
     private fun getBaseUrl(url: String): String {
