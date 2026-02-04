@@ -17,7 +17,7 @@ class MissAVProvider : MainAPI() {
     // URL Subtitle
     private val subtitleCatUrl = "https://www.subtitlecat.com"
 
-    // 1. TAMBAHKAN HEADERS (Penting untuk menembus Cloudflare)
+    // HEADERS: Penting agar tidak diblokir Cloudflare/Server
     private val headers = mapOf(
         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Referer" to "$mainUrl/"
@@ -36,7 +36,7 @@ class MissAVProvider : MainAPI() {
         )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-            // Gunakan headers di sini
+            // Gunakan headers
             val document = app.get("$mainUrl${request.data}?page=$page", headers = headers).document
             val responseList  = document.select(".thumbnail").mapNotNull { it.toSearchResult() }
             return newHomePageResponse(HomePageList(request.name, responseList, isHorizontalImages = true), hasNext = true)
@@ -59,8 +59,7 @@ class MissAVProvider : MainAPI() {
     override suspend fun search(query: String): List<SearchResponse> {
         val searchResponse = mutableListOf<SearchResponse>()
 
-        // 2. OPTIMALISASI: Jangan loop sampai 7. Cukup 1-2 halaman max agar tidak loading lama.
-        // Jika user butuh lebih, mereka akan spesifikkan query-nya.
+        // OPTIMALISASI: Loop dikurangi jadi 2 halaman agar tidak berat
         for (i in 1..2) {
             try {
                 // Gunakan headers
@@ -99,24 +98,22 @@ class MissAVProvider : MainAPI() {
         val response = app.get(data, headers = headers)
         val doc = response.document
         
-        // 3. LOGIKA EKSTRAKSI VIDEO (Lebih Aman)
-        // MissAV sering menyembunyikan link di dalam script yang dipack (eval)
-        // Kita coba unpack dulu
+        // --- LOGIKA EKSTRAKSI VIDEO ---
         try {
             getAndUnpack(response.text).let { unpackedText ->
-                // Cari pola m3u8 dengan regex yang lebih fleksibel (menangani kutip satu atau dua)
-                // Pola: source="...m3u8" atau source='...m3u8'
+                // Regex fleksibel (menangani kutip satu ' atau dua ")
                 val m3u8Regex = Regex("""source\s*=\s*['"]([^'"]+\.m3u8[^'"]*)['"]""")
                 val match = m3u8Regex.find(unpackedText)
                 val m3u8Url = match?.groupValues?.get(1)
 
                 if (m3u8Url != null) {
                     callback.invoke(
-                        newExtractorLink(
+                        // PERBAIKAN UTAMA: Menggunakan Class ExtractorLink langsung agar parameter referer & quality dikenali
+                        ExtractorLink(
                             source = name,
                             name = "$name HLS",
                             url = m3u8Url,
-                            referer = data, // Penting: Kirim url halaman asli sebagai referer
+                            referer = data, 
                             quality = Qualities.Unknown.value,
                             type = ExtractorLinkType.M3U8
                         )
@@ -127,23 +124,22 @@ class MissAVProvider : MainAPI() {
             e.printStackTrace()
         }
 
-        // 4. LOGIKA SUBTITLE (Dengan Error Handling & Headers)
+        // --- LOGIKA SUBTITLE ---
         try {
             val title = doc.selectFirst("meta[property=og:title]")?.attr("content")?.trim().toString()
-            // Regex mencari kode JAV (cth: SSIS-123)
             val javCode = Regex("([a-zA-Z]+-\\d+)").find(title)?.groupValues?.get(1)
             
             if (!javCode.isNullOrEmpty()) {
                 val query = "$subtitleCatUrl/index.php?search=$javCode"
-                // Tambahkan headers browser biasa agar subtitlecat tidak memblokir
-                val subDoc = app.get(query, timeout = 20).document 
+                // Tambahkan headers browser
+                val subDoc = app.get(query, headers = headers, timeout = 20).document 
                 
                 val subList = subDoc.select("td a")
-                // Loop dibatasi agar tidak terlalu berat (max 3 hasil teratas)
+                // Batasi pencarian subtitle maksimal 3 hasil teratas
                 for (item in subList.take(3)) {
                     if (item.text().contains(javCode, ignoreCase = true)) {
                         val fullUrl = "$subtitleCatUrl/${item.attr("href")}"
-                        val pDoc = app.get(fullUrl, timeout = 10).document
+                        val pDoc = app.get(fullUrl, headers = headers, timeout = 10).document
                         val sList = pDoc.select(".col-md-6.col-lg-4")
                         
                         for (subItem in sList) {
@@ -153,21 +149,21 @@ class MissAVProvider : MainAPI() {
 
                                 if (downloadLinkInfo != null && downloadLinkInfo.text() == "Download") {
                                     val url = "$subtitleCatUrl${downloadLinkInfo.attr("href")}"
-                                    val langName = language.replace(Regex("[^a-zA-Z ]"), "").trim() // Bersihkan emoji
+                                    val langName = language.replace(Regex("[^a-zA-Z ]"), "").trim()
 
                                     subtitleCallback.invoke(
                                         SubtitleFile(langName, url)
                                     )
                                 }
                             } catch (e: Exception) { 
-                                // Ignore error per item
+                                // Abaikan error per item subtitle
                             }
                         }
                     }
                 }
             }
         } catch (e: Exception) {
-            // Ignore subtitle errors globally so video still plays
+            // Abaikan error subtitle secara global agar video tetap jalan
         }
 
         return true
