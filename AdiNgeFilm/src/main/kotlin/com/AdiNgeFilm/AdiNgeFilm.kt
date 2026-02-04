@@ -153,21 +153,23 @@ class AdiNgeFilm : MainAPI() {
         val tvType = if (url.contains("/tv/")) TvType.TvSeries else TvType.Movie
         val description = document.selectFirst("div[itemprop=description] > p")?.text()?.trim()
         
-        // Cari Trailer URL (Popup link ATAU Direct Iframe)
-        // Ini penting untuk Serial TV yang sering pakai embed langsung
+        // Cari Trailer URL
         val trailer = document.selectFirst("ul.gmr-player-nav li a.gmr-trailer-popup")?.attr("href")
+            ?: document.selectFirst("div.gmr-embed-responsive iframe")?.attr("src")
             ?: document.selectFirst("iframe[src*='youtube.com']")?.attr("src")
             ?: document.selectFirst("iframe[src*='youtu.be']")?.attr("src")
 
         // 2. LOGIKA BACKGROUND (Solusi Kepala Kepotong):
-        // Ambil ID Youtube dengan parser manual yang lebih kuat
+        // Ambil ID Youtube. 
         val youtubeId = getYoutubeId(trailer)
         
-        // Jika ID ketemu, pakai thumbnail Youtube maxres (Pasti Landscape & Tajam)
+        // FIX: Gunakan 'sddefault.jpg' (Standard Definition) daripada 'maxresdefault'.
+        // 'maxresdefault' seringkali tidak tersedia (404), yang menyebabkan Cloudstream 
+        // fallback ke poster tegak (bikin kepotong). 'sddefault' dijamin ada dan landscape.
         val background = if (youtubeId != null) {
-            "https://img.youtube.com/vi/$youtubeId/maxresdefault.jpg"
+            "https://img.youtube.com/vi/$youtubeId/sddefault.jpg"
         } else {
-            // Fallback: Jika tidak ada trailer, pakai poster (apa boleh buat)
+            // Fallback: Jika tidak ada trailer, pakai poster
             poster
         }
 
@@ -285,12 +287,11 @@ class AdiNgeFilm : MainAPI() {
 
     private fun String?.fixImageQuality(): String? {
         if (this == null) return null
-        // Regex ini menghapus format dimensi (misal -300x400) dari nama file
-        val regex = Regex("(-\\d+x\\d+)(?=\\.\\w{3,4}$)")
-        return this.replace(regex, "")
+        // Regex yang lebih aman untuk menghapus dimensi (misal: -152x228, -600x400)
+        // Menghapus pola "-angka x angka" di mana saja dalam string
+        return this.replace(Regex("-\\d+x\\d+"), "")
     }
 
-    // Helper: Ekstrak ID Youtube dengan parsing string manual (Lebih reliable dari Regex kompleks)
     private fun getYoutubeId(url: String?): String? {
         if (url == null) return null
         return when {
