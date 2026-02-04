@@ -16,8 +16,7 @@ import org.jsoup.nodes.Element
 
 class AdiNgeFilm : MainAPI() {
 
-    // UPDATE: Menggunakan URL terbaru new31
-    override var mainUrl = "https://new31.ngefilm.site" 
+    override var mainUrl = "https://new31.ngefilm.site"
     private var directUrl: String? = null
     override var name = "AdiNgeFilm"
     override val hasMainPage = true
@@ -42,10 +41,8 @@ class AdiNgeFilm : MainAPI() {
     )
     
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        // UPDATE: Menangkap respons untuk update URL otomatis jika terjadi redirect
         val response = app.get("$mainUrl/${request.data.format(page)}")
-        mainUrl = getBaseUrl(response.url) // Logika pintar mirip Idlix
-        
+        mainUrl = getBaseUrl(response.url)
         val document = response.document
         val items = document.select("article.item-infinite").mapNotNull { it.toSearchResult() }
         return newHomePageResponse(request.name, items)
@@ -79,10 +76,8 @@ class AdiNgeFilm : MainAPI() {
     }    
 
     override suspend fun search(query: String): List<SearchResponse> {
-        // UPDATE: Menangkap respons di sini juga untuk update URL otomatis
         val response = app.get("$mainUrl?s=$query&post_type[]=post&post_type[]=tv")
-        mainUrl = getBaseUrl(response.url) // Logika pintar mirip Idlix
-        
+        mainUrl = getBaseUrl(response.url)
         val document = response.document
         return document.select("article.item-infinite").mapNotNull { it.toSearchResult() }
     }
@@ -121,8 +116,14 @@ class AdiNgeFilm : MainAPI() {
 
         val title = document.selectFirst("h1.entry-title")?.text()?.substringBefore("Season")
             ?.substringBefore("Episode")?.trim().toString()
-        val poster = fixUrlNull(document.selectFirst("figure.pull-left > img")?.getImageAttr())
-            ?.fixImageQuality()
+        
+        // UPDATE: Coba ambil link resolusi penuh dari tag <a> pembungkus dulu
+        val posterElement = document.selectFirst("figure.pull-left")
+        val posterSrc = posterElement?.selectFirst("a")?.attr("href") 
+            ?: posterElement?.selectFirst("img")?.getImageAttr()
+            
+        val poster = fixUrlNull(posterSrc)?.fixImageQuality()
+
         val tags = document.select("div.gmr-moviedata a").map { it.text() }
         val year = document.select("div.gmr-moviedata strong:contains(Year:) > a").text()
             .trim().toIntOrNull()
@@ -228,7 +229,7 @@ class AdiNgeFilm : MainAPI() {
         return when {
             this.hasAttr("data-src") -> this.attr("abs:data-src")
             this.hasAttr("data-lazy-src") -> this.attr("abs:data-lazy-src")
-            this.hasAttr("srcset") -> this.attr("abs:srcset").substringBefore(" ")
+            // UPDATE: Hapus srcset karena sering mengambil gambar resolusi rendah
             else -> this.attr("abs:src")
         }
     }
@@ -240,6 +241,7 @@ class AdiNgeFilm : MainAPI() {
 
     private fun String?.fixImageQuality(): String? {
         if (this == null) return null
+        // UPDATE: Regex ini akan menghapus suffix dimensi seperti -152x228
         val regex = Regex("(-\\d*x\\d*)").find(this)?.groupValues?.get(0) ?: return this
         return this.replace(regex, "")
     }
