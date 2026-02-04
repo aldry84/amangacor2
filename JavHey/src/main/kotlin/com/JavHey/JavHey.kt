@@ -12,6 +12,14 @@ class JavHey : MainAPI() {
     override var lang = "id"
     override val supportedTypes = setOf(TvType.NSFW)
 
+    // 1. TAMBAHKAN INI: Headers Global agar dianggap Browser PC
+    private val headers = mapOf(
+        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language" to "en-US,en;q=0.5",
+        "Referer" to "$mainUrl/"
+    )
+
     override val mainPage = mainPageOf(
         "$mainUrl/videos/paling-dilihat/page=" to "Paling Dilihat",
         "$mainUrl/videos/top-rating/page=" to "Top Rating",
@@ -29,7 +37,8 @@ class JavHey : MainAPI() {
         request: MainPageRequest
     ): HomePageResponse {
         val url = request.data + page
-        val document = app.get(url).document
+        // 2. TERAPKAN headers DI SINI
+        val document = app.get(url, headers = headers).document
         
         val home = document.select("article.item").mapNotNull {
             it.toSearchResult()
@@ -50,7 +59,8 @@ class JavHey : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         val url = "$mainUrl/search?s=$query"
-        val document = app.get(url).document
+        // 3. TERAPKAN headers DI SINI
+        val document = app.get(url, headers = headers).document
 
         return document.select("article.item").mapNotNull {
             it.toSearchResult()
@@ -58,11 +68,10 @@ class JavHey : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val document = app.get(url).document
+        // 4. TERAPKAN headers DI SINI
+        val document = app.get(url, headers = headers).document
 
         val title = document.selectFirst("h1.product_title")?.text()?.trim() ?: "No Title"
-        
-        // Pembersihan deskripsi
         val description = document.select("p.video-description").text()
             .replace("Description: ", "", ignoreCase = true).trim()
         
@@ -72,7 +81,6 @@ class JavHey : MainAPI() {
             ActorData(Actor(it.text(), "")) 
         }
 
-        // PERBAIKAN 1: Menggunakan Regex untuk mencari tahun (lebih aman daripada split)
         val yearText = document.selectFirst("div.product_meta span:contains(Release Day)")?.text()
         val year = yearText?.let {
             Regex("\\d{4}").find(it)?.value?.toIntOrNull()
@@ -96,32 +104,28 @@ class JavHey : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val document = app.get(data).document
+        // 5. TERAPKAN headers DI SINI
+        val document = app.get(data, headers = headers).document
 
-        // PERBAIKAN 2: Penanganan Error (Try-Catch) dan Validasi URL
         val hiddenLinksEncrypted = document.selectFirst("input#links")?.attr("value")
         
         if (!hiddenLinksEncrypted.isNullOrEmpty()) {
             try {
-                // Decode Base64 dengan aman
                 val decodedBytes = Base64.getDecoder().decode(hiddenLinksEncrypted)
                 val decodedString = String(decodedBytes)
                 val urls = decodedString.split(",,,")
                 
                 urls.forEach { sourceUrl ->
                     val cleanUrl = sourceUrl.trim()
-                    // Pastikan hanya memproses jika link diawali dengan http/https
                     if (cleanUrl.isNotBlank() && cleanUrl.startsWith("http")) {
                         loadExtractor(cleanUrl, subtitleCallback, callback)
                     }
                 }
             } catch (e: Exception) {
-                // Mencatat error ke log tanpa membuat aplikasi crash
                 e.printStackTrace()
             }
         }
 
-        // Mengambil link download reguler
         document.select("div.links-download a").forEach { linkTag ->
             val downloadUrl = linkTag.attr("href")
             if (downloadUrl.isNotBlank() && downloadUrl.startsWith("http")) {
@@ -144,7 +148,6 @@ class JavHey : MainAPI() {
     }
 
     private fun String?.toHighRes(): String? {
-        // Regex ini menghapus bagian resolusi (contoh: -300x200) sebelum ekstensi file
         return this?.replace(Regex("-\\d+x\\d+(?=\\.[a-zA-Z]+$)"), "")
                    ?.replace("-scaled", "")
     }
