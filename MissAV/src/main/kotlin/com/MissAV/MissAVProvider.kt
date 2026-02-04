@@ -16,7 +16,6 @@ class MissAVProvider : MainAPI() {
     
     private val subtitleCatUrl = "https://www.subtitlecat.com"
 
-    // HEADERS: Wajib ada supaya tidak diblokir Cloudflare
     private val headers = mapOf(
         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Referer" to "$mainUrl/"
@@ -56,13 +55,10 @@ class MissAVProvider : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         val searchResponse = mutableListOf<SearchResponse>()
-
-        // Mengurangi loop agar loading tidak lama (cukup 2 halaman)
         for (i in 1..2) {
             try {
                 val document = app.get("$mainUrl/en/search/$query?page=$i", headers = headers).document
                 val results = document.select(".thumbnail").mapNotNull { it.toSearchResult() }
-
                 if (results.isNotEmpty()) {
                     searchResponse.addAll(results)
                 } else {
@@ -92,28 +88,19 @@ class MissAVProvider : MainAPI() {
         val response = app.get(data, headers = headers)
         val doc = response.document
         
-        // --- LOGIKA EKSTRAKSI VIDEO (Jurus Anti-Error) ---
+        // --- LOGIKA VIDEO ---
         try {
             getAndUnpack(response.text).let { unpackedText ->
-                // Regex fleksibel (menangani kutip satu ' atau dua ")
                 val m3u8Regex = Regex("""source\s*=\s*['"]([^'"]+\.m3u8[^'"]*)['"]""")
                 val match = m3u8Regex.find(unpackedText)
                 val m3u8Url = match?.groupValues?.get(1)
 
                 if (m3u8Url != null) {
-                    // FIX UTAMA: 
-                    // Kita tidak menggunakan named arguments (referer=..., quality=...) di dalam kurung
-                    // untuk menghindari error "No parameter found".
-                    // Kita set referer menggunakan .apply { } yang aman untuk semua versi.
                     callback.invoke(
-                        newExtractorLink(
-                            name,           // source
-                            "$name HLS",    // name
-                            m3u8Url,        // url
-                            Qualities.Unknown.value, // quality (urutan parameter standar)
-                            ExtractorLinkType.M3U8   // type
-                        ).apply {
+                        // FIX: Menggunakan format Lambda { } untuk properti tambahan
+                        newExtractorLink(name, "$name HLS", m3u8Url, ExtractorLinkType.M3U8) {
                             this.referer = data
+                            this.quality = Qualities.Unknown.value
                         }
                     )
                 }
