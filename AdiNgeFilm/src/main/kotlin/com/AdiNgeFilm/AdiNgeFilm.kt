@@ -47,19 +47,21 @@ class AdiNgeFilm : MainAPI() {
         
         val items = ArrayList<SearchResponse>()
 
-        // LOGIKA BARU: Ambil Slider (Poster Besar) hanya di halaman 1 menu "Terbaru"
+        // LOGIKA SLIDER (FIXED ERROR)
         if (request.name == "Terbaru" && page == 1) {
             document.select("div.gmr-owl-carousel .gmr-slider-content").forEach { element ->
                 val title = element.selectFirst(".gmr-slide-title a")?.text()?.trim() ?: return@forEach
                 val href = element.selectFirst("a")?.attr("href") ?: return@forEach
                 val posterUrl = element.selectFirst("img")?.getImageAttr()?.fixImageQuality()
                 
-                // Ambil quality label jika ada
+                // FIX: Menangani null safety untuk quality
                 val quality = element.selectFirst(".gmr-quality-item a")?.text()?.replace("-", "")
 
                 items.add(newMovieSearchResponse(title, href, TvType.Movie) {
                     this.posterUrl = posterUrl
-                    addQuality(quality)
+                    if (quality != null) {
+                        addQuality(quality)
+                    }
                 })
             }
         }
@@ -142,6 +144,7 @@ class AdiNgeFilm : MainAPI() {
         
         // 1. Ambil Poster Vertical (Untuk Cover)
         val poster = document.selectFirst("meta[property=og:image]")?.attr("content")
+            ?: document.selectFirst("link[rel=image_src]")?.attr("href")
             ?: document.selectFirst("figure.pull-left img")?.getImageAttr()?.fixImageQuality()
         
         val tags = document.select("div.gmr-moviedata a").map { it.text() }
@@ -152,7 +155,6 @@ class AdiNgeFilm : MainAPI() {
         val trailer = document.selectFirst("ul.gmr-player-nav li a.gmr-trailer-popup")?.attr("href")
         
         // 2. SOLUSI LEHER KEPOTONG: Gunakan Thumbnail YouTube sebagai Backdrop (Landscape)
-        // Jika tidak ada trailer, fallback ke poster (tetap akan terpotong, tapi ini solusi terbaik)
         val background = getYoutubeThumbnail(trailer) ?: poster
 
         val rating = document.selectFirst("div.gmr-meta-rating > span[itemprop=ratingValue]")
@@ -271,7 +273,6 @@ class AdiNgeFilm : MainAPI() {
         return this.replace(regex, "")
     }
 
-    // Helper untuk mengambil thumbnail YouTube HD
     private fun getYoutubeThumbnail(url: String?): String? {
         if (url == null) return null
         val id = Regex("(?:v=|/)([0-9A-Za-z_-]{11}).*").find(url)?.groupValues?.get(1)
