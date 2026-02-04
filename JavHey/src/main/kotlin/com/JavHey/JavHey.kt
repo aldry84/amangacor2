@@ -12,15 +12,24 @@ class JavHey : MainAPI() {
     override var lang = "id"
     override val supportedTypes = setOf(TvType.NSFW)
 
+    // UPDATE DI SINI: Menambahkan kategori baru dengan suffix '/page/' agar pagination berjalan
     override val mainPage = mainPageOf(
         "$mainUrl/videos/paling-dilihat/page=" to "Paling Dilihat",
-        "$mainUrl/videos/top-rating/page=" to "Top Rating"
+        "$mainUrl/videos/top-rating/page=" to "Top Rating",
+        "$mainUrl/category/12/cuckold-or-ntr/page/" to "CUCKOLD OR NTR VIDEOS",
+        "$mainUrl/category/31/decensored/page/" to "DECENSORED VIDEOS",
+        "$mainUrl/category/21/drama/page/" to "Drama",
+        "$mainUrl/category/114/female-investigator/page/" to "Investigasi",
+        "$mainUrl/category/9/housewife/page/" to "HOUSEWIFE",
+        "$mainUrl/category/227/hubungan-sedarah/page/" to "Inces",
+        "$mainUrl/category/87/hot-spring/page/" to "Air Panas"
     )
 
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest
     ): HomePageResponse {
+        // Logika penggabungan URL dengan nomor halaman
         val url = request.data + page
         val document = app.get(url).document
         
@@ -123,7 +132,7 @@ class JavHey : MainAPI() {
         val url = when {
             this.hasAttr("data-src") -> this.attr("data-src")
             this.hasAttr("data-original") -> this.attr("data-original")
-            this.hasAttr("srcset") -> this.attr("srcset").substringBefore(" ") // Ambil link pertama dari srcset
+            this.hasAttr("srcset") -> this.attr("srcset").substringBefore(" ")
             else -> this.attr("src")
         }
         return url.toHighRes()
@@ -131,7 +140,7 @@ class JavHey : MainAPI() {
 
     // Fungsi regex untuk membersihkan URL dari ukuran thumbnail
     private fun String?.toHighRes(): String? {
-        return this?.replace(Regex("-\\d+x\\d+(?=\\.[a-zA-Z]+$)"), "") // Hapus -300x200 sebelum ekstensi file
-                   ?.replace("-scaled", "") // Hapus suffix -scaled jika ada
+        return this?.replace(Regex("-\\d+x\\d+(?=\\.[a-zA-Z]+$)"), "")
+                   ?.replace("-scaled", "")
     }
 }
