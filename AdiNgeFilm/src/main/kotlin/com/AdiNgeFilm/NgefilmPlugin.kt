@@ -8,6 +8,8 @@ import com.lagradost.cloudstream3.plugins.Plugin
 class AdiNgeFilmPlugin : Plugin() {
     override fun load(context: Context) {
         registerMainAPI(AdiNgeFilm())
+        
+        // Extractor Lama
         registerExtractorAPI(Dingtezuni())
         registerExtractorAPI(Bingezove())
         registerExtractorAPI(Mivalyo())
@@ -19,7 +21,8 @@ class AdiNgeFilmPlugin : Plugin() {
         registerExtractorAPI(P2pplay())
         registerExtractorAPI(Shorticu())
         
-        // Extractor Baru
-        registerExtractorAPI(Streamplay())
+        // Extractor Baru (PENTING AGAR STREAMPLAY MUNCUL)
+        registerExtractorAPI(Streamplay()) // Untuk link asli
+        registerExtractorAPI(Xshotcok())   // Untuk link samaran (xshotcok.com)
     }
 }
