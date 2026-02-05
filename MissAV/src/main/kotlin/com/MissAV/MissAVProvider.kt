@@ -8,7 +8,7 @@ class MissAVProvider : MainAPI() {
     override var mainUrl              = "https://missav.ws"
     override var name                 = "MissAV"
     override val hasMainPage          = true
-    override var lang                 = "id" // PENTING: Pakai 'id' sesuai log curl kamu
+    override var lang                 = "id" // PENTING: Pakai 'id' sesuai region kamu
     override val hasDownloadSupport   = true
     override val hasChromecastSupport = true
     override val supportedTypes       = setOf(TvType.NSFW)
@@ -16,8 +16,9 @@ class MissAVProvider : MainAPI() {
     
     private val subtitleCatUrl = "https://www.subtitlecat.com"
 
-    // --- KUNCI RAHASIA ---
-    // Kita menyamar sebagai Googlebot. Server akan mengirim HTML lengkap (bukan Skeleton/JS).
+    // --- KUNCI RAHASIA (BONGKAR PROTEKSI) ---
+    // Kita menyamar sebagai Googlebot. 
+    // Server akan tertipu dan mengirim HTML lengkap, bukan Skeleton kosong/API Recombee.
     private val headers = mapOf(
         "User-Agent" to "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
         "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
@@ -37,43 +38,43 @@ class MissAVProvider : MainAPI() {
         )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-            // Logika halaman utama
             val url = "$mainUrl${request.data}?page=$page"
+            // Gunakan headers Googlebot
             val document = app.get(url, headers = headers).document
             val responseList  = document.select(".thumbnail, div.grid > div").mapNotNull { it.toSearchResult() }
             return newHomePageResponse(HomePageList(request.name, responseList, isHorizontalImages = true), hasNext = true)
     }
 
     private fun Element.toSearchResult(): SearchResponse? {
-        // --- LOGIKA EKSTRAKSI YANG LEBIH CERDAS ---
+        // --- LOGIKA EKSTRAKSI ANTI-ERROR ---
         
-        // 1. Cari elemen judul (biasanya di text-secondary atau text-base)
+        // 1. Cari elemen judul dengan berbagai kemungkinan selector
         val titleElement = this.selectFirst("a.text-secondary, a.text-base, h4 a, div.text-secondary")
         val img = this.selectFirst("img")
         
         var title = titleElement?.text()?.trim() ?: ""
         val href = titleElement?.attr("href") ?: this.selectFirst("a")?.attr("href")
 
-        // Jika tidak ada link, ini bukan video (mungkin iklan/sampah)
+        // Jika tidak ada link, skip (mungkin iklan)
         if (href.isNullOrBlank()) return null
         
-        // 2. JURUS CADANGAN: Jika text judul kosong (karena anomali layout), AMBIL DARI ALT GAMBAR
-        // Googlebot biasanya selalu dikasih atribut alt yang lengkap.
+        // 2. JURUS CADANGAN: Jika text judul kosong, AMBIL DARI ALT GAMBAR
+        // Googlebot biasanya selalu dikasih atribut alt yang lengkap pada gambar.
         if (title.isBlank()) {
             title = img?.attr("alt")?.trim() ?: ""
         }
         
-        // Kalau masih kosong, skip aja daripada muncul "Unknown Title"
+        // Kalau masih kosong, skip
         if (title.isBlank()) return null
 
-        // 3. Tambahkan status [Uncensored] jika ada badge-nya
+        // 3. Tambahkan status [Uncensored] jika ada
         val status = this.selectFirst(".bg-blue-800, .bg-red-800")?.text()?.trim()
         if (!status.isNullOrEmpty() && !title.contains(status)) {
             title = "[$status] $title"
         }
         
         // 4. LOGIKA GAMBAR: Prioritas data-src (lazy load), fallback ke src
-        // Logcat-mu bilang "NullRequestDataException", ini solusinya:
+        // Ini mengatasi error NullRequestDataException di log kamu
         val posterUrl = img?.attr("data-src")?.ifBlank { img.attr("src") }
 
         return newMovieSearchResponse(title, href, TvType.NSFW) {
@@ -86,7 +87,7 @@ class MissAVProvider : MainAPI() {
         val cleanQuery = query.trim()
 
         // --- BYPASS PENCARIAN (DIRECT ACCESS) ---
-        // Jika user mencari Kode (misal: SHKD-451), LANGSUNG BUKA halaman video.
+        // Jika user mencari Kode (misal: SHKD-451 atau JUX-123), LANGSUNG BUKA halaman video.
         // Ini menghindari halaman search yang sering error/kosong.
         val codeRegex = Regex("^[a-zA-Z]+-\\d+$") 
         if (cleanQuery.matches(codeRegex)) {
@@ -95,7 +96,7 @@ class MissAVProvider : MainAPI() {
                 val directUrl = "$mainUrl/id/${cleanQuery.lowercase()}"
                 val doc = app.get(directUrl, headers = headers).document
                 
-                // Ambil data dari Meta Tags (Pasti Lengkap karena Server-Side Rendered)
+                // Ambil data dari Meta Tags (Pasti Lengkap karena Server-Side Rendered untuk Googlebot)
                 val metaTitle = doc.selectFirst("meta[property=og:title]")?.attr("content")
                 val metaImg = doc.selectFirst("meta[property=og:image]")?.attr("content")
                 val metaDesc = doc.selectFirst("meta[property=og:description]")?.attr("content")
@@ -116,10 +117,10 @@ class MissAVProvider : MainAPI() {
         }
 
         // --- PENCARIAN BIASA (GOOGLEBOT MODE) ---
+        // Untuk kata kunci biasa seperti "Roe"
         val searchUrl = "$mainUrl/id/search/$cleanQuery"
         
-        // Cukup 2 halaman saja, karena search page itu berat
-        for (i in 1..2) {
+        for (i in 1..2) { // Cukup 2 halaman agar tidak berat
             try {
                 val url = "$searchUrl?page=$i"
                 val document = app.get(url, headers = headers).document
@@ -182,7 +183,8 @@ class MissAVProvider : MainAPI() {
             
             if (!javCode.isNullOrEmpty()) {
                 val query = "$subtitleCatUrl/index.php?search=$javCode"
-                // SubtitleCat butuh User-Agent browser biasa, JANGAN pakai Googlebot di sini karena bisa diblokir
+                // SubtitleCat butuh User-Agent browser biasa (Android), JANGAN pakai Googlebot di sini
+                // karena situs subtitle mungkin memblokir bot.
                 val subHeaders = mapOf("User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
                 
                 val subDoc = app.get(query, headers = subHeaders, timeout = 20).document 
