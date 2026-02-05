@@ -16,7 +16,7 @@ import org.jsoup.nodes.Element
 
 class AdiNgeFilm : MainAPI() {
 
-    override var mainUrl = "https://new31.ngefilm.site"
+    override var mainUrl = "https://new31.ngefilm.site" 
     private var directUrl: String? = null
     override var name = "AdiNgeFilm"
     override val hasMainPage = true
@@ -43,40 +43,16 @@ class AdiNgeFilm : MainAPI() {
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val response = app.get("$mainUrl/${request.data.format(page)}")
         mainUrl = getBaseUrl(response.url)
+        
         val document = response.document
-        
-        val items = ArrayList<SearchResponse>()
-
-        // LOGIKA SLIDER (POSTER BESAR): Paksa ambil resolusi HD
-        if (request.name == "Terbaru" && page == 1) {
-            document.select("div.gmr-owl-carousel .gmr-slider-content").forEach { element ->
-                val title = element.selectFirst(".gmr-slide-title a")?.text()?.trim() ?: return@forEach
-                val href = element.selectFirst("a")?.attr("href") ?: return@forEach
-                
-                // FIX: Bersihkan URL gambar slider secara agresif agar tajam
-                val posterUrl = element.selectFirst("img")?.getImageAttr()?.fixImageQuality()
-                
-                val quality = element.selectFirst(".gmr-quality-item a")?.text()?.replace("-", "")
-
-                items.add(newMovieSearchResponse(title, href, TvType.Movie) {
-                    this.posterUrl = posterUrl
-                    if (quality != null) {
-                        addQuality(quality)
-                    }
-                })
-            }
-        }
-
-        // Ambil item regular (Grid)
-        document.select("article.item-infinite").mapNotNullTo(items) { it.toSearchResult() }
-        
+        val items = document.select("article.item-infinite").mapNotNull { it.toSearchResult() }
         return newHomePageResponse(request.name, items)
     }
 
     private fun Element.toSearchResult(): SearchResponse? {
         val title = this.selectFirst("h2.entry-title > a")?.text()?.trim() ?: return null
         val href = fixUrl(this.selectFirst("a")!!.attr("href"))
-        val posterUrl = this.selectFirst("img")?.getImageAttr()?.fixImageQuality()
+        val posterUrl = fixUrlNull(this.selectFirst("a > img")?.getImageAttr()).fixImageQuality()
         val quality = this.select("div.gmr-qual, div.gmr-quality-item > a").text().trim().replace("-", "")
         val ratingText = this.selectFirst("div.gmr-rating-item")?.ownText()?.trim()
         val eps = selectFirst(".gmr-numbeps span")?.text()?.trim()?.toIntOrNull()
@@ -103,6 +79,7 @@ class AdiNgeFilm : MainAPI() {
     override suspend fun search(query: String): List<SearchResponse> {
         val response = app.get("$mainUrl?s=$query&post_type[]=post&post_type[]=tv")
         mainUrl = getBaseUrl(response.url)
+        
         val document = response.document
         return document.select("article.item-infinite").mapNotNull { it.toSearchResult() }
     }
@@ -110,7 +87,7 @@ class AdiNgeFilm : MainAPI() {
     private fun Element.toRecommendResult(): SearchResponse? {
         val title = this.selectFirst("h2.entry-title > a")?.text()?.trim() ?: return null
         val href = fixUrl(this.selectFirst("a")!!.attr("href"))
-        val posterUrl = this.selectFirst("img")?.getImageAttr()?.fixImageQuality()
+        val posterUrl = fixUrlNull(this.selectFirst("a > img")?.getImageAttr()).fixImageQuality()
         val quality = this.select("div.gmr-qual, div.gmr-quality-item > a").text().trim().replace("-", "")
         val ratingText = this.selectFirst("div.gmr-rating-item")?.ownText()?.trim()
         val eps = selectFirst(".gmr-numbeps span")?.text()?.trim()?.toIntOrNull()
@@ -141,38 +118,14 @@ class AdiNgeFilm : MainAPI() {
 
         val title = document.selectFirst("h1.entry-title")?.text()?.substringBefore("Season")
             ?.substringBefore("Episode")?.trim().toString()
-        
-        // 1. Poster Vertical (Untuk Cover Depan) - Prioritas Meta Tag HD
-        val poster = document.selectFirst("meta[property=og:image]")?.attr("content")
-            ?: document.selectFirst("link[rel=image_src]")?.attr("href")
-            ?: document.selectFirst("figure.pull-left img")?.getImageAttr()?.fixImageQuality()
-        
+        val poster = fixUrlNull(document.selectFirst("figure.pull-left > img")?.getImageAttr())
+            ?.fixImageQuality()
         val tags = document.select("div.gmr-moviedata a").map { it.text() }
         val year = document.select("div.gmr-moviedata strong:contains(Year:) > a").text()
             .trim().toIntOrNull()
         val tvType = if (url.contains("/tv/")) TvType.TvSeries else TvType.Movie
         val description = document.selectFirst("div[itemprop=description] > p")?.text()?.trim()
-        
-        // Cari Trailer URL
         val trailer = document.selectFirst("ul.gmr-player-nav li a.gmr-trailer-popup")?.attr("href")
-            ?: document.selectFirst("div.gmr-embed-responsive iframe")?.attr("src")
-            ?: document.selectFirst("iframe[src*='youtube.com']")?.attr("src")
-            ?: document.selectFirst("iframe[src*='youtu.be']")?.attr("src")
-
-        // 2. LOGIKA BACKGROUND (Solusi Kepala Kepotong):
-        // Ambil ID Youtube. 
-        val youtubeId = getYoutubeId(trailer)
-        
-        // FIX: Gunakan 'sddefault.jpg' (Standard Definition) daripada 'maxresdefault'.
-        // 'maxresdefault' seringkali tidak tersedia (404), yang menyebabkan Cloudstream 
-        // fallback ke poster tegak (bikin kepotong). 'sddefault' dijamin ada dan landscape.
-        val background = if (youtubeId != null) {
-            "https://img.youtube.com/vi/$youtubeId/sddefault.jpg"
-        } else {
-            // Fallback: Jika tidak ada trailer, pakai poster
-            poster
-        }
-
         val rating = document.selectFirst("div.gmr-meta-rating > span[itemprop=ratingValue]")
             ?.text()?.trim()
         val actors = document.select("div.gmr-moviedata").last()?.select("span[itemprop=actors]")
@@ -192,19 +145,16 @@ class AdiNgeFilm : MainAPI() {
                         ?: cleanTitle.split(" ").lastOrNull()?.filter { it.isDigit() }?.toIntOrNull()
 
                     val formattedName = epNum?.let { "Episode $it" } ?: cleanTitle
-                    
-                    val epThumb = eps.selectFirst("img")?.getImageAttr()?.fixImageQuality() ?: poster
 
                     newEpisode(href) {
                         this.name = formattedName
                         this.episode = epNum
-                        this.posterUrl = epThumb
+                        this.posterUrl = poster
                     }
                 }.filter { it.episode != null }
 
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                 this.posterUrl = poster
-                this.backgroundPosterUrl = background // Pakai background landscape
                 this.year = year
                 this.plot = description
                 this.tags = tags
@@ -217,7 +167,6 @@ class AdiNgeFilm : MainAPI() {
         } else {
             newMovieLoadResponse(title, url, TvType.Movie, url) {
                 this.posterUrl = poster
-                this.backgroundPosterUrl = background // Pakai background landscape
                 this.year = year
                 this.plot = description
                 this.tags = tags
@@ -239,6 +188,10 @@ class AdiNgeFilm : MainAPI() {
         val document = app.get(data).document
         val id = document.selectFirst("div#muvipro_player_content_id")?.attr("data-id")
 
+        // === LOG CCTV START ===
+        System.out.println("[AdiNgeFilm] Mencari link di halaman: $data")
+        // === LOG CCTV END ===
+
         if (id.isNullOrEmpty()) {
             document.select("ul.muvipro-player-tabs li a").amap { ele ->
                 val iframe = app.get(fixUrl(ele.attr("href")))
@@ -247,6 +200,10 @@ class AdiNgeFilm : MainAPI() {
                     .getIframeAttr()
                     ?.let { httpsify(it) }
                     ?: return@amap
+
+                // === LOG CCTV START ===
+                System.out.println("[AdiNgeFilm] Link Iframe Ditemukan (Non-Ajax): $iframe")
+                // === LOG CCTV END ===
 
                 loadExtractor(iframe, "$directUrl/", subtitleCallback, callback)
             }
@@ -265,6 +222,10 @@ class AdiNgeFilm : MainAPI() {
                     .attr("src")
                     .let { httpsify(it) }
 
+                // === LOG CCTV START ===
+                System.out.println("[AdiNgeFilm] Link Iframe Ditemukan (Ajax): $server")
+                // === LOG CCTV END ===
+
                 loadExtractor(server, "$directUrl/", subtitleCallback, callback)
             }
         }
@@ -276,6 +237,7 @@ class AdiNgeFilm : MainAPI() {
         return when {
             this.hasAttr("data-src") -> this.attr("abs:data-src")
             this.hasAttr("data-lazy-src") -> this.attr("abs:data-lazy-src")
+            this.hasAttr("srcset") -> this.attr("abs:srcset").substringBefore(" ")
             else -> this.attr("abs:src")
         }
     }
@@ -287,19 +249,8 @@ class AdiNgeFilm : MainAPI() {
 
     private fun String?.fixImageQuality(): String? {
         if (this == null) return null
-        // Regex yang lebih aman untuk menghapus dimensi (misal: -152x228, -600x400)
-        // Menghapus pola "-angka x angka" di mana saja dalam string
-        return this.replace(Regex("-\\d+x\\d+"), "")
-    }
-
-    private fun getYoutubeId(url: String?): String? {
-        if (url == null) return null
-        return when {
-            url.contains("/embed/") -> url.substringAfter("/embed/").substringBefore("?").substringBefore("\"")
-            url.contains("v=") -> url.substringAfter("v=").substringBefore("&")
-            url.contains("youtu.be/") -> url.substringAfter("youtu.be/").substringBefore("?")
-            else -> null
-        }
+        val regex = Regex("(-\\d*x\\d*)").find(this)?.groupValues?.get(0) ?: return this
+        return this.replace(regex, "")
     }
 
     private fun getBaseUrl(url: String): String {
