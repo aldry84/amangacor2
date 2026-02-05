@@ -7,14 +7,13 @@ import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.USER_AGENT
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.utils.M3u8Helper.Companion.generateM3u8
-import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.extractors.StreamWishExtractor
 import com.lagradost.cloudstream3.extractors.Gdriveplayer
 import com.lagradost.cloudstream3.extractors.VidStack
 import java.net.URI
 
-// ================= DINGTEZUNI =================
+// ================= DINGTEZUNI BASE =================
 open class Dingtezuni : ExtractorApi() {
     override val name = "Earnvids"
     override val mainUrl = "https://dingtezuni.com"
@@ -27,11 +26,8 @@ open class Dingtezuni : ExtractorApi() {
         callback: (ExtractorLink) -> Unit
     ) {
         val headers = mapOf(
-            "Sec-Fetch-Dest" to "empty",
-            "Sec-Fetch-Mode" to "cors",
-            "Sec-Fetch-Site" to "cross-site",
             "Origin" to mainUrl,
-            "User-Agent" to USER_AGENT,
+            "User-Agent" to USER_AGENT
         )
 
         val response = app.get(getEmbedUrl(url), referer = referer)
@@ -63,7 +59,7 @@ open class Dingtezuni : ExtractorApi() {
     }
 }
 
-// ================= OTHER EXTRACTORS =================
+// ================= SIMPLE EXTRACTORS =================
 class Hglink : StreamWishExtractor() {
     override val name = "Hglink"
     override val mainUrl = "https://hglink.to"
@@ -90,6 +86,7 @@ class Shorticu : StreamWishExtractor() {
     override val mainUrl = "https://short.icu"
 }
 
+// ================= MIRROR SITES =================
 class Movearnpre : Dingtezuni() {
     override var name = "Earnvids"
     override var mainUrl = "https://movearnpre.com"
@@ -110,7 +107,7 @@ class Bingezove : Dingtezuni() {
     override var mainUrl = "https://bingezove.com"
 }
 
-// ================= STREAMPLAY (FINAL FIX) =================
+// ================= STREAMPLAY (API COMPATIBLE) =================
 open class Streamplay : ExtractorApi() {
     override val name = "Streamplay"
     override val mainUrl = "https://streamplay.to"
@@ -153,8 +150,6 @@ open class Streamplay : ExtractorApi() {
             ),
             referer = redirectUrl,
             headers = mapOf(
-                "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-                "Content-Type" to "application/x-www-form-urlencoded",
                 "User-Agent" to USER_AGENT
             )
         ).document.select("script")
@@ -172,24 +167,15 @@ open class Streamplay : ExtractorApi() {
                 tryParseJson<List<Source>>(jsonString)?.forEach { res ->
                     val fileUrl = res.file ?: return@forEach
 
-                    val quality = when (res.label) {
-                        "HD" -> Qualities.P720.value
-                        "SD" -> Qualities.P480.value
-                        else -> Qualities.Unknown.value
-                    }
-
                     callback.invoke(
                         newExtractorLink(
                             source = this.name,
                             name = this.name,
-                            url = fileUrl,
-                            referer = "$mainServer/",
-                            quality = quality,
-                            isM3u8 = fileUrl.contains("m3u8"),
-                            headers = mapOf(
-                                "User-Agent" to USER_AGENT
-                            )
-                        )
+                            url = fileUrl
+                        ) {
+                            referer = "$mainServer/"
+                            isM3u8 = fileUrl.contains("m3u8")
+                        }
                     )
                 }
             }
@@ -200,6 +186,6 @@ open class Streamplay : ExtractorApi() {
         val file: String? = null,
 
         @com.fasterxml.jackson.annotation.JsonProperty("label")
-        val label: String? = null,
+        val label: String? = null
     )
 }
