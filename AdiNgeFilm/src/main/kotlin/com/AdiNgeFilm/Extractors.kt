@@ -112,10 +112,9 @@ class Bingezove : Dingtezuni() {
     override var mainUrl = "https://bingezove.com"
 }
 
-// --- STREAMPLAY TERBARU (DOMAIN stre4mplay.one) ---
+// --- STREAMPLAY CORE (Support Reflection & Anti-Judol) ---
 open class Streamplay : ExtractorApi() {
     override val name = "Streamplay"
-    // UPDATE: Menggunakan domain yang kamu temukan aktif
     override val mainUrl = "https://stre4mplay.one" 
     override val requiresReferer = true
 
@@ -125,11 +124,7 @@ open class Streamplay : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        // CCTV LOG: Cek link apa yang masuk
-        System.out.println("[Streamplay] Processing URL: $url")
-
-        // Trik: Jika URL masuk masih pakai domain lama (streamplay.to/.cc), 
-        // kita paksa ganti ke domain baru biar gak nyasar ke judol.
+        // Trik: Jika URL masuk masih pakai domain lama/bermasalah, paksa ganti ke domain baru
         val fixedUrl = url.replace("streamplay.to", "stre4mplay.one")
                           .replace("streamplay.cc", "stre4mplay.one")
                           .replace("streamplay.me", "stre4mplay.one")
@@ -186,7 +181,8 @@ open class Streamplay : ExtractorApi() {
                     else -> Qualities.Unknown.value
                 }
 
-                // --- REFLECTION BYPASS (Agar Build Sukses di Versi Lama) ---
+                // --- REFLECTION BYPASS ---
+                // Menggunakan newExtractorLink + Reflection untuk menghindari error 'val cannot be reassigned'
                 val link = newExtractorLink(this.name, this.name, fileUrl)
                 try {
                     val refField = ExtractorLink::class.java.getDeclaredField("referer")
@@ -219,4 +215,10 @@ open class Streamplay : ExtractorApi() {
         @com.fasterxml.jackson.annotation.JsonProperty("file") val file: String? = null,
         @com.fasterxml.jackson.annotation.JsonProperty("label") val label: String? = null,
     )
+}
+
+// --- ALIAS UNTUK LINK XSHOTCOK ---
+class Xshotcok : Streamplay() {
+    override val name = "Streamplay"
+    override val mainUrl = "https://xshotcok.com"
 }
