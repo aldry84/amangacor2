@@ -175,8 +175,8 @@ open class Streamplay : ExtractorApi() {
                     else -> Qualities.Unknown.value
                 }
 
-                // FIX: Menggunakan Constructor + Suppress Warning
-                // Ini cara paling aman untuk menghindari error Val Reassigned dan Type Mismatch
+                // FIX PENTING: Menggunakan @Suppress untuk bypass error Deprecated
+                // Kita pakai Constructor langsung karena ini satu-satunya cara memasukkan referer/quality
                 @Suppress("DEPRECATION")
                 callback.invoke(
                     ExtractorLink(
