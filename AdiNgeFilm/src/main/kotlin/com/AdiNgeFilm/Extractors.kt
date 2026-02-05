@@ -7,8 +7,7 @@ import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.USER_AGENT
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.utils.M3u8Helper.Companion.generateM3u8
-// Penting: Import Enum Tipe Link
-import com.lagradost.cloudstream3.utils.ExtractorLinkType 
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.base64Decode
@@ -113,7 +112,7 @@ class Bingezove : Dingtezuni() {
     override var mainUrl = "https://bingezove.com"
 }
 
-// --- STREAMPLAY (YANG SUDAH DIPERBAIKI SESUAI ANALISA) ---
+// --- STREAMPLAY (REFLECTION BYPASS VERSION) ---
 open class Streamplay : ExtractorApi() {
     override val name = "Streamplay"
     override val mainUrl = "https://streamplay.to"
@@ -176,27 +175,38 @@ open class Streamplay : ExtractorApi() {
                     else -> Qualities.Unknown.value
                 }
 
-                // 1. Tentukan Tipe Link secara manual (M3U8 atau VIDEO)
-                val linkType = if (fileUrl.contains("m3u8")) 
-                    ExtractorLinkType.M3U8 
-                else 
-                    ExtractorLinkType.VIDEO
+                // BYPASS START: Kita gunakan newExtractorLink yang LEGAL, lalu paksa isi datanya
+                val link = newExtractorLink(this.name, this.name, fileUrl)
+                
+                try {
+                    // Paksa set Referer
+                    val refField = ExtractorLink::class.java.getDeclaredField("referer")
+                    refField.isAccessible = true
+                    refField.set(link, "$mainServer/")
 
-                // 2. Gunakan Constructor Utama (Baris 620 ExtractorApi.kt)
-                // Constructor ini level-nya WARNING (Bukan ERROR), jadi bisa di-bypass.
-                @Suppress("DEPRECATION")
-                callback.invoke(
-                    ExtractorLink(
-                        source = this.name,
-                        name = this.name,
-                        url = fileUrl,
-                        referer = "$mainServer/",
-                        quality = quality,
-                        type = linkType, // <-- KUNCINYA DI SINI (Pakai 'type', JANGAN 'isM3u8')
-                        headers = mapOf("User-Agent" to USER_AGENT),
-                        extractorData = null
-                    )
-                )
+                    // Paksa set Quality
+                    val qualField = ExtractorLink::class.java.getDeclaredField("quality")
+                    qualField.isAccessible = true
+                    qualField.setInt(link, quality)
+
+                    // Paksa set Type (M3U8 / Video)
+                    if (fileUrl.contains("m3u8")) {
+                         val typeField = ExtractorLink::class.java.getDeclaredField("type")
+                         typeField.isAccessible = true
+                         typeField.set(link, ExtractorLinkType.M3U8)
+                    }
+
+                    // Paksa set Headers
+                    val headersField = ExtractorLink::class.java.getDeclaredField("headers")
+                    headersField.isAccessible = true
+                    headersField.set(link, mapOf("User-Agent" to USER_AGENT))
+
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+
+                callback.invoke(link)
+                // BYPASS END
             }
         }
     }
