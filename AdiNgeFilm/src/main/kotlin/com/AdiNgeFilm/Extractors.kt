@@ -158,13 +158,13 @@ class Streamplay : ExtractorApi() {
                     source = name,
                     name = name,
                     url = fileUrl,
+                    quality = qualityValue, // ✅ DI PARAMETER
                     type = if (fileUrl.contains(".m3u8"))
                         ExtractorLinkType.M3U8
                     else
                         ExtractorLinkType.VIDEO
                 ) {
                     referer = "$server/"
-                    quality = qualityValue
                 }
             )
         }
