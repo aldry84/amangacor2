@@ -7,7 +7,7 @@ import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.USER_AGENT
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.utils.M3u8Helper.Companion.generateM3u8
-import com.lagradost.cloudstream3.utils.ExtractorLinkType // PENTING
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.base64Decode
@@ -112,7 +112,7 @@ class Bingezove : Dingtezuni() {
     override var mainUrl = "https://bingezove.com"
 }
 
-// --- STREAMPLAY FINAL FIX (SESUAI ExtractorApi.kt) ---
+// --- STREAMPLAY (VERSI FINAL UNTUK LIBRARY LAMA) ---
 open class Streamplay : ExtractorApi() {
     override val name = "Streamplay"
     override val mainUrl = "https://streamplay.to"
@@ -175,13 +175,7 @@ open class Streamplay : ExtractorApi() {
                     else -> Qualities.Unknown.value
                 }
 
-                // Tentukan Type: M3U8 atau VIDEO biasa
-                val linkType = if (fileUrl.contains("m3u8")) 
-                    ExtractorLinkType.M3U8 
-                else 
-                    ExtractorLinkType.VIDEO
-
-                // KITA PAKAI CONSTRUCTOR UTAMA YANG HANYA WARNING (BUKAN ERROR)
+                // FIX: Menggunakan NAMED ARGUMENTS untuk menghindari error urutan parameter
                 @Suppress("DEPRECATION")
                 callback.invoke(
                     ExtractorLink(
@@ -190,11 +184,8 @@ open class Streamplay : ExtractorApi() {
                         url = fileUrl,
                         referer = "$mainServer/",
                         quality = quality,
-                        type = linkType, // <-- Ini kuncinya! Pakai 'type', bukan 'isM3u8'
-                        headers = mapOf(
-                            "User-Agent" to USER_AGENT
-                        ),
-                        extractorData = null
+                        isM3u8 = fileUrl.contains("m3u8"),
+                        headers = mapOf("User-Agent" to USER_AGENT)
                     )
                 )
             }
