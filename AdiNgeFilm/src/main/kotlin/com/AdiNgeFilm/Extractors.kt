@@ -175,16 +175,17 @@ open class Streamplay : ExtractorApi() {
                     else -> Qualities.Unknown.value
                 }
 
-                // FIX: Menggunakan Positional Arguments untuk newExtractorLink
-                // Urutan: source, name, url, referer, quality, isM3u8
+                // FIX: Menggunakan Constructor + Suppress Warning
+                // Ini cara paling aman untuk menghindari error Val Reassigned dan Type Mismatch
+                @Suppress("DEPRECATION")
                 callback.invoke(
-                    newExtractorLink(
-                        this.name,          // source
-                        this.name,          // name
-                        fileUrl,            // url
-                        "$mainServer/",     // referer
-                        quality,            // quality
-                        fileUrl.contains("m3u8") // isM3u8
+                    ExtractorLink(
+                        source = this.name,
+                        name = this.name,
+                        url = fileUrl,
+                        referer = "$mainServer/",
+                        quality = quality,
+                        isM3u8 = fileUrl.contains("m3u8")
                     )
                 )
             }
