@@ -111,3 +111,85 @@ class Bingezove : Dingtezuni() {
     override var name = "Earnvids"
     override var mainUrl = "https://bingezove.com"
 }
+
+// --- PENAMBAHAN BARU: STREAMPLAY ---
+open class Streamplay : ExtractorApi() {
+    override val name = "Streamplay"
+    override val mainUrl = "https://streamplay.to"
+    override val requiresReferer = true
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val request = app.get(url, referer = referer)
+        val redirectUrl = request.url
+        val mainServer = URI(redirectUrl).let {
+            "${it.scheme}://${it.host}"
+        }
+        val key = redirectUrl.substringAfter("embed-").substringBefore(".html")
+        
+        val captchaKey = request.document.select("script")
+            .find { it.data().contains("sitekey:") }?.data()
+            ?.substringAfterLast("sitekey: '")?.substringBefore("',")
+            
+        val token = if (!captchaKey.isNullOrEmpty()) {
+             com.lagradost.cloudstream3.APIHolder.getCaptchaToken(
+                redirectUrl,
+                captchaKey,
+                referer = "$mainServer/"
+            )
+        } else {
+            null 
+        }
+
+        app.post(
+            "$mainServer/player-$key-488x286.html", 
+            data = mapOf(
+                "op" to "embed",
+                "token" to (token ?: "")
+            ),
+            referer = redirectUrl,
+            headers = mapOf(
+                "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                "Content-Type" to "application/x-www-form-urlencoded",
+                "User-Agent" to USER_AGENT
+            )
+        ).document.select("script").find { script ->
+            script.data().contains("eval(function(p,a,c,k,e,d)")
+        }?.let {
+            val unpacked = getAndUnpack(it.data())
+            val data = unpacked.substringAfter("sources=[").substringBefore(",desc")
+                .replace("file", "\"file\"")
+                .replace("label", "\"label\"")
+            
+            val jsonString = "[$data]"
+            
+            tryParseJson<List<Source>>(jsonString)?.forEach { res ->
+                val fileUrl = res.file ?: return@forEach
+                
+                callback.invoke(
+                    ExtractorLink(
+                        source = this.name,
+                        name = this.name,
+                        url = fileUrl,
+                        referer = "$mainServer/",
+                        quality = when (res.label) {
+                            "HD" -> Qualities.P720.value
+                            "SD" -> Qualities.P480.value
+                            else -> Qualities.Unknown.value
+                        },
+                        isM3u8 = fileUrl.contains("m3u8")
+                    )
+                )
+            }
+        }
+    }
+
+    data class Source(
+        @com.fasterxml.jackson.annotation.JsonProperty("file") val file: String? = null,
+        @com.fasterxml.jackson.annotation.JsonProperty("label") val label: String? = null,
+    )
+}
