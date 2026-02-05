@@ -14,6 +14,7 @@ import com.lagradost.cloudstream3.extractors.Gdriveplayer
 import com.lagradost.cloudstream3.extractors.VidStack
 import java.net.URI
 
+// ================= DINGTEZUNI =================
 open class Dingtezuni : ExtractorApi() {
     override val name = "Earnvids"
     override val mainUrl = "https://dingtezuni.com"
@@ -54,16 +55,15 @@ open class Dingtezuni : ExtractorApi() {
         }
     }
 
-    private fun getEmbedUrl(url: String): String {
-        return when {
-            url.contains("/d/") -> url.replace("/d/", "/v/")
-            url.contains("/download/") -> url.replace("/download/", "/v/")
-            url.contains("/file/") -> url.replace("/file/", "/v/")
-            else -> url.replace("/f/", "/v/")
-        }
+    private fun getEmbedUrl(url: String): String = when {
+        url.contains("/d/") -> url.replace("/d/", "/v/")
+        url.contains("/download/") -> url.replace("/download/", "/v/")
+        url.contains("/file/") -> url.replace("/file/", "/v/")
+        else -> url.replace("/f/", "/v/")
     }
 }
 
+// ================= OTHER EXTRACTORS =================
 class Hglink : StreamWishExtractor() {
     override val name = "Hglink"
     override val mainUrl = "https://hglink.to"
@@ -110,7 +110,7 @@ class Bingezove : Dingtezuni() {
     override var mainUrl = "https://bingezove.com"
 }
 
-// ================= STREAMPLAY (FIXED – NO DEPRECATED) =================
+// ================= STREAMPLAY (FINAL FIX) =================
 open class Streamplay : ExtractorApi() {
     override val name = "Streamplay"
     override val mainUrl = "https://streamplay.to"
@@ -182,15 +182,14 @@ open class Streamplay : ExtractorApi() {
                         newExtractorLink(
                             source = this.name,
                             name = this.name,
-                            url = fileUrl
-                        ) {
-                            referer = "$mainServer/"
-                            this.quality = quality
-                            isM3u8 = fileUrl.contains("m3u8")
+                            url = fileUrl,
+                            referer = "$mainServer/",
+                            quality = quality,
+                            isM3u8 = fileUrl.contains("m3u8"),
                             headers = mapOf(
                                 "User-Agent" to USER_AGENT
                             )
-                        }
+                        )
                     )
                 }
             }
