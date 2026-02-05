@@ -18,5 +18,8 @@ class AdiNgeFilmPlugin : Plugin() {
         registerExtractorAPI(Playerngefilm21())
         registerExtractorAPI(P2pplay())
         registerExtractorAPI(Shorticu())
+        
+        // Extractor Baru
+        registerExtractorAPI(Streamplay())
     }
 }
