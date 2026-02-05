@@ -7,10 +7,8 @@ import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.USER_AGENT
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.utils.M3u8Helper.Companion.generateM3u8
-import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
-import com.lagradost.cloudstream3.base64Decode
 import com.lagradost.cloudstream3.extractors.StreamWishExtractor
 import com.lagradost.cloudstream3.extractors.Gdriveplayer
 import com.lagradost.cloudstream3.extractors.VidStack
@@ -34,11 +32,11 @@ open class Dingtezuni : ExtractorApi() {
             "Origin" to mainUrl,
             "User-Agent" to USER_AGENT,
         )
-        
+
         val response = app.get(getEmbedUrl(url), referer = referer)
         val script = if (!getPacked(response.text).isNullOrEmpty()) {
             var result = getAndUnpack(response.text)
-            if(result.contains("var links")){
+            if (result.contains("var links")) {
                 result = result.substringAfter("var links")
             }
             result
@@ -46,10 +44,10 @@ open class Dingtezuni : ExtractorApi() {
             response.document.selectFirst("script:containsData(sources:)")?.data()
         } ?: return
 
-        Regex(":\\s*\"(.*?m3u8.*?)\"").findAll(script).forEach { m3u8Match ->
+        Regex(":\\s*\"(.*?m3u8.*?)\"").findAll(script).forEach { match ->
             generateM3u8(
                 name,
-                fixUrl(m3u8Match.groupValues[1]),
+                fixUrl(match.groupValues[1]),
                 referer = "$mainUrl/",
                 headers = headers
             ).forEach(callback)
@@ -72,7 +70,7 @@ class Hglink : StreamWishExtractor() {
 }
 
 class Gdriveplayerto : Gdriveplayer() {
-    override val mainUrl: String = "https://gdriveplayer.to"
+    override val mainUrl = "https://gdriveplayer.to"
 }
 
 class Playerngefilm21 : VidStack() {
@@ -88,8 +86,8 @@ class P2pplay : VidStack() {
 }
 
 class Shorticu : StreamWishExtractor() {
-    override val name: String = "Shorticu"
-    override val mainUrl: String = "https://short.icu"
+    override val name = "Shorticu"
+    override val mainUrl = "https://short.icu"
 }
 
 class Movearnpre : Dingtezuni() {
@@ -112,7 +110,7 @@ class Bingezove : Dingtezuni() {
     override var mainUrl = "https://bingezove.com"
 }
 
-// --- STREAMPLAY FINAL FIX ---
+// ================= STREAMPLAY (FIXED – NO DEPRECATED) =================
 open class Streamplay : ExtractorApi() {
     override val name = "Streamplay"
     override val mainUrl = "https://streamplay.to"
@@ -126,27 +124,29 @@ open class Streamplay : ExtractorApi() {
     ) {
         val request = app.get(url, referer = referer)
         val redirectUrl = request.url
+
         val mainServer = URI(redirectUrl).let {
             "${it.scheme}://${it.host}"
         }
+
         val key = redirectUrl.substringAfter("embed-").substringBefore(".html")
-        
+
         val captchaKey = request.document.select("script")
-            .find { it.data().contains("sitekey:") }?.data()
-            ?.substringAfterLast("sitekey: '")?.substringBefore("',")
-            
+            .find { it.data().contains("sitekey:") }
+            ?.data()
+            ?.substringAfterLast("sitekey: '")
+            ?.substringBefore("',")
+
         val token = if (!captchaKey.isNullOrEmpty()) {
-             com.lagradost.cloudstream3.APIHolder.getCaptchaToken(
+            com.lagradost.cloudstream3.APIHolder.getCaptchaToken(
                 redirectUrl,
                 captchaKey,
                 referer = "$mainServer/"
             )
-        } else {
-            null 
-        }
+        } else null
 
         app.post(
-            "$mainServer/player-$key-488x286.html", 
+            "$mainServer/player-$key-488x286.html",
             data = mapOf(
                 "op" to "embed",
                 "token" to (token ?: "")
@@ -157,43 +157,50 @@ open class Streamplay : ExtractorApi() {
                 "Content-Type" to "application/x-www-form-urlencoded",
                 "User-Agent" to USER_AGENT
             )
-        ).document.select("script").find { script ->
-            script.data().contains("eval(function(p,a,c,k,e,d)")
-        }?.let {
-            val unpacked = getAndUnpack(it.data())
-            val data = unpacked.substringAfter("sources=[").substringBefore(",desc")
-                .replace("file", "\"file\"")
-                .replace("label", "\"label\"")
-            
-            val jsonString = "[$data]"
-            
-            tryParseJson<List<Source>>(jsonString)?.forEach { res ->
-                val fileUrl = res.file ?: return@forEach
-                val quality = when (res.label) {
-                    "HD" -> Qualities.P720.value
-                    "SD" -> Qualities.P480.value
-                    else -> Qualities.Unknown.value
-                }
+        ).document.select("script")
+            .find { it.data().contains("eval(function(p,a,c,k,e,d)") }
+            ?.let {
+                val unpacked = getAndUnpack(it.data())
+                val data = unpacked
+                    .substringAfter("sources=[")
+                    .substringBefore(",desc")
+                    .replace("file", "\"file\"")
+                    .replace("label", "\"label\"")
 
-                // FIX PENTING: Menggunakan @Suppress untuk bypass error Deprecated
-                // Kita pakai Constructor langsung karena ini satu-satunya cara memasukkan referer/quality
-                @Suppress("DEPRECATION")
-                callback.invoke(
-                    ExtractorLink(
-                        source = this.name,
-                        name = this.name,
-                        url = fileUrl,
-                        referer = "$mainServer/",
-                        quality = quality,
-                        isM3u8 = fileUrl.contains("m3u8")
+                val jsonString = "[$data]"
+
+                tryParseJson<List<Source>>(jsonString)?.forEach { res ->
+                    val fileUrl = res.file ?: return@forEach
+
+                    val quality = when (res.label) {
+                        "HD" -> Qualities.P720.value
+                        "SD" -> Qualities.P480.value
+                        else -> Qualities.Unknown.value
+                    }
+
+                    callback.invoke(
+                        newExtractorLink(
+                            source = this.name,
+                            name = this.name,
+                            url = fileUrl
+                        ) {
+                            referer = "$mainServer/"
+                            this.quality = quality
+                            isM3u8 = fileUrl.contains("m3u8")
+                            headers = mapOf(
+                                "User-Agent" to USER_AGENT
+                            )
+                        }
                     )
-                )
+                }
             }
-        }
     }
 
     data class Source(
-        @com.fasterxml.jackson.annotation.JsonProperty("file") val file: String? = null,
-        @com.fasterxml.jackson.annotation.JsonProperty("label") val label: String? = null,
+        @com.fasterxml.jackson.annotation.JsonProperty("file")
+        val file: String? = null,
+
+        @com.fasterxml.jackson.annotation.JsonProperty("label")
+        val label: String? = null,
     )
 }
