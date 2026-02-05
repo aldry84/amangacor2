@@ -47,14 +47,12 @@ subprojects {
             minSdk = 21
             compileSdkVersion(35)
             targetSdk = 35
-
         }
 
         compileOptions {
             sourceCompatibility = JavaVersion.VERSION_1_8
             targetCompatibility = JavaVersion.VERSION_1_8
         }
-
 
         tasks.withType<KotlinJvmCompile> {
             compilerOptions {
@@ -63,7 +61,7 @@ subprojects {
                     "-Xno-call-assertions",
                     "-Xno-param-assertions",
                     "-Xno-receiver-assertions",
-                    "-Xannotation-default-target=param-property" // <--- INI PERBAIKANNYA BRO
+                    "-Xannotation-default-target=param-property"
                 )
             }
         }
@@ -72,7 +70,13 @@ subprojects {
     dependencies {
         val implementation by configurations
         val cloudstream by configurations
-        cloudstream("com.lagradost:cloudstream3:pre-release")
+        
+        // --- PERBAIKAN DI SINI ---
+        // Versi pre-release ini menyebabkan error karena struktur ExtractorLink berbeda (immutable val)
+        // cloudstream("com.lagradost:cloudstream3:pre-release")
+
+        // Kita gunakan versi master-SNAPSHOT terbaru yang support Lambda & Mutable ExtractorLink
+        implementation("com.github.recloudstream:cloudstream:master-SNAPSHOT") 
 
         // Other dependencies
         implementation(kotlin("stdlib"))
