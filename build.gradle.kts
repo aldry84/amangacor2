@@ -71,12 +71,8 @@ subprojects {
         val implementation by configurations
         val cloudstream by configurations
         
-        // --- PERBAIKAN DI SINI ---
-        // Versi pre-release ini menyebabkan error karena struktur ExtractorLink berbeda (immutable val)
-        // cloudstream("com.lagradost:cloudstream3:pre-release")
-
-        // Kita gunakan versi master-SNAPSHOT terbaru yang support Lambda & Mutable ExtractorLink
-        implementation("com.github.recloudstream:cloudstream:master-SNAPSHOT") 
+        // KEMBALI KE VERSI LAMA (Biar file lain gak error)
+        cloudstream("com.lagradost:cloudstream3:pre-release") 
 
         // Other dependencies
         implementation(kotlin("stdlib"))
