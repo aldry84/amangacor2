@@ -8,7 +8,7 @@ import com.lagradost.cloudstream3.utils.M3u8Helper.Companion.generateM3u8
 import java.net.URI
 
 /* =========================
-   BASE EARNVIDS / DINGTEZUNI
+   BASE : EARNVIDS / DINGTEZUNI
    ========================= */
 
 open class Dingtezuni : ExtractorApi() {
@@ -28,6 +28,7 @@ open class Dingtezuni : ExtractorApi() {
         )
 
         val response = app.get(getEmbedUrl(url), referer = referer)
+
         val script = getAndUnpack(response.text)
             ?: response.document.selectFirst("script:containsData(sources)")?.data()
             ?: return
@@ -36,8 +37,8 @@ open class Dingtezuni : ExtractorApi() {
             .findAll(script)
             .forEach { match ->
                 generateM3u8(
-                    name,
-                    fixUrl(match.groupValues[1]),
+                    source = name,
+                    streamUrl = fixUrl(match.groupValues[1]),
                     referer = "$mainUrl/",
                     headers = headers
                 ).forEach { link ->
@@ -91,26 +92,26 @@ class Shorticu : StreamWishExtractor() {
    ========================= */
 
 class Movearnpre : Dingtezuni() {
-    override var mainUrl = "https://movearnpre.com"
+    override val mainUrl = "https://movearnpre.com"
 }
 
 class Dhtpre : Dingtezuni() {
-    override var mainUrl = "https://dhtpre.com"
+    override val mainUrl = "https://dhtpre.com"
 }
 
 class Mivalyo : Dingtezuni() {
-    override var mainUrl = "https://mivalyo.com"
+    override val mainUrl = "https://mivalyo.com"
 }
 
 class Bingezove : Dingtezuni() {
-    override var mainUrl = "https://bingezove.com"
+    override val mainUrl = "https://bingezove.com"
 }
 
 /* =========================
-   STREAMPLAY (FIX API BARU)
+   STREAMPLAY (FINAL FIX)
    ========================= */
 
-open class Streamplay : ExtractorApi() {
+class Streamplay : ExtractorApi() {
     override val name = "Streamplay"
     override val mainUrl = "https://streamplay.to"
     override val requiresReferer = true
@@ -124,25 +125,29 @@ open class Streamplay : ExtractorApi() {
         val request = app.get(url, referer = referer)
         val redirectUrl = request.url
 
-        val server = URI(redirectUrl).let { "${it.scheme}://${it.host}" }
-        val key = redirectUrl.substringAfter("embed-").substringBefore(".html")
+        val server = URI(redirectUrl).let {
+            "${it.scheme}://${it.host}"
+        }
 
-        val script = request.document.select("script")
+        val script = request.document
+            .select("script")
             .firstOrNull { it.data().contains("eval(function") }
             ?: return
 
         val unpacked = getAndUnpack(script.data()) ?: return
-        val jsonPart = unpacked
+
+        val jsonRaw = unpacked
             .substringAfter("sources=[")
             .substringBefore("]")
             .replace("file", "\"file\"")
             .replace("label", "\"label\"")
 
-        val sources = tryParseJson<List<Source>>("[$jsonPart]") ?: return
+        val sources = tryParseJson<List<Source>>("[$jsonRaw]") ?: return
 
         for (res in sources) {
             val fileUrl = res.file ?: continue
-            val quality = when (res.label) {
+
+            val qualityValue = when (res.label) {
                 "HD" -> Qualities.P720.value
                 "SD" -> Qualities.P480.value
                 else -> Qualities.Unknown.value
@@ -159,7 +164,7 @@ open class Streamplay : ExtractorApi() {
                         ExtractorLinkType.VIDEO
                 ) {
                     referer = "$server/"
-                    this.quality = quality
+                    quality = qualityValue
                 }
             )
         }
