@@ -8,7 +8,7 @@ class MissAVProvider : MainAPI() {
     override var mainUrl              = "https://missav.ws"
     override var name                 = "MissAV"
     override val hasMainPage          = true
-    override var lang                 = "id" // Ganti ke ID sesuai log curl kamu
+    override var lang                 = "id"
     override val hasDownloadSupport   = true
     override val hasChromecastSupport = true
     override val supportedTypes       = setOf(TvType.NSFW)
@@ -16,14 +16,16 @@ class MissAVProvider : MainAPI() {
     
     private val subtitleCatUrl = "https://www.subtitlecat.com"
 
-    // HEADERS: Penting! Kita pakai User-Agent Desktop agar server merender HTML lengkap
+    // HEADERS: Menggunakan User-Agent Desktop agar server memberikan HTML yang lebih lengkap
     private val headers = mapOf(
         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
         "Referer" to "$mainUrl/"
     )
 
     override val mainPage = mainPageOf(
-            "/dm514/id/new" to "Terbaru", // Update path ke /id/
+            "/dm514/id/new" to "Terbaru",
             "/dm588/id/release" to "Rilis Baru",
             "/dm291/id/today-hot" to "Populer Hari Ini",
             "/dm169/id/weekly-hot" to "Populer Minggu Ini",
@@ -35,34 +37,35 @@ class MissAVProvider : MainAPI() {
         )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-            val document = app.get("$mainUrl${request.data}?page=$page", headers = headers).document
+            val url = "$mainUrl${request.data}?page=$page"
+            val document = app.get(url, headers = headers).document
             val responseList  = document.select(".thumbnail").mapNotNull { it.toSearchResult() }
             return newHomePageResponse(HomePageList(request.name, responseList, isHorizontalImages = true), hasNext = true)
     }
 
-    // --- PERBAIKAN UTAMA DI SINI ---
     private fun Element.toSearchResult(): SearchResponse? {
-        // 1. Ambil Title dengan selector yang lebih luas
-        // Website sering ganti class text-secondary jadi text-base atau lainnya
-        val titleElement = this.selectFirst("a.text-secondary, a.text-base, h4 a, a[href*='/video/']")
+        // Logika Fallback Judul: Coba ambil dari Text, kalau kosong ambil dari ALT gambar
+        val titleElement = this.selectFirst("a.text-secondary, a.text-base, h4 a")
+        val img = this.selectFirst("img")
+        
         var title = titleElement?.text()?.trim() ?: ""
         
-        // Ambil status (Uncensored, dll)
+        // JIKA JUDUL KOSONG (Kena Skeleton), AMBIL DARI ALT GAMBAR
+        if (title.isBlank()) {
+            title = img?.attr("alt")?.trim() ?: ""
+        }
+        
+        // Kalau masih kosong, skip
+        if (title.isBlank()) return null
+
         val status = this.selectFirst(".bg-blue-800, .bg-red-800")?.text()?.trim()
         if (!status.isNullOrEmpty() && !title.contains(status)) {
             title = "[$status] $title"
         }
 
-        // Kalau title masih kosong, coba ambil dari alt gambar
-        val img = this.selectFirst("img")
-        if (title.isBlank()) {
-            title = img?.attr("alt")?.trim() ?: "Unknown Title"
-        }
-
         val href = titleElement?.attr("href") ?: this.selectFirst("a")?.attr("href") ?: return null
         
-        // 2. Perbaikan Pengambilan Gambar
-        // MissAV pakai lazy loading, gambar ada di data-src, kadang di src
+        // Logika Gambar: Cek data-src (lazy load) dulu, baru src
         val posterUrl = img?.attr("data-src")?.ifBlank { img.attr("src") }
 
         return newMovieSearchResponse(title, href, TvType.NSFW) {
@@ -72,16 +75,49 @@ class MissAVProvider : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         val searchResponse = mutableListOf<SearchResponse>()
+        val cleanQuery = query.trim()
 
-        // Menggunakan path /id/search/ sesuai log curl kamu
-        val searchUrl = "$mainUrl/id/search/$query"
-
-        for (i in 1..2) {
+        // 1. SMART DIRECT SEARCH (Jurus Jalan Pintas)
+        // Jika user mencari Kode (contoh: SHKD-451, JUX-123), langsung tembak halaman videonya.
+        // Ini menghindari halaman pencarian yang sering error/loading terus.
+        val codeRegex = Regex("^[a-zA-Z]+-\\d+$") 
+        if (cleanQuery.matches(codeRegex)) {
             try {
-                // Pastikan headers dikirim
-                val url = "$searchUrl?page=$i"
-                val document = app.get(url, headers = headers).document
+                // Langsung ke https://missav.ws/id/shkd-451
+                val directUrl = "$mainUrl/id/${cleanQuery.lowercase()}"
+                val doc = app.get(directUrl, headers = headers).document
                 
+                // Validasi: Apakah halaman video benar ada? (Cek meta title)
+                val metaTitle = doc.selectFirst("meta[property=og:title]")?.attr("content")
+                val metaDesc = doc.selectFirst("meta[property=og:description]")?.attr("content")
+                val metaImg = doc.selectFirst("meta[property=og:image]")?.attr("content")
+
+                if (!metaTitle.isNullOrEmpty()) {
+                    searchResponse.add(
+                        newMovieSearchResponse(metaTitle, directUrl, TvType.NSFW) {
+                            this.posterUrl = metaImg
+                            this.plot = metaDesc
+                        }
+                    )
+                    // Jika ketemu langsung return, tidak perlu searching lambat
+                    return searchResponse
+                }
+            } catch (e: Exception) {
+                // Jika gagal (kode salah), lanjut ke pencarian biasa
+            }
+        }
+
+        // 2. PENCARIAN BIASA (Fallback)
+        // Jika pencarian bukan kode (misal: "Japanese", "Roe"), gunakan scraping halaman search
+        val searchUrl = "$mainUrl/id/search/$cleanQuery"
+        
+        for (i in 1..2) { // Cukup 2 halaman
+            try {
+                val url = "$searchUrl?page=$i"
+                // Referer harus diset ke halaman search agar server tidak curiga
+                val searchHeaders = headers + mapOf("Referer" to url)
+                
+                val document = app.get(url, headers = searchHeaders).document
                 val results = document.select(".thumbnail, div.grid > div").mapNotNull { it.toSearchResult() }
 
                 if (results.isNotEmpty()) {
