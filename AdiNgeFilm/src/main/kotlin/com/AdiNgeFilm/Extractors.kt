@@ -112,7 +112,7 @@ class Bingezove : Dingtezuni() {
     override var mainUrl = "https://bingezove.com"
 }
 
-// --- STREAMPLAY (FIXED with newExtractorLink Lambda) ---
+// --- STREAMPLAY FINAL FIX ---
 open class Streamplay : ExtractorApi() {
     override val name = "Streamplay"
     override val mainUrl = "https://streamplay.to"
@@ -169,18 +169,23 @@ open class Streamplay : ExtractorApi() {
             
             tryParseJson<List<Source>>(jsonString)?.forEach { res ->
                 val fileUrl = res.file ?: return@forEach
-                
-                // PERBAIKAN DI SINI: Menggunakan Lambda { }
+                val quality = when (res.label) {
+                    "HD" -> Qualities.P720.value
+                    "SD" -> Qualities.P480.value
+                    else -> Qualities.Unknown.value
+                }
+
+                // FIX: Menggunakan Positional Arguments untuk newExtractorLink
+                // Urutan: source, name, url, referer, quality, isM3u8
                 callback.invoke(
-                    newExtractorLink(this.name, this.name, fileUrl) {
-                        this.referer = "$mainServer/"
-                        this.quality = when (res.label) {
-                            "HD" -> Qualities.P720.value
-                            "SD" -> Qualities.P480.value
-                            else -> Qualities.Unknown.value
-                        }
-                        this.isM3u8 = fileUrl.contains("m3u8")
-                    }
+                    newExtractorLink(
+                        this.name,          // source
+                        this.name,          // name
+                        fileUrl,            // url
+                        "$mainServer/",     // referer
+                        quality,            // quality
+                        fileUrl.contains("m3u8") // isM3u8
+                    )
                 )
             }
         }
