@@ -1,194 +1,152 @@
 package com.MissAv
 
+import org.jsoup.nodes.Element
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
-import org.jsoup.nodes.Element
 
 class MissAVProvider : MainAPI() {
     override var mainUrl              = "https://missav.ws"
     override var name                 = "MissAV"
     override val hasMainPage          = true
-    override var lang                 = "id"
+    override var lang                 = "en"
     override val hasDownloadSupport   = true
     override val hasChromecastSupport = true
     override val supportedTypes       = setOf(TvType.NSFW)
     override val vpnStatus            = VPNStatus.MightBeNeeded
-    
-    private val subtitleCatUrl = "https://www.subtitlecat.com"
-
-    // HEADERS GOOGLEBOT (PENTING!)
-    private val headers = mapOf(
-        "User-Agent" to "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
-        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Referer" to "$mainUrl/"
-    )
+    val subtitleCatUrl = "https://www.subtitlecat.com"
 
     override val mainPage = mainPageOf(
-            "/dm514/id/new" to "Terbaru",
-            "/dm588/id/release" to "Rilis Baru",
-            "/dm291/id/today-hot" to "Populer Hari Ini",
-            "/dm169/id/weekly-hot" to "Populer Minggu Ini",
-            "/dm256/id/monthly-hot" to "Populer Bulan Ini",
-            "/dm97/id/fc2" to "FC2 Tanpa Sensor",
-            "/dm34/id/madou" to "Madou AV",
-            "/dm628/id/uncensored-leak" to "Bocoran Tanpa Sensor",
-            "/id/klive" to "Korean Live AV"
+            "/dm514/en/new" to "Recent Update",
+            "/dm588/en/release" to "New Release",
+            "/dm291/en/today-hot" to "Most Viewed Today",
+            "/dm169/en/weekly-hot" to "Most Viewed by Week",
+            "/dm256/en/monthly-hot" to "Most Viewed by Month",
+            "/dm97/en/fc2" to "Uncensored FC2 AV",
+            "/dm34/en/madou" to "Madou AV",
+            "/dm628/id/uncensored-leak" to "Uncensored Leak",
+            "/en/klive" to "Korean Live AV"
         )
-
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-            val url = "$mainUrl${request.data}?page=$page"
-            val document = app.get(url, headers = headers).document
-            val responseList  = document.select(".thumbnail, div.grid > div").mapNotNull { it.toSearchResult() }
-            return newHomePageResponse(HomePageList(request.name, responseList, isHorizontalImages = true), hasNext = true)
+            val document = app.get("$mainUrl${request.data}?page=$page").document
+            val responseList  = document.select(".thumbnail").mapNotNull { it.toSearchResult() }
+            return newHomePageResponse(HomePageList(request.name, responseList, isHorizontalImages = true),hasNext = true)
+
     }
 
-    private fun Element.toSearchResult(): SearchResponse? {
-        val titleElement = this.selectFirst("a.text-secondary, a.text-base, h4 a, div.text-secondary")
-        val img = this.selectFirst("img")
-        
-        var title = titleElement?.text()?.trim() ?: ""
-        val href = titleElement?.attr("href") ?: this.selectFirst("a")?.attr("href")
-
-        if (href.isNullOrBlank()) return null
-        
-        // Anti-Skeleton: Ambil judul dari ALT gambar jika text kosong
-        if (title.isBlank()) {
-            title = img?.attr("alt")?.trim() ?: ""
-        }
-        
-        if (title.isBlank()) return null
-
-        val status = this.selectFirst(".bg-blue-800, .bg-red-800")?.text()?.trim()
-        if (!status.isNullOrEmpty() && !title.contains(status)) {
-            title = "[$status] $title"
-        }
-        
-        val posterUrl = img?.attr("data-src")?.ifBlank { img.attr("src") }
-
+    private fun Element.toSearchResult(): SearchResponse {
+        val status = this.select(".bg-blue-800").text()
+        val title = if(status.isNotBlank()){"[$status] "+ this.select(".text-secondary").text()} else {this.select(".text-secondary").text()}
+        val href = this.select(".text-secondary").attr("href")
+        val posterUrl = this.selectFirst(".w-full")?.attr("data-src")
         return newMovieSearchResponse(title, href, TvType.NSFW) {
             this.posterUrl = posterUrl
         }
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
+
         val searchResponse = mutableListOf<SearchResponse>()
-        val cleanQuery = query.trim()
 
-        // DIRECT ACCESS (BYPASS SEARCH)
-        val codeRegex = Regex("^[a-zA-Z]+-\\d+$") 
-        if (cleanQuery.matches(codeRegex)) {
-            try {
-                val directUrl = "$mainUrl/id/${cleanQuery.lowercase()}"
-                val doc = app.get(directUrl, headers = headers).document
-                
-                val metaTitle = doc.selectFirst("meta[property=og:title]")?.attr("content")
-                val metaImg = doc.selectFirst("meta[property=og:image]")?.attr("content")
-                val metaDesc = doc.selectFirst("meta[property=og:description]")?.attr("content")
-                
-                if (!metaTitle.isNullOrEmpty()) {
-                    searchResponse.add(
-                        newMovieSearchResponse(metaTitle, directUrl, TvType.NSFW) {
-                            this.posterUrl = metaImg
-                            this.plot = metaDesc
-                        }
-                    )
-                    return searchResponse
+        for (i in 1..7) {
+            val document = app.get("$mainUrl/en/search/$query?page=$i").document
+            //val document = app.get("${mainUrl}/page/$i/?s=$query").document
+
+            val results = document.select(".thumbnail").mapNotNull { it.toSearchResult() }
+
+            if(results.isNotEmpty())
+            {
+                for (result in results)
+                {
+                    if(!searchResponse.contains(result))
+                    {
+                        searchResponse.add(result)
+                    }
                 }
-            } catch (e: Exception) { }
-        }
-
-        // GOOGLEBOT SEARCH
-        val searchUrl = "$mainUrl/id/search/$cleanQuery"
-        
-        for (i in 1..2) {
-            try {
-                val url = "$searchUrl?page=$i"
-                val document = app.get(url, headers = headers).document
-                
-                val results = document.select(".thumbnail, div.grid > div").mapNotNull { it.toSearchResult() }
-
-                if (results.isNotEmpty()) {
-                    searchResponse.addAll(results)
-                } else {
-                    break
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
+            }
+            else
+            {
+                break
             }
         }
-        return searchResponse.distinctBy { it.url }
+
+        return searchResponse
+
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val document = app.get(url, headers = headers).document
+        val document = app.get(url).document
 
-        val title = document.selectFirst("meta[property=og:title]")?.attr("content")?.trim() ?: "No Title"
+        val title = document.selectFirst("meta[property=og:title]")?.attr("content")?.trim().toString()
         val poster = fixUrlNull(document.selectFirst("[property='og:image']")?.attr("content"))
-        val descText = document.selectFirst("meta[property=og:description]")?.attr("content")?.trim()
+        val description = document.selectFirst("meta[property=og:description]")?.attr("content")?.trim()
 
-        // PERBAIKAN DI SINI:
-        // Menggunakan .apply { } pada hasil return agar 'this' pasti mengacu pada objek response
-        return newMovieLoadResponse(title, url, TvType.NSFW, url).apply {
+        return newMovieLoadResponse(title, url, TvType.NSFW, url) {
             this.posterUrl = poster
-            this.plot = descText
+            this.plot = description
         }
     }
 
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
-        val response = app.get(data, headers = headers)
-        val doc = response.document
-        
-        try {
-            getAndUnpack(response.text).let { unpackedText ->
-                val m3u8Regex = Regex("""source\s*=\s*['"]([^'"]+\.m3u8[^'"]*)['"]""")
-                val match = m3u8Regex.find(unpackedText)
-                val m3u8Url = match?.groupValues?.get(1)
 
-                if (m3u8Url != null) {
-                    callback.invoke(
-                        newExtractorLink(name, "$name HLS", m3u8Url, ExtractorLinkType.M3U8) {
-                            this.referer = data
-                            this.quality = Qualities.Unknown.value
-                        }
-                    )
+
+            val data = app.get(data)
+            val doc = data.document
+            getAndUnpack(data.text).let { unpackedText ->
+                val linkList = unpackedText.split(";")
+                val finalLink = "source='(.*)'".toRegex().find(linkList.first())?.groups?.get(1)?.value
+                callback.invoke(
+                    newExtractorLink(
+                    source = name,
+                    name = name,
+                    url = finalLink.toString(),
+                    ExtractorLinkType.M3U8
+                ) {
+                    this.referer = ""
+                    this.quality = Qualities.Unknown.value
                 }
+                )
             }
-        } catch (e: Exception) { e.printStackTrace() }
 
         try {
             val title = doc.selectFirst("meta[property=og:title]")?.attr("content")?.trim().toString()
-            val javCode = Regex("([a-zA-Z]+-\\d+)").find(title)?.groupValues?.get(1)
-            
-            if (!javCode.isNullOrEmpty()) {
+            val javCode = "([a-zA-Z]+-\\d+)".toRegex().find(title)?.groups?.get(1)?.value
+            if(!javCode.isNullOrEmpty())
+            {
                 val query = "$subtitleCatUrl/index.php?search=$javCode"
-                val subHeaders = mapOf("User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-                
-                val subDoc = app.get(query, headers = subHeaders, timeout = 20).document 
-                
+                val subDoc = app.get(query, timeout = 15).document
                 val subList = subDoc.select("td a")
-                for (item in subList.take(3)) {
-                    if (item.text().contains(javCode, ignoreCase = true)) {
+                for(item in subList)
+                {
+                    if(item.text().contains(javCode,ignoreCase = true))
+                    {
                         val fullUrl = "$subtitleCatUrl/${item.attr("href")}"
-                        val pDoc = app.get(fullUrl, headers = subHeaders, timeout = 10).document
+                        val pDoc = app.get(fullUrl, timeout = 10).document
                         val sList = pDoc.select(".col-md-6.col-lg-4")
-                        
-                        for (subItem in sList) {
+                        for(item in sList)
+                        {
                             try {
-                                val language = subItem.select(".sub-single span:nth-child(2)").text()
-                                val downloadLinkInfo = subItem.select(".sub-single span:nth-child(3) a").firstOrNull()
-
-                                if (downloadLinkInfo != null && downloadLinkInfo.text() == "Download") {
-                                    val url = "$subtitleCatUrl${downloadLinkInfo.attr("href")}"
-                                    val langName = language.replace(Regex("[^a-zA-Z ]"), "").trim()
-
+                                val language = item.select(".sub-single span:nth-child(2)").text()
+                                val text = item.select(".sub-single span:nth-child(3) a")
+                                
+                                // PERBAIKAN 1: Cek isNotEmpty() bukan null check
+                                if(text.isNotEmpty() && text[0].text() == "Download")
+                                {
+                                    val url = "$subtitleCatUrl${text[0].attr("href")}"
+                                    
+                                    // PERBAIKAN 2: Menggunakan newSubtitleFile() alih-alih constructor SubtitleFile()
                                     subtitleCallback.invoke(
-                                        SubtitleFile(langName, url)
+                                        newSubtitleFile(
+                                            language.replace("\uD83D\uDC4D \uD83D\uDC4E",""),  // Use label for the name
+                                            url     // Use extracted URL
+                                        )
                                     )
                                 }
                             } catch (e: Exception) { }
                         }
+
                     }
                 }
+
             }
         } catch (e: Exception) { }
 
