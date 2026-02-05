@@ -112,10 +112,11 @@ class Bingezove : Dingtezuni() {
     override var mainUrl = "https://bingezove.com"
 }
 
-// --- STREAMPLAY (REFLECTION BYPASS VERSION) ---
+// --- STREAMPLAY TERBARU (DOMAIN stre4mplay.one) ---
 open class Streamplay : ExtractorApi() {
     override val name = "Streamplay"
-    override val mainUrl = "https://streamplay.to"
+    // UPDATE: Menggunakan domain yang kamu temukan aktif
+    override val mainUrl = "https://stre4mplay.one" 
     override val requiresReferer = true
 
     override suspend fun getUrl(
@@ -124,7 +125,17 @@ open class Streamplay : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        val request = app.get(url, referer = referer)
+        // CCTV LOG: Cek link apa yang masuk
+        System.out.println("[Streamplay] Processing URL: $url")
+
+        // Trik: Jika URL masuk masih pakai domain lama (streamplay.to/.cc), 
+        // kita paksa ganti ke domain baru biar gak nyasar ke judol.
+        val fixedUrl = url.replace("streamplay.to", "stre4mplay.one")
+                          .replace("streamplay.cc", "stre4mplay.one")
+                          .replace("streamplay.me", "stre4mplay.one")
+                          .replace("streamplay.live", "stre4mplay.one")
+
+        val request = app.get(fixedUrl, referer = referer)
         val redirectUrl = request.url
         val mainServer = URI(redirectUrl).let {
             "${it.scheme}://${it.host}"
@@ -175,38 +186,31 @@ open class Streamplay : ExtractorApi() {
                     else -> Qualities.Unknown.value
                 }
 
-                // BYPASS START: Kita gunakan newExtractorLink yang LEGAL, lalu paksa isi datanya
+                // --- REFLECTION BYPASS (Agar Build Sukses di Versi Lama) ---
                 val link = newExtractorLink(this.name, this.name, fileUrl)
-                
                 try {
-                    // Paksa set Referer
                     val refField = ExtractorLink::class.java.getDeclaredField("referer")
                     refField.isAccessible = true
                     refField.set(link, "$mainServer/")
 
-                    // Paksa set Quality
                     val qualField = ExtractorLink::class.java.getDeclaredField("quality")
                     qualField.isAccessible = true
                     qualField.setInt(link, quality)
 
-                    // Paksa set Type (M3U8 / Video)
                     if (fileUrl.contains("m3u8")) {
                          val typeField = ExtractorLink::class.java.getDeclaredField("type")
                          typeField.isAccessible = true
                          typeField.set(link, ExtractorLinkType.M3U8)
                     }
 
-                    // Paksa set Headers
                     val headersField = ExtractorLink::class.java.getDeclaredField("headers")
                     headersField.isAccessible = true
                     headersField.set(link, mapOf("User-Agent" to USER_AGENT))
-
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
-
+                
                 callback.invoke(link)
-                // BYPASS END
             }
         }
     }
