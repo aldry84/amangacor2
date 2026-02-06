@@ -10,6 +10,7 @@ import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.fasterxml.jackson.annotation.JsonProperty
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
+import kotlinx.coroutines.delay
 
 class MovieBox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
@@ -18,16 +19,32 @@ class MovieBox : MainAPI() {
     override var lang = "id"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.AsianDrama)
 
-    private val apiUrl = "https://h5-api.aoneroom.com/wefeed-h5api-bff"
+    // Base API URL
+    private val homeApiUrl = "https://h5-api.aoneroom.com" 
+    // Player API URL
     private val playerApiUrl = "https://123movienow.cc/wefeed-h5api-bff"
 
     private var cachedToken: String? = null
 
-    // --- TOKEN ---
+    // --- KATEGORI HALAMAN DEPAN ---
+    override val mainPage = mainPageOf(
+        "872031290915189720" to "Trending 🔥",
+        "5283462032510044280" to "Indonesian Drama 🎭",
+        "6528093688173053896" to "Indonesian Movies 🇮🇩",
+        "5848753831881965888" to "Indo Horror 👻",
+        "997144265920760504" to "Hollywood Movies 🇺🇸",
+        "4380734070238626200" to "K-Drama 🇰🇷",
+        "8624142774394406504" to "C-Drama 🇨🇳",
+        "3058742380078711608" to "Disney ✨",
+        "8449223314756747760" to "Pinoy Drama 🇵🇭",
+        "606779077307122552" to "Pinoy Movie 🇵🇭"
+    )
+
+    // --- AUTOMATIC TOKEN ---
     private suspend fun getToken(): String {
         if (cachedToken != null) return cachedToken!!
         try {
-            val response = app.get(mainUrl, timeout = 30L)
+            val response = app.get(mainUrl, timeout = 60L)
             val token = response.cookies["mb_token"]?.removeSurrounding("\"")
             if (!token.isNullOrEmpty()) {
                 cachedToken = "Bearer $token"
@@ -41,7 +58,7 @@ class MovieBox : MainAPI() {
         val token = getToken()
         val baseHeaders = mutableMapOf(
             "x-request-lang" to "en",
-            "user-agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36"
+            "user-agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Mobile Safari/537.36"
         )
         if (token.isNotEmpty()) baseHeaders["authorization"] = token
         
@@ -55,73 +72,55 @@ class MovieBox : MainAPI() {
         return baseHeaders
     }
 
-    // --- 1. HOME PAGE (DINAMIS DARI JSON /home) ---
+    // --- 1. HOME PAGE ---
     override suspend fun getMainPage(
         page: Int,
-        request: MainPageRequest
+        request: MainPageRequest,
     ): HomePageResponse {
-        // Kita hanya load halaman 1, karena endpoint /home memuat semua section sekaligus
-        if (page > 1) return newHomePageResponse(emptyList(), false)
-
-        val link = "$apiUrl/home?host=moviebox.ph"
-        val homeLists = ArrayList<HomePageList>()
-
-        try {
-            val response = app.get(link, headers = getHeaders()).text
-            val json = parseJson<HomeResponse>(response).data
-
-            json?.operatingList?.forEach { section ->
-                val title = section.title ?: "Untitled"
-                val subjects = ArrayList<SubjectInfo>()
-
-                // 1. Handle BANNER (Slide atas)
-                if (section.type == "BANNER" && section.banner?.items != null) {
-                    section.banner.items.forEach { bannerItem ->
-                        bannerItem.subject?.let { subjects.add(it) }
-                    }
+        val id = request.data
+        val targetUrl = "$homeApiUrl/wefeed-h5api-bff/subject/ranking-list?id=$id&page=$page&perPage=12"
+        
+        return try {
+            if (page == 1) delay(200)
+            val response = app.get(targetUrl, headers = getHeaders(), timeout = 60L).text
+            val json = parseJson<ResponseWrapper>(response).data
+            
+            val filmList = json?.list?.map { film ->
+                newMovieSearchResponse(film.title ?: "No Title", film.detailPath ?: "", TvType.Movie) {
+                    this.posterUrl = film.cover?.url ?: film.coverUrl
+                    this.year = film.year
                 }
-                
-                // 2. Handle SUBJECTS_MOVIE & CUSTOM (List film biasa)
-                if (!section.subjects.isNullOrEmpty()) {
-                    subjects.addAll(section.subjects)
-                }
+            } ?: emptyList()
 
-                // Konversi ke format Cloudstream
-                if (subjects.isNotEmpty()) {
-                    val filmList = subjects.map { film ->
-                        newMovieSearchResponse(film.title ?: "No Title", film.detailPath ?: "", TvType.Movie) {
-                            this.posterUrl = film.cover?.url
-                            // Parsing tahun dari "2026-02-05"
-                            this.year = film.releaseDate?.take(4)?.toIntOrNull()
-                        }
-                    }
-                    homeLists.add(HomePageList(title, filmList))
-                }
-            }
+            newHomePageResponse(request.name, filmList, hasNext = filmList.isNotEmpty())
         } catch (e: Exception) {
-            e.printStackTrace()
+            newHomePageResponse(request.name, emptyList(), hasNext = false)
         }
-
-        return newHomePageResponse(homeLists)
     }
 
-    // --- 2. SEARCH ---
+    // --- 2. SEARCH (SUDAH DIPERBAIKI) ---
     override suspend fun search(query: String): List<SearchResponse> {
-        val url = "$apiUrl/subject/search-suggest"
-        val body = mapOf("keyword" to query, "perPage" to 10)
+        // PERHATIKAN: Endpoint diganti ke 'search', bukan 'search-suggest'
+        val url = "$homeApiUrl/wefeed-h5api-bff/subject/search"
+        val body = mapOf("keyword" to query, "perPage" to 20, "page" to 0)
+        
+        // Kirim sebagai JSON Body yang valid
         val requestBody = body.toJson().toRequestBody("application/json".toMediaTypeOrNull())
 
         return try {
             val response = app.post(
                 url, 
                 headers = getHeaders(),
-                requestBody = requestBody
+                requestBody = requestBody,
+                timeout = 60L
             ).text
             
             val json = parseJson<ResponseWrapper>(response).data
+            
+            // API Search biasanya mengembalikan list film lengkap di 'list'
             json?.list?.map { film ->
                 newMovieSearchResponse(film.title ?: "", film.detailPath ?: "", TvType.Movie) {
-                    this.posterUrl = film.cover?.url
+                    this.posterUrl = film.cover?.url ?: film.coverUrl
                     this.year = film.year
                 }
             } ?: emptyList()
@@ -132,8 +131,8 @@ class MovieBox : MainAPI() {
 
     // --- 3. LOAD DETAIL ---
     override suspend fun load(url: String): LoadResponse {
-        val detailUrl = "$apiUrl/detail?detailPath=$url"
-        val response = app.get(detailUrl, headers = getHeaders()).text
+        val detailUrl = "$homeApiUrl/wefeed-h5api-bff/detail?detailPath=$url"
+        val response = app.get(detailUrl, headers = getHeaders(), timeout = 60L).text
         val json = parseJson<DetailWrapper>(response).data
         
         val subject = json?.subject
@@ -143,6 +142,7 @@ class MovieBox : MainAPI() {
         val year = subject?.releaseDate?.take(4)?.toIntOrNull()
         val subjectId = subject?.subjectId ?: ""
         
+        // 1 = Movie, 2 = Series
         val isMovie = subject?.subjectType == 1
         
         val recommendations = json?.dubs?.map { 
@@ -150,6 +150,7 @@ class MovieBox : MainAPI() {
         }
 
         if (isMovie) {
+            // Movie pakai 0|0
             val episodeData = "$subjectId|0|0|$url"
             return newMovieLoadResponse(title, url, TvType.Movie, episodeData) {
                 this.posterUrl = poster
@@ -158,6 +159,7 @@ class MovieBox : MainAPI() {
                 this.recommendations = recommendations
             }
         } else {
+            // Series loop episodes
             val episodes = ArrayList<Episode>()
             val seasons = json?.resource?.seasons
 
@@ -202,8 +204,9 @@ class MovieBox : MainAPI() {
         val ep = args[2]
         val detailPath = args[3]
 
+        // Link Video
         val playUrl = "$playerApiUrl/subject/play?subjectId=$subjectId&se=$se&ep=$ep&detailPath=$detailPath"
-        val playResponse = app.get(playUrl, headers = getHeaders(forPlayer = true)).text
+        val playResponse = app.get(playUrl, headers = getHeaders(forPlayer = true), timeout = 60L).text
         val playJson = parseJson<PlayWrapper>(playResponse)
 
         playJson.data?.streams?.forEach { stream ->
@@ -211,13 +214,14 @@ class MovieBox : MainAPI() {
                 val qualityStr = stream.resolutions ?: "Unknown"
                 val qualityInt = qualityStr.toIntOrNull() ?: Qualities.Unknown.value
                 val format = stream.format ?: "MP4"
+                val isM3u8 = videoUrl.contains(".m3u8")
                 
                 callback.invoke(
                     newExtractorLink(
                         source = this.name,
                         name = "MovieBox $format $qualityStr",
                         url = videoUrl,
-                        type = if (videoUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                        type = if (isM3u8) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
                     ) {
                         this.referer = "https://123movienow.cc/"
                         this.quality = qualityInt
@@ -226,9 +230,10 @@ class MovieBox : MainAPI() {
             }
         }
 
-        val subUrl = "$apiUrl/subject/caption?subjectId=$subjectId&id=0&detailPath=$detailPath"
+        // Subtitle
+        val subUrl = "$homeApiUrl/wefeed-h5api-bff/subject/caption?subjectId=$subjectId&id=0&detailPath=$detailPath"
         try {
-            val subResponse = app.get(subUrl, headers = getHeaders()).text
+            val subResponse = app.get(subUrl, headers = getHeaders(), timeout = 30L).text
             val subJson = parseJson<CaptionWrapper>(subResponse)
             
             subJson.data?.list?.forEach { sub ->
@@ -247,24 +252,22 @@ class MovieBox : MainAPI() {
     }
 
     // --- JSON MODELS ---
-    // Struktur JSON Utama untuk Home Page
-    data class HomeResponse(@JsonProperty("data") val data: HomeData?)
-    data class HomeData(@JsonProperty("operatingList") val operatingList: List<OperatingItem>?)
-    
-    data class OperatingItem(
-        @JsonProperty("type") val type: String?, // BANNER, SUBJECTS_MOVIE, CUSTOM
-        @JsonProperty("title") val title: String?,
-        @JsonProperty("subjects") val subjects: List<SubjectInfo>?,
-        @JsonProperty("banner") val banner: BannerData?
-    )
-    data class BannerData(@JsonProperty("items") val items: List<BannerItem>?)
-    data class BannerItem(
-        @JsonProperty("subject") val subject: SubjectInfo?
-    )
 
-    // Struktur untuk Search & Detail (Re-used)
     data class ResponseWrapper(@JsonProperty("data") val data: ListContainer?)
-    data class ListContainer(@JsonProperty("list") val list: List<SubjectInfo>?)
+    data class ListContainer(
+        @JsonProperty("list") val list: List<SimpleSubject>?,
+        // Tambahkan items jaga-jaga kalau format search beda
+        @JsonProperty("items") val items: List<SimpleSubject>? 
+    )
+    
+    data class SimpleSubject(
+        @JsonProperty("title") val title: String?,
+        @JsonProperty("cover") val coverObj: CoverInfo?, 
+        @JsonProperty("coverUrl") val coverUrl: String?, 
+        @JsonProperty("year") val year: Int?,
+        @JsonProperty("detailPath") val detailPath: String?
+    )
+    val SimpleSubject.cover: CoverInfo? get() = coverObj
 
     data class DetailWrapper(@JsonProperty("data") val data: DetailData?)
     data class DetailData(
@@ -272,19 +275,15 @@ class MovieBox : MainAPI() {
         @JsonProperty("resource") val resource: ResourceInfo?,
         @JsonProperty("dubs") val dubs: List<DubInfo>?
     )
-    
     data class SubjectInfo(
         @JsonProperty("subjectId") val subjectId: String?,
         @JsonProperty("subjectType") val subjectType: Int?,
         @JsonProperty("title") val title: String?,
         @JsonProperty("description") val description: String?,
         @JsonProperty("releaseDate") val releaseDate: String?,
-        @JsonProperty("cover") val cover: CoverInfo?,
-        @JsonProperty("detailPath") val detailPath: String?,
-        @JsonProperty("year") val year: Int? = null // Helper field, diisi manual di logic jika perlu
+        @JsonProperty("cover") val cover: CoverInfo?
     )
     data class CoverInfo(@JsonProperty("url") val url: String?)
-    
     data class ResourceInfo(@JsonProperty("seasons") val seasons: List<SeasonInfo>?)
     data class SeasonInfo(@JsonProperty("se") val se: Int?, @JsonProperty("maxEp") val maxEp: Int?)
     data class DubInfo(@JsonProperty("lanName") val lanName: String?, @JsonProperty("detailPath") val detailPath: String?)
