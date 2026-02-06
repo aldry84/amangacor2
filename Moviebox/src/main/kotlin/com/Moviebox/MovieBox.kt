@@ -2,25 +2,23 @@ package com.Moviebox
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.utils.AppUtils.parseJson
-import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
-import com.lagradost.cloudstream3.utils.newExtractorLink // Wajib pakai ini agar tidak kena error Prerelease
+import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.LoadResponse.Companion.addScore
 import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
-import com.lagradost.cloudstream3.app 
+import com.lagradost.cloudstream3.mapper // Import mapper global
 import java.net.URLDecoder
 
 class MovieBox : MainAPI() {
-    // FIX 1: Ubah 'val' menjadi 'var' agar sesuai dengan MainAPI.kt
+    // FIX: Gunakan 'var' sesuai definisi di MainAPI.kt
     override var name = "MovieBox"
     override var mainUrl = "https://123movienow.cc"
-    
     private val apiUrl = "https://h5-api.aoneroom.com/wefeed-h5api-bff"
     override var lang = "en"
+    
     override val hasMainPage = true
     override val hasChromecastSupport = true
     override val hasDownloadSupport = true
@@ -95,6 +93,7 @@ class MovieBox : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse? {
         val headers = standardHeaders + getAuthHeader()
+        
         val pathSegments = url.split("/")
         val numericId = pathSegments.getOrNull(pathSegments.size - 2)
         val rawSlug = pathSegments.lastOrNull()
@@ -193,24 +192,33 @@ class MovieBox : MainAPI() {
                 val quality = stream.resolutions?.toIntOrNull() ?: Qualities.Unknown.value
                 val type = if (stream.format?.contains("HLS", true) == true) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
 
-                // FIX 2: Menggunakan newExtractorLink (Helper) alih-alih Constructor langsung
-                // Ini menghindari error Prerelease AudioFile
+                // FIX: Menggunakan pola Builder untuk newExtractorLink
+                // Parameter 'referer' dan 'quality' dipindahkan ke dalam lambda initializer
                 callback.invoke(
                     newExtractorLink(
                         source = this.name,
                         name = this.name,
                         url = stream.url,
-                        referer = "$mainUrl/",
-                        quality = quality,
                         type = type
-                    )
+                    ) {
+                        this.referer = "$mainUrl/"
+                        this.quality = quality
+                    }
                 )
             }
         }
         return true
     }
 
-    private fun Any.toJson(): String = com.lagradost.cloudstream3.utils.AppUtils.toJson(this)
+    // FIX: Menggunakan mapper global dari com.lagradost.cloudstream3.mapper
+    private fun Any.toJson(): String {
+        return mapper.writeValueAsString(this)
+    }
+    
+    // Helper untuk parse JSON lokal
+    private inline fun <reified T> parseJson(json: String): T {
+        return mapper.readValue(json, T::class.java)
+    }
 
     // --- DATA CLASSES ---
 
