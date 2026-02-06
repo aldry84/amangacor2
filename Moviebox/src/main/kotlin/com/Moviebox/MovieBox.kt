@@ -4,21 +4,24 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.utils.newExtractorLink
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.fasterxml.jackson.annotation.JsonProperty
 
-class MovieBoxPh : MainAPI() {
+class MovieBox : MainAPI() { // Nama class diubah jadi MovieBox sesuai error
     override var mainUrl = "https://moviebox.ph"
     override var name = "MovieBox"
     override val hasMainPage = true
     override var lang = "id"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.AsianDrama)
 
-    // API Metadata (Untuk Info Film & Subtitle)
+    // API Metadata
     private val apiUrl = "https://h5-api.aoneroom.com/wefeed-h5api-bff"
-    // API Player (Untuk Link Video)
+    // API Player
     private val playerApiUrl = "https://123movienow.cc/wefeed-h5api-bff"
 
-    // --- KATEGORI HALAMAN DEPAN (Gaya 'to') ---
+    // --- KATEGORI HALAMAN DEPAN ---
     private val homePageCategories = listOf(
         "872031290915189720"  to "Trending 🔥",
         "6528093688173053896" to "Indonesia Movie 🇮🇩",
@@ -29,13 +32,13 @@ class MovieBoxPh : MainAPI() {
 
     private var cachedToken: String? = null
 
-    // --- SISTEM AUTO-TOKEN ---
+    // --- AUTOMATIC TOKEN ---
     private suspend fun getToken(): String {
         if (cachedToken != null) return cachedToken!!
         try {
-            // Ambil cookie 'mb_token' dari halaman utama
             val response = app.get(mainUrl)
-            val token = response.cookies["mb_token"]?.removesurrounding("\"")
+            // FIX: Typo removesurrounding -> removeSurrounding
+            val token = response.cookies["mb_token"]?.removeSurrounding("\"")
             if (!token.isNullOrEmpty()) {
                 cachedToken = "Bearer $token"
                 return cachedToken!!
@@ -64,8 +67,8 @@ class MovieBoxPh : MainAPI() {
 
     // --- 1. HOME PAGE ---
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        // Load semua kategori secara paralel (Concurrent) menggunakan apmap
-        val homeItems = homePageCategories.apmap { (id, name) ->
+        // FIX: apmap -> amap (Async Map)
+        val homeItems = homePageCategories.amap { (id, name) ->
             val link = "$apiUrl/subject/ranking-list?id=$id&page=0&perPage=20"
             try {
                 val response = app.get(link, headers = getHeaders()).text
@@ -88,19 +91,22 @@ class MovieBoxPh : MainAPI() {
             }
         }.filterNotNull()
 
-        return HomePageResponse(homeItems)
+        // FIX: Constructor HomePageResponse deprecated -> newHomePageResponse
+        return newHomePageResponse(homeItems)
     }
 
-    // --- 2. SEARCH (POST JSON) ---
+    // --- 2. SEARCH ---
     override suspend fun search(query: String): List<SearchResponse> {
         val url = "$apiUrl/subject/search-suggest"
         val body = mapOf("keyword" to query, "perPage" to 10)
         
         return try {
+            // FIX: 'data' expect Map<String, String>, but we want to send JSON body.
+            // Use 'json' parameter instead of 'data' for JSON payload
             val response = app.post(
                 url, 
-                headers = getHeaders().plus("content-type" to "application/json"),
-                data = toJson(body)
+                headers = getHeaders(),
+                json = body // Mengirim body otomatis sebagai JSON
             ).text
             
             val json = parseJson<ResponseWrapper>(response).data
@@ -127,7 +133,6 @@ class MovieBoxPh : MainAPI() {
         val year = subject?.releaseDate?.take(4)?.toIntOrNull()
         val subjectId = subject?.subjectId ?: ""
         
-        // Cek Tipe: 1 = Movie, 2 = Series
         val isMovie = subject?.subjectType == 1
         
         val recommendations = json?.dubs?.map { 
@@ -135,7 +140,6 @@ class MovieBoxPh : MainAPI() {
         }
 
         if (isMovie) {
-            // Logic Movie: Kirim se=0 & ep=0
             val episodeData = "$subjectId|0|0|$url"
             return newMovieLoadResponse(title, url, TvType.Movie, episodeData) {
                 this.posterUrl = poster
@@ -144,7 +148,6 @@ class MovieBoxPh : MainAPI() {
                 this.recommendations = recommendations
             }
         } else {
-            // Logic Series: Loop Season & Episode
             val episodes = ArrayList<Episode>()
             val seasons = json?.resource?.seasons
 
@@ -174,7 +177,7 @@ class MovieBoxPh : MainAPI() {
         }
     }
 
-    // --- 4. LOAD LINKS & SUBTITLES ---
+    // --- 4. LOAD LINKS ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -189,7 +192,7 @@ class MovieBoxPh : MainAPI() {
         val ep = args[2]
         val detailPath = args[3]
 
-        // 1. Get Video (Dari 123movienow.cc)
+        // 1. Get Video
         val playUrl = "$playerApiUrl/subject/play?subjectId=$subjectId&se=$se&ep=$ep&detailPath=$detailPath"
         val playResponse = app.get(playUrl, headers = getHeaders(forPlayer = true)).text
         val playJson = parseJson<PlayWrapper>(playResponse)
@@ -197,23 +200,26 @@ class MovieBoxPh : MainAPI() {
         playJson.data?.streams?.forEach { stream ->
             stream.url?.let { videoUrl ->
                 val qualityStr = stream.resolutions ?: "Unknown"
+                // FIX: Unresolved reference 'Qualities' -> Ditangani dengan Import
                 val qualityInt = qualityStr.toIntOrNull() ?: Qualities.Unknown.value
                 val format = stream.format ?: "MP4"
                 
+                val isM3u8 = videoUrl.contains(".m3u8")
+                // FIX: Constructor ExtractorLink deprecated -> newExtractorLink
                 callback.invoke(
-                    ExtractorLink(
+                    newExtractorLink(
                         source = this.name,
-                        name = "MovieBox $format $qualityStr", // Tampil: "MovieBox MP4 720"
+                        name = "MovieBox $format $qualityStr",
                         url = videoUrl,
                         referer = "https://123movienow.cc/",
                         quality = qualityInt,
-                        isM3u8 = videoUrl.contains(".m3u8")
+                        type = if (isM3u8) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
                     )
                 )
             }
         }
 
-        // 2. Get Subtitles (Dari aoneroom.com)
+        // 2. Get Subtitles
         val subUrl = "$apiUrl/subject/caption?subjectId=$subjectId&id=0&detailPath=$detailPath"
         try {
             val subResponse = app.get(subUrl, headers = getHeaders()).text
@@ -234,7 +240,7 @@ class MovieBoxPh : MainAPI() {
         return true
     }
 
-    // --- JSON DATA MODELS ---
+    // --- JSON MODELS ---
 
     data class ResponseWrapper(@JsonProperty("data") val data: ListContainer?)
     data class ListContainer(@JsonProperty("list") val list: List<SimpleSubject>?)
@@ -242,7 +248,7 @@ class MovieBoxPh : MainAPI() {
     data class SimpleSubject(
         @JsonProperty("title") val title: String?,
         @JsonProperty("cover") val cover: CoverInfo?, 
-        @JsonProperty("coverUrl") val coverUrl: String?,
+        @JsonProperty("coverUrl") val coverUrl: String?, 
         @JsonProperty("year") val year: Int?,
         @JsonProperty("detailPath") val detailPath: String?
     )
