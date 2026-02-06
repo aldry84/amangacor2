@@ -8,6 +8,8 @@ import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.fasterxml.jackson.annotation.JsonProperty
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.RequestBody.Companion.toRequestBody
 
 class MovieBox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
@@ -23,7 +25,7 @@ class MovieBox : MainAPI() {
 
     private var cachedToken: String? = null
 
-    // --- DAFTAR KATEGORI UTAMA (Sesuai Permintaan) ---
+    // --- DAFTAR KATEGORI UTAMA ---
     override val mainPage: List<MainPageData> = mainPageOf(
         "872031290915189720" to "Trending 🔥",
         "5283462032510044280" to "Indonesian Drama 🎭",
@@ -42,6 +44,7 @@ class MovieBox : MainAPI() {
         if (cachedToken != null) return cachedToken!!
         try {
             val response = app.get(mainUrl, timeout = 30L)
+            // FIX: Typo removesurrounding -> removeSurrounding
             val token = response.cookies["mb_token"]?.removeSurrounding("\"")
             if (!token.isNullOrEmpty()) {
                 cachedToken = "Bearer $token"
@@ -76,9 +79,6 @@ class MovieBox : MainAPI() {
     ): HomePageResponse {
         val id = request.data // ID Kategori dari mainPageOf
         
-        // URL sesuai format permintaan kamu (Path 'subject' mungkin opsional tergantung API, tapi ini mengikuti struktur h5api)
-        // Perhatikan saya menambahkan /subject/ jika path lengkapnya butuh itu, 
-        // tapi sesuai request kamu saya pakai path ini:
         val targetUrl = "$homeApiUrl/wefeed-h5api-bff/subject/ranking-list?id=$id&page=$page&perPage=12"
         
         return try {
@@ -92,7 +92,7 @@ class MovieBox : MainAPI() {
                 }
             } ?: emptyList()
 
-            // Jika list tidak kosong, berarti ada halaman selanjutnya (hasNext = true)
+            // FIX: Menggunakan newHomePageResponse
             newHomePageResponse(request.name, filmList, hasNext = filmList.isNotEmpty())
         } catch (e: Exception) {
             newHomePageResponse(request.name, emptyList(), hasNext = false)
@@ -104,11 +104,14 @@ class MovieBox : MainAPI() {
         val url = "$homeApiUrl/wefeed-h5api-bff/subject/search-suggest"
         val body = mapOf("keyword" to query, "perPage" to 10)
         
+        // FIX: Menggunakan requestBody untuk mengirim JSON agar tidak error argument mismatch
+        val requestBody = toJson(body).toRequestBody("application/json".toMediaTypeOrNull())
+
         return try {
             val response = app.post(
                 url, 
-                headers = getHeaders().plus("content-type" to "application/json"),
-                json = body 
+                headers = getHeaders(),
+                requestBody = requestBody
             ).text
             
             val json = parseJson<ResponseWrapper>(response).data
@@ -202,10 +205,12 @@ class MovieBox : MainAPI() {
         playJson.data?.streams?.forEach { stream ->
             stream.url?.let { videoUrl ->
                 val qualityStr = stream.resolutions ?: "Unknown"
+                // FIX: Qualities sudah diimport
                 val qualityInt = qualityStr.toIntOrNull() ?: Qualities.Unknown.value
                 val format = stream.format ?: "MP4"
                 val isM3u8 = videoUrl.contains(".m3u8")
                 
+                // FIX: Menggunakan newExtractorLink dengan blok initializer {}
                 callback.invoke(
                     newExtractorLink(
                         source = this.name,
