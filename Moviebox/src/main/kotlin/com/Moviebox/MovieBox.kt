@@ -1,4 +1,4 @@
-package com.moviebox
+package com.Moviebox
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
@@ -9,7 +9,7 @@ import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.fasterxml.jackson.annotation.JsonProperty
 
-class MovieBox : MainAPI() { // Nama class diubah jadi MovieBox sesuai error
+class MovieBox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
     override var name = "MovieBox"
     override val hasMainPage = true
@@ -37,7 +37,7 @@ class MovieBox : MainAPI() { // Nama class diubah jadi MovieBox sesuai error
         if (cachedToken != null) return cachedToken!!
         try {
             val response = app.get(mainUrl)
-            // FIX: Typo removesurrounding -> removeSurrounding
+            // Mengambil token dari cookie
             val token = response.cookies["mb_token"]?.removeSurrounding("\"")
             if (!token.isNullOrEmpty()) {
                 cachedToken = "Bearer $token"
@@ -67,7 +67,6 @@ class MovieBox : MainAPI() { // Nama class diubah jadi MovieBox sesuai error
 
     // --- 1. HOME PAGE ---
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        // FIX: apmap -> amap (Async Map)
         val homeItems = homePageCategories.amap { (id, name) ->
             val link = "$apiUrl/subject/ranking-list?id=$id&page=0&perPage=20"
             try {
@@ -91,7 +90,6 @@ class MovieBox : MainAPI() { // Nama class diubah jadi MovieBox sesuai error
             }
         }.filterNotNull()
 
-        // FIX: Constructor HomePageResponse deprecated -> newHomePageResponse
         return newHomePageResponse(homeItems)
     }
 
@@ -101,12 +99,10 @@ class MovieBox : MainAPI() { // Nama class diubah jadi MovieBox sesuai error
         val body = mapOf("keyword" to query, "perPage" to 10)
         
         return try {
-            // FIX: 'data' expect Map<String, String>, but we want to send JSON body.
-            // Use 'json' parameter instead of 'data' for JSON payload
             val response = app.post(
                 url, 
-                headers = getHeaders(),
-                json = body // Mengirim body otomatis sebagai JSON
+                headers = getHeaders().plus("content-type" to "application/json"),
+                json = body 
             ).text
             
             val json = parseJson<ResponseWrapper>(response).data
@@ -177,7 +173,7 @@ class MovieBox : MainAPI() { // Nama class diubah jadi MovieBox sesuai error
         }
     }
 
-    // --- 4. LOAD LINKS ---
+    // --- 4. LOAD LINKS (FIXED) ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -200,21 +196,21 @@ class MovieBox : MainAPI() { // Nama class diubah jadi MovieBox sesuai error
         playJson.data?.streams?.forEach { stream ->
             stream.url?.let { videoUrl ->
                 val qualityStr = stream.resolutions ?: "Unknown"
-                // FIX: Unresolved reference 'Qualities' -> Ditangani dengan Import
                 val qualityInt = qualityStr.toIntOrNull() ?: Qualities.Unknown.value
                 val format = stream.format ?: "MP4"
-                
                 val isM3u8 = videoUrl.contains(".m3u8")
-                // FIX: Constructor ExtractorLink deprecated -> newExtractorLink
+                
+                // PERBAIKAN: Menggunakan initializer block { ... } untuk properti referer dan quality
                 callback.invoke(
                     newExtractorLink(
                         source = this.name,
                         name = "MovieBox $format $qualityStr",
                         url = videoUrl,
-                        referer = "https://123movienow.cc/",
-                        quality = qualityInt,
                         type = if (isM3u8) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
-                    )
+                    ) {
+                        this.referer = "https://123movienow.cc/"
+                        this.quality = qualityInt
+                    }
                 )
             }
         }
@@ -247,11 +243,13 @@ class MovieBox : MainAPI() { // Nama class diubah jadi MovieBox sesuai error
     
     data class SimpleSubject(
         @JsonProperty("title") val title: String?,
-        @JsonProperty("cover") val cover: CoverInfo?, 
+        @JsonProperty("cover") val coverObj: CoverInfo?, 
         @JsonProperty("coverUrl") val coverUrl: String?, 
         @JsonProperty("year") val year: Int?,
         @JsonProperty("detailPath") val detailPath: String?
     )
+    // Helper property untuk cover
+    val SimpleSubject.cover: CoverInfo? get() = coverObj
 
     data class DetailWrapper(@JsonProperty("data") val data: DetailData?)
     data class DetailData(
