@@ -16,28 +16,32 @@ class MovieBox : MainAPI() {
     override var lang = "id"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.AsianDrama)
 
-    // API Metadata
-    private val apiUrl = "https://h5-api.aoneroom.com/wefeed-h5api-bff"
-    // API Player
+    // Base API URL
+    private val homeApiUrl = "https://h5-api.aoneroom.com" 
+    // Player API URL
     private val playerApiUrl = "https://123movienow.cc/wefeed-h5api-bff"
 
-    // --- KATEGORI HALAMAN DEPAN ---
-    private val homePageCategories = listOf(
-        "872031290915189720"  to "Trending 🔥",
-        "6528093688173053896" to "Indonesia Movie 🇮🇩",
-        "5283462032510044280" to "Drama Indonesia 🎭",
-        "4380734070238626200" to "Drakor (Korean Drama) 🇰🇷",
-        "5848753831881965888" to "Horror Indonesia 👻"
-    )
-
     private var cachedToken: String? = null
+
+    // --- DAFTAR KATEGORI UTAMA (Sesuai Permintaan) ---
+    override val mainPage: List<MainPageData> = mainPageOf(
+        "872031290915189720" to "Trending 🔥",
+        "5283462032510044280" to "Indonesian Drama 🎭",
+        "6528093688173053896" to "Indonesian Movies 🇮🇩",
+        "5848753831881965888" to "Indo Horror 👻",
+        "997144265920760504" to "Hollywood Movies 🇺🇸",
+        "4380734070238626200" to "K-Drama 🇰🇷",
+        "8624142774394406504" to "C-Drama 🇨🇳",
+        "3058742380078711608" to "Disney ✨",
+        "8449223314756747760" to "Pinoy Drama 🇵🇭",
+        "606779077307122552" to "Pinoy Movie 🇵🇭"
+    )
 
     // --- AUTOMATIC TOKEN ---
     private suspend fun getToken(): String {
         if (cachedToken != null) return cachedToken!!
         try {
-            val response = app.get(mainUrl)
-            // Mengambil token dari cookie
+            val response = app.get(mainUrl, timeout = 30L)
             val token = response.cookies["mb_token"]?.removeSurrounding("\"")
             if (!token.isNullOrEmpty()) {
                 cachedToken = "Bearer $token"
@@ -65,37 +69,39 @@ class MovieBox : MainAPI() {
         return baseHeaders
     }
 
-    // --- 1. HOME PAGE ---
-    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val homeItems = homePageCategories.amap { (id, name) ->
-            val link = "$apiUrl/subject/ranking-list?id=$id&page=0&perPage=20"
-            try {
-                val response = app.get(link, headers = getHeaders()).text
-                val json = parseJson<ResponseWrapper>(response).data
-                
-                val filmList = json?.list?.map { film ->
-                    newMovieSearchResponse(film.title ?: "No Title", film.detailPath ?: "", TvType.Movie) {
-                        this.posterUrl = film.cover?.url ?: film.coverUrl
-                        this.year = film.year
-                    }
-                } ?: emptyList()
-
-                if (filmList.isNotEmpty()) {
-                    HomePageList(name, filmList)
-                } else {
-                    null
+    // --- 1. GET MAIN PAGE (Paginasi) ---
+    override suspend fun getMainPage(
+        page: Int,
+        request: MainPageRequest,
+    ): HomePageResponse {
+        val id = request.data // ID Kategori dari mainPageOf
+        
+        // URL sesuai format permintaan kamu (Path 'subject' mungkin opsional tergantung API, tapi ini mengikuti struktur h5api)
+        // Perhatikan saya menambahkan /subject/ jika path lengkapnya butuh itu, 
+        // tapi sesuai request kamu saya pakai path ini:
+        val targetUrl = "$homeApiUrl/wefeed-h5api-bff/subject/ranking-list?id=$id&page=$page&perPage=12"
+        
+        return try {
+            val response = app.get(targetUrl, headers = getHeaders()).text
+            val json = parseJson<ResponseWrapper>(response).data
+            
+            val filmList = json?.list?.map { film ->
+                newMovieSearchResponse(film.title ?: "No Title", film.detailPath ?: "", TvType.Movie) {
+                    this.posterUrl = film.cover?.url ?: film.coverUrl
+                    this.year = film.year
                 }
-            } catch (e: Exception) {
-                null
-            }
-        }.filterNotNull()
+            } ?: emptyList()
 
-        return newHomePageResponse(homeItems)
+            // Jika list tidak kosong, berarti ada halaman selanjutnya (hasNext = true)
+            newHomePageResponse(request.name, filmList, hasNext = filmList.isNotEmpty())
+        } catch (e: Exception) {
+            newHomePageResponse(request.name, emptyList(), hasNext = false)
+        }
     }
 
     // --- 2. SEARCH ---
     override suspend fun search(query: String): List<SearchResponse> {
-        val url = "$apiUrl/subject/search-suggest"
+        val url = "$homeApiUrl/wefeed-h5api-bff/subject/search-suggest"
         val body = mapOf("keyword" to query, "perPage" to 10)
         
         return try {
@@ -118,7 +124,7 @@ class MovieBox : MainAPI() {
 
     // --- 3. LOAD DETAIL ---
     override suspend fun load(url: String): LoadResponse {
-        val detailUrl = "$apiUrl/detail?detailPath=$url"
+        val detailUrl = "$homeApiUrl/wefeed-h5api-bff/detail?detailPath=$url"
         val response = app.get(detailUrl, headers = getHeaders()).text
         val json = parseJson<DetailWrapper>(response).data
         
@@ -173,7 +179,7 @@ class MovieBox : MainAPI() {
         }
     }
 
-    // --- 4. LOAD LINKS (FIXED) ---
+    // --- 4. LOAD LINKS ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -200,7 +206,6 @@ class MovieBox : MainAPI() {
                 val format = stream.format ?: "MP4"
                 val isM3u8 = videoUrl.contains(".m3u8")
                 
-                // PERBAIKAN: Menggunakan initializer block { ... } untuk properti referer dan quality
                 callback.invoke(
                     newExtractorLink(
                         source = this.name,
@@ -216,7 +221,7 @@ class MovieBox : MainAPI() {
         }
 
         // 2. Get Subtitles
-        val subUrl = "$apiUrl/subject/caption?subjectId=$subjectId&id=0&detailPath=$detailPath"
+        val subUrl = "$homeApiUrl/wefeed-h5api-bff/subject/caption?subjectId=$subjectId&id=0&detailPath=$detailPath"
         try {
             val subResponse = app.get(subUrl, headers = getHeaders()).text
             val subJson = parseJson<CaptionWrapper>(subResponse)
@@ -248,7 +253,6 @@ class MovieBox : MainAPI() {
         @JsonProperty("year") val year: Int?,
         @JsonProperty("detailPath") val detailPath: String?
     )
-    // Helper property untuk cover
     val SimpleSubject.cover: CoverInfo? get() = coverObj
 
     data class DetailWrapper(@JsonProperty("data") val data: DetailData?)
