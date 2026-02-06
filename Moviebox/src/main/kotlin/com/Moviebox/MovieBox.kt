@@ -25,9 +25,18 @@ class MovieBox : MainAPI() {
     override val hasDownloadSupport = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
-    // FIX 1: Wajib definisikan mainPage agar CloudStream meload halaman
-    override val mainPage = mainPageOf(
-        "$apiUrl/home?host=moviebox.ph" to "Home"
+    // --- DEFINISI KATEGORI UTAMA (Tanpa Home) ---
+    override val mainPage: List<MainPageData> = mainPageOf(
+        "5283462032510044280" to "Indonesian Drama",
+        "6528093688173053896" to "Indonesian Movies",
+        "5848753831881965888" to "Indo Horror",
+        "997144265920760504" to "Hollywood Movies",
+        "4380734070238626200" to "K-Drama",
+        "8624142774394406504" to "C-Drama",
+        "3058742380078711608" to "Disney",
+        "8449223314756747760" to "Pinoy Drama",
+        "606779077307122552" to "Pinoy Movie",
+        "872031290915189720" to "Bad Ending Romance"
     )
 
     private val standardHeaders = mapOf(
@@ -36,16 +45,6 @@ class MovieBox : MainAPI() {
         "x-client-info" to "{\"timezone\":\"Asia/Jakarta\"}",
         "x-request-lang" to "en",
         "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36"
-    )
-
-    private val customCategories = listOf(
-        Pair("Movie Trending", "8821254238245470240"),
-        Pair("Indonesian Movies", "6528093688173053896"),
-        Pair("Indonesian Drama", "5283462032510044280"),
-        Pair("Horror Indo", "5848753831881965888"),
-        Pair("Komedi Horror", "3528002473103362040"),
-        Pair("Drakor", "4380734070238626200"),
-        Pair("Drama Ahok", "8624142774394406504")
     )
 
     private var authToken: String? = null
@@ -65,44 +64,32 @@ class MovieBox : MainAPI() {
         return if (authToken != null) mapOf("Authorization" to "Bearer $authToken") else mapOf()
     }
 
-    // --- 1. HOME PAGE ---
+    // --- 1. HOME PAGE LOGIC (Per Kategori) ---
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
         val headers = standardHeaders + getAuthHeader()
         val homeItems = ArrayList<HomePageList>()
 
-        // 1. Default Home
+        // request.data berisi ID kategori (misal: "5283462032510044280")
+        // page di CS3 mulai dari 1, API butuh mulai dari 0
+        val apiPage = if (page > 0) page - 1 else 0
+        val perPage = 20
+        
+        // Panggil API Ranking List berdasarkan ID di request.data
+        val rankingUrl = "$apiUrl/subject/ranking-list?id=${request.data}&page=$apiPage&perPage=$perPage"
+        
         try {
-            // Menggunakan request.data (yang isinya URL dari mainPage variabel di atas)
-            val response = app.get(request.data, headers = headers).parsedSafe<HomeResponse>()
-            response?.data?.sections?.forEach { section ->
-                if (!section.items.isNullOrEmpty() && section.title != null) {
-                    val list = section.items.map { item ->
-                        item.toSearchResponse()
-                    }
-                    homeItems.add(HomePageList(section.title, list))
-                }
+            val response = app.get(rankingUrl, headers = headers).parsedSafe<SearchApiResponse>()
+            
+            val list = response?.data?.list?.map { item ->
+                item.toSearchResponse()
+            } ?: emptyList()
+
+            if (list.isNotEmpty()) {
+                // Masukkan list ke dalam HomePageList dengan nama dari request.name (misal: "Indonesian Drama")
+                homeItems.add(HomePageList(request.name, list))
             }
         } catch (e: Exception) {
             e.printStackTrace()
-        }
-
-        // 2. Custom Categories
-        customCategories.forEach { (catName, catId) ->
-            try {
-                val rankingUrl = "$apiUrl/subject/ranking-list?id=$catId&page=0&perPage=20"
-                val response = app.get(rankingUrl, headers = headers).parsedSafe<SearchApiResponse>()
-                
-                // Gunakan elvis operator ?: emptyList() agar aman
-                val list = response?.data?.list?.map { item ->
-                    item.toSearchResponse()
-                } ?: emptyList()
-
-                if (list.isNotEmpty()) {
-                    homeItems.add(HomePageList(catName, list))
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
         }
 
         return newHomePageResponse(homeItems)
@@ -242,7 +229,6 @@ class MovieBox : MainAPI() {
 
     // --- HELPER FUNCTIONS ---
 
-    // FIX 2: Helper ini sekarang menangani CoverObj dengan benar
     private fun MovieItem.toSearchResponse(): SearchResponse {
         val slug = this.title?.replace("[^a-zA-Z0-9-]".toRegex(), "-") ?: "video"
         return newMovieSearchResponse(
@@ -250,7 +236,6 @@ class MovieBox : MainAPI() {
             url = "$mainUrl/movie/${this.id}/$slug",
             type = if (this.category == 2 || this.domain == 2) TvType.TvSeries else TvType.Movie,
         ) {
-            // PENTING: Ambil URL dari object CoverObj, bukan string langsung
             this.posterUrl = this@toSearchResponse.cover?.url 
             this.year = this@toSearchResponse.year
         }
@@ -273,12 +258,10 @@ class MovieBox : MainAPI() {
     data class SearchApiResponse(@JsonProperty("data") val data: SearchDataList?)
     data class SearchDataList(@JsonProperty("list") val list: List<MovieItem>?)
 
-    // FIX 3: cover diubah jadi CoverObj? (bukan String?)
-    // Karena di Home/Search/Detail, JSON-nya mengembalikan objek { "url": "...", ... }
     data class MovieItem(
         @JsonProperty("id") val id: String?,
         @JsonProperty("title") val title: String?,
-        @JsonProperty("cover") val cover: CoverObj?, // Ubah String? menjadi CoverObj?
+        @JsonProperty("cover") val cover: CoverObj?, 
         @JsonProperty("category") val category: Int?,
         @JsonProperty("domain") val domain: Int?, 
         @JsonProperty("year") val year: Int?
@@ -302,9 +285,7 @@ class MovieBox : MainAPI() {
         @JsonProperty("episodeList") val episodeList: List<SeasonList>?
     )
 
-    // Data class untuk Cover Image yang berisi URL
     data class CoverObj(@JsonProperty("url") val url: String?)
-    
     data class TrailerObj(@JsonProperty("videoAddress") val videoAddress: VideoAddr?)
     data class VideoAddr(@JsonProperty("url") val url: String?)
     data class DubItem(@JsonProperty("subjectId") val subjectId: String?, @JsonProperty("lanName") val lanName: String?, @JsonProperty("detailPath") val detailPath: String?)
