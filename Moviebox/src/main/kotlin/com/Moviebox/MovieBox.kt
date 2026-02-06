@@ -67,7 +67,7 @@ class MovieBox : MainAPI() {
         return baseHeaders
     }
 
-    // --- 1. HOME ---
+    // --- 1. HOME PAGE ---
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest,
@@ -81,10 +81,7 @@ class MovieBox : MainAPI() {
             val json = parseJson<ResponseWrapper>(response).data
             
             val filmList = json?.list?.map { film ->
-                newMovieSearchResponse(film.title ?: "No Title", film.detailPath ?: "", TvType.Movie) {
-                    this.posterUrl = film.cover?.url
-                    this.year = film.year
-                }
+                film.toSearchResponse()
             } ?: emptyList()
 
             newHomePageResponse(request.name, filmList, hasNext = filmList.isNotEmpty())
@@ -207,13 +204,14 @@ class MovieBox : MainAPI() {
                     val qualityStr = stream.resolutions ?: "Unknown"
                     val qualityInt = qualityStr.toIntOrNull() ?: Qualities.Unknown.value
                     val format = stream.format ?: "MP4"
+                    val isM3u8 = videoUrl.contains(".m3u8")
                     
                     callback.invoke(
                         newExtractorLink(
                             source = this.name,
                             name = "MovieBox $format $qualityStr",
                             url = videoUrl,
-                            type = if (videoUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                            type = if (isM3u8) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
                         ) {
                             this.referer = specificReferer
                             this.quality = qualityInt
@@ -225,7 +223,6 @@ class MovieBox : MainAPI() {
             e.printStackTrace()
         }
 
-        // Subtitles
         val subUrl = "$homeApiUrl/wefeed-h5api-bff/subject/caption?format=MP4&id=0&subjectId=$subjectId&detailPath=$detailPath"
         try {
             val subResponse = app.get(subUrl, headers = getHeaders(), timeout = 30L).text
@@ -246,9 +243,10 @@ class MovieBox : MainAPI() {
         return true
     }
 
-    // --- HELPER FUNCTION ---
+    // --- HELPER ---
     private fun SimpleSubject.toSearchResponse(): SearchResponse {
         return newMovieSearchResponse(this.title ?: "No Title", this.detailPath ?: "", TvType.Movie) {
+            // FIX: Langsung akses properti 'cover'
             this.posterUrl = this.cover?.url
             this.year = this.year
         }
@@ -261,12 +259,12 @@ class MovieBox : MainAPI() {
         @JsonProperty("list") val list: List<SimpleSubject>?,
         @JsonProperty("items") val items: List<SearchItem>?
     )
-
     data class SearchItem(@JsonProperty("subject") val subject: SimpleSubject?)
 
     data class SimpleSubject(
         @JsonProperty("title") val title: String?,
-        @JsonProperty("cover") val cover: CoverInfo?,
+        // FIX: Kembalikan nama 'cover' agar langsung mapping ke JSON
+        @JsonProperty("cover") val cover: CoverInfo?, 
         @JsonProperty("year") val year: Int?,
         @JsonProperty("detailPath") val detailPath: String?
     )
