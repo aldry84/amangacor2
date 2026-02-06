@@ -10,6 +10,7 @@ import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.fasterxml.jackson.annotation.JsonProperty
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
+import kotlinx.coroutines.delay
 
 class MovieBox : MainAPI() {
     override var mainUrl = "https://moviebox.ph"
@@ -18,33 +19,24 @@ class MovieBox : MainAPI() {
     override var lang = "id"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.AsianDrama)
 
-    // Base API URL
-    private val homeApiUrl = "https://h5-api.aoneroom.com" 
-    // Player API URL
+    private val homeApiUrl = "https://h5-api.aoneroom.com"
     private val playerApiUrl = "https://123movienow.cc/wefeed-h5api-bff"
-
     private var cachedToken: String? = null
 
-    // --- DAFTAR KATEGORI UTAMA ---
-    override val mainPage: List<MainPageData> = mainPageOf(
+    // --- KATEGORI HALAMAN DEPAN ---
+    override val mainPage = mainPageOf(
         "872031290915189720" to "Trending 🔥",
-        "5283462032510044280" to "Indonesian Drama 🎭",
-        "6528093688173053896" to "Indonesian Movies 🇮🇩",
-        "5848753831881965888" to "Indo Horror 👻",
-        "997144265920760504" to "Hollywood Movies 🇺🇸",
+        "6528093688173053896" to "Indonesia Movie 🇮🇩",
+        "5283462032510044280" to "Drama Indonesia 🎭",
         "4380734070238626200" to "K-Drama 🇰🇷",
-        "8624142774394406504" to "C-Drama 🇨🇳",
-        "3058742380078711608" to "Disney ✨",
-        "8449223314756747760" to "Pinoy Drama 🇵🇭",
-        "606779077307122552" to "Pinoy Movie 🇵🇭"
+        "5848753831881965888" to "Horror Indonesia 👻"
     )
 
-    // --- AUTOMATIC TOKEN ---
+    // --- TOKEN ---
     private suspend fun getToken(): String {
         if (cachedToken != null) return cachedToken!!
         try {
-            val response = app.get(mainUrl, timeout = 30L)
-            // FIX: Typo removesurrounding -> removeSurrounding
+            val response = app.get(mainUrl, timeout = 60L)
             val token = response.cookies["mb_token"]?.removeSurrounding("\"")
             if (!token.isNullOrEmpty()) {
                 cachedToken = "Bearer $token"
@@ -58,7 +50,7 @@ class MovieBox : MainAPI() {
         val token = getToken()
         val baseHeaders = mutableMapOf(
             "x-request-lang" to "en",
-            "user-agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Mobile Safari/537.36"
+            "user-agent" to "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
         )
         if (token.isNotEmpty()) baseHeaders["authorization"] = token
         
@@ -72,17 +64,19 @@ class MovieBox : MainAPI() {
         return baseHeaders
     }
 
-    // --- 1. GET MAIN PAGE (Paginasi) ---
+    // --- 1. HOME PAGE ---
     override suspend fun getMainPage(
         page: Int,
-        request: MainPageRequest,
+        request: MainPageRequest
     ): HomePageResponse {
-        val id = request.data // ID Kategori dari mainPageOf
-        
-        val targetUrl = "$homeApiUrl/wefeed-h5api-bff/subject/ranking-list?id=$id&page=$page&perPage=12"
+        val id = request.data
+        val link = "$homeApiUrl/wefeed-h5api-bff/subject/ranking-list?id=$id&page=$page&perPage=12"
         
         return try {
-            val response = app.get(targetUrl, headers = getHeaders()).text
+            // Delay sedikit biar aman dari timeout
+            if (page > 1) delay(500)
+            
+            val response = app.get(link, headers = getHeaders(), timeout = 60L).text
             val json = parseJson<ResponseWrapper>(response).data
             
             val filmList = json?.list?.map { film ->
@@ -92,26 +86,26 @@ class MovieBox : MainAPI() {
                 }
             } ?: emptyList()
 
-            // FIX: Menggunakan newHomePageResponse
             newHomePageResponse(request.name, filmList, hasNext = filmList.isNotEmpty())
         } catch (e: Exception) {
             newHomePageResponse(request.name, emptyList(), hasNext = false)
         }
     }
 
-    // --- 2. SEARCH ---
+    // --- 2. SEARCH (PERBAIKAN UTAMA) ---
     override suspend fun search(query: String): List<SearchResponse> {
         val url = "$homeApiUrl/wefeed-h5api-bff/subject/search-suggest"
         val body = mapOf("keyword" to query, "perPage" to 10)
         
-        // FIX: Menggunakan requestBody untuk mengirim JSON agar tidak error argument mismatch
-        val requestBody = toJson(body).toRequestBody("application/json".toMediaTypeOrNull())
+        // FIX: Menggunakan requestBody + body.toJson() (bukan toJson(body))
+        val requestBody = body.toJson().toRequestBody("application/json".toMediaTypeOrNull())
 
         return try {
             val response = app.post(
                 url, 
-                headers = getHeaders(),
-                requestBody = requestBody
+                headers = getHeaders(), 
+                requestBody = requestBody, // Kirim sebagai Body JSON, bukan Data Form
+                timeout = 60L
             ).text
             
             val json = parseJson<ResponseWrapper>(response).data
@@ -128,7 +122,7 @@ class MovieBox : MainAPI() {
     // --- 3. LOAD DETAIL ---
     override suspend fun load(url: String): LoadResponse {
         val detailUrl = "$homeApiUrl/wefeed-h5api-bff/detail?detailPath=$url"
-        val response = app.get(detailUrl, headers = getHeaders()).text
+        val response = app.get(detailUrl, headers = getHeaders(), timeout = 60L).text
         val json = parseJson<DetailWrapper>(response).data
         
         val subject = json?.subject
@@ -197,20 +191,18 @@ class MovieBox : MainAPI() {
         val ep = args[2]
         val detailPath = args[3]
 
-        // 1. Get Video
+        // Video
         val playUrl = "$playerApiUrl/subject/play?subjectId=$subjectId&se=$se&ep=$ep&detailPath=$detailPath"
-        val playResponse = app.get(playUrl, headers = getHeaders(forPlayer = true)).text
+        val playResponse = app.get(playUrl, headers = getHeaders(forPlayer = true), timeout = 60L).text
         val playJson = parseJson<PlayWrapper>(playResponse)
 
         playJson.data?.streams?.forEach { stream ->
             stream.url?.let { videoUrl ->
                 val qualityStr = stream.resolutions ?: "Unknown"
-                // FIX: Qualities sudah diimport
                 val qualityInt = qualityStr.toIntOrNull() ?: Qualities.Unknown.value
                 val format = stream.format ?: "MP4"
                 val isM3u8 = videoUrl.contains(".m3u8")
                 
-                // FIX: Menggunakan newExtractorLink dengan blok initializer {}
                 callback.invoke(
                     newExtractorLink(
                         source = this.name,
@@ -225,10 +217,10 @@ class MovieBox : MainAPI() {
             }
         }
 
-        // 2. Get Subtitles
+        // Subtitles
         val subUrl = "$homeApiUrl/wefeed-h5api-bff/subject/caption?subjectId=$subjectId&id=0&detailPath=$detailPath"
         try {
-            val subResponse = app.get(subUrl, headers = getHeaders()).text
+            val subResponse = app.get(subUrl, headers = getHeaders(), timeout = 30L).text
             val subJson = parseJson<CaptionWrapper>(subResponse)
             
             subJson.data?.list?.forEach { sub ->
