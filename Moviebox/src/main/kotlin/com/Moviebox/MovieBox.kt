@@ -2,6 +2,8 @@ package com.Moviebox
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
+import com.lagradost.cloudstream3.utils.AppUtils.parseJson
+import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
@@ -9,11 +11,10 @@ import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.LoadResponse.Companion.addScore
 import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
-import com.lagradost.cloudstream3.mapper // Import mapper global
+import com.lagradost.cloudstream3.mapper
 import java.net.URLDecoder
 
 class MovieBox : MainAPI() {
-    // FIX: Gunakan 'var' sesuai definisi di MainAPI.kt
     override var name = "MovieBox"
     override var mainUrl = "https://123movienow.cc"
     private val apiUrl = "https://h5-api.aoneroom.com/wefeed-h5api-bff"
@@ -30,6 +31,17 @@ class MovieBox : MainAPI() {
         "x-client-info" to "{\"timezone\":\"Asia/Jakarta\"}",
         "x-request-lang" to "en",
         "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36"
+    )
+
+    // Daftar Kategori Khusus (Nama -> ID)
+    private val customCategories = listOf(
+        Pair("Movie Trending", "8821254238245470240"),
+        Pair("Indonesian Movies", "6528093688173053896"),
+        Pair("Indonesian Drama", "5283462032510044280"),
+        Pair("Horror Indo", "5848753831881965888"),
+        Pair("Komedi Horror", "3528002473103362040"),
+        Pair("Drakor", "4380734070238626200"),
+        Pair("Drama Ahok", "8624142774394406504")
     )
 
     private var authToken: String? = null
@@ -49,29 +61,52 @@ class MovieBox : MainAPI() {
         return if (authToken != null) mapOf("Authorization" to "Bearer $authToken") else mapOf()
     }
 
+    // --- 1. HOME PAGE (MODIFIED) ---
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
         val headers = standardHeaders + getAuthHeader()
-        val response = app.get("$apiUrl/home?host=moviebox.ph", headers = headers).parsedSafe<HomeResponse>()
         val homeItems = ArrayList<HomePageList>()
 
-        response?.data?.sections?.forEach { section ->
-            if (!section.items.isNullOrEmpty() && section.title != null) {
-                val list = section.items.map { item ->
-                    val slug = item.title?.replace("[^a-zA-Z0-9-]".toRegex(), "-") ?: "video"
-                    newMovieSearchResponse(
-                        name = item.title ?: "Unknown",
-                        url = "$mainUrl/movie/${item.id}/$slug",
-                        type = if (item.category == 2) TvType.TvSeries else TvType.Movie,
-                    ) {
-                        this.posterUrl = item.cover
+        // 1. Ambil Default Home (Section Bawaan)
+        // Kita pakai try-catch agar jika satu request gagal, yang lain tetap muncul
+        try {
+            val response = app.get("$apiUrl/home?host=moviebox.ph", headers = headers).parsedSafe<HomeResponse>()
+            response?.data?.sections?.forEach { section ->
+                if (!section.items.isNullOrEmpty() && section.title != null) {
+                    val list = section.items.map { item ->
+                        item.toSearchResponse()
                     }
+                    homeItems.add(HomePageList(section.title, list))
                 }
-                homeItems.add(HomePageList(section.title, list))
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        // 2. Ambil Kategori Khusus (Ranking Lists)
+        // Loop setiap kategori yang kamu minta
+        customCategories.forEach { (catName, catId) ->
+            try {
+                // Endpoint untuk Ranking List: /subject/ranking-list?id={ID}&page=0&perPage=20
+                val rankingUrl = "$apiUrl/subject/ranking-list?id=$catId&page=0&perPage=20"
+                val response = app.get(rankingUrl, headers = headers).parsedSafe<SearchApiResponse>()
+                
+                val list = response?.data?.list?.map { item ->
+                    item.toSearchResponse()
+                }
+
+                if (!list.isNullOrEmpty()) {
+                    homeItems.add(HomePageList(catName, list))
+                }
+            } catch (e: Exception) {
+                // Jika error di satu kategori, lanjut ke kategori berikutnya
+                e.printStackTrace()
             }
         }
+
         return newHomePageResponse(homeItems)
     }
 
+    // --- 2. SEARCH ---
     override suspend fun search(query: String): List<SearchResponse> {
         val headers = standardHeaders + getAuthHeader()
         val url = "$apiUrl/subject/search-suggest"
@@ -80,17 +115,11 @@ class MovieBox : MainAPI() {
         val response = app.post(url, headers = headers, json = jsonBody).parsedSafe<SearchApiResponse>()
 
         return response?.data?.list?.map { item ->
-            newMovieSearchResponse(
-                name = item.title ?: "",
-                url = "$mainUrl/movie/${item.id}/search",
-                type = if (item.domain == 2) TvType.TvSeries else TvType.Movie,
-            ) {
-                this.posterUrl = item.cover
-                this.year = item.year
-            }
+            item.toSearchResponse()
         } ?: emptyList()
     }
 
+    // --- 3. LOAD DETAIL ---
     override suspend fun load(url: String): LoadResponse? {
         val headers = standardHeaders + getAuthHeader()
         
@@ -168,6 +197,7 @@ class MovieBox : MainAPI() {
         }
     }
 
+    // --- 4. LOAD LINKS ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -192,8 +222,6 @@ class MovieBox : MainAPI() {
                 val quality = stream.resolutions?.toIntOrNull() ?: Qualities.Unknown.value
                 val type = if (stream.format?.contains("HLS", true) == true) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
 
-                // FIX: Menggunakan pola Builder untuk newExtractorLink
-                // Parameter 'referer' dan 'quality' dipindahkan ke dalam lambda initializer
                 callback.invoke(
                     newExtractorLink(
                         source = this.name,
@@ -210,12 +238,25 @@ class MovieBox : MainAPI() {
         return true
     }
 
-    // FIX: Menggunakan mapper global dari com.lagradost.cloudstream3.mapper
+    // --- HELPER FUNCTIONS ---
+
+    // Helper untuk mengubah MovieItem menjadi SearchResponse (dipakai di Home & Search)
+    private fun MovieItem.toSearchResponse(): SearchResponse {
+        val slug = this.title?.replace("[^a-zA-Z0-9-]".toRegex(), "-") ?: "video"
+        return newMovieSearchResponse(
+            name = this.title ?: "Unknown",
+            url = "$mainUrl/movie/${this.id}/$slug",
+            type = if (this.category == 2 || this.domain == 2) TvType.TvSeries else TvType.Movie,
+        ) {
+            this.posterUrl = this@toSearchResponse.cover
+            this.year = this@toSearchResponse.year
+        }
+    }
+
     private fun Any.toJson(): String {
         return mapper.writeValueAsString(this)
     }
     
-    // Helper untuk parse JSON lokal
     private inline fun <reified T> parseJson(json: String): T {
         return mapper.readValue(json, T::class.java)
     }
