@@ -82,7 +82,7 @@ class MovieBox : MainAPI() {
             
             val filmList = json?.list?.map { film ->
                 newMovieSearchResponse(film.title ?: "No Title", film.detailPath ?: "", TvType.Movie) {
-                    this.posterUrl = film.cover?.url ?: film.coverUrl
+                    this.posterUrl = film.cover?.url
                     this.year = film.year
                 }
             } ?: emptyList()
@@ -177,7 +177,7 @@ class MovieBox : MainAPI() {
         }
     }
 
-    // --- 4. LOAD LINKS & SUBTITLES ---
+    // --- 4. LOAD LINKS ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -192,13 +192,12 @@ class MovieBox : MainAPI() {
         val ep = args[2]
         val detailPath = args[3]
 
-        // 1. Setup Header Spesifik
         val specificReferer = "https://123movienow.cc/spa/videoPlayPage/movies/$detailPath?id=$subjectId&type=/movie/detail"
         val playHeaders = getHeaders(forPlayer = true).toMutableMap()
         playHeaders["referer"] = specificReferer
 
-        // 2. Request Video
         val playUrl = "$playerApiUrl/subject/play?subjectId=$subjectId&se=$se&ep=$ep&detailPath=$detailPath"
+        
         try {
             val playResponse = app.get(playUrl, headers = playHeaders, timeout = 60L).text
             val playJson = parseJson<PlayWrapper>(playResponse)
@@ -226,56 +225,51 @@ class MovieBox : MainAPI() {
             e.printStackTrace()
         }
 
-        // 3. Request Subtitle (DIPERBAIKI)
-        // Format subtitle: MP4 agar konsisten
+        // Subtitles
         val subUrl = "$homeApiUrl/wefeed-h5api-bff/subject/caption?format=MP4&id=0&subjectId=$subjectId&detailPath=$detailPath"
         try {
             val subResponse = app.get(subUrl, headers = getHeaders(), timeout = 30L).text
-            // Parsing menggunakan struktur CaptionWrapper yang baru
             val subJson = parseJson<CaptionWrapper>(subResponse)
             
             subJson.data?.captions?.forEach { sub ->
                 if (!sub.url.isNullOrEmpty()) {
                     subtitleCallback.invoke(
                         SubtitleFile(
-                            // Mapping kode bahasa (in_id -> Indonesian, ar -> Arabic)
                             lang = sub.lanName ?: sub.lan ?: "Unknown",
                             url = sub.url
                         )
                     )
                 }
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        } catch (e: Exception) {}
 
         return true
     }
 
+    // --- HELPER FUNCTION ---
     private fun SimpleSubject.toSearchResponse(): SearchResponse {
         return newMovieSearchResponse(this.title ?: "No Title", this.detailPath ?: "", TvType.Movie) {
-            this.posterUrl = this.coverObj?.url ?: this.coverUrl
+            this.posterUrl = this.cover?.url
             this.year = this.year
         }
     }
 
     // --- JSON MODELS ---
-    // ... Bagian Model lainnya sama ...
-    
+
     data class ResponseWrapper(@JsonProperty("data") val data: ListContainer?)
     data class ListContainer(
         @JsonProperty("list") val list: List<SimpleSubject>?,
         @JsonProperty("items") val items: List<SearchItem>?
     )
+
     data class SearchItem(@JsonProperty("subject") val subject: SimpleSubject?)
+
     data class SimpleSubject(
         @JsonProperty("title") val title: String?,
-        @JsonProperty("cover") val coverObj: CoverInfo?, 
-        @JsonProperty("coverUrl") val coverUrl: String?, 
+        @JsonProperty("cover") val cover: CoverInfo?,
         @JsonProperty("year") val year: Int?,
         @JsonProperty("detailPath") val detailPath: String?
     )
-    val SimpleSubject.cover: CoverInfo? get() = coverObj
 
     data class DetailWrapper(@JsonProperty("data") val data: DetailData?)
     data class DetailData(
@@ -304,7 +298,6 @@ class MovieBox : MainAPI() {
         @JsonProperty("format") val format: String?
     )
 
-    // UPDATE MODEL SUBTITLE
     data class CaptionWrapper(@JsonProperty("data") val data: CaptionData?)
     data class CaptionData(@JsonProperty("captions") val captions: List<CaptionItem>?)
     data class CaptionItem(
