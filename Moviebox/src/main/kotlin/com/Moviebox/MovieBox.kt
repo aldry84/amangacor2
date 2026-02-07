@@ -11,30 +11,28 @@ class MovieBox : MainAPI() {
     override val hasMainPage = true
     override var lang = "id"
     
-    // Menggunakan domain server aplikasi agar library lebih lengkap
-    private val apiUrl = "https://api4sg.aoneroom.com/wefeed-h5api-bff"
+    // Server API Utama
+    private val apiUrl = "https://h5-api.aoneroom.com/wefeed-h5api-bff"
 
     private val headers = mapOf(
-        "authority" to "api4sg.aoneroom.com",
+        "authority" to "h5-api.aoneroom.com",
         "accept" to "application/json",
         "accept-language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
-        // Token Bearer tetap menggunakan yang lama (pastikan belum expired)
         "authorization" to "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjE4MTM0MjU0MjgwMjM4ODc4MDAsImF0cCI6MywiZXh0IjoiMTc3MDQxMTA5MCIsImV4cCI6MTc3ODE4NzA5MCwiaWF0IjoxNzcwNDEwNzkwfQ.-kW86pGAJX6jheH_yEM8xfGd4rysJFR_hM3djl32nAo",
         "content-type" to "application/json",
         "origin" to "https://moviebox.ph",
         "referer" to "https://moviebox.ph/",
-        "user-agent" to "okhttp/4.9.0", // Menyamar sebagai aplikasi Android
-        "x-client-info" to "{\"timezone\":\"Asia/Jayapura\"}",
+        "user-agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
         "x-request-lang" to "en"
     )
 
     // =================================================================================
-    // 1. HALAMAN UTAMA (HOME)
+    // 1. HOME PAGE
     // =================================================================================
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val homeSets = mutableListOf<HomePageList>()
 
-        // A. Ambil Data Trending (Urutan paling atas)
+        [span_2](start_span)// Ambil Data Trending[span_2](end_span)
         try {
             val trendingUrl = "$apiUrl/subject/trending?page=0&perPage=18"
             val trendingResponse = app.get(trendingUrl, headers = headers).parsedSafe<TrendingResponse>()
@@ -47,14 +45,13 @@ class MovieBox : MainAPI() {
             }
         } catch (e: Exception) { e.printStackTrace() }
 
-        // B. Ambil Layout Home (Banner & List Kategori)
+        [span_3](start_span)// Ambil Data Home Standard (Banner & Kategori)[span_3](end_span)
         try {
             val homeUrl = "$apiUrl/home?host=moviebox.ph"
             val homeResponse = app.get(homeUrl, headers = headers).parsedSafe<HomeResponse>()
 
             homeResponse?.data?.operatingList?.forEach { section ->
                 val itemsToParse = ArrayList<Subject>()
-                
                 if (section.type == "BANNER" && section.banner?.items != null) {
                     itemsToParse.addAll(section.banner.items)
                 } else if (section.subjects != null && section.subjects.isNotEmpty()) {
@@ -64,13 +61,7 @@ class MovieBox : MainAPI() {
                 if (itemsToParse.isNotEmpty() && section.type != "CUSTOM" && section.type != "FILTER") {
                     val mediaList = itemsToParse.mapNotNull { it.toSearchResponse() }
                     if (mediaList.isNotEmpty()) {
-                        homeSets.add(
-                            HomePageList(
-                                name = section.title ?: "Featured",
-                                list = mediaList,
-                                isHorizontalImages = section.type == "BANNER"
-                            )
-                        )
+                        homeSets.add(HomePageList(section.title ?: "Featured", mediaList, section.type == "BANNER"))
                     }
                 }
             }
@@ -80,72 +71,125 @@ class MovieBox : MainAPI() {
     }
 
     // =================================================================================
-    // 2. FITUR PENCARIAN (SEARCH) - MENGGUNAKAN POST
+    // 2. SEARCH (MENGGUNAKAN POST)
     // =================================================================================
     override suspend fun search(query: String): List<SearchResponse> {
         val url = "$apiUrl/subject/search?host=moviebox.ph"
-        
-        // Payload JSON untuk pencarian maksimal (All categories)
-        val jsonBody = mapOf(
-            "keyword" to query,
-            "page" to 0,
-            "perPage" to 20,
-            "searchType" to 0,
-            "classify" to "all"
-        )
+        val jsonBody = mapOf("keyword" to query, "page" to 0, "perPage" to 20)
 
         return try {
             val response = app.post(url, headers = headers, json = jsonBody).parsedSafe<SearchDataResponse>()
             response?.data?.items?.mapNotNull { it.toSearchResponse() } ?: emptyList()
-        } catch (e: Exception) {
-            e.printStackTrace()
-            emptyList()
-        }
+        } catch (e: Exception) { emptyList() }
     }
 
-    // Helper untuk mapping data JSON ke format Cloudstream
-    private fun Subject.toSearchResponse(): SearchResponse? {
-        val title = this.title ?: return null
-        val urlDetail = this.detailPath ?: return null
-        val poster = this.cover?.url ?: this.image?.url
+    // =================================================================================
+    // 3. LOAD DETAIL
+    // =================================================================================
+    override suspend fun load(url: String): LoadResponse {
+        val detailUrl = "$apiUrl/detail?detailPath=$url&host=moviebox.ph"
+        val response = app.get(detailUrl, headers = headers).parsedSafe<DetailFullResponse>()
+        val data = response?.data ?: throw ErrorLoadingException("Data Error")
+        val subject = data.subject ?: throw ErrorLoadingException("Subject Null")
 
-        return newMovieSearchResponse(title, urlDetail, TvType.Movie) {
-            this.posterUrl = poster
-            // Tambahkan rating jika ada
-            this@toSearchResponse.imdbRatingValue?.trim()?.toDoubleOrNull()?.let { ratingVal ->
-                this.score = Score.from10(ratingVal)
+        val title = subject.title ?: ""
+        val poster = subject.cover?.url
+        val plot = subject.description
+        val rating = subject.imdbRatingValue?.toDoubleOrNull()
+
+        return if (subject.subjectType == 1) { // Movie
+            newMovieLoadResponse(title, url, TvType.Movie, subject.subjectId ?: "") {
+                this.posterUrl = poster
+                this.plot = plot
+                this.year = subject.releaseDate?.take(4)?.toIntOrNull()
+                if (rating != null) this.score = Score.from10(rating)
+            }
+        } else { // Series
+            val episodes = listOf(newEpisode(subject.subjectId ?: "") { this.name = "Play Movie" })
+            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+                this.posterUrl = poster
+                this.plot = plot
             }
         }
     }
 
     // =================================================================================
-    // DATA CLASSES (PARSING JSON)
+    // 4. LOAD LINKS
     // =================================================================================
-    
-    data class HomeResponse(@JsonProperty("data") val data: HomeData? = null)
-    data class HomeData(@JsonProperty("operatingList") val operatingList: List<OperatingSection>? = null)
+    override suspend fun loadLinks(
+        data: String,
+        isCasting: Boolean,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        // Link video utama berasal dari lok-lok.cc
+        val playUrl = "https://lok-lok.cc/wefeed-h5api-bff/subject/play?subjectId=$data&se=0&ep=0"
+        val playHeaders = mapOf(
+            "authority" to "lok-lok.cc",
+            "referer" to "https://lok-lok.cc/",
+            "user-agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36"
+        )
+
+        return try {
+            val response = app.get(playUrl, headers = playHeaders).parsedSafe<PlayResponse>()
+            response?.data?.streams?.forEach { stream ->
+                callback.invoke(
+                    ExtractorLink(
+                        this.name, "${this.name} ${stream.resolutions}p",
+                        stream.url ?: return@forEach, "https://lok-lok.cc/",
+                        getQuality(stream.resolutions), false
+                    )
+                )
+            }
+            true
+        } catch (e: Exception) { false }
+    }
+
+    private fun getQuality(res: String?): Int {
+        return when (res) {
+            "720" -> Qualities.P720.value
+            "480" -> Qualities.P480.value
+            "360" -> Qualities.P360.value
+            else -> Qualities.Unknown.value
+        }
+    }
+
+    private fun Subject.toSearchResponse(): SearchResponse? {
+        return newMovieSearchResponse(this.title ?: return null, this.detailPath ?: return null, TvType.Movie) {
+            this.posterUrl = this@toSearchResponse.cover?.url ?: this@toSearchResponse.image?.url
+            this@toSearchResponse.imdbRatingValue?.toDoubleOrNull()?.let { this.score = Score.from10(it) }
+        }
+    }
+
+    // ================= DATA CLASSES =================
+    data class HomeResponse(@JsonProperty("data") val data: HomeData?)
+    data class HomeData(@JsonProperty("operatingList") val operatingList: List<OperatingSection>?)
     data class OperatingSection(
-        @JsonProperty("type") val type: String? = null,
-        @JsonProperty("title") val title: String? = null,
-        @JsonProperty("banner") val banner: BannerObj? = null,
-        @JsonProperty("subjects") val subjects: List<Subject>? = null
+        @JsonProperty("type") val type: String?,
+        @JsonProperty("title") val title: String?,
+        @JsonProperty("banner") val banner: BannerObj?,
+        @JsonProperty("subjects") val subjects: List<Subject>?
     )
-    data class BannerObj(@JsonProperty("items") val items: List<Subject>? = null)
-
-    data class TrendingResponse(@JsonProperty("data") val data: TrendingData? = null)
-    data class TrendingData(@JsonProperty("subjectList") val subjectList: List<Subject>? = null)
-
-    data class SearchDataResponse(@JsonProperty("data") val data: SearchResultData? = null)
-    data class SearchResultData(@JsonProperty("items") val items: List<Subject>? = null)
-
+    data class BannerObj(@JsonProperty("items") val items: List<Subject>?)
+    data class TrendingResponse(@JsonProperty("data") val data: TrendingData?)
+    data class TrendingData(@JsonProperty("subjectList") val subjectList: List<Subject>?)
+    data class SearchDataResponse(@JsonProperty("data") val data: SearchResultData?)
+    data class SearchResultData(@JsonProperty("items") val items: List<Subject>?)
+    data class DetailFullResponse(@JsonProperty("data") val data: DetailData?)
+    data class DetailData(@JsonProperty("subject") val subject: Subject?)
+    data class PlayResponse(@JsonProperty("data") val data: PlayData?)
+    data class PlayData(@JsonProperty("streams") val streams: List<VideoStream>?)
+    data class VideoStream(@JsonProperty("url") val url: String?, @JsonProperty("resolutions") val resolutions: String?)
     data class Subject(
-        @JsonProperty("subjectId") val subjectId: String? = null,
-        @JsonProperty("title") val title: String? = null,
-        @JsonProperty("cover") val cover: ImageObj? = null,
-        @JsonProperty("image") val image: ImageObj? = null,
-        @JsonProperty("detailPath") val detailPath: String? = null,
-        @JsonProperty("imdbRatingValue") val imdbRatingValue: String? = null
+        @JsonProperty("subjectId") val subjectId: String?,
+        @JsonProperty("title") val title: String?,
+        @JsonProperty("cover") val cover: ImageObj?,
+        @JsonProperty("image") val image: ImageObj?,
+        @JsonProperty("detailPath") val detailPath: String?,
+        @JsonProperty("subjectType") val subjectType: Int?,
+        @JsonProperty("description") val description: String?,
+        @JsonProperty("releaseDate") val releaseDate: String?,
+        @JsonProperty("imdbRatingValue") val imdbRatingValue: String?
     )
-
-    data class ImageObj(@JsonProperty("url") val url: String? = null)
+    data class ImageObj(@JsonProperty("url") val url: String?)
 }
