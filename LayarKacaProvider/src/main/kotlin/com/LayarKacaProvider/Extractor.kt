@@ -13,6 +13,7 @@ import java.net.URI
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
+import kotlin.random.Random
 
 // ============================================================================
 // 1. EMTURBOVID EXTRACTOR
@@ -24,59 +25,59 @@ open class EmturbovidExtractor : ExtractorApi() {
 
     override suspend fun getUrl(url: String, referer: String?): List<ExtractorLink>? {
         val finalReferer = referer ?: "$mainUrl/"
-        val response = app.get(url, referer = finalReferer)
-        val playerScript = response.document.selectXpath("//script[contains(text(),'var urlPlay')]").html()
         val sources = mutableListOf<ExtractorLink>()
         
-        if (playerScript.isNotBlank()) {
-            val m3u8Url = playerScript.substringAfter("var urlPlay = '").substringBefore("'")
-            val originUrl = try { URI(finalReferer).let { "${it.scheme}://${it.host}" } } catch (e: Exception) { mainUrl }
+        try {
+            val response = app.get(url, referer = finalReferer)
+            val playerScript = response.document.selectXpath("//script[contains(text(),'var urlPlay')]").html()
             
-            val headers = mapOf(
-                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Referer" to finalReferer,
-                "Origin" to originUrl
-            )
-            
-            sources.add(newExtractorLink(source = name, name = name, url = m3u8Url, type = ExtractorLinkType.M3U8) {
-                this.referer = finalReferer
-                this.quality = Qualities.Unknown.value
-                this.headers = headers
-            })
+            if (playerScript.isNotBlank()) {
+                val m3u8Url = playerScript.substringAfter("var urlPlay = '").substringBefore("'")
+                val originUrl = try { URI(finalReferer).let { "${it.scheme}://${it.host}" } } catch (e: Exception) { mainUrl }
+                
+                val headers = mapOf(
+                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "Referer" to finalReferer,
+                    "Origin" to originUrl
+                )
+                
+                sources.add(newExtractorLink(source = name, name = name, url = m3u8Url, type = ExtractorLinkType.M3U8) {
+                    this.referer = finalReferer
+                    this.quality = Qualities.Unknown.value
+                    this.headers = headers
+                })
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
         return sources
     }
 }
 
 // ============================================================================
-// 2. P2P EXTRACTOR
+// 2. P2P EXTRACTOR (ORIGINAL - DO NOT TOUCH)
 // ============================================================================
 open class P2PExtractor : ExtractorApi() {
     override var name = "P2P"
     override var mainUrl = "https://cloud.hownetwork.xyz"
     override val requiresReferer = false
-    
     data class HownetworkResponse(val file: String?, val link: String?, val label: String?)
 
     override suspend fun getUrl(url: String, referer: String?): List<ExtractorLink>? {
         val id = url.substringAfter("id=").substringBefore("&")
         val apiUrl = "$mainUrl/api2.php?id=$id"
-        
         val headers = mapOf(
             "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
             "Referer" to url,
             "Origin" to mainUrl,
             "X-Requested-With" to "XMLHttpRequest"
         )
-        
         val formBody = mapOf("r" to "https://playeriframe.sbs/", "d" to "cloud.hownetwork.xyz")
         val sources = mutableListOf<ExtractorLink>()
-        
         try {
             val response = app.post(apiUrl, headers = headers, data = formBody).text
             val json = tryParseJson<HownetworkResponse>(response)
             val videoUrl = json?.file ?: json?.link
-            
             if (!videoUrl.isNullOrBlank()) {
                 sources.add(newExtractorLink(source = name, name = name, url = videoUrl, type = ExtractorLinkType.M3U8) {
                     this.referer = mainUrl
@@ -84,13 +85,12 @@ open class P2PExtractor : ExtractorApi() {
                 })
             }
         } catch (e: Exception) { e.printStackTrace() }
-        
         return sources
     }
 }
 
 // ============================================================================
-// 3. F16 EXTRACTOR (Clean & Stable)
+// 3. F16 EXTRACTOR (NEW UPDATE: TOKEN & HEADERS)
 // ============================================================================
 open class F16Extractor : ExtractorApi() {
     override var name = "F16"
@@ -102,11 +102,16 @@ open class F16Extractor : ExtractorApi() {
     data class DecryptedSource(val file: String?, val label: String?, val type: String?)
     data class DecryptedResponse(val sources: List<DecryptedSource>?)
 
-    // Utility untuk memperbaiki padding Base64 yang hilang
     private fun String.fixBase64(): String {
         var s = this
         while (s.length % 4 != 0) s += "="
         return s
+    }
+
+    // Helper untuk membuat Hex String acak (mirip viewer_id asli)
+    private fun randomHex(length: Int): String {
+        val chars = "0123456789abcdef"
+        return (1..length).map { chars[Random.nextInt(chars.length)] }.joinToString("")
     }
 
     override suspend fun getUrl(url: String, referer: String?): List<ExtractorLink>? {
@@ -115,36 +120,57 @@ open class F16Extractor : ExtractorApi() {
         try {
             val videoId = url.substringAfter("/e/").substringBefore("?")
             val apiUrl = "$mainUrl/api/videos/$videoId/embed/playback"
+            val pageUrl = "$mainUrl/e/$videoId"
+            
+            // Generate Fake ID
+            val viewerId = randomHex(32) 
+            val deviceId = randomHex(32)
+            
+            // Construct Fake Token (JWT-like structure)
+            // Header: {"alg":"HS256","typ":"JWT"} -> Base64Url
+            val jwtHeader = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9" 
+            val timestamp = System.currentTimeMillis() / 1000
+            // Payload
+            val jwtPayload = """{"viewer_id":"$viewerId","device_id":"$deviceId","confidence":0.91,"iat":$timestamp,"exp":${timestamp + 600}}"""
+            val jwtPayloadEncoded = Base64.encodeToString(jwtPayload.toByteArray(), Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
+            // Fake Signature (Random 43 chars)
+            val jwtSignature = randomHex(43)
+            val token = "$jwtHeader.$jwtPayloadEncoded.$jwtSignature"
 
+            // HEADERS WAJIB (Updated dari data CURL)
             val headers = mapOf(
-                "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
-                "Referer" to "https://playeriframe.sbs/",
-                "Origin" to "https://playeriframe.sbs",
-                "Content-Type" to "application/json"
+                "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
+                "Referer" to pageUrl,
+                "Origin" to mainUrl,
+                "Content-Type" to "application/json",
+                "x-embed-origin" to "playeriframe.sbs",
+                "x-embed-parent" to pageUrl,
+                "x-embed-referer" to "https://playeriframe.sbs/"
             )
 
-            // Body Dummy untuk bypass fingerprint check
+            // BODY JSON (Wajib ada fingerprint)
             val jsonPayload = mapOf(
                 "fingerprint" to mapOf(
-                    "token" to "dummy_bypass",
-                    "viewer_id" to "7e847c23137449fbb73cbf6bb7f9bceb",
-                    "device_id" to "daeba4e7719c4d4c91e53dd03849cf37",
-                    "confidence" to 0.6
+                    "token" to token,
+                    "viewer_id" to viewerId,
+                    "device_id" to deviceId,
+                    "confidence" to 0.91
                 )
             )
             
+            // Request API
             val responseText = app.post(apiUrl, headers = headers, json = jsonPayload).text
             val json = tryParseJson<F16Playback>(responseText)
             val pb = json?.playback
 
             if (pb != null && pb.payload != null && pb.iv != null && !pb.key_parts.isNullOrEmpty()) {
                 
-                // Decode dan gabungkan Key
+                // 1. Gabungkan Key Parts
                 val part1 = Base64.decode(pb.key_parts[0].fixBase64(), Base64.URL_SAFE)
                 val part2 = Base64.decode(pb.key_parts[1].fixBase64(), Base64.URL_SAFE)
                 val combinedKey = part1 + part2 
 
-                // Decrypt Payload
+                // 2. Decrypt AES-GCM
                 val decryptedJson = decryptAesGcm(pb.payload, combinedKey, pb.iv)
 
                 if (decryptedJson != null) {
@@ -165,7 +191,7 @@ open class F16Extractor : ExtractorApi() {
                 }
             }
         } catch (e: Exception) {
-            Log.e("F16Extractor", "Error extracting: ${e.message}")
+            Log.e("F16Extractor", "Error: ${e.message}")
         }
         
         return sources
@@ -184,7 +210,7 @@ open class F16Extractor : ExtractorApi() {
             val decryptedBytes = cipher.doFinal(cipherText)
             String(decryptedBytes, Charsets.UTF_8)
         } catch (e: Exception) {
-            Log.e("F16Extractor", "Decryption Error: ${e.message}")
+            Log.e("F16Extractor", "Decrypt Failed: ${e.message}")
             null
         }
     }
