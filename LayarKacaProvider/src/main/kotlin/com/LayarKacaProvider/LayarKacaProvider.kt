@@ -62,7 +62,7 @@ class LayarKacaProvider : MainAPI() {
     }
 
     // ========================================================================
-    // LOAD (VERSI STABIL / JAM 2 WIT)
+    // LOAD DETAILS (VERSI ORIGINAL YANG BERHASIL DI BUILD)
     // ========================================================================
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url).document
@@ -72,14 +72,13 @@ class LayarKacaProvider : MainAPI() {
         val plot = document.selectFirst("div.entry-content p")?.text()?.trim()
         val year = document.selectFirst("span.year")?.text()?.toIntOrNull()
         
-        // Menggunakan toRatingInt() atau parsing manual ke Int agar tidak error tipe data
-        val ratingText = document.selectFirst("span.rating")?.text()?.trim()
-        val rating = ratingText?.toDoubleOrNull()?.toInt() // Convert aman ke Int
-
+        // Menggunakan toRatingInt() agar sesuai dengan tipe data Int? di core
+        val rating = document.selectFirst("span.rating")?.text()?.toRatingInt()
+        
         val tags = document.select("div.gmr-movie-on a[rel=category tag]").map { it.text() }
         val trailer = document.selectFirst("a.fancybox-youtube")?.attr("href")
 
-        // Menggunakan konstruktor Episode lama yang simpel
+        // Menggunakan konstruktor Episode lama
         val episodes = document.select("ul.episode-list li a").map {
             val epHref = it.attr("href")
             val epName = it.text().trim()
@@ -108,7 +107,7 @@ class LayarKacaProvider : MainAPI() {
     }
 
     // ========================================================================
-    // LOAD LINKS
+    // LOAD LINKS (VERSI STANDAR SEBELUM P2P)
     // ========================================================================
     override suspend fun loadLinks(
         data: String,
@@ -118,14 +117,14 @@ class LayarKacaProvider : MainAPI() {
     ): Boolean {
         val document = app.get(data).document
 
-        // 1. Ambil dari Iframe
+        // 1. Cari Iframe biasa
         document.select("iframe").forEach { iframe ->
             var src = iframe.attr("src")
             if (src.startsWith("//")) src = "https:$src"
             loadExtractor(src, data, subtitleCallback, callback)
         }
 
-        // 2. Ambil dari Tombol Provider (ul#loadProviders)
+        // 2. Cari Tombol Provider di bawah player
         document.select("ul#loadProviders li a").forEach { linkElement ->
             var link = linkElement.attr("href")
             if (link.startsWith("//")) link = "https:$link"
