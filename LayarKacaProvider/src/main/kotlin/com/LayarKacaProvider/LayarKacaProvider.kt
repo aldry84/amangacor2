@@ -30,23 +30,34 @@ class LayarKacaProvider : MainAPI() {
         addWidget("Horror Terbaru", "div.widget[data-type='latest-horror'] li.slider article")
         addWidget("Daftar Lengkap", "div#post-container article")
 
-        // FIX: Menggunakan newHomePageResponse
         return newHomePageResponse(items)
     }
 
-    // --- SEARCH ---
+    // --- SEARCH (FIXED) ---
     override suspend fun search(query: String): List<SearchResponse> {
         val searchUrl = "$mainUrl/search?s=$query"
-        return app.get(searchUrl).document.select("div.search-result article, div#post-container article")
+        val document = app.get(searchUrl).document
+        
+        // Selector diperluas: search-result, grid-archive, atau article apa saja di halaman search
+        val results = document.select("div.search-result article, div.grid-archive article, div#post-container article, div.movie-list article")
             .mapNotNull { toSearchResult(it) }
+            
+        return results
     }
 
-    // --- HELPER: HTML -> SearchResponse ---
+    // --- HELPER: HTML -> SearchResponse (FIXED) ---
     private fun toSearchResult(element: Element): SearchResponse? {
-        val title = element.select("h3.poster-title").text().trim()
+        // Coba cari judul di berbagai tag h1-h6
+        val title = element.select("h3.poster-title, h2.entry-title, h1.page-title, div.title").text().trim()
         if (title.isEmpty()) return null
+        
         val href = fixUrl(element.select("a").first()?.attr("href") ?: return null)
-        val posterUrl = element.select("img").attr("src")
+        
+        // Ambil poster dari img src atau srcset
+        val imgElement = element.select("img").first()
+        val posterUrl = imgElement?.attr("src") 
+            ?: imgElement?.attr("data-src")
+        
         val quality = getQualityFromString(element.select("span.label").text())
 
         // Cek Series/Movie dari label EPS atau durasi S.
@@ -54,13 +65,11 @@ class LayarKacaProvider : MainAPI() {
                 element.select("span.duration").text().contains("S.")
 
         return if (isSeries) {
-            // FIX: Menggunakan newTvSeriesSearchResponse
             newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
                 this.posterUrl = posterUrl
                 this.quality = quality
             }
         } else {
-            // FIX: Menggunakan newMovieSearchResponse
             newMovieSearchResponse(title, href, TvType.Movie) {
                 this.posterUrl = posterUrl
                 this.quality = quality
@@ -68,9 +77,7 @@ class LayarKacaProvider : MainAPI() {
         }
     }
 
-    // --- LOAD DETAIL (INTI LOGIKA) ---
-
-    // Struct buat JSON Series NontonDrama
+    // --- LOAD DETAIL ---
     data class NontonDramaEpisode(
         val s: Int? = null,
         val episode_no: Int? = null,
@@ -96,24 +103,20 @@ class LayarKacaProvider : MainAPI() {
 
         // 2. PARSING DATA UMUM
         val title = document.select("h1.entry-title, h1.page-title, div.movie-info h1").text().trim()
-        val plot = document.select("div.synopsis, div.entry-content p blockquote").text().trim()
+        val plot = document.select("div.synopsis, div.entry-content p, blockquote").text().trim()
 
-        // Ambil poster
         val poster = document.select("meta[property='og:image']").attr("content").ifEmpty {
             document.select("div.poster img, div.detail img").attr("src")
         }
 
-        // Ambil Rating (String)
         val ratingText = document.select("span.rating-value").text().ifEmpty {
             document.select("div.info-tag").text()
         }
         val ratingScore = Regex("(\\d\\.\\d)").find(ratingText)?.value
 
-        // Ambil Tahun
         val year = document.select("span.year").text().toIntOrNull() ?:
         Regex("(\\d{4})").find(document.select("div.info-tag").text())?.value?.toIntOrNull()
 
-        // Ambil Genre & Aktor
         val tags = document.select("div.tag-list a, div.genre a").map { it.text() }
         val actors = document.select("div.detail p:contains(Bintang Film) a, div.cast a").map {
             ActorData(Actor(it.text(), ""))
@@ -127,11 +130,9 @@ class LayarKacaProvider : MainAPI() {
         val jsonScript = document.select("script#season-data").html()
 
         if (jsonScript.isNotBlank()) {
-            // Parsing JSON Episode untuk Series NontonDrama
             tryParseJson<Map<String, List<NontonDramaEpisode>>>(jsonScript)?.forEach { (_, epsList) ->
                 epsList.forEach { epData ->
                     val epUrl = fixUrl(epData.slug ?: "")
-                    // FIX: Menggunakan newEpisode dengan lambda block
                     episodes.add(
                         newEpisode(epUrl) {
                             this.name = epData.title ?: "Episode ${epData.episode_no}"
@@ -142,12 +143,10 @@ class LayarKacaProvider : MainAPI() {
                 }
             }
         } else {
-            // Fallback manual untuk Movie/Series biasa
             document.select("ul.episodes li a").forEach {
                 val epTitle = it.text()
                 val epHref = fixUrl(it.attr("href"))
                 val epNum = Regex("(?i)Episode\\s+(\\d+)").find(epTitle)?.groupValues?.get(1)?.toIntOrNull()
-                // FIX: Menggunakan newEpisode
                 episodes.add(
                     newEpisode(epHref) {
                         this.name = epTitle
@@ -157,28 +156,21 @@ class LayarKacaProvider : MainAPI() {
             }
         }
 
-        // 4. RETURN RESPONSE
         if (episodes.isNotEmpty()) {
-            // -- TV SERIES --
-            // FIX: Menggunakan newTvSeriesLoadResponse
             return newTvSeriesLoadResponse(title, cleanUrl, TvType.TvSeries, episodes) {
                 this.posterUrl = poster
                 this.plot = plot
                 this.year = year
-                // FIX: Menggunakan Score.from langsung ke properti score
                 this.score = Score.from(ratingScore, 10)
                 this.tags = tags
                 this.actors = actors
                 this.recommendations = recommendations
             }
         } else {
-            // -- MOVIE --
-            // FIX: Menggunakan newMovieLoadResponse
             return newMovieLoadResponse(title, cleanUrl, TvType.Movie, cleanUrl) {
                 this.posterUrl = poster
                 this.plot = plot
                 this.year = year
-                // FIX: Menggunakan Score.from langsung
                 this.score = Score.from(ratingScore, 10)
                 this.tags = tags
                 this.actors = actors
@@ -187,7 +179,7 @@ class LayarKacaProvider : MainAPI() {
         }
     }
 
-    // --- LOAD LINKS (PLAYER) ---
+    // --- LOAD LINKS (PLAYER FIXED) ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -196,14 +188,55 @@ class LayarKacaProvider : MainAPI() {
     ): Boolean {
         val document = app.get(data).document
 
-        // Cari semua iframe player
-        document.select("iframe[src*='player'], iframe#main-player").forEach { iframe ->
-            var src = iframe.attr("src")
-            // Kalau src diawali // (protocol relative), tambahkan https:
-            if (src.startsWith("//")) src = "https:$src"
+        // 1. Ambil semua link dari tab player (P2P, Turbovip, Cast, dll)
+        val playerLinks = document.select("ul#player-list li a").map { 
+            // Ambil atribut data-url jika ada, kalau tidak ambil href
+            val url = it.attr("data-url").ifEmpty { it.attr("href") }
+            fixUrl(url)
+        }
+        
+        // 2. Ambil juga iframe utama sebagai fallback
+        val mainIframe = fixUrl(document.select("iframe#main-player").attr("src"))
+        
+        // Gabungkan dan hilangkan duplikat
+        val allSources = (playerLinks + mainIframe).filter { it.isNotBlank() }.distinct()
 
-            // Panggil extractor bawaan CloudStream
-            loadExtractor(src, data, subtitleCallback, callback)
+        allSources.forEach { url ->
+            // Coba load extractor langsung (kalau linknya support, misal streamtape)
+            val directLoaded = loadExtractor(url, data, subtitleCallback, callback)
+            
+            if (!directLoaded) {
+                // Kalau tidak support, kemungkinan ini wrapper (playeriframe.sbs)
+                // Kita coba buka linknya (Unwrap) untuk cari link asli di dalamnya
+                try {
+                    val iframePage = app.get(url, referer = data).document
+                    
+                    // Cari iframe di dalam wrapper
+                    iframePage.select("iframe").forEach { nestedIframe ->
+                        val nestedSrc = fixUrl(nestedIframe.attr("src"))
+                        loadExtractor(nestedSrc, url, subtitleCallback, callback)
+                    }
+                    
+                    // Cari Script (kadang link P2P/M3U8 ada di script)
+                    // Ini regex sederhana untuk cari link .m3u8 atau .mp4 di source page
+                    val scriptHtml = iframePage.html()
+                    Regex("(?i)https?://[^\"]+\\.(m3u8|mp4)").findAll(scriptHtml).forEach { match ->
+                        val streamUrl = match.value
+                        callback.invoke(
+                            ExtractorLink(
+                                source = "LK21 P2P",
+                                name = "LK21 P2P",
+                                url = streamUrl,
+                                referer = url,
+                                quality = if(streamUrl.contains("m3u8")) Qualities.Unknown.value else Qualities.P480.value,
+                                type = if(streamUrl.contains("m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                            )
+                        )
+                    }
+                } catch (e: Exception) {
+                    // Ignore error saat unwrap
+                }
+            }
         }
         return true
     }
