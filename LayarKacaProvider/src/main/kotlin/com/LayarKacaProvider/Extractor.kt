@@ -55,7 +55,7 @@ open class EmturbovidExtractor : ExtractorApi() {
 }
 
 // ============================================================================
-// 2. P2P EXTRACTOR
+// 2. P2P EXTRACTOR (ORIGINAL - AMAN)
 // ============================================================================
 open class P2PExtractor : ExtractorApi() {
     override var name = "P2P"
@@ -90,7 +90,7 @@ open class P2PExtractor : ExtractorApi() {
 }
 
 // ============================================================================
-// 3. F16 EXTRACTOR (FINAL FIX: SINGLE SOURCE)
+// 3. F16 EXTRACTOR (FIXED: ERROR 2004 & DUPLICATE TRACKS)
 // ============================================================================
 open class F16Extractor : ExtractorApi() {
     override var name = "F16"
@@ -121,9 +121,9 @@ open class F16Extractor : ExtractorApi() {
             val apiUrl = "$mainUrl/api/videos/$videoId/embed/playback"
             val pageUrl = "$mainUrl/e/$videoId"
             
+            // 1. Generate Fake Identity
             val viewerId = randomHex(32) 
             val deviceId = randomHex(32)
-            
             val jwtHeader = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9" 
             val timestamp = System.currentTimeMillis() / 1000
             val jwtPayload = """{"viewer_id":"$viewerId","device_id":"$deviceId","confidence":0.91,"iat":$timestamp,"exp":${timestamp + 600}}"""
@@ -131,7 +131,8 @@ open class F16Extractor : ExtractorApi() {
             val jwtSignature = randomHex(43)
             val token = "$jwtHeader.$jwtPayloadEncoded.$jwtSignature"
 
-            val headers = mapOf(
+            // 2. Headers Wajib (Request API)
+            val apiHeaders = mapOf(
                 "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
                 "Referer" to pageUrl,
                 "Origin" to mainUrl,
@@ -150,7 +151,7 @@ open class F16Extractor : ExtractorApi() {
                 )
             )
             
-            val responseText = app.post(apiUrl, headers = headers, json = jsonPayload).text
+            val responseText = app.post(apiUrl, headers = apiHeaders, json = jsonPayload).text
             val json = tryParseJson<F16Playback>(responseText)
             val pb = json?.playback
 
@@ -165,20 +166,27 @@ open class F16Extractor : ExtractorApi() {
                 if (decryptedJson != null) {
                     val result = tryParseJson<DecryptedResponse>(decryptedJson)
                     
-                    // FIX DUPLIKAT: Cukup ambil 1 link pertama yang valid.
-                    // Link ini adalah "master.m3u8" yang sudah berisi semua resolusi (480, 720, 1080).
-                    // Jadi tidak perlu memasukkan link yang sama berkali-kali.
+                    // FIX DUPLIKAT: Ambil HANYA SATU link pertama yang valid.
+                    // Link ini adalah Master Playlist yang otomatis berisi semua resolusi.
                     val bestSource = result?.sources?.firstOrNull { !it.url.isNullOrBlank() }
 
-                    if (bestSource != null && !bestSource.url.isNullOrBlank()) {
+                    if (bestSource?.url != null) {
+                        // FIX ERROR 2004: Headers ini WAJIB dibawa ke Player
+                        val playerHeaders = mapOf(
+                            "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
+                            "Referer" to "$mainUrl/", 
+                            "Origin" to mainUrl
+                        )
+
                         sources.add(newExtractorLink(
                             source = "CAST",
-                            name = "CAST", // Nama bersih, tanpa embel-embel 480p
+                            name = "CAST", // Nama bersih tanpa label kualitas ganda
                             url = bestSource.url,
                             type = ExtractorLinkType.M3U8
                         ) {
                             this.referer = "$mainUrl/"
-                            this.quality = Qualities.Unknown.value // Biarkan player mendeteksi resolusi otomatis
+                            this.quality = Qualities.Unknown.value // Biarkan player deteksi resolusi sendiri
+                            this.headers = playerHeaders // <-- KUNCI PERBAIKAN ERROR 2004
                         })
                     }
                 }
