@@ -1,6 +1,6 @@
 package com.LayarKacaProvider
 
-import com.lagradost.api.Log
+import android.util.Base64
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.ExtractorApi
@@ -8,9 +8,10 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.newExtractorLink
-import com.lagradost.cloudstream3.utils.getAndUnpack
-import com.lagradost.cloudstream3.network.WebViewResolver
 import java.net.URI
+import javax.crypto.Cipher
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.SecretKeySpec
 
 // ============================================================================
 // 1. EMTURBOVID EXTRACTOR (Server: TurboVip & Emturbovid)
@@ -90,96 +91,104 @@ open class P2PExtractor : ExtractorApi() {
 }
 
 // ============================================================================
-// 3. F16 EXTRACTOR (Server: CAST / f16px.com) - [FINAL UPDATE]
+// 3. F16 EXTRACTOR (Server: CAST / f16px.com) - [PURE KOTLIN DECRYPTION]
 // ============================================================================
 open class F16Extractor : ExtractorApi() {
     override var name = "F16"
     override var mainUrl = "https://f16px.com"
     override val requiresReferer = false
 
+    // Struktur JSON untuk parsing response API
+    data class F16Playback(val playback: PlaybackData?)
+    data class PlaybackData(val iv: String?, val payload: String?, val key_parts: List<String>?)
+    data class DecryptedSource(val file: String?, val label: String?, val type: String?)
+    data class DecryptedResponse(val sources: List<DecryptedSource>?)
+
     override suspend fun getUrl(url: String, referer: String?): List<ExtractorLink>? {
         val sources = mutableListOf<ExtractorLink>()
         
-        // Header Lengkap sesuai Analisa cURL kamu
-        val f16Headers = mapOf(
+        // ID Video: https://f16px.com/e/ex5eimwh97ha -> ex5eimwh97ha
+        val videoId = url.substringAfter("/e/").substringBefore("?")
+        val apiUrl = "$mainUrl/api/videos/$videoId/embed/playback"
+
+        val headers = mapOf(
+            "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
             "Referer" to "https://playeriframe.sbs/",
             "Origin" to "https://playeriframe.sbs",
-            "x-embed-referer" to "https://playeriframe.sbs/", // Header Pancingan
-            "Sec-Fetch-Dest" to "iframe",
-            "Sec-Fetch-Mode" to "navigate",
-            "Sec-Fetch-Site" to "cross-site",
-            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            "x-embed-origin" to "playeriframe.sbs",
+            "x-embed-parent" to url,
+            "x-embed-referer" to "https://playeriframe.sbs/"
         )
 
         try {
-            // 1. Coba Regex (Kali aja ada yang bocor/tidak terenkripsi)
-            val response = app.get(url, headers = f16Headers).text
-            val unpacked = if (response.contains("eval(function(p,a,c,k,e,d)")) {
-                getAndUnpack(response)
-            } else {
-                response
-            }
+            // 1. Tembak API Playback (Pura-pura jadi browser)
+            // Kita kirim fingerprint dummy biar dikira proses 'Attest' sudah lewat
+            val dummyBody = """{"fingerprint":{"token":"dummy_bypass","viewer_id":"7e847c23137449fbb73cbf6bb7f9bceb","device_id":"daeba4e7719c4d4c91e53dd03849cf37","confidence":0.6}}"""
+            
+            val responseText = app.post(apiUrl, headers = headers, data = mapOf("body" to dummyBody)).text
+            val json = tryParseJson<F16Playback>(responseText)
+            val pb = json?.playback
 
-            val regexPatterns = listOf(
-                Regex("""sources:\s*\[\s*\{\s*file:\s*"(http[^"]+)""""),
-                Regex("""file:\s*"(http[^"]+)"""")
-            )
-
-            var m3u8Url: String? = null
-            for (regex in regexPatterns) {
-                m3u8Url = regex.find(unpacked)?.groupValues?.get(1)
-                if (!m3u8Url.isNullOrEmpty()) break
-            }
-
-            if (!m3u8Url.isNullOrEmpty()) {
-                sources.add(
-                    newExtractorLink(
-                        source = "CAST",
-                        name = "CAST",
-                        url = m3u8Url,
-                        type = ExtractorLinkType.M3U8
-                    ) {
-                        this.referer = "$mainUrl/"
-                        this.quality = Qualities.Unknown.value
-                        this.headers = f16Headers
-                    }
-                )
-            } else {
-                // 2. JURUS UTAMA: WebView Fallback (Anti Enkripsi AES)
-                Log.d("F16Extractor", "Mencoba WebView Fallback dengan Timeout 60 Detik...")
+            if (pb != null && pb.payload != null && pb.iv != null && !pb.key_parts.isNullOrEmpty()) {
                 
-                val resolver = WebViewResolver(
-                    interceptUrl = Regex("""(m3u8|master\.txt)"""), 
-                    additionalUrls = listOf(Regex("""(m3u8|master\.txt)""")),
-                    useOkhttp = false,
-                    timeout = 60_000L // 60 Detik (Wajib untuk decrypt AES)
+                // 2. RUMUS RAHASIA: Base64(Part1) + Base64(Part2)
+                val part1 = Base64.decode(pb.key_parts[0], Base64.DEFAULT)
+                val part2 = Base64.decode(pb.key_parts[1], Base64.DEFAULT)
+                val combinedKey = part1 + part2 // Gabungkan byte array
+
+                // 3. Lakukan Dekripsi AES-GCM
+                val decryptedJson = decryptAesGcm(
+                    encryptedBase64 = pb.payload,
+                    keyBytes = combinedKey,
+                    ivBase64 = pb.iv
                 )
 
-                // Kita pakai URL asli, header lengkap akan di-handle WebView
-                val interceptedUrl = app.get(
-                    url,
-                    headers = f16Headers,
-                    interceptor = resolver
-                ).url
-
-                if (interceptedUrl.isNotEmpty() && interceptedUrl != url) {
-                    sources.add(
-                        newExtractorLink(
-                            source = "CAST", 
-                            name = "CAST",
-                            url = interceptedUrl,
-                            type = ExtractorLinkType.M3U8
-                        ) {
-                            this.referer = "$mainUrl/"
-                            this.quality = Qualities.Unknown.value
+                // 4. Parse Hasil Dekripsi (Isinya JSON lagi)
+                if (decryptedJson != null) {
+                    val result = tryParseJson<DecryptedResponse>(decryptedJson)
+                    result?.sources?.forEach { source ->
+                        if (!source.file.isNullOrBlank()) {
+                            sources.add(
+                                newExtractorLink(
+                                    source = "CAST",
+                                    name = "CAST ${source.label ?: "Auto"}",
+                                    url = source.file,
+                                    type = ExtractorLinkType.M3U8
+                                ) {
+                                    this.referer = "$mainUrl/"
+                                    this.quality = Qualities.Unknown.value
+                                }
+                            )
                         }
-                    )
+                    }
                 }
             }
-
         } catch (e: Exception) {
             e.printStackTrace()
         }
         return sources
+    }
+
+    // Fungsi Pembantu Dekripsi AES-GCM
+    private fun decryptAesGcm(encryptedBase64: String, keyBytes: ByteArray, ivBase64: String): String? {
+        try {
+            // Decode Base64 Input
+            val cipherText = Base64.decode(encryptedBase64, Base64.DEFAULT)
+            val iv = Base64.decode(ivBase64, Base64.DEFAULT)
+
+            // Setup Cipher
+            val spec = GCMParameterSpec(128, iv) // 128 bit tag length
+            val keySpec = SecretKeySpec(keyBytes, "AES")
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            
+            cipher.init(Cipher.DECRYPT_MODE, keySpec, spec)
+            
+            // Decrypt
+            val decryptedBytes = cipher.doFinal(cipherText)
+            return String(decryptedBytes, Charsets.UTF_8)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return null
+        }
     }
 }
