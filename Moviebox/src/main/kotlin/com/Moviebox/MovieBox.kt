@@ -11,10 +11,11 @@ class MovieBox : MainAPI() {
     override val hasMainPage = true
     override var lang = "id"
     
-    private val apiUrl = "https://h5-api.aoneroom.com/wefeed-h5api-bff"
+    // Server API Utama Aplikasi
+    private val apiUrl = "https://api4sg.aoneroom.com/wefeed-h5api-bff"
 
     private val headers = mapOf(
-        "authority" to "h5-api.aoneroom.com",
+        "authority" to "api4sg.aoneroom.com",
         "accept" to "application/json",
         "authorization" to "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjE4MTM0MjU0MjgwMjM4ODc4MDAsImF0cCI6MywiZXh0IjoiMTc3MDQxMTA5MCIsImV4cCI6MTc3ODE4NzA5MCwiaWF0IjoxNzcwNDEwNzkwfQ.-kW86pGAJX6jheH_yEM8xfGd4rysJFR_hM3djl32nAo",
         "content-type" to "application/json",
@@ -25,8 +26,8 @@ class MovieBox : MainAPI() {
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val homeSets = mutableListOf<HomePageList>()
         try {
-            val trendingUrl = "$apiUrl/subject/trending?page=0&perPage=18"
-            val res = app.get(trendingUrl, headers = headers, timeout = 20).parsedSafe<TrendingResponse>()
+            val trendingUrl = "$apiUrl/subject/trending?page=0&perPage=18&host=moviebox.ph"
+            val res = app.get(trendingUrl, headers = headers, timeout = 60).parsedSafe<TrendingResponse>()
             res?.data?.subjectList?.mapNotNull { it.toSearchResponse() }?.let {
                 if (it.isNotEmpty()) homeSets.add(HomePageList("🔥 Trending Now", it, false))
             }
@@ -34,7 +35,7 @@ class MovieBox : MainAPI() {
 
         try {
             val homeUrl = "$apiUrl/home?host=moviebox.ph"
-            val res = app.get(homeUrl, headers = headers, timeout = 20).parsedSafe<HomeResponse>()
+            val res = app.get(homeUrl, headers = headers, timeout = 60).parsedSafe<HomeResponse>()
             res?.data?.operatingList?.forEach { section ->
                 val items = mutableListOf<Subject>()
                 if (section.type == "BANNER") section.banner?.items?.let { items.addAll(it) }
@@ -54,17 +55,16 @@ class MovieBox : MainAPI() {
         val url = "$apiUrl/subject/search?host=moviebox.ph"
         val body = mapOf("keyword" to query, "page" to 0, "perPage" to 20)
         return try {
-            val res = app.post(url, headers = headers, json = body, timeout = 20).parsedSafe<SearchDataResponse>()
+            val res = app.post(url, headers = headers, json = body, timeout = 60).parsedSafe<SearchDataResponse>()
             res?.data?.items?.mapNotNull { it.toSearchResponse() } ?: emptyList()
         } catch (e: Exception) { emptyList() }
     }
 
     override suspend fun load(url: String): LoadResponse {
-        // PERBAIKAN: Menghapus &host=moviebox.ph agar tidak "Data Kosong"
-        val detailUrl = "$apiUrl/detail?detailPath=$url"
-        val res = app.get(detailUrl, headers = headers, timeout = 20).parsedSafe<DetailFullResponse>()
+        val detailUrl = "$apiUrl/detail?detailPath=$url&host=moviebox.ph"
+        val res = app.get(detailUrl, headers = headers, timeout = 60).parsedSafe<DetailFullResponse>()
         val data = res?.data ?: throw ErrorLoadingException("Data Kosong")
-        val subject = data.subject ?: throw ErrorLoadingException("Subject Null")
+        val subject = data.subject ?: throw ErrorLoadingException("Film Tidak Ditemukan")
 
         val title = subject.title ?: ""
         val poster = subject.cover?.url
@@ -108,6 +108,7 @@ class MovieBox : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
+        // Parsing data: id|musim|episode|path
         val parts = data.split("|")
         val id = parts.getOrNull(0) ?: return false
         val s = parts.getOrNull(1) ?: "0"
@@ -116,21 +117,29 @@ class MovieBox : MainAPI() {
 
         val playUrl = "https://lok-lok.cc/wefeed-h5api-bff/subject/play?subjectId=$id&se=$s&ep=$e&detailPath=$path"
         
-        // Header Play yang disesuaikan dengan curl sukses milik user
+        // Header BARU sesuai curl sukses milik user
+        val refererUrl = "https://lok-lok.cc/spa/videoPlayPage/movies/$path?id=$id&utm_source=app-search"
         val playHeaders = mapOf(
-            "authority" to "lok-lok.cc", 
+            "authority" to "lok-lok.cc",
             "accept" to "application/json",
-            "referer" to "https://lok-lok.cc/",
+            "accept-language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
+            "cookie" to "_ga=GA1.1.683107572.1770449531; uuid=f73de7fd-ab7e-4c25-a1d7-dc984179f8fc; _ga_5W8GT0FPB7=GS2.1.s1770457948\$o2\$g1\$t1770458018\$j58\$l0\$h0",
+            "referer" to refererUrl,
+            "sec-ch-ua" to "\"Chromium\";v=\"137\", \"Not/A)Brand\";v=\"24\"",
+            "sec-ch-ua-mobile" to "?1",
+            "sec-ch-ua-platform" to "\"Android\"",
+            "sec-fetch-dest" to "empty",
+            "sec-fetch-mode" to "cors",
+            "sec-fetch-site" to "same-origin",
             "user-agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
             "x-client-info" to "{\"timezone\":\"Asia/Jayapura\"}",
             "x-source" to "app-search"
         )
         
         return try {
-            val res = app.get(playUrl, headers = playHeaders, timeout = 30).parsedSafe<PlayResponse>()
+            val res = app.get(playUrl, headers = playHeaders, timeout = 60).parsedSafe<PlayResponse>()
             val streams = res?.data?.streams
             
-            // PERBAIKAN: Jika stream kosong, kembalikan false
             if (streams.isNullOrEmpty()) return false
 
             streams.forEach { stream ->
@@ -141,14 +150,13 @@ class MovieBox : MainAPI() {
                         url = stream.url ?: return@forEach,
                         type = ExtractorLinkType.VIDEO
                     ) {
-                        this.referer = "https://lok-lok.cc/"
+                        this.referer = refererUrl
                         this.quality = stream.resolutions?.toIntOrNull() ?: 0
                     }
                 )
             }
             true
         } catch (err: Exception) { 
-            err.printStackTrace()
             false 
         }
     }
