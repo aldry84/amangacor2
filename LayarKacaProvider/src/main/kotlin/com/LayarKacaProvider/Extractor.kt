@@ -9,6 +9,7 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.newExtractorLink
+import com.lagradost.cloudstream3.utils.getQualityFromName
 import java.net.URI
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
@@ -90,7 +91,7 @@ open class P2PExtractor : ExtractorApi() {
 }
 
 // ============================================================================
-// 3. F16 EXTRACTOR (NEW UPDATE: TOKEN & HEADERS)
+// 3. F16 EXTRACTOR (FIXED: KEY NAME 'URL')
 // ============================================================================
 open class F16Extractor : ExtractorApi() {
     override var name = "F16"
@@ -99,7 +100,9 @@ open class F16Extractor : ExtractorApi() {
 
     data class F16Playback(val playback: PlaybackData?)
     data class PlaybackData(val iv: String?, val payload: String?, val key_parts: List<String>?)
-    data class DecryptedSource(val file: String?, val label: String?, val type: String?)
+    
+    // UPDATE: Mengganti 'file' menjadi 'url' sesuai hasil JSON
+    data class DecryptedSource(val url: String?, val label: String?)
     data class DecryptedResponse(val sources: List<DecryptedSource>?)
 
     private fun String.fixBase64(): String {
@@ -108,7 +111,7 @@ open class F16Extractor : ExtractorApi() {
         return s
     }
 
-    // Helper untuk membuat Hex String acak (mirip viewer_id asli)
+    // Helper untuk membuat Hex String acak
     private fun randomHex(length: Int): String {
         val chars = "0123456789abcdef"
         return (1..length).map { chars[Random.nextInt(chars.length)] }.joinToString("")
@@ -127,17 +130,14 @@ open class F16Extractor : ExtractorApi() {
             val deviceId = randomHex(32)
             
             // Construct Fake Token (JWT-like structure)
-            // Header: {"alg":"HS256","typ":"JWT"} -> Base64Url
             val jwtHeader = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9" 
             val timestamp = System.currentTimeMillis() / 1000
-            // Payload
             val jwtPayload = """{"viewer_id":"$viewerId","device_id":"$deviceId","confidence":0.91,"iat":$timestamp,"exp":${timestamp + 600}}"""
             val jwtPayloadEncoded = Base64.encodeToString(jwtPayload.toByteArray(), Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
-            // Fake Signature (Random 43 chars)
             val jwtSignature = randomHex(43)
             val token = "$jwtHeader.$jwtPayloadEncoded.$jwtSignature"
 
-            // HEADERS WAJIB (Updated dari data CURL)
+            // HEADERS WAJIB
             val headers = mapOf(
                 "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
                 "Referer" to pageUrl,
@@ -148,7 +148,7 @@ open class F16Extractor : ExtractorApi() {
                 "x-embed-referer" to "https://playeriframe.sbs/"
             )
 
-            // BODY JSON (Wajib ada fingerprint)
+            // BODY JSON
             val jsonPayload = mapOf(
                 "fingerprint" to mapOf(
                     "token" to token,
@@ -176,15 +176,17 @@ open class F16Extractor : ExtractorApi() {
                 if (decryptedJson != null) {
                     val result = tryParseJson<DecryptedResponse>(decryptedJson)
                     result?.sources?.forEach { source ->
-                        if (!source.file.isNullOrBlank()) {
+                        // UPDATE: Menggunakan source.url
+                        if (!source.url.isNullOrBlank()) {
                             sources.add(newExtractorLink(
                                 source = "CAST",
                                 name = "CAST ${source.label ?: "Auto"}",
-                                url = source.file,
+                                url = source.url,
                                 type = ExtractorLinkType.M3U8
                             ) {
                                 this.referer = "$mainUrl/"
-                                this.quality = Qualities.Unknown.value
+                                // UPDATE: Auto Quality (480p -> 480)
+                                this.quality = getQualityFromName(source.label)
                             })
                         }
                     }
