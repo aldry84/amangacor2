@@ -11,7 +11,6 @@ class MovieBox : MainAPI() {
     override val hasMainPage = true
     override var lang = "id"
     
-    // Server API Utama Aplikasi
     private val apiUrl = "https://api4sg.aoneroom.com/wefeed-h5api-bff"
 
     private val headers = mapOf(
@@ -19,34 +18,38 @@ class MovieBox : MainAPI() {
         "accept" to "application/json",
         "authorization" to "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjE4MTM0MjU0MjgwMjM4ODc4MDAsImF0cCI6MywiZXh0IjoiMTc3MDQxMTA5MCIsImV4cCI6MTc3ODE4NzA5MCwiaWF0IjoxNzcwNDEwNzkwfQ.-kW86pGAJX6jheH_yEM8xfGd4rysJFR_hM3djl32nAo",
         "content-type" to "application/json",
-        "user-agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
+        "user-agent" to "okhttp/4.9.0",
+        "x-client-info" to "{\"timezone\":\"Asia/Jayapura\"}",
         "x-request-lang" to "en"
     )
 
+    // =================================================================================
+    // 1. HALAMAN UTAMA (BERDASARKAN KATEGORI/ID)
+    // =================================================================================
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val homeSets = mutableListOf<HomePageList>()
-        try {
-            val trendingUrl = "$apiUrl/subject/trending?page=0&perPage=18&host=moviebox.ph"
-            val res = app.get(trendingUrl, headers = headers, timeout = 60).parsedSafe<TrendingResponse>()
-            res?.data?.subjectList?.mapNotNull { it.toSearchResponse() }?.let {
-                if (it.isNotEmpty()) homeSets.add(HomePageList("🔥 Trending Now", it, false))
-            }
-        } catch (e: Exception) { e.printStackTrace() }
+        
+        // Daftar ID yang kamu berikan beserta judulnya
+        val categories = listOf(
+            Pair("6528093688173053896", "Film Indonesia"),
+            Pair("5283462032510044280", "Drama Indonesia"),
+            Pair("5848753831881965888", "Indonesia Horror"),
+            Pair("4380734070238626200", "Drama Korea")
+        )
 
-        try {
-            val homeUrl = "$apiUrl/home?host=moviebox.ph"
-            val res = app.get(homeUrl, headers = headers, timeout = 60).parsedSafe<HomeResponse>()
-            res?.data?.operatingList?.forEach { section ->
-                val items = mutableListOf<Subject>()
-                if (section.type == "BANNER") section.banner?.items?.let { items.addAll(it) }
-                else section.subjects?.let { items.addAll(it) }
-
-                val media = items.mapNotNull { it.toSearchResponse() }
-                if (media.isNotEmpty() && section.type != "CUSTOM" && section.type != "FILTER") {
-                    homeSets.add(HomePageList(section.title ?: "Featured", media, section.type == "BANNER"))
+        categories.forEach { (id, title) ->
+            try {
+                // Endpoint API untuk mengambil isi Ranking List berdasarkan ID
+                val url = "$apiUrl/subject/ranking-list/detail?id=$id&page=0&perPage=20&host=moviebox.ph"
+                val res = app.get(url, headers = headers, timeout = 60).parsedSafe<RankingDetailResponse>()
+                
+                res?.data?.subjectList?.mapNotNull { it.toSearchResponse() }?.let {
+                    if (it.isNotEmpty()) {
+                        homeSets.add(HomePageList(title, it, isHorizontalImages = false))
+                    }
                 }
-            }
-        } catch (e: Exception) { e.printStackTrace() }
+            } catch (e: Exception) { e.printStackTrace() }
+        }
 
         return newHomePageResponse(homeSets)
     }
@@ -108,7 +111,6 @@ class MovieBox : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // Parsing data: id|musim|episode|path
         val parts = data.split("|")
         val id = parts.getOrNull(0) ?: return false
         val s = parts.getOrNull(1) ?: "0"
@@ -117,7 +119,7 @@ class MovieBox : MainAPI() {
 
         val playUrl = "https://lok-lok.cc/wefeed-h5api-bff/subject/play?subjectId=$id&se=$s&ep=$e&detailPath=$path"
         
-        // Header BARU sesuai curl sukses milik user
+        // Header BARU sesuai curl sukses kamu
         val refererUrl = "https://lok-lok.cc/spa/videoPlayPage/movies/$path?id=$id&utm_source=app-search"
         val playHeaders = mapOf(
             "authority" to "lok-lok.cc",
@@ -156,9 +158,7 @@ class MovieBox : MainAPI() {
                 )
             }
             true
-        } catch (err: Exception) { 
-            false 
-        }
+        } catch (err: Exception) { false }
     }
 
     private fun Subject.toSearchResponse(): SearchResponse? {
@@ -169,12 +169,8 @@ class MovieBox : MainAPI() {
     }
 
     // --- DATA CLASSES ---
-    data class TrendingResponse(@JsonProperty("data") val data: TrendingData?)
-    data class TrendingData(@JsonProperty("subjectList") val subjectList: List<Subject>?)
-    data class HomeResponse(@JsonProperty("data") val data: HomeData?)
-    data class HomeData(@JsonProperty("operatingList") val operatingList: List<OperatingSection>?)
-    data class OperatingSection(@JsonProperty("type") val type: String?, @JsonProperty("title") val title: String?, @JsonProperty("banner") val banner: BannerObj?, @JsonProperty("subjects") val subjects: List<Subject>?)
-    data class BannerObj(@JsonProperty("items") val items: List<Subject>?)
+    data class RankingDetailResponse(@JsonProperty("data") val data: RankingData?)
+    data class RankingData(@JsonProperty("subjectList") val subjectList: List<Subject>?)
     data class SearchDataResponse(@JsonProperty("data") val data: SearchResultData?)
     data class SearchResultData(@JsonProperty("items") val items: List<Subject>?)
     data class DetailFullResponse(@JsonProperty("data") val data: DetailData?)
