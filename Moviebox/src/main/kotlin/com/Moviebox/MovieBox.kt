@@ -11,25 +11,35 @@ class MovieBox : MainAPI() {
     override val hasMainPage = true
     override var lang = "id"
     
-    private val apiUrl = "https://api4sg.aoneroom.com/wefeed-h5api-bff"
+    private val apiUrl = "https://h5-api.aoneroom.com/wefeed-h5api-bff"
 
-    private val headers = mapOf(
-        "authority" to "api4sg.aoneroom.com",
+    // Header khusus Main Page sesuai curl terbaru kamu
+    private val mainHeaders = mapOf(
+        "authority" to "h5-api.aoneroom.com",
         "accept" to "application/json",
+        "accept-language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
         "authorization" to "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjE4MTM0MjU0MjgwMjM4ODc4MDAsImF0cCI6MywiZXh0IjoiMTc3MDQxMTA5MCIsImV4cCI6MTc3ODE4NzA5MCwiaWF0IjoxNzcwNDEwNzkwfQ.-kW86pGAJX6jheH_yEM8xfGd4rysJFR_hM3djl32nAo",
         "content-type" to "application/json",
-        "user-agent" to "okhttp/4.9.0",
+        "origin" to "https://moviebox.ph",
+        "referer" to "https://moviebox.ph/",
+        "sec-ch-ua" to "\"Chromium\";v=\"137\", \"Not/A)Brand\";v=\"24\"",
+        "sec-ch-ua-mobile" to "?0",
+        "sec-ch-ua-platform" to "\"Linux\"",
+        "sec-fetch-dest" to "empty",
+        "sec-fetch-mode" to "cors",
+        "sec-fetch-site" to "cross-site",
+        "user-agent" to "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
         "x-client-info" to "{\"timezone\":\"Asia/Jayapura\"}",
         "x-request-lang" to "en"
     )
 
     // =================================================================================
-    // 1. HALAMAN UTAMA (BERDASARKAN KATEGORI/ID)
+    // 1. HALAMAN UTAMA (RANKING LIST)
     // =================================================================================
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val homeSets = mutableListOf<HomePageList>()
         
-        // Daftar ID yang kamu berikan beserta judulnya
+        // Daftar kategori sesuai ID yang kamu berikan
         val categories = listOf(
             Pair("6528093688173053896", "Film Indonesia"),
             Pair("5283462032510044280", "Drama Indonesia"),
@@ -39,9 +49,9 @@ class MovieBox : MainAPI() {
 
         categories.forEach { (id, title) ->
             try {
-                // Endpoint API untuk mengambil isi Ranking List berdasarkan ID
+                // Gunakan mainHeaders yang baru kamu berikan
                 val url = "$apiUrl/subject/ranking-list/detail?id=$id&page=0&perPage=20&host=moviebox.ph"
-                val res = app.get(url, headers = headers, timeout = 60).parsedSafe<RankingDetailResponse>()
+                val res = app.get(url, headers = mainHeaders, timeout = 60).parsedSafe<RankingDetailResponse>()
                 
                 res?.data?.subjectList?.mapNotNull { it.toSearchResponse() }?.let {
                     if (it.isNotEmpty()) {
@@ -58,14 +68,14 @@ class MovieBox : MainAPI() {
         val url = "$apiUrl/subject/search?host=moviebox.ph"
         val body = mapOf("keyword" to query, "page" to 0, "perPage" to 20)
         return try {
-            val res = app.post(url, headers = headers, json = body, timeout = 60).parsedSafe<SearchDataResponse>()
+            val res = app.post(url, headers = mainHeaders, json = body, timeout = 60).parsedSafe<SearchDataResponse>()
             res?.data?.items?.mapNotNull { it.toSearchResponse() } ?: emptyList()
         } catch (e: Exception) { emptyList() }
     }
 
     override suspend fun load(url: String): LoadResponse {
         val detailUrl = "$apiUrl/detail?detailPath=$url&host=moviebox.ph"
-        val res = app.get(detailUrl, headers = headers, timeout = 60).parsedSafe<DetailFullResponse>()
+        val res = app.get(detailUrl, headers = mainHeaders, timeout = 60).parsedSafe<DetailFullResponse>()
         val data = res?.data ?: throw ErrorLoadingException("Data Kosong")
         val subject = data.subject ?: throw ErrorLoadingException("Film Tidak Ditemukan")
 
@@ -119,7 +129,7 @@ class MovieBox : MainAPI() {
 
         val playUrl = "https://lok-lok.cc/wefeed-h5api-bff/subject/play?subjectId=$id&se=$s&ep=$e&detailPath=$path"
         
-        // Header BARU sesuai curl sukses kamu
+        // Header khusus untuk LOK-LOK (Play) tetap menggunakan data play curl sebelumnya
         val refererUrl = "https://lok-lok.cc/spa/videoPlayPage/movies/$path?id=$id&utm_source=app-search"
         val playHeaders = mapOf(
             "authority" to "lok-lok.cc",
@@ -127,12 +137,6 @@ class MovieBox : MainAPI() {
             "accept-language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
             "cookie" to "_ga=GA1.1.683107572.1770449531; uuid=f73de7fd-ab7e-4c25-a1d7-dc984179f8fc; _ga_5W8GT0FPB7=GS2.1.s1770457948\$o2\$g1\$t1770458018\$j58\$l0\$h0",
             "referer" to refererUrl,
-            "sec-ch-ua" to "\"Chromium\";v=\"137\", \"Not/A)Brand\";v=\"24\"",
-            "sec-ch-ua-mobile" to "?1",
-            "sec-ch-ua-platform" to "\"Android\"",
-            "sec-fetch-dest" to "empty",
-            "sec-fetch-mode" to "cors",
-            "sec-fetch-site" to "same-origin",
             "user-agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
             "x-client-info" to "{\"timezone\":\"Asia/Jayapura\"}",
             "x-source" to "app-search"
