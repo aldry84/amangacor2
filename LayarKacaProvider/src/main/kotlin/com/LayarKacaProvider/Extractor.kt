@@ -56,7 +56,7 @@ open class EmturbovidExtractor : ExtractorApi() {
 }
 
 // ============================================================================
-// 2. P2P EXTRACTOR (ORIGINAL - DO NOT TOUCH)
+// 2. P2P EXTRACTOR
 // ============================================================================
 open class P2PExtractor : ExtractorApi() {
     override var name = "P2P"
@@ -91,7 +91,7 @@ open class P2PExtractor : ExtractorApi() {
 }
 
 // ============================================================================
-// 3. F16 EXTRACTOR (FIXED: KEY NAME 'URL')
+// 3. F16 EXTRACTOR
 // ============================================================================
 open class F16Extractor : ExtractorApi() {
     override var name = "F16"
@@ -100,8 +100,6 @@ open class F16Extractor : ExtractorApi() {
 
     data class F16Playback(val playback: PlaybackData?)
     data class PlaybackData(val iv: String?, val payload: String?, val key_parts: List<String>?)
-    
-    // UPDATE: Mengganti 'file' menjadi 'url' sesuai hasil JSON
     data class DecryptedSource(val url: String?, val label: String?)
     data class DecryptedResponse(val sources: List<DecryptedSource>?)
 
@@ -111,7 +109,6 @@ open class F16Extractor : ExtractorApi() {
         return s
     }
 
-    // Helper untuk membuat Hex String acak
     private fun randomHex(length: Int): String {
         val chars = "0123456789abcdef"
         return (1..length).map { chars[Random.nextInt(chars.length)] }.joinToString("")
@@ -125,11 +122,9 @@ open class F16Extractor : ExtractorApi() {
             val apiUrl = "$mainUrl/api/videos/$videoId/embed/playback"
             val pageUrl = "$mainUrl/e/$videoId"
             
-            // Generate Fake ID
             val viewerId = randomHex(32) 
             val deviceId = randomHex(32)
             
-            // Construct Fake Token (JWT-like structure)
             val jwtHeader = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9" 
             val timestamp = System.currentTimeMillis() / 1000
             val jwtPayload = """{"viewer_id":"$viewerId","device_id":"$deviceId","confidence":0.91,"iat":$timestamp,"exp":${timestamp + 600}}"""
@@ -137,7 +132,6 @@ open class F16Extractor : ExtractorApi() {
             val jwtSignature = randomHex(43)
             val token = "$jwtHeader.$jwtPayloadEncoded.$jwtSignature"
 
-            // HEADERS WAJIB
             val headers = mapOf(
                 "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
                 "Referer" to pageUrl,
@@ -148,7 +142,6 @@ open class F16Extractor : ExtractorApi() {
                 "x-embed-referer" to "https://playeriframe.sbs/"
             )
 
-            // BODY JSON
             val jsonPayload = mapOf(
                 "fingerprint" to mapOf(
                     "token" to token,
@@ -158,25 +151,20 @@ open class F16Extractor : ExtractorApi() {
                 )
             )
             
-            // Request API
             val responseText = app.post(apiUrl, headers = headers, json = jsonPayload).text
             val json = tryParseJson<F16Playback>(responseText)
             val pb = json?.playback
 
             if (pb != null && pb.payload != null && pb.iv != null && !pb.key_parts.isNullOrEmpty()) {
-                
-                // 1. Gabungkan Key Parts
                 val part1 = Base64.decode(pb.key_parts[0].fixBase64(), Base64.URL_SAFE)
                 val part2 = Base64.decode(pb.key_parts[1].fixBase64(), Base64.URL_SAFE)
                 val combinedKey = part1 + part2 
 
-                // 2. Decrypt AES-GCM
                 val decryptedJson = decryptAesGcm(pb.payload, combinedKey, pb.iv)
 
                 if (decryptedJson != null) {
                     val result = tryParseJson<DecryptedResponse>(decryptedJson)
                     result?.sources?.forEach { source ->
-                        // UPDATE: Menggunakan source.url
                         if (!source.url.isNullOrBlank()) {
                             sources.add(newExtractorLink(
                                 source = "CAST",
@@ -185,7 +173,6 @@ open class F16Extractor : ExtractorApi() {
                                 type = ExtractorLinkType.M3U8
                             ) {
                                 this.referer = "$mainUrl/"
-                                // UPDATE: Auto Quality (480p -> 480)
                                 this.quality = getQualityFromName(source.label)
                             })
                         }
@@ -215,5 +202,81 @@ open class F16Extractor : ExtractorApi() {
             Log.e("F16Extractor", "Decrypt Failed: ${e.message}")
             null
         }
+    }
+}
+
+// ============================================================================
+// 4. HYDRAX / ABYSSCDN EXTRACTOR
+// ============================================================================
+open class HydraxExtractor : ExtractorApi() {
+    override var name = "Hydrax"
+    override var mainUrl = "https://playeriframe.sbs" 
+    override val requiresReferer = true
+
+    override suspend fun getUrl(url: String, referer: String?): List<ExtractorLink>? {
+        val sources = mutableListOf<ExtractorLink>()
+        
+        if (!url.contains("hydrax", ignoreCase = true) && !url.contains("abysscdn", ignoreCase = true)) {
+            return null
+        }
+
+        try {
+            // Auto-follow redirect (playeriframe -> short.icu -> abysscdn)
+            val response = app.get(url, referer = referer)
+            val finalUrl = response.url 
+            val document = response.document
+            val html = document.html()
+
+            // Scan Regex untuk Video (.mp4) di dalam script/html
+            val regex = Regex("(?i)(https?://[^\"']+\\.mp4(?:\\?[^\"']*)?)")
+            
+            regex.findAll(html).forEach { match ->
+                val videoUrl = match.value
+                
+                // Filter URL valid (biasanya storage.googleapis.com atau sssrr.org)
+                if (videoUrl.contains("storage.googleapis.com") || videoUrl.contains("sssrr.org")) {
+                    sources.add(
+                        newExtractorLink(
+                            source = name,
+                            name = "$name VIP",
+                            url = videoUrl,
+                            type = ExtractorLinkType.VIDEO, 
+                            quality = Qualities.Unknown.value
+                        ) {
+                            // Referer harus domain final (abysscdn), bukan playeriframe
+                            this.referer = finalUrl 
+                            this.headers = mapOf(
+                                "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
+                                "Origin" to "https://abysscdn.com"
+                            )
+                        }
+                    )
+                }
+            }
+
+            // Fallback: Cek JWPlayer Setup (Jika regex gagal)
+            if (sources.isEmpty()) {
+                val script = document.select("script:containsData(jwplayer)").html()
+                val file = Regex("file\\s*:\\s*[\"']([^\"']+)[\"']").find(script)?.groupValues?.get(1)
+                if (file != null && file.endsWith(".mp4")) {
+                     sources.add(
+                        newExtractorLink(
+                            source = name,
+                            name = "$name JW",
+                            url = file,
+                            type = ExtractorLinkType.VIDEO,
+                            quality = Qualities.Unknown.value
+                        ) {
+                            this.referer = finalUrl
+                        }
+                    )
+                }
+            }
+
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        
+        return sources
     }
 }
