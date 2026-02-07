@@ -2,67 +2,50 @@ package com.Moviebox
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.utils.AppUtils.parseJson
+import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.MainAPI
 
 class MovieBox : MainAPI() {
-    override var mainUrl = "https://moviebox.ph"
     override var name = "MovieBox.ph"
+    override var mainUrl = "https://moviebox.ph"
     override val hasMainPage = true
     override var lang = "id"
     
-    // Server API Utama
     private val apiUrl = "https://h5-api.aoneroom.com/wefeed-h5api-bff"
 
     private val headers = mapOf(
         "authority" to "h5-api.aoneroom.com",
         "accept" to "application/json",
-        "accept-language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
         "authorization" to "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjE4MTM0MjU0MjgwMjM4ODc4MDAsImF0cCI6MywiZXh0IjoiMTc3MDQxMTA5MCIsImV4cCI6MTc3ODE4NzA5MCwiaWF0IjoxNzcwNDEwNzkwfQ.-kW86pGAJX6jheH_yEM8xfGd4rysJFR_hM3djl32nAo",
         "content-type" to "application/json",
-        "origin" to "https://moviebox.ph",
-        "referer" to "https://moviebox.ph/",
         "user-agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
         "x-request-lang" to "en"
     )
 
-    // =================================================================================
-    // 1. HOME PAGE
-    // =================================================================================
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val homeSets = mutableListOf<HomePageList>()
 
-        [span_2](start_span)// Ambil Data Trending[span_2](end_span)
+        // 1. Trending
         try {
             val trendingUrl = "$apiUrl/subject/trending?page=0&perPage=18"
-            val trendingResponse = app.get(trendingUrl, headers = headers).parsedSafe<TrendingResponse>()
-            
-            trendingResponse?.data?.subjectList?.let { list ->
-                val trendingMedia = list.mapNotNull { it.toSearchResponse() }
-                if (trendingMedia.isNotEmpty()) {
-                    homeSets.add(HomePageList("🔥 Trending Now", trendingMedia, isHorizontalImages = false))
-                }
+            val res = app.get(trendingUrl, headers = headers).parsedSafe<TrendingResponse>()
+            res?.data?.subjectList?.mapNotNull { it.toSearchResponse() }?.let {
+                if (it.isNotEmpty()) homeSets.add(HomePageList("🔥 Trending Now", it, false))
             }
         } catch (e: Exception) { e.printStackTrace() }
 
-        [span_3](start_span)// Ambil Data Home Standard (Banner & Kategori)[span_3](end_span)
+        // 2. Home Standard
         try {
             val homeUrl = "$apiUrl/home?host=moviebox.ph"
-            val homeResponse = app.get(homeUrl, headers = headers).parsedSafe<HomeResponse>()
+            val res = app.get(homeUrl, headers = headers).parsedSafe<HomeResponse>()
+            res?.data?.operatingList?.forEach { section ->
+                val items = mutableListOf<Subject>()
+                if (section.type == "BANNER") section.banner?.items?.let { items.addAll(it) }
+                else section.subjects?.let { items.addAll(it) }
 
-            homeResponse?.data?.operatingList?.forEach { section ->
-                val itemsToParse = ArrayList<Subject>()
-                if (section.type == "BANNER" && section.banner?.items != null) {
-                    itemsToParse.addAll(section.banner.items)
-                } else if (section.subjects != null && section.subjects.isNotEmpty()) {
-                    itemsToParse.addAll(section.subjects)
-                }
-
-                if (itemsToParse.isNotEmpty() && section.type != "CUSTOM" && section.type != "FILTER") {
-                    val mediaList = itemsToParse.mapNotNull { it.toSearchResponse() }
-                    if (mediaList.isNotEmpty()) {
-                        homeSets.add(HomePageList(section.title ?: "Featured", mediaList, section.type == "BANNER"))
-                    }
+                val media = items.mapNotNull { it.toSearchResponse() }
+                if (media.isNotEmpty() && section.type != "CUSTOM" && section.type != "FILTER") {
+                    homeSets.add(HomePageList(section.title ?: "Featured", media, section.type == "BANNER"))
                 }
             }
         } catch (e: Exception) { e.printStackTrace() }
@@ -70,69 +53,49 @@ class MovieBox : MainAPI() {
         return newHomePageResponse(homeSets)
     }
 
-    // =================================================================================
-    // 2. SEARCH (MENGGUNAKAN POST)
-    // =================================================================================
     override suspend fun search(query: String): List<SearchResponse> {
         val url = "$apiUrl/subject/search?host=moviebox.ph"
-        val jsonBody = mapOf("keyword" to query, "page" to 0, "perPage" to 20)
-
+        val body = mapOf("keyword" to query, "page" to 0, "perPage" to 20)
         return try {
-            val response = app.post(url, headers = headers, json = jsonBody).parsedSafe<SearchDataResponse>()
-            response?.data?.items?.mapNotNull { it.toSearchResponse() } ?: emptyList()
+            val res = app.post(url, headers = headers, json = body).parsedSafe<SearchDataResponse>()
+            res?.data?.items?.mapNotNull { it.toSearchResponse() } ?: emptyList()
         } catch (e: Exception) { emptyList() }
     }
 
-    // =================================================================================
-    // 3. LOAD DETAIL
-    // =================================================================================
     override suspend fun load(url: String): LoadResponse {
         val detailUrl = "$apiUrl/detail?detailPath=$url&host=moviebox.ph"
-        val response = app.get(detailUrl, headers = headers).parsedSafe<DetailFullResponse>()
-        val data = response?.data ?: throw ErrorLoadingException("Data Error")
-        val subject = data.subject ?: throw ErrorLoadingException("Subject Null")
+        val res = app.get(detailUrl, headers = headers).parsedSafe<DetailFullResponse>()
+        val subject = res?.data?.subject ?: throw ErrorLoadingException("Data Kosong")
 
         val title = subject.title ?: ""
-        val poster = subject.cover?.url
-        val plot = subject.description
-        val rating = subject.imdbRatingValue?.toDoubleOrNull()
+        val type = if (subject.subjectType == 1) TvType.Movie else TvType.TvSeries
 
-        return if (subject.subjectType == 1) { // Movie
-            newMovieLoadResponse(title, url, TvType.Movie, subject.subjectId ?: "") {
-                this.posterUrl = poster
-                this.plot = plot
+        return if (type == TvType.Movie) {
+            newMovieLoadResponse(title, url, type, subject.subjectId ?: "") {
+                this.posterUrl = subject.cover?.url
+                this.plot = subject.description
                 this.year = subject.releaseDate?.take(4)?.toIntOrNull()
-                if (rating != null) this.score = Score.from10(rating)
+                subject.imdbRatingValue?.toDoubleOrNull()?.let { this.score = Score.from10(it) }
             }
-        } else { // Series
-            val episodes = listOf(newEpisode(subject.subjectId ?: "") { this.name = "Play Movie" })
-            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
-                this.posterUrl = poster
-                this.plot = plot
+        } else {
+            val episodes = listOf(newEpisode(subject.subjectId ?: "") { this.name = "Tonton Sekarang" })
+            newTvSeriesLoadResponse(title, url, type, episodes) {
+                this.posterUrl = subject.cover?.url
+                this.plot = subject.description
             }
         }
     }
 
-    // =================================================================================
-    // 4. LOAD LINKS
-    // =================================================================================
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // Link video utama berasal dari lok-lok.cc
         val playUrl = "https://lok-lok.cc/wefeed-h5api-bff/subject/play?subjectId=$data&se=0&ep=0"
-        val playHeaders = mapOf(
-            "authority" to "lok-lok.cc",
-            "referer" to "https://lok-lok.cc/",
-            "user-agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36"
-        )
-
         return try {
-            val response = app.get(playUrl, headers = playHeaders).parsedSafe<PlayResponse>()
-            response?.data?.streams?.forEach { stream ->
+            val res = app.get(playUrl, headers = mapOf("authority" to "lok-lok.cc", "referer" to "https://lok-lok.cc/")).parsedSafe<PlayResponse>()
+            res?.data?.streams?.forEach { stream ->
                 callback.invoke(
                     ExtractorLink(
                         this.name, "${this.name} ${stream.resolutions}p",
@@ -147,10 +110,10 @@ class MovieBox : MainAPI() {
 
     private fun getQuality(res: String?): Int {
         return when (res) {
-            "720" -> Qualities.P720.value
-            "480" -> Qualities.P480.value
-            "360" -> Qualities.P360.value
-            else -> Qualities.Unknown.value
+            "720" -> 720 // Sesuai mapping integer di Cloudstream
+            "480" -> 480
+            "360" -> 360
+            else -> 0
         }
     }
 
@@ -161,15 +124,10 @@ class MovieBox : MainAPI() {
         }
     }
 
-    // ================= DATA CLASSES =================
+    // --- DATA CLASSES ---
     data class HomeResponse(@JsonProperty("data") val data: HomeData?)
     data class HomeData(@JsonProperty("operatingList") val operatingList: List<OperatingSection>?)
-    data class OperatingSection(
-        @JsonProperty("type") val type: String?,
-        @JsonProperty("title") val title: String?,
-        @JsonProperty("banner") val banner: BannerObj?,
-        @JsonProperty("subjects") val subjects: List<Subject>?
-    )
+    data class OperatingSection(@JsonProperty("type") val type: String?, @JsonProperty("title") val title: String?, @JsonProperty("banner") val banner: BannerObj?, @JsonProperty("subjects") val subjects: List<Subject>?)
     data class BannerObj(@JsonProperty("items") val items: List<Subject>?)
     data class TrendingResponse(@JsonProperty("data") val data: TrendingData?)
     data class TrendingData(@JsonProperty("subjectList") val subjectList: List<Subject>?)
