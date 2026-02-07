@@ -13,31 +13,31 @@ open class TurboVipExtractor : ExtractorApi() {
     override val requiresReferer = false
 
     override suspend fun getUrl(url: String, referer: String?): List<ExtractorLink>? {
-        // Gunakan referer dari parameter atau default ke mainUrl
+        // Gunakan referer default ke mainUrl jika kosong
         val finalReferer = referer ?: "$mainUrl/"
         
-        // 1. Ambil halaman playernya
+        // 1. Ambil halaman player (turbovidhls.com/t/...)
         val response = app.get(url, referer = finalReferer)
         val document = response.document
-        
-        // 2. Cari link m3u8 di dalam script (biasanya variabel urlPlay atau file:)
-        // Kita pakai Regex yang lebih ganas biar kena polanya
         val scriptHtml = document.select("script").html()
         
         val sources = mutableListOf<ExtractorLink>()
         
-        // Regex untuk mencari link .m3u8 di dalam teks JavaScript
+        // 2. Cari link m3u8 (cdn1.turboviplay.com) di dalam script
+        // Regex ini mencari string yang berakhiran .m3u8 di dalam tanda kutip
         val m3u8Regex = Regex("[\"'](https?://[^\"']+\\.m3u8[^\"']*)[\"']")
         val match = m3u8Regex.find(scriptHtml)
         
         if (match != null) {
             val m3u8Url = match.groupValues[1]
 
-            // 3. Header Sakti Anti-Error 3001 (Sesuai cURL kamu)
+            // 3. Header KUNCI (Hasil Analisa cURL Kamu)
+            // Header ini akan dipakai player saat buka Master Playlist (cdn1)
+            // DAN saat buka Child Playlist (c16/turbosplayer)
             val headers = mapOf(
-                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
                 "Referer" to "https://turbovidhls.com/",
-                "Origin" to "https://turbovidhls.com"
+                "Origin" to "https://turbovidhls.com" // <--- Ini yang bikin anti error 3001
             )
 
             sources.add(
@@ -48,7 +48,9 @@ open class TurboVipExtractor : ExtractorApi() {
                     type = ExtractorLinkType.M3U8
                 ) {
                     this.referer = "https://turbovidhls.com/"
-                    this.quality = Qualities.Unknown.value // Biar player deteksi 1080p/720p sendiri
+                    // PENTING: Gunakan Unknown agar player CloudStream memproses resolusi (480p/720p) secara otomatis
+                    // Jadi nanti tampilan rapi (1 sumber), tapi di setting player ada pilihan kualitasnya.
+                    this.quality = Qualities.Unknown.value 
                     this.headers = headers
                 }
             )
