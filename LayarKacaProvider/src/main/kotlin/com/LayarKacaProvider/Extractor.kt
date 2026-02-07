@@ -240,9 +240,11 @@ open class HydraxExtractor : ExtractorApi() {
                             source = name,
                             name = "$name VIP",
                             url = videoUrl,
-                            type = ExtractorLinkType.VIDEO, 
-                            quality = Qualities.Unknown.value
+                            type = ExtractorLinkType.VIDEO
                         ) {
+                            // PERBAIKAN: quality diletakkan DI SINI (di dalam lambda)
+                            this.quality = Qualities.Unknown.value
+                            
                             // Referer harus domain final (abysscdn), bukan playeriframe
                             this.referer = finalUrl 
                             this.headers = mapOf(
@@ -264,9 +266,10 @@ open class HydraxExtractor : ExtractorApi() {
                             source = name,
                             name = "$name JW",
                             url = file,
-                            type = ExtractorLinkType.VIDEO,
-                            quality = Qualities.Unknown.value
+                            type = ExtractorLinkType.VIDEO
                         ) {
+                            // PERBAIKAN: quality diletakkan DI SINI (di dalam lambda)
+                            this.quality = Qualities.Unknown.value
                             this.referer = finalUrl
                         }
                     )
