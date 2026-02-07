@@ -1,6 +1,5 @@
 package com.LayarKacaProvider
 
-import com.lagradost.api.Log
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
@@ -63,7 +62,7 @@ class LayarKacaProvider : MainAPI() {
     }
 
     // ========================================================================
-    // LOAD (KEMBALI KE LOGIKA AWAL YANG BERHASIL)
+    // LOAD (VERSI STABIL / JAM 2 WIT)
     // ========================================================================
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url).document
@@ -73,18 +72,18 @@ class LayarKacaProvider : MainAPI() {
         val plot = document.selectFirst("div.entry-content p")?.text()?.trim()
         val year = document.selectFirst("span.year")?.text()?.toIntOrNull()
         
-        // KEMBALI KE INT: Ambil rating sebagai String, lalu ambil angka depannya saja kalau perlu, atau parse Int
-        // Misal "7.2" -> Diambil 7 atau dikali 10 jadi 72 biar aman masuk Int
+        // Menggunakan toRatingInt() atau parsing manual ke Int agar tidak error tipe data
         val ratingText = document.selectFirst("span.rating")?.text()?.trim()
-        val rating = ratingText?.toDoubleOrNull()?.toInt() // Convert Double ke Int (7.5 -> 7) biar aman build
+        val rating = ratingText?.toDoubleOrNull()?.toInt() // Convert aman ke Int
 
         val tags = document.select("div.gmr-movie-on a[rel=category tag]").map { it.text() }
         val trailer = document.selectFirst("a.fancybox-youtube")?.attr("href")
 
+        // Menggunakan konstruktor Episode lama yang simpel
         val episodes = document.select("ul.episode-list li a").map {
             val epHref = it.attr("href")
             val epName = it.text().trim()
-            Episode(epHref, epName) // Pakai cara lama yang simpel
+            Episode(epHref, epName)
         }
 
         return if (episodes.isNotEmpty()) {
@@ -92,7 +91,7 @@ class LayarKacaProvider : MainAPI() {
                 this.posterUrl = poster
                 this.plot = plot
                 this.year = year
-                this.rating = rating // Masuk sebagai Int?
+                this.rating = rating
                 this.tags = tags
                 addTrailer(trailer)
             }
@@ -101,7 +100,7 @@ class LayarKacaProvider : MainAPI() {
                 this.posterUrl = poster
                 this.plot = plot
                 this.year = year
-                this.rating = rating // Masuk sebagai Int?
+                this.rating = rating
                 this.tags = tags
                 addTrailer(trailer)
             }
@@ -109,7 +108,7 @@ class LayarKacaProvider : MainAPI() {
     }
 
     // ========================================================================
-    // LOAD LINKS (DENGAN LOG DEBUGGING)
+    // LOAD LINKS
     // ========================================================================
     override suspend fun loadLinks(
         data: String,
@@ -117,22 +116,19 @@ class LayarKacaProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        Log.d("LK21-DEBUG", "Load Link Start: $data")
         val document = app.get(data).document
 
-        // 1. Cari Iframe
+        // 1. Ambil dari Iframe
         document.select("iframe").forEach { iframe ->
             var src = iframe.attr("src")
             if (src.startsWith("//")) src = "https:$src"
-            Log.d("LK21-DEBUG", "Iframe Found: $src")
             loadExtractor(src, data, subtitleCallback, callback)
         }
 
-        // 2. Cari Tombol Provider
+        // 2. Ambil dari Tombol Provider (ul#loadProviders)
         document.select("ul#loadProviders li a").forEach { linkElement ->
             var link = linkElement.attr("href")
             if (link.startsWith("//")) link = "https:$link"
-            Log.d("LK21-DEBUG", "Provider Found: ${linkElement.text()} -> $link")
             loadExtractor(link, data, subtitleCallback, callback)
         }
 
