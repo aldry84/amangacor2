@@ -32,34 +32,39 @@ class LayarKacaProvider : MainAPI() {
         addWidget("Horror Terbaru", "div.widget[data-type='latest-horror'] li.slider article")
         addWidget("Daftar Lengkap", "div#post-container article")
 
-        // FIX: Menggunakan newHomePageResponse
+        // Menggunakan newHomePageResponse
         return newHomePageResponse(items)
     }
 
-    // --- SEARCH ---
+    // --- SEARCH (UPDATED FIX) ---
     override suspend fun search(query: String): List<SearchResponse> {
         val searchUrl = "$mainUrl/search?s=$query"
         val document = app.get(searchUrl).document
         
-        // Selector lebih luas untuk menangkap berbagai tampilan hasil search
-        return document.select("div.search-result article, div.grid-archive article, div#post-container article, div.movie-list article")
+        // Selector "Jaring Pukat Harimau" (Tangkap Semua)
+        // Kita cari semua tag <article> yang ada di dalam main content
+        // Ini akan menangkap hasil pencarian apapun bentuk class-nya
+        return document.select("main article, div#post-container article, div.search-result article, section article")
             .mapNotNull { toSearchResult(it) }
     }
 
     // --- HELPER: HTML -> SearchResponse ---
     private fun toSearchResult(element: Element): SearchResponse? {
-        val title = element.select("h3.poster-title, h2.entry-title, h1.page-title, div.title").text().trim()
+        // Cari judul di header apapun (h1-h4) yang punya text
+        val title = element.select("h1, h2, h3, h4, .title").text().trim()
         if (title.isEmpty()) return null
         
         val href = fixUrl(element.select("a").first()?.attr("href") ?: return null)
         
+        // Prioritaskan gambar poster
         val imgElement = element.select("img").first()
         val posterUrl = imgElement?.attr("src") ?: imgElement?.attr("data-src")
         
         val quality = getQualityFromString(element.select("span.label").text())
 
+        // Deteksi Series: Cek label Episode atau durasi Season
         val isSeries = element.select("span.episode").isNotEmpty() ||
-                element.select("span.duration").text().contains("S.")
+                element.select("span.duration").text().contains("S.", ignoreCase = true)
 
         return if (isSeries) {
             newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
@@ -87,7 +92,7 @@ class LayarKacaProvider : MainAPI() {
         var response = app.get(cleanUrl)
         var document = response.document
 
-        // 1. CEK REDIRECT (Anti-Gocek)
+        // 1. CEK REDIRECT (Anti-Gocek Detail Page)
         val redirectButton = document.select("a:contains(Buka Sekarang), a.btn:contains(Nontondrama)").first()
         if (redirectButton != null) {
             val newUrl = redirectButton.attr("href")
@@ -98,7 +103,7 @@ class LayarKacaProvider : MainAPI() {
             }
         }
 
-        // 2. PARSING DATA UMUM
+        // 2. PARSING DATA
         val title = document.select("h1.entry-title, h1.page-title, div.movie-info h1").text().trim()
         val plot = document.select("div.synopsis, div.entry-content p, blockquote").text().trim()
 
@@ -122,12 +127,12 @@ class LayarKacaProvider : MainAPI() {
             toSearchResult(it)
         }
 
-        // 3. DETEKSI TIPE KONTEN & EPISODE
+        // 3. AMBIL EPISODE (Movie & Series)
         val episodes = ArrayList<Episode>()
         val jsonScript = document.select("script#season-data").html()
 
         if (jsonScript.isNotBlank()) {
-            // Parsing JSON Episode (Untuk Series NontonDrama)
+            // Parsing JSON Episode (NontonDrama)
             tryParseJson<Map<String, List<NontonDramaEpisode>>>(jsonScript)?.forEach { (_, epsList) ->
                 epsList.forEach { epData ->
                     val epUrl = fixUrl(epData.slug ?: "")
@@ -141,7 +146,7 @@ class LayarKacaProvider : MainAPI() {
                 }
             }
         } else {
-            // Fallback manual (Untuk Movie/Series Biasa)
+            // Parsing HTML Episode (LK21 Biasa)
             document.select("ul.episodes li a").forEach {
                 val epTitle = it.text()
                 val epHref = fixUrl(it.attr("href"))
@@ -155,7 +160,6 @@ class LayarKacaProvider : MainAPI() {
             }
         }
 
-        // 4. RETURN RESPONSE
         if (episodes.isNotEmpty()) {
             return newTvSeriesLoadResponse(title, cleanUrl, TvType.TvSeries, episodes) {
                 this.posterUrl = poster
@@ -179,32 +183,45 @@ class LayarKacaProvider : MainAPI() {
         }
     }
 
-    // --- LOAD LINKS (PLAYER FIXED) ---
+    // --- LOAD LINKS (SERIES FIX) ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val document = app.get(data).document
+        var currentUrl = data
+        var document = app.get(currentUrl).document
 
-        // 1. Ambil link dari tombol ganti player
+        // 1. CEK REDIRECT (Anti-Gocek Episode Page)
+        // Ini kuncinya! Series sering redirect lagi pas diklik episodenya.
+        val redirectButton = document.select("a:contains(Buka Sekarang), a.btn:contains(Nontondrama)").first()
+        if (redirectButton != null) {
+            val newUrl = redirectButton.attr("href")
+            if (newUrl.isNotEmpty()) {
+                currentUrl = fixUrl(newUrl)
+                document = app.get(currentUrl).document
+            }
+        }
+
+        // 2. Ambil Player Links
         val playerLinks = document.select("ul#player-list li a").map { 
             val url = it.attr("data-url").ifEmpty { it.attr("href") }
             fixUrl(url)
         }
-        // 2. Ambil dari iframe utama
         val mainIframe = fixUrl(document.select("iframe#main-player").attr("src"))
+        
+        // Gabung semua sumber video
         val allSources = (playerLinks + mainIframe).filter { it.isNotBlank() }.distinct()
 
         allSources.forEach { url ->
-            // Coba extract langsung (siapa tau support)
-            val directLoaded = loadExtractor(url, data, subtitleCallback, callback)
+            // Coba load langsung (support server populer)
+            val directLoaded = loadExtractor(url, currentUrl, subtitleCallback, callback)
             
             if (!directLoaded) {
-                // Jika tidak support (wrapper), coba buka isinya (Unwrap)
+                // Unwrap jika link dibungkus (playeriframe.sbs)
                 try {
-                    val iframePage = app.get(url, referer = data).document
+                    val iframePage = app.get(url, referer = currentUrl).document
                     
                     // Cari nested iframe
                     iframePage.select("iframe").forEach { nestedIframe ->
@@ -212,14 +229,14 @@ class LayarKacaProvider : MainAPI() {
                         loadExtractor(nestedSrc, url, subtitleCallback, callback)
                     }
                     
-                    // Cari link manual (P2P/M3U8) di dalam script wrapper
+                    // Cari link manual di script (P2P/M3U8)
                     val scriptHtml = iframePage.html()
                     Regex("(?i)https?://[^\"]+\\.(m3u8|mp4)").findAll(scriptHtml).forEach { match ->
                         val streamUrl = match.value
                         val qualityVal = if(streamUrl.contains("m3u8")) Qualities.Unknown.value else Qualities.P480.value
                         val typeVal = if(streamUrl.contains("m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
                         
-                        // FIX: Referer dimasukkan di dalam block lambda
+                        // Gunakan referer di dalam block lambda
                         callback.invoke(
                             newExtractorLink(
                                 source = "LK21 P2P",
@@ -233,7 +250,7 @@ class LayarKacaProvider : MainAPI() {
                         )
                     }
                 } catch (e: Exception) {
-                    // Ignore error saat unwrap
+                    // Ignore error unwrap
                 }
             }
         }
