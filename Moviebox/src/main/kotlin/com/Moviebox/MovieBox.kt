@@ -71,7 +71,7 @@ class MovieBox : MainAPI() {
         val rating = subject.imdbRatingValue?.toDoubleOrNull()
         val actors = data.stars?.map { ActorData(Actor(it.name ?: "", it.avatarUrl), roleString = it.character) }
 
-        return if (subject.subjectType == 1) {
+        return if (subject.subjectType == 1) { // Movie
             newMovieLoadResponse(title, url, TvType.Movie, "${subject.subjectId}|0|0|$url") {
                 this.posterUrl = poster
                 this.plot = plot
@@ -79,7 +79,7 @@ class MovieBox : MainAPI() {
                 this.year = subject.releaseDate?.take(4)?.toIntOrNull()
                 if (rating != null) this.score = Score.from10(rating)
             }
-        } else {
+        } else { // Series
             val episodes = mutableListOf<Episode>()
             data.resource?.seasons?.forEach { season ->
                 val sNum = season.se ?: 1
@@ -107,7 +107,6 @@ class MovieBox : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        [span_3](start_span)// Parsing: "id|season|episode|detailPath"[span_3](end_span)
         val parts = data.split("|")
         val id = parts.getOrNull(0) ?: return false
         val s = parts.getOrNull(1) ?: "0"
@@ -119,8 +118,7 @@ class MovieBox : MainAPI() {
         return try {
             val res = app.get(playUrl, headers = mapOf(
                 "authority" to "lok-lok.cc", 
-                "referer" to "https://lok-lok.cc/",
-                "user-agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36"
+                "referer" to "https://lok-lok.cc/"
             )).parsedSafe<PlayResponse>()
 
             res?.data?.streams?.forEach { stream ->
@@ -147,7 +145,6 @@ class MovieBox : MainAPI() {
         }
     }
 
-    // --- DATA CLASSES ---
     data class TrendingResponse(@JsonProperty("data") val data: TrendingData?)
     data class TrendingData(@JsonProperty("subjectList") val subjectList: List<Subject>?)
     data class HomeResponse(@JsonProperty("data") val data: HomeData?)
