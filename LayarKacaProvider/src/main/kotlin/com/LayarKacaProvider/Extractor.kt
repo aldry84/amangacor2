@@ -1,6 +1,7 @@
 package com.LayarKacaProvider
 
 import android.util.Base64
+import com.lagradost.api.Log
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.ExtractorApi
@@ -81,7 +82,7 @@ open class P2PExtractor : ExtractorApi() {
 }
 
 // ============================================================================
-// 3. F16 EXTRACTOR (CORRECT JSON REQUEST & BASE64 FIX)
+// 3. F16 EXTRACTOR (FULL DEBUG VERSION)
 // ============================================================================
 open class F16Extractor : ExtractorApi() {
     override var name = "F16"
@@ -93,32 +94,29 @@ open class F16Extractor : ExtractorApi() {
     data class DecryptedSource(val file: String?, val label: String?, val type: String?)
     data class DecryptedResponse(val sources: List<DecryptedSource>?)
 
-    // Helper untuk memperbaiki Base64 yang kurang padding '='
     private fun String.fixBase64(): String {
         var s = this
-        while (s.length % 4 != 0) {
-            s += "="
-        }
+        while (s.length % 4 != 0) s += "="
         return s
     }
 
     override suspend fun getUrl(url: String, referer: String?): List<ExtractorLink>? {
+        Log.d("F16-DEBUG", "Memulai Ekstraksi: $url") // LOG 1
         val sources = mutableListOf<ExtractorLink>()
-        val videoId = url.substringAfter("/e/").substringBefore("?")
-        val apiUrl = "$mainUrl/api/videos/$videoId/embed/playback"
-
-        val headers = mapOf(
-            "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
-            "Referer" to "https://playeriframe.sbs/",
-            "Origin" to "https://playeriframe.sbs",
-            "x-embed-origin" to "playeriframe.sbs",
-            "x-embed-parent" to url,
-            "x-embed-referer" to "https://playeriframe.sbs/",
-            "Content-Type" to "application/json" // Header Wajib
-        )
-
+        
         try {
-            // FIX: Gunakan Map langsung untuk JSON payload
+            val videoId = url.substringAfter("/e/").substringBefore("?")
+            val apiUrl = "$mainUrl/api/videos/$videoId/embed/playback"
+            Log.d("F16-DEBUG", "API URL: $apiUrl") // LOG 2
+
+            val headers = mapOf(
+                "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
+                "Referer" to "https://playeriframe.sbs/",
+                "Origin" to "https://playeriframe.sbs",
+                "Content-Type" to "application/json"
+            )
+
+            // Body Dummy
             val jsonPayload = mapOf(
                 "fingerprint" to mapOf(
                     "token" to "dummy_bypass",
@@ -128,26 +126,31 @@ open class F16Extractor : ExtractorApi() {
                 )
             )
             
-            // FIX: Gunakan parameter 'json' bukan 'data' agar dikirim sebagai Raw JSON
+            Log.d("F16-DEBUG", "Mengirim Request API...") // LOG 3
             val responseText = app.post(apiUrl, headers = headers, json = jsonPayload).text
+            Log.d("F16-DEBUG", "Respon API: ${responseText.take(100)}...") // LOG 4
+
             val json = tryParseJson<F16Playback>(responseText)
             val pb = json?.playback
 
             if (pb != null && pb.payload != null && pb.iv != null && !pb.key_parts.isNullOrEmpty()) {
+                Log.d("F16-DEBUG", "Data Enkripsi Ditemukan. KeyParts: ${pb.key_parts.size}") // LOG 5
                 
-                // RUMUS RAHASIA: Gabungkan Key Part 1 + Part 2
-                // Gunakan fixBase64() sebelum decode
+                // Decode Keys
                 val part1 = Base64.decode(pb.key_parts[0].fixBase64(), Base64.URL_SAFE)
                 val part2 = Base64.decode(pb.key_parts[1].fixBase64(), Base64.URL_SAFE)
                 val combinedKey = part1 + part2 
+                Log.d("F16-DEBUG", "Kunci Berhasil Digabung (Panjang: ${combinedKey.size})") // LOG 6
 
-                // Dekripsi AES-GCM
+                // Decrypt
                 val decryptedJson = decryptAesGcm(pb.payload, combinedKey, pb.iv)
+                Log.d("F16-DEBUG", "Hasil Dekripsi: ${decryptedJson?.take(100)}...") // LOG 7
 
                 if (decryptedJson != null) {
                     val result = tryParseJson<DecryptedResponse>(decryptedJson)
                     result?.sources?.forEach { source ->
                         if (!source.file.isNullOrBlank()) {
+                            Log.d("F16-DEBUG", "Link Ditemukan: ${source.file}") // LOG 8
                             sources.add(newExtractorLink(
                                 source = "CAST",
                                 name = "CAST ${source.label ?: "Auto"}",
@@ -159,22 +162,28 @@ open class F16Extractor : ExtractorApi() {
                             })
                         }
                     }
+                } else {
+                    Log.e("F16-ERROR", "Gagal mendekripsi payload!") // ERROR LOG
                 }
+            } else {
+                Log.e("F16-ERROR", "Format JSON API tidak sesuai atau kosong.") // ERROR LOG
             }
         } catch (e: Exception) {
+            Log.e("F16-ERROR", "Crash Utama: ${e.message}") // ERROR LOG
             e.printStackTrace()
         }
+        
+        Log.d("F16-DEBUG", "Selesai. Total Sources: ${sources.size}") // LOG 9
         return sources
     }
 
     private fun decryptAesGcm(encryptedBase64: String, keyBytes: ByteArray, ivBase64: String): String? {
         try {
-            // Fix padding juga untuk Payload dan IV
             val cipherText = Base64.decode(encryptedBase64.fixBase64(), Base64.URL_SAFE)
             val iv = try {
                 Base64.decode(ivBase64.fixBase64(), Base64.URL_SAFE)
             } catch (e: Exception) {
-                ivBase64.toByteArray() // Fallback jika IV bukan base64 (biasanya Hex)
+                ivBase64.toByteArray()
             }
 
             val spec = GCMParameterSpec(128, iv)
@@ -185,7 +194,7 @@ open class F16Extractor : ExtractorApi() {
             val decryptedBytes = cipher.doFinal(cipherText)
             return String(decryptedBytes, Charsets.UTF_8)
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e("F16-ERROR", "Decryption Error: ${e.message}") // ERROR LOG
             return null
         }
     }
