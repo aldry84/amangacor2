@@ -23,7 +23,7 @@ class MovieBox : MainAPI() {
     private val playerApiUrl = "https://123movienow.cc/wefeed-h5api-bff"
     private var cachedToken: String? = null
 
-    // --- KATEGORI ---
+    // --- KATEGORI HALAMAN DEPAN ---
     override val mainPage = mainPageOf(
         "872031290915189720" to "Trending 🔥",
         "6528093688173053896" to "Indonesian Movies 🇮🇩",
@@ -53,7 +53,7 @@ class MovieBox : MainAPI() {
         val token = getToken()
         val baseHeaders = mutableMapOf(
             "x-request-lang" to "en",
-            "user-agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36"
+            "user-agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Mobile Safari/537.36"
         )
         if (token.isNotEmpty()) baseHeaders["authorization"] = token
         
@@ -243,12 +243,12 @@ class MovieBox : MainAPI() {
         return true
     }
 
-    // --- HELPER ---
+    // --- HELPER FIX ---
     private fun SimpleSubject.toSearchResponse(): SearchResponse {
         return newMovieSearchResponse(this.title ?: "No Title", this.detailPath ?: "", TvType.Movie) {
-            // FIX: Langsung akses properti 'cover'
-            this.posterUrl = this.cover?.url
-            this.year = this.year
+            // FIX: Hapus 'this.' di depan cover, langsung akses variable 'cover' dari SimpleSubject
+            this.posterUrl = cover?.url 
+            this.year = year
         }
     }
 
@@ -263,7 +263,7 @@ class MovieBox : MainAPI() {
 
     data class SimpleSubject(
         @JsonProperty("title") val title: String?,
-        // FIX: Kembalikan nama 'cover' agar langsung mapping ke JSON
+        // Kembalikan nama jadi 'cover' agar konsisten
         @JsonProperty("cover") val cover: CoverInfo?, 
         @JsonProperty("year") val year: Int?,
         @JsonProperty("detailPath") val detailPath: String?
