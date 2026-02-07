@@ -98,7 +98,7 @@ class LayarKacaProvider : MainAPI() {
         }
     }
 
-    // --- LOAD ---
+    // --- LOAD DETAIL ---
     data class NontonDramaEpisode(val s: Int? = null, val episode_no: Int? = null, val title: String? = null, val slug: String? = null)
 
     override suspend fun load(url: String): LoadResponse {
@@ -162,7 +162,7 @@ class LayarKacaProvider : MainAPI() {
         }
     }
 
-    // --- LOAD LINKS (FIXED) ---
+    // --- LOAD LINKS (SINGLE SOURCE + FIX 3001) ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -179,34 +179,42 @@ class LayarKacaProvider : MainAPI() {
             document = app.get(currentUrl).document
         }
 
+        // Ambil Source
         val playerLinks = document.select("ul#player-list li a").map { it.attr("data-url").ifEmpty { it.attr("href") } }
         val mainIframe = document.select("iframe#main-player").attr("src")
         val allSources = (playerLinks + mainIframe).filter { it.isNotBlank() }.map { fixUrl(it) }.distinct()
 
         allSources.forEach { url ->
+            // Coba Extractor Bawaan (Seperti StreamWish / EmturbovidExtractor)
             val directLoaded = loadExtractor(url, currentUrl, subtitleCallback, callback)
+            
+            // Jika tidak ke-load, berarti ini LK21 P2P / VIP Wrapper yang harus kita bongkar manual
             if (!directLoaded) {
                 try {
                     val response = app.get(url, referer = currentUrl)
                     val iframePage = response.document
-                    val wrapperUrl = response.url
+                    val wrapperUrl = response.url // PENTING: URL akhir setelah redirect
 
+                    // Nested Iframes
                     iframePage.select("iframe").forEach { 
                         loadExtractor(fixUrl(it.attr("src")), wrapperUrl, subtitleCallback, callback) 
                     }
 
+                    // Script Extraction
                     val scriptHtml = iframePage.html().replace("\\/", "/")
                     Regex("(?i)https?://[^\"]+\\.(m3u8|mp4)(?:\\?[^\"']*)?").findAll(scriptHtml).forEach { match ->
                         val streamUrl = match.value
                         val isM3u8 = streamUrl.contains("m3u8", ignoreCase = true)
                         
+                        // HEADERS ANTI-ERROR 3001
+                        // Kita pasang header ini KERAS-KERAS di ExtractorLink
+                        // Supaya saat player pindah resolusi, header ini tetap dibawa
                         val headers = mapOf(
                             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                             "Referer" to wrapperUrl,
                             "Origin" to "https://playeriframe.sbs"
                         )
 
-                        // FIX: Memindahkan referer dan quality ke dalam block lambda
                         callback.invoke(
                             newExtractorLink(
                                 source = "LK21 VIP",
@@ -215,8 +223,9 @@ class LayarKacaProvider : MainAPI() {
                                 type = if (isM3u8) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
                             ) {
                                 this.referer = wrapperUrl
-                                this.quality = Qualities.Unknown.value
-                                this.headers = headers
+                                // Gunakan Unknown agar Player membaca tracks otomatis
+                                this.quality = Qualities.Unknown.value 
+                                this.headers = headers 
                             }
                         )
                     }
