@@ -26,7 +26,7 @@ class MovieBox : MainAPI() {
         val homeSets = mutableListOf<HomePageList>()
         try {
             val trendingUrl = "$apiUrl/subject/trending?page=0&perPage=18"
-            val res = app.get(trendingUrl, headers = headers).parsedSafe<TrendingResponse>()
+            val res = app.get(trendingUrl, headers = headers, timeout = 20).parsedSafe<TrendingResponse>()
             res?.data?.subjectList?.mapNotNull { it.toSearchResponse() }?.let {
                 if (it.isNotEmpty()) homeSets.add(HomePageList("🔥 Trending Now", it, false))
             }
@@ -34,7 +34,7 @@ class MovieBox : MainAPI() {
 
         try {
             val homeUrl = "$apiUrl/home?host=moviebox.ph"
-            val res = app.get(homeUrl, headers = headers).parsedSafe<HomeResponse>()
+            val res = app.get(homeUrl, headers = headers, timeout = 20).parsedSafe<HomeResponse>()
             res?.data?.operatingList?.forEach { section ->
                 val items = mutableListOf<Subject>()
                 if (section.type == "BANNER") section.banner?.items?.let { items.addAll(it) }
@@ -54,14 +54,15 @@ class MovieBox : MainAPI() {
         val url = "$apiUrl/subject/search?host=moviebox.ph"
         val body = mapOf("keyword" to query, "page" to 0, "perPage" to 20)
         return try {
-            val res = app.post(url, headers = headers, json = body).parsedSafe<SearchDataResponse>()
+            val res = app.post(url, headers = headers, json = body, timeout = 20).parsedSafe<SearchDataResponse>()
             res?.data?.items?.mapNotNull { it.toSearchResponse() } ?: emptyList()
         } catch (e: Exception) { emptyList() }
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val detailUrl = "$apiUrl/detail?detailPath=$url&host=moviebox.ph"
-        val res = app.get(detailUrl, headers = headers).parsedSafe<DetailFullResponse>()
+        // PERBAIKAN: Menghapus &host=moviebox.ph agar tidak "Data Kosong"
+        val detailUrl = "$apiUrl/detail?detailPath=$url"
+        val res = app.get(detailUrl, headers = headers, timeout = 20).parsedSafe<DetailFullResponse>()
         val data = res?.data ?: throw ErrorLoadingException("Data Kosong")
         val subject = data.subject ?: throw ErrorLoadingException("Subject Null")
 
@@ -115,13 +116,24 @@ class MovieBox : MainAPI() {
 
         val playUrl = "https://lok-lok.cc/wefeed-h5api-bff/subject/play?subjectId=$id&se=$s&ep=$e&detailPath=$path"
         
+        // Header Play yang disesuaikan dengan curl sukses milik user
+        val playHeaders = mapOf(
+            "authority" to "lok-lok.cc", 
+            "accept" to "application/json",
+            "referer" to "https://lok-lok.cc/",
+            "user-agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
+            "x-client-info" to "{\"timezone\":\"Asia/Jayapura\"}",
+            "x-source" to "app-search"
+        )
+        
         return try {
-            val res = app.get(playUrl, headers = mapOf(
-                "authority" to "lok-lok.cc", 
-                "referer" to "https://lok-lok.cc/"
-            )).parsedSafe<PlayResponse>()
+            val res = app.get(playUrl, headers = playHeaders, timeout = 30).parsedSafe<PlayResponse>()
+            val streams = res?.data?.streams
+            
+            // PERBAIKAN: Jika stream kosong, kembalikan false
+            if (streams.isNullOrEmpty()) return false
 
-            res?.data?.streams?.forEach { stream ->
+            streams.forEach { stream ->
                 callback.invoke(
                     newExtractorLink(
                         source = this.name,
@@ -135,7 +147,10 @@ class MovieBox : MainAPI() {
                 )
             }
             true
-        } catch (err: Exception) { false }
+        } catch (err: Exception) { 
+            err.printStackTrace()
+            false 
+        }
     }
 
     private fun Subject.toSearchResponse(): SearchResponse? {
@@ -145,6 +160,7 @@ class MovieBox : MainAPI() {
         }
     }
 
+    // --- DATA CLASSES ---
     data class TrendingResponse(@JsonProperty("data") val data: TrendingData?)
     data class TrendingData(@JsonProperty("subjectList") val subjectList: List<Subject>?)
     data class HomeResponse(@JsonProperty("data") val data: HomeData?)
