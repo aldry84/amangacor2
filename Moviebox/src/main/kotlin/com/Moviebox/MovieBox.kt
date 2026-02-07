@@ -25,7 +25,6 @@ class MovieBox : MainAPI() {
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val homeSets = mutableListOf<HomePageList>()
 
-        // 1. Trending
         try {
             val trendingUrl = "$apiUrl/subject/trending?page=0&perPage=18"
             val res = app.get(trendingUrl, headers = headers).parsedSafe<TrendingResponse>()
@@ -34,7 +33,6 @@ class MovieBox : MainAPI() {
             }
         } catch (e: Exception) { e.printStackTrace() }
 
-        // 2. Home Standard
         try {
             val homeUrl = "$apiUrl/home?host=moviebox.ph"
             val res = app.get(homeUrl, headers = headers).parsedSafe<HomeResponse>()
@@ -96,15 +94,18 @@ class MovieBox : MainAPI() {
         return try {
             val res = app.get(playUrl, headers = mapOf("authority" to "lok-lok.cc", "referer" to "https://lok-lok.cc/")).parsedSafe<PlayResponse>()
             res?.data?.streams?.forEach { stream ->
+                // PERBAIKAN: referer dan quality diatur di dalam blok initializer { ... }
+                // Sesuai dengan definisi newExtractorLink di MainAPI.kt baris 1121
                 callback.invoke(
                     newExtractorLink(
                         source = this.name,
                         name = "${this.name} ${stream.resolutions}p",
                         url = stream.url ?: return@forEach,
-                        referer = "https://lok-lok.cc/",
-                        quality = getQualityInt(stream.resolutions),
                         type = ExtractorLinkType.VIDEO
-                    )
+                    ) {
+                        this.referer = "https://lok-lok.cc/"
+                        this.quality = getQualityInt(stream.resolutions)
+                    }
                 )
             }
             true
@@ -127,7 +128,6 @@ class MovieBox : MainAPI() {
         }
     }
 
-    // --- DATA CLASSES ---
     data class HomeResponse(@JsonProperty("data") val data: HomeData?)
     data class HomeData(@JsonProperty("operatingList") val operatingList: List<OperatingSection>?)
     data class OperatingSection(@JsonProperty("type") val type: String?, @JsonProperty("title") val title: String?, @JsonProperty("banner") val banner: BannerObj?, @JsonProperty("subjects") val subjects: List<Subject>?)
