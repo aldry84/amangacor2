@@ -9,7 +9,6 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.newExtractorLink
-import com.lagradost.cloudstream3.utils.getQualityFromName
 import java.net.URI
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
@@ -91,7 +90,7 @@ open class P2PExtractor : ExtractorApi() {
 }
 
 // ============================================================================
-// 3. F16 EXTRACTOR (UI FIXED: NO DUPLICATE LABELS & TRACKS)
+// 3. F16 EXTRACTOR (FINAL FIX: SINGLE SOURCE)
 // ============================================================================
 open class F16Extractor : ExtractorApi() {
     override var name = "F16"
@@ -100,8 +99,6 @@ open class F16Extractor : ExtractorApi() {
 
     data class F16Playback(val playback: PlaybackData?)
     data class PlaybackData(val iv: String?, val payload: String?, val key_parts: List<String>?)
-    
-    // JSON Key = "url"
     data class DecryptedSource(val url: String?, val label: String?)
     data class DecryptedResponse(val sources: List<DecryptedSource>?)
 
@@ -168,22 +165,21 @@ open class F16Extractor : ExtractorApi() {
                 if (decryptedJson != null) {
                     val result = tryParseJson<DecryptedResponse>(decryptedJson)
                     
-                    // FIX DUPLIKAT: Filter URL yang sama persis
-                    // Jika URL master.m3u8 muncul 2x, kita ambil satu saja.
-                    val uniqueSources = result?.sources?.distinctBy { it.url } ?: emptyList()
+                    // FIX DUPLIKAT: Cukup ambil 1 link pertama yang valid.
+                    // Link ini adalah "master.m3u8" yang sudah berisi semua resolusi (480, 720, 1080).
+                    // Jadi tidak perlu memasukkan link yang sama berkali-kali.
+                    val bestSource = result?.sources?.firstOrNull { !it.url.isNullOrBlank() }
 
-                    uniqueSources.forEach { source ->
-                        if (!source.url.isNullOrBlank()) {
-                            sources.add(newExtractorLink(
-                                source = "CAST",
-                                name = "CAST", // FIX LABEL: Cukup "CAST", nanti CS3 tambah "480p" otomatis
-                                url = source.url,
-                                type = ExtractorLinkType.M3U8
-                            ) {
-                                this.referer = "$mainUrl/"
-                                this.quality = getQualityFromName(source.label)
-                            })
-                        }
+                    if (bestSource != null && !bestSource.url.isNullOrBlank()) {
+                        sources.add(newExtractorLink(
+                            source = "CAST",
+                            name = "CAST", // Nama bersih, tanpa embel-embel 480p
+                            url = bestSource.url,
+                            type = ExtractorLinkType.M3U8
+                        ) {
+                            this.referer = "$mainUrl/"
+                            this.quality = Qualities.Unknown.value // Biarkan player mendeteksi resolusi otomatis
+                        })
                     }
                 }
             }
