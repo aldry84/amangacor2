@@ -1,4 +1,4 @@
-package com.LayarKacaProvider // Pastikan package name sesuai folder
+package com.LayarKacaProvider
 
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.ExtractorApi
@@ -15,7 +15,6 @@ open class EmturbovidExtractor : ExtractorApi() {
     override suspend fun getUrl(url: String, referer: String?): List<ExtractorLink>? {
         val finalReferer = referer ?: "$mainUrl/"
         
-        // Request halaman
         val response = app.get(url, referer = finalReferer)
         val playerScript = response.document.selectXpath("//script[contains(text(),'var urlPlay')]").html()
 
@@ -24,8 +23,6 @@ open class EmturbovidExtractor : ExtractorApi() {
         if (playerScript.isNotBlank()) {
             val m3u8Url = playerScript.substringAfter("var urlPlay = '").substringBefore("'")
 
-            // KEMBALI KE SINGLE LINK (RAPI)
-            // Tapi kita tempel Headers agar tidak Error 3001
             sources.add(
                 newExtractorLink(
                     source = name,
@@ -34,11 +31,15 @@ open class EmturbovidExtractor : ExtractorApi() {
                     type = ExtractorLinkType.M3U8
                 ) {
                     this.referer = finalReferer
+                    // Pakai Unknown agar muncul 1 sumber saja di list
+                    // Tapi Video Tracks di dalam player akan muncul banyak (1080, 720, dll)
                     this.quality = Qualities.Unknown.value
-                    // HEADER SAKTI ANTI ERROR 3001
+                    
+                    // HEADER FIX 3001:
+                    // Header ini akan dipakai player saat request chunk video selanjutnya
                     this.headers = mapOf(
                         "Referer" to finalReferer,
-                        "Origin" to mainUrl,
+                        "Origin" to "https://emturbovid.com",
                         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
                     )
                 }
