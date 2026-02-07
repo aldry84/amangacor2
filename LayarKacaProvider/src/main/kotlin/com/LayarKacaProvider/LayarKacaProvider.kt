@@ -15,7 +15,7 @@ class LayarKacaProvider : MainAPI() {
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
     // ========================================================================
-    // MAIN PAGE & SEARCH (Standar)
+    // MAIN PAGE & SEARCH
     // ========================================================================
     override val mainPage = mainPageOf(
         "$mainUrl/populer/page/" to "Populer",
@@ -66,7 +66,7 @@ class LayarKacaProvider : MainAPI() {
     }
 
     // ========================================================================
-    // LOAD DETAILS
+    // LOAD DETAILS (FIXED DEPRECATION)
     // ========================================================================
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url).document
@@ -75,15 +75,20 @@ class LayarKacaProvider : MainAPI() {
         val poster = document.selectFirst("img.poster-image")?.attr("src")
         val plot = document.selectFirst("div.entry-content p")?.text()?.trim()
         val year = document.selectFirst("span.year")?.text()?.toIntOrNull()
-        val rating = document.selectFirst("span.rating")?.text()?.toRatingInt()
+        
+        // FIX 1: Rating sekarang menggunakan Double, bukan Int
+        val rating = document.selectFirst("span.rating")?.text()?.trim()?.toDoubleOrNull()
+        
         val tags = document.select("div.gmr-movie-on a[rel=category tag]").map { it.text() }
         val trailer = document.selectFirst("a.fancybox-youtube")?.attr("href")
 
-        // Cek apakah ini TV Series (ada episode)
+        // FIX 2: Episode menggunakan newEpisode builder
         val episodes = document.select("ul.episode-list li a").map {
             val epHref = it.attr("href")
             val epName = it.text().trim()
-            Episode(epHref, epName)
+            newEpisode(epHref) {
+                this.name = epName
+            }
         }
 
         return if (episodes.isNotEmpty()) {
@@ -91,7 +96,7 @@ class LayarKacaProvider : MainAPI() {
                 this.posterUrl = poster
                 this.plot = plot
                 this.year = year
-                this.rating = rating
+                this.rating = rating // Assign rating Double
                 this.tags = tags
                 addTrailer(trailer)
             }
@@ -100,7 +105,7 @@ class LayarKacaProvider : MainAPI() {
                 this.posterUrl = poster
                 this.plot = plot
                 this.year = year
-                this.rating = rating
+                this.rating = rating // Assign rating Double
                 this.tags = tags
                 addTrailer(trailer)
             }
@@ -108,7 +113,7 @@ class LayarKacaProvider : MainAPI() {
     }
 
     // ========================================================================
-    // LOAD LINKS (BAGIAN PENTING UNTUK DEBUGGING)
+    // LOAD LINKS (MASIH ADA DEBUGGING UNTUK F16)
     // ========================================================================
     override suspend fun loadLinks(
         data: String,
@@ -119,7 +124,7 @@ class LayarKacaProvider : MainAPI() {
         Log.d("LK21-DEBUG", "=== MEMUAT HALAMAN FILM: $data ===")
         val document = app.get(data).document
 
-        // 1. Log Semua Iframe yang ada di halaman utama
+        // 1. Log Semua Iframe
         Log.d("LK21-DEBUG", "--- MENCARI IFRAME ---")
         document.select("iframe").forEach { iframe ->
             var src = iframe.attr("src")
@@ -129,7 +134,7 @@ class LayarKacaProvider : MainAPI() {
             loadExtractor(src, data, subtitleCallback, callback)
         }
 
-        // 2. Log Tombol Provider (Biasanya di atas player)
+        // 2. Log Tombol Provider
         Log.d("LK21-DEBUG", "--- MENCARI TOMBOL PROVIDER ---")
         val providers = document.select("ul#loadProviders li a")
         if (providers.isEmpty()) {
@@ -144,7 +149,7 @@ class LayarKacaProvider : MainAPI() {
             
             Log.d("LK21-DEBUG", "Tombol Provider: [$name] -> $link")
             
-            // Panggil Extractor untuk setiap link yang ditemukan
+            // Panggil Extractor
             loadExtractor(link, data, subtitleCallback, callback)
         }
 
