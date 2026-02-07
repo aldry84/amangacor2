@@ -25,6 +25,7 @@ class MovieBox : MainAPI() {
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val homeSets = mutableListOf<HomePageList>()
 
+        // 1. Trending
         try {
             val trendingUrl = "$apiUrl/subject/trending?page=0&perPage=18"
             val res = app.get(trendingUrl, headers = headers).parsedSafe<TrendingResponse>()
@@ -33,6 +34,7 @@ class MovieBox : MainAPI() {
             }
         } catch (e: Exception) { e.printStackTrace() }
 
+        // 2. Home Standard
         try {
             val homeUrl = "$apiUrl/home?host=moviebox.ph"
             val res = app.get(homeUrl, headers = headers).parsedSafe<HomeResponse>()
@@ -63,7 +65,8 @@ class MovieBox : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val detailUrl = "$apiUrl/detail?detailPath=$url&host=moviebox.ph"
         val res = app.get(detailUrl, headers = headers).parsedSafe<DetailFullResponse>()
-        val subject = res?.data?.subject ?: throw ErrorLoadingException("Data Kosong")
+        val data = res?.data ?: throw ErrorLoadingException("Data Kosong")
+        val subject = data.subject ?: throw ErrorLoadingException("Subject Null")
 
         val title = subject.title ?: ""
         val type = if (subject.subjectType == 1) TvType.Movie else TvType.TvSeries
@@ -92,10 +95,14 @@ class MovieBox : MainAPI() {
     ): Boolean {
         val playUrl = "https://lok-lok.cc/wefeed-h5api-bff/subject/play?subjectId=$data&se=0&ep=0"
         return try {
-            val res = app.get(playUrl, headers = mapOf("authority" to "lok-lok.cc", "referer" to "https://lok-lok.cc/")).parsedSafe<PlayResponse>()
+            val res = app.get(playUrl, headers = mapOf(
+                "authority" to "lok-lok.cc", 
+                "referer" to "https://lok-lok.cc/",
+                "user-agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36"
+            )).parsedSafe<PlayResponse>()
+
             res?.data?.streams?.forEach { stream ->
-                // PERBAIKAN: referer dan quality diatur di dalam blok initializer { ... }
-                // Sesuai dengan definisi newExtractorLink di MainAPI.kt baris 1121
+                // Perbaikan: Referer dan Quality diatur dalam blok initializer
                 callback.invoke(
                     newExtractorLink(
                         source = this.name,
@@ -128,6 +135,7 @@ class MovieBox : MainAPI() {
         }
     }
 
+    // --- DATA CLASSES ---
     data class HomeResponse(@JsonProperty("data") val data: HomeData?)
     data class HomeData(@JsonProperty("operatingList") val operatingList: List<OperatingSection>?)
     data class OperatingSection(@JsonProperty("type") val type: String?, @JsonProperty("title") val title: String?, @JsonProperty("banner") val banner: BannerObj?, @JsonProperty("subjects") val subjects: List<Subject>?)
