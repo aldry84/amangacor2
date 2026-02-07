@@ -10,8 +10,8 @@ class LayarKacaPlugin : Plugin() {
         // Provider Utama
         registerMainAPI(LayarKacaProvider())
         
-        // Extractor Server (Daftarkan keduanya)
+        // Register Extractor dari file Extractor.kt
         registerExtractorAPI(EmturbovidExtractor())
-        registerExtractorAPI(TurboVipExtractor())
+        registerExtractorAPI(P2PExtractor())
     }
 }
