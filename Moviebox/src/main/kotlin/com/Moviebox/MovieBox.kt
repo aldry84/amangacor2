@@ -24,8 +24,6 @@ class MovieBox : MainAPI() {
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val homeSets = mutableListOf<HomePageList>()
-
-        // 1. Trending
         try {
             val trendingUrl = "$apiUrl/subject/trending?page=0&perPage=18"
             val res = app.get(trendingUrl, headers = headers).parsedSafe<TrendingResponse>()
@@ -34,7 +32,6 @@ class MovieBox : MainAPI() {
             }
         } catch (e: Exception) { e.printStackTrace() }
 
-        // 2. Home Standard
         try {
             val homeUrl = "$apiUrl/home?host=moviebox.ph"
             val res = app.get(homeUrl, headers = headers).parsedSafe<HomeResponse>()
@@ -69,20 +66,37 @@ class MovieBox : MainAPI() {
         val subject = data.subject ?: throw ErrorLoadingException("Subject Null")
 
         val title = subject.title ?: ""
-        val type = if (subject.subjectType == 1) TvType.Movie else TvType.TvSeries
+        val poster = subject.cover?.url
+        val plot = subject.description
+        val rating = subject.imdbRatingValue?.toDoubleOrNull()
+        val actors = data.stars?.map { ActorData(Actor(it.name ?: "", it.avatarUrl), roleString = it.character) }
 
-        return if (type == TvType.Movie) {
-            newMovieLoadResponse(title, url, type, subject.subjectId ?: "") {
-                this.posterUrl = subject.cover?.url
-                this.plot = subject.description
+        return if (subject.subjectType == 1) {
+            newMovieLoadResponse(title, url, TvType.Movie, "${subject.subjectId}|0|0|$url") {
+                this.posterUrl = poster
+                this.plot = plot
+                this.actors = actors
                 this.year = subject.releaseDate?.take(4)?.toIntOrNull()
-                subject.imdbRatingValue?.toDoubleOrNull()?.let { this.score = Score.from10(it) }
+                if (rating != null) this.score = Score.from10(rating)
             }
         } else {
-            val episodes = listOf(newEpisode(subject.subjectId ?: "") { this.name = "Play Movie" })
-            newTvSeriesLoadResponse(title, url, type, episodes) {
-                this.posterUrl = subject.cover?.url
-                this.plot = subject.description
+            val episodes = mutableListOf<Episode>()
+            data.resource?.seasons?.forEach { season ->
+                val sNum = season.se ?: 1
+                val maxE = season.maxEp ?: 1
+                for (i in 1..maxE) {
+                    episodes.add(newEpisode("${subject.subjectId}|$sNum|$i|$url") {
+                        this.season = sNum
+                        this.episode = i
+                        this.name = "Episode $i"
+                    })
+                }
+            }
+            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+                this.posterUrl = poster
+                this.plot = plot
+                this.actors = actors
+                if (rating != null) this.score = Score.from10(rating)
             }
         }
     }
@@ -93,7 +107,15 @@ class MovieBox : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val playUrl = "https://lok-lok.cc/wefeed-h5api-bff/subject/play?subjectId=$data&se=0&ep=0"
+        [span_3](start_span)// Parsing: "id|season|episode|detailPath"[span_3](end_span)
+        val parts = data.split("|")
+        val id = parts.getOrNull(0) ?: return false
+        val s = parts.getOrNull(1) ?: "0"
+        val e = parts.getOrNull(2) ?: "0"
+        val path = parts.getOrNull(3) ?: ""
+
+        val playUrl = "https://lok-lok.cc/wefeed-h5api-bff/subject/play?subjectId=$id&se=$s&ep=$e&detailPath=$path"
+        
         return try {
             val res = app.get(playUrl, headers = mapOf(
                 "authority" to "lok-lok.cc", 
@@ -102,7 +124,6 @@ class MovieBox : MainAPI() {
             )).parsedSafe<PlayResponse>()
 
             res?.data?.streams?.forEach { stream ->
-                // Perbaikan: Referer dan Quality diatur dalam blok initializer
                 callback.invoke(
                     newExtractorLink(
                         source = this.name,
@@ -111,21 +132,12 @@ class MovieBox : MainAPI() {
                         type = ExtractorLinkType.VIDEO
                     ) {
                         this.referer = "https://lok-lok.cc/"
-                        this.quality = getQualityInt(stream.resolutions)
+                        this.quality = stream.resolutions?.toIntOrNull() ?: 0
                     }
                 )
             }
             true
-        } catch (e: Exception) { false }
-    }
-
-    private fun getQualityInt(res: String?): Int {
-        return when (res) {
-            "720" -> 720
-            "480" -> 480
-            "360" -> 360
-            else -> 0
-        }
+        } catch (err: Exception) { false }
     }
 
     private fun Subject.toSearchResponse(): SearchResponse? {
@@ -136,16 +148,19 @@ class MovieBox : MainAPI() {
     }
 
     // --- DATA CLASSES ---
+    data class TrendingResponse(@JsonProperty("data") val data: TrendingData?)
+    data class TrendingData(@JsonProperty("subjectList") val subjectList: List<Subject>?)
     data class HomeResponse(@JsonProperty("data") val data: HomeData?)
     data class HomeData(@JsonProperty("operatingList") val operatingList: List<OperatingSection>?)
     data class OperatingSection(@JsonProperty("type") val type: String?, @JsonProperty("title") val title: String?, @JsonProperty("banner") val banner: BannerObj?, @JsonProperty("subjects") val subjects: List<Subject>?)
     data class BannerObj(@JsonProperty("items") val items: List<Subject>?)
-    data class TrendingResponse(@JsonProperty("data") val data: TrendingData?)
-    data class TrendingData(@JsonProperty("subjectList") val subjectList: List<Subject>?)
     data class SearchDataResponse(@JsonProperty("data") val data: SearchResultData?)
     data class SearchResultData(@JsonProperty("items") val items: List<Subject>?)
     data class DetailFullResponse(@JsonProperty("data") val data: DetailData?)
-    data class DetailData(@JsonProperty("subject") val subject: Subject?)
+    data class DetailData(@JsonProperty("subject") val subject: Subject?, @JsonProperty("resource") val resource: Resource?, @JsonProperty("stars") val stars: List<Star>?)
+    data class Resource(@JsonProperty("seasons") val seasons: List<Season>?)
+    data class Season(@JsonProperty("se") val se: Int?, @JsonProperty("maxEp") val maxEp: Int?)
+    data class Star(@JsonProperty("name") val name: String?, @JsonProperty("avatarUrl") val avatarUrl: String?, @JsonProperty("character") val character: String?)
     data class PlayResponse(@JsonProperty("data") val data: PlayData?)
     data class PlayData(@JsonProperty("streams") val streams: List<VideoStream>?)
     data class VideoStream(@JsonProperty("url") val url: String?, @JsonProperty("resolutions") val resolutions: String?)
