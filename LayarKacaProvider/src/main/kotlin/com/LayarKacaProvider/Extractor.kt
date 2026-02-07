@@ -1,5 +1,6 @@
 package com.LayarKacaProvider
 
+import com.lagradost.api.Log
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.ExtractorApi
@@ -8,10 +9,11 @@ import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.utils.getAndUnpack
+import com.lagradost.cloudstream3.network.WebViewResolver // Wajib Import Ini
 import java.net.URI
 
 // ============================================================================
-// 1. EMTURBOVID EXTRACTOR (Untuk Server: TurboVip & Emturbovid)
+// 1. EMTURBOVID EXTRACTOR (Server: TurboVip & Emturbovid) - [FIXED]
 // ============================================================================
 open class EmturbovidExtractor : ExtractorApi() {
     override var name = "Emturbovid"
@@ -20,16 +22,14 @@ open class EmturbovidExtractor : ExtractorApi() {
 
     override suspend fun getUrl(url: String, referer: String?): List<ExtractorLink>? {
         val finalReferer = referer ?: "$mainUrl/"
-        // Ambil halaman player
         val response = app.get(url, referer = finalReferer)
         val playerScript = response.document.selectXpath("//script[contains(text(),'var urlPlay')]").html()
         val sources = mutableListOf<ExtractorLink>()
         
         if (playerScript.isNotBlank()) {
             val m3u8Url = playerScript.substringAfter("var urlPlay = '").substringBefore("'")
-            
-            // Header Anti-Error 3001
             val originUrl = try { URI(finalReferer).let { "${it.scheme}://${it.host}" } } catch (e: Exception) { "$mainUrl" }
+
             val headers = mapOf(
                 "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                 "Referer" to finalReferer,
@@ -39,7 +39,7 @@ open class EmturbovidExtractor : ExtractorApi() {
             sources.add(
                 newExtractorLink(source = name, name = name, url = m3u8Url, type = ExtractorLinkType.M3U8) {
                     this.referer = finalReferer
-                    this.quality = Qualities.Unknown.value // Biarkan player deteksi resolusi (480p/720p)
+                    this.quality = Qualities.Unknown.value
                     this.headers = headers
                 }
             )
@@ -49,7 +49,7 @@ open class EmturbovidExtractor : ExtractorApi() {
 }
 
 // ============================================================================
-// 2. P2P EXTRACTOR (Untuk Server: P2P / Hownetwork)
+// 2. P2P EXTRACTOR (Server: P2P / Hownetwork) - [FIXED]
 // ============================================================================
 open class P2PExtractor : ExtractorApi() {
     override var name = "P2P"
@@ -59,7 +59,6 @@ open class P2PExtractor : ExtractorApi() {
     data class HownetworkResponse(val file: String?, val link: String?, val label: String?)
 
     override suspend fun getUrl(url: String, referer: String?): List<ExtractorLink>? {
-        // url: https://cloud.hownetwork.xyz/video.php?id=...
         val id = url.substringAfter("id=").substringBefore("&")
         val apiUrl = "$mainUrl/api2.php?id=$id"
 
@@ -69,7 +68,6 @@ open class P2PExtractor : ExtractorApi() {
             "Origin" to mainUrl,
             "X-Requested-With" to "XMLHttpRequest"
         )
-        // Body Request (Teknik POST)
         val formBody = mapOf("r" to "https://playeriframe.sbs/", "d" to "cloud.hownetwork.xyz")
         val sources = mutableListOf<ExtractorLink>()
         
@@ -92,48 +90,93 @@ open class P2PExtractor : ExtractorApi() {
 }
 
 // ============================================================================
-// 3. F16 EXTRACTOR (Untuk Server: CAST / f16px.com)
+// 3. F16 EXTRACTOR (Server: CAST / f16px.com) - [UPGRADE ALA FILEMOON]
 // ============================================================================
 open class F16Extractor : ExtractorApi() {
-    override var name = "F16" // Nanti muncul sebagai "CAST" karena mapping
+    override var name = "F16"
     override var mainUrl = "https://f16px.com"
     override val requiresReferer = false
 
     override suspend fun getUrl(url: String, referer: String?): List<ExtractorLink>? {
         val sources = mutableListOf<ExtractorLink>()
+        
+        // Header ala Filemoon (Penting buat menipu server)
+        val f16Headers = mapOf(
+            "Referer" to "https://playeriframe.sbs/",
+            "Sec-Fetch-Dest" to "iframe",
+            "Sec-Fetch-Mode" to "navigate",
+            "Sec-Fetch-Site" to "cross-site",
+            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        )
+
         try {
-            // 1. Request halaman Embed dengan Referer LK21
-            val response = app.get(url, referer = "https://playeriframe.sbs/").text
+            // 1. Ambil Source HTML
+            val response = app.get(url, headers = f16Headers).text
             
-            // 2. Unpack jika script di-obfuscate (function(p,a,c,k,e,d)...)
+            // 2. Cek apakah script dipacking, kalau iya unpack dulu
             val unpacked = if (response.contains("eval(function(p,a,c,k,e,d)")) {
                 getAndUnpack(response)
             } else {
                 response
             }
 
-            // 3. Cari link m3u8 menggunakan Regex
-            val m3u8Regex = Regex("file:\\s*\"(.*?m3u8.*?)\"")
-            val match = m3u8Regex.find(unpacked)
+            // 3. CARA PERTAMA: Regex Standar ala FileMoon (Mencari 'sources:[{file:"..."}]')
+            val regexFilemoon = Regex("""sources:\s*\[\s*\{\s*file:\s*"(.*?)"""")
+            var m3u8Url = regexFilemoon.find(unpacked)?.groupValues?.get(1)
 
-            if (match != null) {
-                val m3u8Url = match.groupValues[1]
+            // 4. CARA KEDUA: Regex Cadangan (Mencari 'file:"..."')
+            if (m3u8Url.isNullOrEmpty()) {
+                val regexSimple = Regex("""file:\s*"(.*?m3u8.*?)" """)
+                m3u8Url = regexSimple.find(unpacked)?.groupValues?.get(1)
+            }
+
+            if (!m3u8Url.isNullOrEmpty()) {
+                // Sukses dapet link via Regex (Cara Cepat)
                 sources.add(
                     newExtractorLink(
-                        source = "CAST", // Nama di Player
+                        source = "CAST", // Nama yang muncul di app
                         name = "CAST",
                         url = m3u8Url,
                         type = ExtractorLinkType.M3U8
                     ) {
                         this.referer = "$mainUrl/"
                         this.quality = Qualities.Unknown.value
-                        this.headers = mapOf(
-                            "Origin" to mainUrl,
-                            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                        )
+                        this.headers = f16Headers
                     }
                 )
+            } else {
+                // 5. CARA KETIGA: WebView Fallback (Jurus Pamungkas)
+                // Kalau Regex gagal, kita suruh WebView buka halamannya dan cegat link m3u8
+                Log.d("F16Extractor", "Regex gagal, mencoba WebView Fallback...")
+                
+                val resolver = WebViewResolver(
+                    interceptUrl = Regex("""(m3u8|master\.txt)"""), // Tangkap apa pun yang berbau m3u8
+                    additionalUrls = listOf(Regex("""(m3u8|master\.txt)""")),
+                    useOkhttp = false,
+                    timeout = 15_000L // Tunggu 15 detik
+                )
+
+                val interceptedUrl = app.get(
+                    url,
+                    headers = f16Headers,
+                    interceptor = resolver
+                ).url
+
+                if (interceptedUrl.isNotEmpty() && interceptedUrl != url) {
+                    sources.add(
+                        newExtractorLink(
+                            source = "CAST (WebView)", 
+                            name = "CAST",
+                            url = interceptedUrl,
+                            type = ExtractorLinkType.M3U8
+                        ) {
+                            this.referer = "$mainUrl/"
+                            this.quality = Qualities.Unknown.value
+                        }
+                    )
+                }
             }
+
         } catch (e: Exception) {
             e.printStackTrace()
         }
