@@ -4,6 +4,9 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.loadExtractor
+import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
+import com.lagradost.cloudstream3.utils.newExtractorLink
 import org.jsoup.nodes.Element
 
 class LayarKacaProvider : MainAPI() {
@@ -19,7 +22,6 @@ class LayarKacaProvider : MainAPI() {
         val document = app.get(mainUrl).document
         val items = ArrayList<HomePageList>()
 
-        // Helper untuk ambil widget
         fun addWidget(title: String, selector: String) {
             val list = document.select(selector).mapNotNull { toSearchResult(it) }
             if (list.isNotEmpty()) items.add(HomePageList(title, list))
@@ -33,34 +35,27 @@ class LayarKacaProvider : MainAPI() {
         return newHomePageResponse(items)
     }
 
-    // --- SEARCH (FIXED) ---
+    // --- SEARCH ---
     override suspend fun search(query: String): List<SearchResponse> {
         val searchUrl = "$mainUrl/search?s=$query"
         val document = app.get(searchUrl).document
         
-        // Selector diperluas: search-result, grid-archive, atau article apa saja di halaman search
-        val results = document.select("div.search-result article, div.grid-archive article, div#post-container article, div.movie-list article")
+        return document.select("div.search-result article, div.grid-archive article, div#post-container article, div.movie-list article")
             .mapNotNull { toSearchResult(it) }
-            
-        return results
     }
 
-    // --- HELPER: HTML -> SearchResponse (FIXED) ---
+    // --- HELPER: HTML -> SearchResponse ---
     private fun toSearchResult(element: Element): SearchResponse? {
-        // Coba cari judul di berbagai tag h1-h6
         val title = element.select("h3.poster-title, h2.entry-title, h1.page-title, div.title").text().trim()
         if (title.isEmpty()) return null
         
         val href = fixUrl(element.select("a").first()?.attr("href") ?: return null)
         
-        // Ambil poster dari img src atau srcset
         val imgElement = element.select("img").first()
-        val posterUrl = imgElement?.attr("src") 
-            ?: imgElement?.attr("data-src")
+        val posterUrl = imgElement?.attr("src") ?: imgElement?.attr("data-src")
         
         val quality = getQualityFromString(element.select("span.label").text())
 
-        // Cek Series/Movie dari label EPS atau durasi S.
         val isSeries = element.select("span.episode").isNotEmpty() ||
                 element.select("span.duration").text().contains("S.")
 
@@ -90,7 +85,7 @@ class LayarKacaProvider : MainAPI() {
         var response = app.get(cleanUrl)
         var document = response.document
 
-        // 1. CEK REDIRECT (Anti-Gocek)
+        // Redirect Handler
         val redirectButton = document.select("a:contains(Buka Sekarang), a.btn:contains(Nontondrama)").first()
         if (redirectButton != null) {
             val newUrl = redirectButton.attr("href")
@@ -101,7 +96,7 @@ class LayarKacaProvider : MainAPI() {
             }
         }
 
-        // 2. PARSING DATA UMUM
+        // Parsing Data
         val title = document.select("h1.entry-title, h1.page-title, div.movie-info h1").text().trim()
         val plot = document.select("div.synopsis, div.entry-content p, blockquote").text().trim()
 
@@ -125,7 +120,7 @@ class LayarKacaProvider : MainAPI() {
             toSearchResult(it)
         }
 
-        // 3. DETEKSI TIPE KONTEN & EPISODE
+        // Episodes
         val episodes = ArrayList<Episode>()
         val jsonScript = document.select("script#season-data").html()
 
@@ -188,53 +183,46 @@ class LayarKacaProvider : MainAPI() {
     ): Boolean {
         val document = app.get(data).document
 
-        // 1. Ambil semua link dari tab player (P2P, Turbovip, Cast, dll)
+        // Ambil link player
         val playerLinks = document.select("ul#player-list li a").map { 
-            // Ambil atribut data-url jika ada, kalau tidak ambil href
             val url = it.attr("data-url").ifEmpty { it.attr("href") }
             fixUrl(url)
         }
-        
-        // 2. Ambil juga iframe utama sebagai fallback
         val mainIframe = fixUrl(document.select("iframe#main-player").attr("src"))
-        
-        // Gabungkan dan hilangkan duplikat
         val allSources = (playerLinks + mainIframe).filter { it.isNotBlank() }.distinct()
 
         allSources.forEach { url ->
-            // Coba load extractor langsung (kalau linknya support, misal streamtape)
             val directLoaded = loadExtractor(url, data, subtitleCallback, callback)
             
             if (!directLoaded) {
-                // Kalau tidak support, kemungkinan ini wrapper (playeriframe.sbs)
-                // Kita coba buka linknya (Unwrap) untuk cari link asli di dalamnya
                 try {
                     val iframePage = app.get(url, referer = data).document
                     
-                    // Cari iframe di dalam wrapper
                     iframePage.select("iframe").forEach { nestedIframe ->
                         val nestedSrc = fixUrl(nestedIframe.attr("src"))
                         loadExtractor(nestedSrc, url, subtitleCallback, callback)
                     }
                     
-                    // Cari Script (kadang link P2P/M3U8 ada di script)
-                    // Ini regex sederhana untuk cari link .m3u8 atau .mp4 di source page
                     val scriptHtml = iframePage.html()
                     Regex("(?i)https?://[^\"]+\\.(m3u8|mp4)").findAll(scriptHtml).forEach { match ->
                         val streamUrl = match.value
+                        val qualityVal = if(streamUrl.contains("m3u8")) Qualities.Unknown.value else Qualities.P480.value
+                        val typeVal = if(streamUrl.contains("m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                        
+                        // FIX: Menggunakan newExtractorLink, bukan Constructor
                         callback.invoke(
-                            ExtractorLink(
+                            newExtractorLink(
                                 source = "LK21 P2P",
                                 name = "LK21 P2P",
                                 url = streamUrl,
                                 referer = url,
-                                quality = if(streamUrl.contains("m3u8")) Qualities.Unknown.value else Qualities.P480.value,
-                                type = if(streamUrl.contains("m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
-                            )
+                                type = typeVal
+                            ) {
+                                this.quality = qualityVal
+                            }
                         )
                     }
                 } catch (e: Exception) {
-                    // Ignore error saat unwrap
                 }
             }
         }
