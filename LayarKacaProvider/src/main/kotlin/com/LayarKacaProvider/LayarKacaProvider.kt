@@ -66,7 +66,7 @@ class LayarKacaProvider : MainAPI() {
     }
 
     // ========================================================================
-    // LOAD DETAILS (FIXED DEPRECATION)
+    // LOAD DETAILS (SUDAH DIPERBAIKI TIPE DATA RATINGNYA)
     // ========================================================================
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url).document
@@ -76,13 +76,17 @@ class LayarKacaProvider : MainAPI() {
         val plot = document.selectFirst("div.entry-content p")?.text()?.trim()
         val year = document.selectFirst("span.year")?.text()?.toIntOrNull()
         
-        // FIX 1: Rating sekarang menggunakan Double, bukan Int
-        val rating = document.selectFirst("span.rating")?.text()?.trim()?.toDoubleOrNull()
+        // --- PERBAIKAN RATING ---
+        // Kita ambil text, ubah ke Double, kali 10, lalu ubah ke Int.
+        // Contoh: "8.5" -> 8.5 -> 85 (Int)
+        // Ini agar sesuai dengan tipe data 'rating: Int?' di CloudStream
+        val ratingText = document.selectFirst("span.rating")?.text()?.trim()
+        val rating = ratingText?.toDoubleOrNull()?.times(10)?.toInt()
         
         val tags = document.select("div.gmr-movie-on a[rel=category tag]").map { it.text() }
         val trailer = document.selectFirst("a.fancybox-youtube")?.attr("href")
 
-        // FIX 2: Episode menggunakan newEpisode builder
+        // Cek apakah ini TV Series (ada episode)
         val episodes = document.select("ul.episode-list li a").map {
             val epHref = it.attr("href")
             val epName = it.text().trim()
@@ -96,7 +100,7 @@ class LayarKacaProvider : MainAPI() {
                 this.posterUrl = poster
                 this.plot = plot
                 this.year = year
-                this.rating = rating // Assign rating Double
+                this.rating = rating // Sekarang aman karena tipe datanya Int
                 this.tags = tags
                 addTrailer(trailer)
             }
@@ -105,7 +109,7 @@ class LayarKacaProvider : MainAPI() {
                 this.posterUrl = poster
                 this.plot = plot
                 this.year = year
-                this.rating = rating // Assign rating Double
+                this.rating = rating // Sekarang aman karena tipe datanya Int
                 this.tags = tags
                 addTrailer(trailer)
             }
@@ -113,7 +117,7 @@ class LayarKacaProvider : MainAPI() {
     }
 
     // ========================================================================
-    // LOAD LINKS (MASIH ADA DEBUGGING UNTUK F16)
+    // LOAD LINKS (TETAP ADA DEBUGGING BUAT CEK F16)
     // ========================================================================
     override suspend fun loadLinks(
         data: String,
@@ -134,26 +138,4 @@ class LayarKacaProvider : MainAPI() {
             loadExtractor(src, data, subtitleCallback, callback)
         }
 
-        // 2. Log Tombol Provider
-        Log.d("LK21-DEBUG", "--- MENCARI TOMBOL PROVIDER ---")
-        val providers = document.select("ul#loadProviders li a")
-        if (providers.isEmpty()) {
-            Log.d("LK21-DEBUG", "TIDAK ADA TOMBOL PROVIDER DITEMUKAN (Mungkin pake ajax?)")
-        }
-
-        providers.forEach { linkElement ->
-            var link = linkElement.attr("href")
-            val name = linkElement.text()
-            
-            if (link.startsWith("//")) link = "https:$link"
-            
-            Log.d("LK21-DEBUG", "Tombol Provider: [$name] -> $link")
-            
-            // Panggil Extractor
-            loadExtractor(link, data, subtitleCallback, callback)
-        }
-
-        Log.d("LK21-DEBUG", "=== SELESAI LOAD LINKS ===")
-        return true
-    }
-}
+        //
