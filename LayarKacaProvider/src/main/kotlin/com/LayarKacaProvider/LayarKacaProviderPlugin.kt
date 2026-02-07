@@ -10,8 +10,8 @@ class LayarKacaPlugin : Plugin() {
         // Provider Utama
         registerMainAPI(LayarKacaProvider())
         
-        // Extractor Server
+        // Extractor Server (Daftarkan keduanya)
         registerExtractorAPI(EmturbovidExtractor())
-        registerExtractorAPI(TurboVipExtractor()) // <--- Tambahkan Baris Ini
+        registerExtractorAPI(TurboVipExtractor())
     }
 }
