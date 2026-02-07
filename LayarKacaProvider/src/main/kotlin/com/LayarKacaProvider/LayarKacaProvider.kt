@@ -6,6 +6,7 @@ import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import org.jsoup.nodes.Element
 
 class LayarKacaProvider : MainAPI() {
+    // Sesuaikan domain jika berubah
     override var mainUrl = "https://tv8.lk21official.cc" 
     override var name = "LayarKaca21"
     override val hasMainPage = true
@@ -62,7 +63,7 @@ class LayarKacaProvider : MainAPI() {
     }
 
     // ========================================================================
-    // LOAD DETAILS (VERSI ORIGINAL YANG BERHASIL DI BUILD)
+    // LOAD (FIXED FOR NEW API)
     // ========================================================================
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url).document
@@ -72,17 +73,19 @@ class LayarKacaProvider : MainAPI() {
         val plot = document.selectFirst("div.entry-content p")?.text()?.trim()
         val year = document.selectFirst("span.year")?.text()?.toIntOrNull()
         
-        // Menggunakan toRatingInt() agar sesuai dengan tipe data Int? di core
-        val rating = document.selectFirst("span.rating")?.text()?.toRatingInt()
-        
+        // FIX 1: Ambil text rating langsung, jangan pakai toRatingInt() yang deprecated
+        val ratingText = document.selectFirst("span.rating")?.text()?.trim()
+
         val tags = document.select("div.gmr-movie-on a[rel=category tag]").map { it.text() }
         val trailer = document.selectFirst("a.fancybox-youtube")?.attr("href")
 
-        // Menggunakan konstruktor Episode lama
+        // FIX 2: Gunakan newEpisode() builder, bukan Episode(...) constructor
         val episodes = document.select("ul.episode-list li a").map {
             val epHref = it.attr("href")
             val epName = it.text().trim()
-            Episode(epHref, epName)
+            newEpisode(epHref) {
+                this.name = epName
+            }
         }
 
         return if (episodes.isNotEmpty()) {
@@ -90,7 +93,8 @@ class LayarKacaProvider : MainAPI() {
                 this.posterUrl = poster
                 this.plot = plot
                 this.year = year
-                this.rating = rating
+                // FIX 3: Gunakan addRating(), jangan this.rating = ...
+                addRating(ratingText) 
                 this.tags = tags
                 addTrailer(trailer)
             }
@@ -99,7 +103,8 @@ class LayarKacaProvider : MainAPI() {
                 this.posterUrl = poster
                 this.plot = plot
                 this.year = year
-                this.rating = rating
+                // FIX 3: Gunakan addRating(), jangan this.rating = ...
+                addRating(ratingText)
                 this.tags = tags
                 addTrailer(trailer)
             }
@@ -107,7 +112,7 @@ class LayarKacaProvider : MainAPI() {
     }
 
     // ========================================================================
-    // LOAD LINKS (VERSI STANDAR SEBELUM P2P)
+    // LOAD LINKS
     // ========================================================================
     override suspend fun loadLinks(
         data: String,
@@ -117,14 +122,14 @@ class LayarKacaProvider : MainAPI() {
     ): Boolean {
         val document = app.get(data).document
 
-        // 1. Cari Iframe biasa
+        // 1. Ambil dari Iframe
         document.select("iframe").forEach { iframe ->
             var src = iframe.attr("src")
             if (src.startsWith("//")) src = "https:$src"
             loadExtractor(src, data, subtitleCallback, callback)
         }
 
-        // 2. Cari Tombol Provider di bawah player
+        // 2. Ambil dari Tombol Provider (ul#loadProviders)
         document.select("ul#loadProviders li a").forEach { linkElement ->
             var link = linkElement.attr("href")
             if (link.startsWith("//")) link = "https:$link"
