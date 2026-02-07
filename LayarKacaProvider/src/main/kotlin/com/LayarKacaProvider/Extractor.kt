@@ -81,7 +81,7 @@ open class P2PExtractor : ExtractorApi() {
 }
 
 // ============================================================================
-// 3. F16 EXTRACTOR (FIXED BASE64 PADDING)
+// 3. F16 EXTRACTOR (CORRECT JSON REQUEST & BASE64 FIX)
 // ============================================================================
 open class F16Extractor : ExtractorApi() {
     override var name = "F16"
@@ -93,7 +93,7 @@ open class F16Extractor : ExtractorApi() {
     data class DecryptedSource(val file: String?, val label: String?, val type: String?)
     data class DecryptedResponse(val sources: List<DecryptedSource>?)
 
-    // Fungsi sakti untuk memperbaiki Base64 yang "cacat" (kurang tanda =)
+    // Helper untuk memperbaiki Base64 yang kurang padding '='
     private fun String.fixBase64(): String {
         var s = this
         while (s.length % 4 != 0) {
@@ -113,25 +113,35 @@ open class F16Extractor : ExtractorApi() {
             "Origin" to "https://playeriframe.sbs",
             "x-embed-origin" to "playeriframe.sbs",
             "x-embed-parent" to url,
-            "x-embed-referer" to "https://playeriframe.sbs/"
+            "x-embed-referer" to "https://playeriframe.sbs/",
+            "Content-Type" to "application/json" // Header Wajib
         )
 
         try {
-            val dummyBody = """{"fingerprint":{"token":"dummy_bypass","viewer_id":"7e847c23137449fbb73cbf6bb7f9bceb","device_id":"daeba4e7719c4d4c91e53dd03849cf37","confidence":0.6}}"""
+            // FIX: Gunakan Map langsung untuk JSON payload
+            val jsonPayload = mapOf(
+                "fingerprint" to mapOf(
+                    "token" to "dummy_bypass",
+                    "viewer_id" to "7e847c23137449fbb73cbf6bb7f9bceb",
+                    "device_id" to "daeba4e7719c4d4c91e53dd03849cf37",
+                    "confidence" to 0.6
+                )
+            )
             
-            val responseText = app.post(apiUrl, headers = headers, data = mapOf("body" to dummyBody)).text
+            // FIX: Gunakan parameter 'json' bukan 'data' agar dikirim sebagai Raw JSON
+            val responseText = app.post(apiUrl, headers = headers, json = jsonPayload).text
             val json = tryParseJson<F16Playback>(responseText)
             val pb = json?.playback
 
             if (pb != null && pb.payload != null && pb.iv != null && !pb.key_parts.isNullOrEmpty()) {
                 
-                // --- PERBAIKAN UTAMA DI SINI ---
-                // Kita tambahkan .fixBase64() agar tidak error saat decode
+                // RUMUS RAHASIA: Gabungkan Key Part 1 + Part 2
+                // Gunakan fixBase64() sebelum decode
                 val part1 = Base64.decode(pb.key_parts[0].fixBase64(), Base64.URL_SAFE)
                 val part2 = Base64.decode(pb.key_parts[1].fixBase64(), Base64.URL_SAFE)
                 val combinedKey = part1 + part2 
 
-                // Dekripsi
+                // Dekripsi AES-GCM
                 val decryptedJson = decryptAesGcm(pb.payload, combinedKey, pb.iv)
 
                 if (decryptedJson != null) {
@@ -161,7 +171,11 @@ open class F16Extractor : ExtractorApi() {
         try {
             // Fix padding juga untuk Payload dan IV
             val cipherText = Base64.decode(encryptedBase64.fixBase64(), Base64.URL_SAFE)
-            val iv = Base64.decode(ivBase64.fixBase64(), Base64.URL_SAFE)
+            val iv = try {
+                Base64.decode(ivBase64.fixBase64(), Base64.URL_SAFE)
+            } catch (e: Exception) {
+                ivBase64.toByteArray() // Fallback jika IV bukan base64 (biasanya Hex)
+            }
 
             val spec = GCMParameterSpec(128, iv)
             val keySpec = SecretKeySpec(keyBytes, "AES")
