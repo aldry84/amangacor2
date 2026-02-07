@@ -1,319 +1,204 @@
-package com.layarKacaProvider
+package com.LayarKacaProvider
 
-import com.lagradost.api.Log
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
-import com.lagradost.cloudstream3.utils.*
-import org.json.JSONObject
+import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
+import com.lagradost.cloudstream3.utils.loadExtractor
 import org.jsoup.nodes.Element
-import java.net.URI
 
 class LayarKacaProvider : MainAPI() {
-
-    override var mainUrl = "https://tv7.lk21official.cc"
-    private var seriesDomain = "https://tv3.nontondrama.my"
-    private var searchApiUrl = "https://gudangvape.com"
-
-    override var name = "LayarKaca"
+    // --- KONFIGURASI ---
+    override var mainUrl = "https://tv8.lk21official.cc" 
+    override var name = "LayarKaca21"
     override val hasMainPage = true
     override var lang = "id"
-    override val supportedTypes = setOf(
-        TvType.Movie,
-        TvType.TvSeries,
-        TvType.AsianDrama
-    )
+    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
-    // --- BAGIAN YANG DIUBAH ---
-    override val mainPage = mainPageOf(
-        "$mainUrl/populer/page/" to "Top Bulan Ini",
-        "$mainUrl/latest/page/" to "Film Terbaru",
-        "$mainUrl/top-series-today/page/" to "Series Hari Ini",
-        "$mainUrl/latest-series/page/" to "Series Terbaru",
-        "$mainUrl/nonton-bareng-keluarga/page/" to "Nobar Keluarga",
-        "$mainUrl/genre/romance/page/" to "Romantis",
-        "$mainUrl/country/thailand/page/" to "Thailand"
-    )
-    // ---------------------------
+    // --- MAIN PAGE (HOME) ---
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+        val document = app.get(mainUrl).document
+        val items = ArrayList<HomePageList>()
 
-    override suspend fun getMainPage(
-        page: Int,
-        request: MainPageRequest
-    ): HomePageResponse {
-        val document = app.get(request.data + page).documentLarge
-        val home = document.select("article figure").mapNotNull {
-            it.toSearchResult()
+        // Helper untuk ambil widget
+        fun addWidget(title: String, selector: String) {
+            val list = document.select(selector).mapNotNull { toSearchResult(it) }
+            if (list.isNotEmpty()) items.add(HomePageList(title, list))
         }
-        return newHomePageResponse(request.name, home)
+
+        addWidget("Film Terbaru", "div.widget[data-type='latest-movies'] li.slider article")
+        addWidget("Series Unggulan", "div.widget[data-type='top-series-today'] li.slider article")
+        addWidget("Horror Terbaru", "div.widget[data-type='latest-horror'] li.slider article")
+        addWidget("Daftar Lengkap", "div#post-container article")
+
+        return HomePageResponse(items)
     }
 
-    private fun Element.toSearchResult(): SearchResponse? {
-        val title = this.selectFirst("h3")?.ownText()?.trim() ?: return null
-        val rawHref = this.selectFirst("a")!!.attr("href")
-        val href = fixUrl(rawHref) 
+    // --- SEARCH ---
+    override suspend fun search(query: String): List<SearchResponse> {
+        val searchUrl = "$mainUrl/search?s=$query"
+        return app.get(searchUrl).document.select("div.search-result article, div#post-container article")
+            .mapNotNull { toSearchResult(it) }
+    }
+
+    // --- HELPER: HTML -> SearchResponse ---
+    private fun toSearchResult(element: Element): SearchResponse? {
+        val title = element.select("h3.poster-title").text().trim()
+        if (title.isEmpty()) return null
+        val href = fixUrl(element.select("a").first()?.attr("href") ?: return null)
+        val posterUrl = element.select("img").attr("src")
+        val quality = getQualityFromString(element.select("span.label").text())
         
-        val posterUrl = fixUrlNull(this.selectFirst("img")?.getImageAttr())
-        val type = if (this.selectFirst("span.episode") == null) TvType.Movie else TvType.TvSeries
-        
-        return if (type == TvType.TvSeries) {
-            val episode = this.selectFirst("span.episode strong")?.text()?.filter { it.isDigit() }
-                ?.toIntOrNull()
-            newAnimeSearchResponse(title, href, TvType.TvSeries) {
+        // Cek Series/Movie dari label EPS atau durasi S.
+        val isSeries = element.select("span.episode").isNotEmpty() || 
+                       element.select("span.duration").text().contains("S.")
+
+        return if (isSeries) {
+            newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
                 this.posterUrl = posterUrl
-                addSub(episode)
+                this.quality = quality
             }
         } else {
-            val quality = this.select("div.quality").text().trim()
             newMovieSearchResponse(title, href, TvType.Movie) {
                 this.posterUrl = posterUrl
-                addQuality(quality)
+                this.quality = quality
             }
         }
     }
 
-    override suspend fun search(query: String): List<SearchResponse> {
-        val res = app.get(
-            "$searchApiUrl/search.php?s=$query",
-            headers = mapOf(
-                "Origin" to mainUrl,
-                "Referer" to "$mainUrl/"
-            )
-        ).text
-        
-        val results = mutableListOf<SearchResponse>()
-
-        try {
-            val root = JSONObject(res)
-            if (root.has("data")) {
-                val arr = root.getJSONArray("data")
-                for (i in 0 until arr.length()) {
-                    val item = arr.getJSONObject(i)
-                    val title = item.getString("title")
-                    val slug = item.getString("slug")
-                    val type = item.getString("type") 
-                    
-                    var posterUrl = item.optString("poster")
-                    if (!posterUrl.startsWith("http")) {
-                        posterUrl = "https://poster.lk21.party/wp-content/uploads/$posterUrl"
-                    }
-
-                    val itemUrl = if (type == "series") "$seriesDomain/$slug" else "$mainUrl/$slug"
-
-                    if (type == "series") {
-                        results.add(newTvSeriesSearchResponse(title, itemUrl, TvType.TvSeries) {
-                            this.posterUrl = posterUrl
-                        })
-                    } else {
-                        results.add(newMovieSearchResponse(title, itemUrl, TvType.Movie) {
-                            this.posterUrl = posterUrl
-                        })
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            Log.e("LayarKacaSearch", "Error parsing JSON: ${e.message}")
-        }
-        return results
-    }
+    // --- LOAD DETAIL (INTI LOGIKA) ---
+    
+    // Struct buat JSON Series NontonDrama
+    data class NontonDramaEpisode(
+        val s: Int? = null,
+        val episode_no: Int? = null,
+        val title: String? = null,
+        val slug: String? = null
+    )
 
     override suspend fun load(url: String): LoadResponse {
-        // 1. Request Halaman Awal
-        var response = app.get(url)
-        var document = response.documentLarge
-        var finalUrl = response.url // URL setelah redirect HTTP standar
-        
-        // Deteksi Redirect Manual (Anti-Phishing)
-        val bodyText = document.body().text()
-        if (bodyText.contains("dialihkan ke", ignoreCase = true) && bodyText.contains("Nontondrama", ignoreCase = true)) {
-            Log.d("Phisher-Info", "Redirect page detected at $url")
-            
-            val redirectLink = document.select("a").firstOrNull { 
-                it.text().contains("Buka Sekarang", ignoreCase = true) ||
-                it.attr("href").contains("nontondrama", ignoreCase = true)
-            }?.attr("href")
-            
-            if (!redirectLink.isNullOrEmpty()) {
-                finalUrl = fixUrl(redirectLink)
-                Log.d("Phisher-Info", "Jumping to: $finalUrl")
-                document = app.get(finalUrl).documentLarge
+        var cleanUrl = fixUrl(url)
+        var response = app.get(cleanUrl)
+        var document = response.document
+
+        // 1. CEK REDIRECT (Anti-Gocek)
+        // Kalau tombol "Buka Sekarang" muncul, berarti kita di halaman transit
+        val redirectButton = document.select("a:contains(Buka Sekarang), a.btn:contains(Nontondrama)").first()
+        if (redirectButton != null) {
+            val newUrl = redirectButton.attr("href")
+            if (newUrl.isNotEmpty()) {
+                cleanUrl = fixUrl(newUrl)
+                response = app.get(cleanUrl)
+                document = response.document
             }
         }
 
-        val baseurl = getBaseUrl(finalUrl)
+        // 2. PARSING DATA UMUM
+        val title = document.select("h1.entry-title, h1.page-title, div.movie-info h1").text().trim()
+        val plot = document.select("div.synopsis, div.entry-content p blockquote").text().trim()
         
-        var title = document.selectFirst("div.movie-info h1")?.text()?.trim() 
-            ?: document.selectFirst("h1.entry-title")?.text()?.trim()
-            ?: document.selectFirst("header h1")?.text()?.trim()
-            ?: document.selectFirst("h1")?.text()?.trim() 
-            ?: "Unknown Title"
-
-        var poster = document.select("meta[property=og:image]").attr("content")
-        if (poster.isNullOrEmpty()) {
-             poster = document.selectFirst("div.poster img")?.getImageAttr() ?: ""
-        }
-        
-        val tags = document.select("div.tag-list span").map { it.text() }
-        val posterheaders = mapOf("Referer" to baseurl)
-
-        val year = Regex("\\d, (\\d+)").find(title)?.groupValues?.get(1)?.toIntOrNull()
-        
-        val description = document.selectFirst("div.meta-info")?.text()?.trim() 
-            ?: document.selectFirst("div.desc")?.text()?.trim()
-            ?: document.selectFirst("blockquote")?.text()?.trim()
-
-        val trailer = document.selectFirst("ul.action-left > li:nth-child(3) > a")?.attr("href")
-        val rating = document.selectFirst("div.info-tag strong")?.text()
-
-        val recommendations = document.select("li.slider article").map {
-            val recName = it.selectFirst("h3")?.text()?.trim().toString()
-            val recHref = fixUrl(it.selectFirst("a")!!.attr("href"))
-            val recPosterUrl = fixUrl(it.selectFirst("img")?.attr("src").toString())
-            newTvSeriesSearchResponse(recName, recHref, TvType.TvSeries) {
-                this.posterUrl = recPosterUrl
-                this.posterHeaders = posterheaders
-            }
+        // Ambil poster (Cari yang paling valid)
+        val poster = document.select("meta[property='og:image']").attr("content").ifEmpty {
+            document.select("div.poster img, div.detail img").attr("src")
         }
 
-        val hasSeasonData = document.selectFirst("#season-data") != null
-        val tvType = if (finalUrl.contains("nontondrama") || hasSeasonData) TvType.TvSeries else TvType.Movie
+        // Ambil Rating (Support format Movie & Series)
+        // Movie: <div class="info-tag">... 7.6 ...</div>
+        // Series: <span class="rating-value">
+        val ratingText = document.select("span.rating-value").text().ifEmpty {
+            document.select("div.info-tag").text()
+        }
+        // Cari angka rating (misal 7.6) di dalam teks
+        val rating = Regex("(\\d\\.\\d)").find(ratingText)?.value.toRatingInt()
 
-        return if (tvType == TvType.TvSeries) {
-            val episodes = mutableListOf<Episode>()
-            
-            val json = document.selectFirst("script#season-data")?.data()
-            if (!json.isNullOrEmpty()) {
-                val root = JSONObject(json)
-                root.keys().forEach { seasonKey ->
-                    val seasonArr = root.getJSONArray(seasonKey)
-                    for (i in 0 until seasonArr.length()) {
-                        val ep = seasonArr.getJSONObject(i)
-                        val slug = ep.getString("slug")
-                        val href = fixUrl(if (slug.startsWith("http")) slug else "$baseurl/$slug")
-                        val episodeNo = ep.optInt("episode_no")
-                        val seasonNo = ep.optInt("s")
-                        episodes.add(newEpisode(href) {
-                            this.name = "Episode $episodeNo"
-                            this.season = seasonNo
-                            this.episode = episodeNo
-                        })
-                    }
+        // Ambil Tahun
+        val year = document.select("span.year").text().toIntOrNull() ?: 
+                   Regex("(\\d{4})").find(document.select("div.info-tag").text())?.value?.toIntOrNull()
+
+        // Ambil Genre & Aktor
+        val tags = document.select("div.tag-list a, div.genre a").map { it.text() }
+        val actors = document.select("div.detail p:contains(Bintang Film) a, div.cast a").map {
+            ActorData(Actor(it.text(), ""))
+        }
+        val recommendations = document.select("div.related-video li.slider article, div.mob-related-series li.slider article").mapNotNull {
+            toSearchResult(it)
+        }
+
+        // 3. DETEKSI TIPE KONTEN & EPISODE
+        val episodes = ArrayList<Episode>()
+        
+        // Cek JSON Script (Khusus NontonDrama / Series)
+        val jsonScript = document.select("script#season-data").html()
+        
+        if (jsonScript.isNotBlank()) {
+            // Parsing JSON Episode
+            tryParseJson<Map<String, List<NontonDramaEpisode>>>(jsonScript)?.forEach { (_, epsList) ->
+                epsList.forEach { epData ->
+                    val epUrl = fixUrl(epData.slug ?: "")
+                    episodes.add(
+                        Episode(
+                            data = epUrl,
+                            name = epData.title ?: "Episode ${epData.episode_no}",
+                            season = epData.s,
+                            episode = epData.episode_no
+                        )
+                    )
                 }
-            } else {
-                val episodeLinks = document.select("ul.episodios li a, div.list-episode a, a[href*=episode]")
-                episodeLinks.forEach { 
-                    val epHref = fixUrl(it.attr("href"))
-                    val epName = it.text().trim()
-                    if(epHref.contains(baseurl) || epHref.contains("episode")) {
-                        episodes.add(newEpisode(epHref) {
-                            this.name = epName
-                        })
-                    }
-                }
-            }
-
-            newTvSeriesLoadResponse(title, finalUrl, TvType.TvSeries, episodes) {
-                this.posterUrl = poster
-                this.posterHeaders = posterheaders
-                this.year = year
-                this.plot = description
-                this.tags = tags
-                this.score = Score.from10(rating)
-                this.recommendations = recommendations
-                addTrailer(trailer)
             }
         } else {
-            newMovieLoadResponse(title, finalUrl, TvType.Movie, finalUrl) {
+            // Fallback manual (siapa tau ada format lama)
+            document.select("ul.episodes li a").forEach {
+                val epTitle = it.text()
+                val epHref = fixUrl(it.attr("href"))
+                val epNum = Regex("(?i)Episode\\s+(\\d+)").find(epTitle)?.groupValues?.get(1)?.toIntOrNull()
+                episodes.add(Episode(epHref, epTitle, episode = epNum))
+            }
+        }
+
+        // 4. RETURN RESPONSE
+        if (episodes.isNotEmpty()) {
+            // -- TV SERIES --
+            return newTvSeriesLoadResponse(title, cleanUrl, TvType.TvSeries, episodes) {
                 this.posterUrl = poster
-                this.posterHeaders = posterheaders
+                this.plot = plot
                 this.year = year
-                this.plot = description
+                this.rating = rating
                 this.tags = tags
-                this.score = Score.from10(rating)
+                this.actors = actors
                 this.recommendations = recommendations
-                addTrailer(trailer)
+            }
+        } else {
+            // -- MOVIE --
+            return newMovieLoadResponse(title, cleanUrl, TvType.Movie, cleanUrl) {
+                this.posterUrl = poster
+                this.plot = plot
+                this.year = year
+                this.rating = rating
+                this.tags = tags
+                this.actors = actors
+                this.recommendations = recommendations
             }
         }
     }
 
+    // --- LOAD LINKS (PLAYER) ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val document = app.get(data).documentLarge
-        
-        var playerNodes = document.select("ul#player-list > li")
-        if (playerNodes.isEmpty()) {
-             playerNodes = document.select("div.player_nav ul li, ul.player-list li")
-        }
+        val document = app.get(data).document
 
-        playerNodes.map {
-            fixUrl(it.select("a").attr("href"))
-        }.amap {
-            val iframeUrl = it.getIframe(referer = data)
-            val extractorReferer = getBaseUrl(it)
+        // Cari semua iframe player
+        // Di HTML Movie kamu, playernya ada di <iframe id="main-player" src="...">
+        document.select("iframe[src*='player'], iframe#main-player").forEach { iframe ->
+            var src = iframe.attr("src")
+            // Kalau src diawali // (protocol relative), tambahkan https:
+            if (src.startsWith("//")) src = "https:$src"
             
-            if(iframeUrl.isNotEmpty()) {
-                loadExtractor(iframeUrl, extractorReferer, subtitleCallback, callback)
-            }
+            // Panggil extractor bawaan CloudStream
+            loadExtractor(src, data, subtitleCallback, callback)
         }
         return true
-    }
-
-    private suspend fun String.getIframe(referer: String): String {
-        val response = app.get(this, referer = referer)
-        val document = response.documentLarge
-        val responseText = response.text
-
-        var src = document.selectFirst("div.embed-container iframe")?.attr("src")
-
-        if (src.isNullOrEmpty()) {
-            src = document.selectFirst("iframe[src^=http]")?.attr("src")
-        }
-
-        if (src.isNullOrEmpty()) {
-            val regex = """["'](https?://[^"']+)["']""".toRegex()
-            val foundLinks = regex.findAll(responseText).map { it.groupValues[1] }.toList()
-            
-            src = foundLinks.firstOrNull { link -> 
-                !link.contains(".js") && 
-                !link.contains(".css") && 
-                !link.contains(".png") && 
-                !link.contains(".jpg") &&
-                (link.contains("embed") || link.contains("player") || link.contains("streaming") || link.contains("hownetwork"))
-            }
-        }
-
-        return fixUrl(src ?: "")
-    }
-
-    private suspend fun fetchURL(url: String): String {
-        val res = app.get(url, allowRedirects = false)
-        val href = res.headers["location"]
-
-        return if (href != null) {
-            val it = URI(href)
-            "${it.scheme}://${it.host}"
-        } else {
-            url
-        }
-    }
-
-    private fun Element.getImageAttr(): String {
-        return when {
-            this.hasAttr("src") -> this.attr("src")
-            this.hasAttr("data-src") -> this.attr("data-src")
-            else -> this.attr("src")
-        }
-    }
-
-    fun getBaseUrl(url: String?): String {
-        return try {
-            URI(url).let {
-                "${it.scheme}://${it.host}"
-            }
-        } catch (e: Exception) {
-            ""
-        }
     }
 }
