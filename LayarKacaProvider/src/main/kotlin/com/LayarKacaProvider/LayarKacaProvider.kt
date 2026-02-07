@@ -8,6 +8,7 @@ import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import org.jsoup.nodes.Element
+import java.net.URI
 
 class LayarKacaProvider : MainAPI() {
     override var mainUrl = "https://tv8.lk21official.cc"
@@ -162,7 +163,7 @@ class LayarKacaProvider : MainAPI() {
         }
     }
 
-    // --- LOAD LINKS (SINGLE SOURCE + FIX 3001) ---
+    // --- LOAD LINKS (CLEAN UI & FIX 3001) ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -172,47 +173,42 @@ class LayarKacaProvider : MainAPI() {
         var currentUrl = data
         var document = app.get(currentUrl).document
 
-        // Redirect Handler
         val redirectButton = document.select("a:contains(Buka Sekarang), a.btn:contains(Nontondrama)").first()
         if (redirectButton != null && redirectButton.attr("href").isNotEmpty()) {
             currentUrl = fixUrl(redirectButton.attr("href"))
             document = app.get(currentUrl).document
         }
 
-        // Ambil Source
         val playerLinks = document.select("ul#player-list li a").map { it.attr("data-url").ifEmpty { it.attr("href") } }
         val mainIframe = document.select("iframe#main-player").attr("src")
         val allSources = (playerLinks + mainIframe).filter { it.isNotBlank() }.map { fixUrl(it) }.distinct()
 
         allSources.forEach { url ->
-            // Coba Extractor Bawaan (Seperti StreamWish / EmturbovidExtractor)
             val directLoaded = loadExtractor(url, currentUrl, subtitleCallback, callback)
-            
-            // Jika tidak ke-load, berarti ini LK21 P2P / VIP Wrapper yang harus kita bongkar manual
             if (!directLoaded) {
                 try {
                     val response = app.get(url, referer = currentUrl)
+                    val wrapperUrl = response.url
                     val iframePage = response.document
-                    val wrapperUrl = response.url // PENTING: URL akhir setelah redirect
 
                     // Nested Iframes
                     iframePage.select("iframe").forEach { 
                         loadExtractor(fixUrl(it.attr("src")), wrapperUrl, subtitleCallback, callback) 
                     }
-
-                    // Script Extraction
+                    
+                    // Manual Unwrap (Kalau Extractor di atas gagal)
                     val scriptHtml = iframePage.html().replace("\\/", "/")
                     Regex("(?i)https?://[^\"]+\\.(m3u8|mp4)(?:\\?[^\"']*)?").findAll(scriptHtml).forEach { match ->
                         val streamUrl = match.value
                         val isM3u8 = streamUrl.contains("m3u8", ignoreCase = true)
                         
-                        // HEADERS ANTI-ERROR 3001
-                        // Kita pasang header ini KERAS-KERAS di ExtractorLink
-                        // Supaya saat player pindah resolusi, header ini tetap dibawa
+                        // Origin dynamic sesuai wrapper
+                        val originUrl = try { URI(wrapperUrl).let { "${it.scheme}://${it.host}" } } catch(e:Exception) { "https://playeriframe.sbs" }
+                        
                         val headers = mapOf(
                             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                             "Referer" to wrapperUrl,
-                            "Origin" to "https://playeriframe.sbs"
+                            "Origin" to originUrl
                         )
 
                         callback.invoke(
@@ -223,9 +219,8 @@ class LayarKacaProvider : MainAPI() {
                                 type = if (isM3u8) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
                             ) {
                                 this.referer = wrapperUrl
-                                // Gunakan Unknown agar Player membaca tracks otomatis
-                                this.quality = Qualities.Unknown.value 
-                                this.headers = headers 
+                                this.quality = Qualities.Unknown.value
+                                this.headers = headers
                             }
                         )
                     }
