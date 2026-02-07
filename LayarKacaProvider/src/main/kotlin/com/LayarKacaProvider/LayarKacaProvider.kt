@@ -7,7 +7,6 @@ import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import org.jsoup.nodes.Element
 
 class LayarKacaProvider : MainAPI() {
-    // Domain bisa berubah sewaktu-waktu, sesuaikan dengan yang aktif
     override var mainUrl = "https://tv8.lk21official.cc" 
     override var name = "LayarKaca21"
     override val hasMainPage = true
@@ -15,7 +14,7 @@ class LayarKacaProvider : MainAPI() {
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
     // ========================================================================
-    // MAIN PAGE & SEARCH
+    // MAIN PAGE
     // ========================================================================
     override val mainPage = mainPageOf(
         "$mainUrl/populer/page/" to "Populer",
@@ -41,8 +40,6 @@ class LayarKacaProvider : MainAPI() {
         val title = titleElement.text().trim()
         val href = titleElement.attr("href")
         val posterUrl = this.selectFirst("figure.grid-poster img")?.attr("src")
-        
-        // Cek Quality (HD, CAM, dll)
         val quality = this.selectFirst("span.quality")?.text()?.trim() ?: "HD"
 
         return newMovieSearchResponse(title, href, TvType.Movie) {
@@ -66,7 +63,7 @@ class LayarKacaProvider : MainAPI() {
     }
 
     // ========================================================================
-    // LOAD DETAILS (SUDAH DIPERBAIKI TIPE DATA RATINGNYA)
+    // LOAD (KEMBALI KE LOGIKA AWAL YANG BERHASIL)
     // ========================================================================
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url).document
@@ -76,23 +73,18 @@ class LayarKacaProvider : MainAPI() {
         val plot = document.selectFirst("div.entry-content p")?.text()?.trim()
         val year = document.selectFirst("span.year")?.text()?.toIntOrNull()
         
-        // --- PERBAIKAN RATING ---
-        // Kita ambil text, ubah ke Double, kali 10, lalu ubah ke Int.
-        // Contoh: "8.5" -> 8.5 -> 85 (Int)
-        // Ini agar sesuai dengan tipe data 'rating: Int?' di CloudStream
+        // KEMBALI KE INT: Ambil rating sebagai String, lalu ambil angka depannya saja kalau perlu, atau parse Int
+        // Misal "7.2" -> Diambil 7 atau dikali 10 jadi 72 biar aman masuk Int
         val ratingText = document.selectFirst("span.rating")?.text()?.trim()
-        val rating = ratingText?.toDoubleOrNull()?.times(10)?.toInt()
-        
+        val rating = ratingText?.toDoubleOrNull()?.toInt() // Convert Double ke Int (7.5 -> 7) biar aman build
+
         val tags = document.select("div.gmr-movie-on a[rel=category tag]").map { it.text() }
         val trailer = document.selectFirst("a.fancybox-youtube")?.attr("href")
 
-        // Cek apakah ini TV Series (ada episode)
         val episodes = document.select("ul.episode-list li a").map {
             val epHref = it.attr("href")
             val epName = it.text().trim()
-            newEpisode(epHref) {
-                this.name = epName
-            }
+            Episode(epHref, epName) // Pakai cara lama yang simpel
         }
 
         return if (episodes.isNotEmpty()) {
@@ -100,7 +92,7 @@ class LayarKacaProvider : MainAPI() {
                 this.posterUrl = poster
                 this.plot = plot
                 this.year = year
-                this.rating = rating // Sekarang aman karena tipe datanya Int
+                this.rating = rating // Masuk sebagai Int?
                 this.tags = tags
                 addTrailer(trailer)
             }
@@ -109,7 +101,7 @@ class LayarKacaProvider : MainAPI() {
                 this.posterUrl = poster
                 this.plot = plot
                 this.year = year
-                this.rating = rating // Sekarang aman karena tipe datanya Int
+                this.rating = rating // Masuk sebagai Int?
                 this.tags = tags
                 addTrailer(trailer)
             }
@@ -117,7 +109,7 @@ class LayarKacaProvider : MainAPI() {
     }
 
     // ========================================================================
-    // LOAD LINKS (TETAP ADA DEBUGGING BUAT CEK F16)
+    // LOAD LINKS (DENGAN LOG DEBUGGING)
     // ========================================================================
     override suspend fun loadLinks(
         data: String,
@@ -125,17 +117,25 @@ class LayarKacaProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        Log.d("LK21-DEBUG", "=== MEMUAT HALAMAN FILM: $data ===")
+        Log.d("LK21-DEBUG", "Load Link Start: $data")
         val document = app.get(data).document
 
-        // 1. Log Semua Iframe
-        Log.d("LK21-DEBUG", "--- MENCARI IFRAME ---")
+        // 1. Cari Iframe
         document.select("iframe").forEach { iframe ->
             var src = iframe.attr("src")
             if (src.startsWith("//")) src = "https:$src"
-            
-            Log.d("LK21-DEBUG", "Iframe Ditemukan: $src")
+            Log.d("LK21-DEBUG", "Iframe Found: $src")
             loadExtractor(src, data, subtitleCallback, callback)
         }
 
-        //
+        // 2. Cari Tombol Provider
+        document.select("ul#loadProviders li a").forEach { linkElement ->
+            var link = linkElement.attr("href")
+            if (link.startsWith("//")) link = "https:$link"
+            Log.d("LK21-DEBUG", "Provider Found: ${linkElement.text()} -> $link")
+            loadExtractor(link, data, subtitleCallback, callback)
+        }
+
+        return true
+    }
+}
