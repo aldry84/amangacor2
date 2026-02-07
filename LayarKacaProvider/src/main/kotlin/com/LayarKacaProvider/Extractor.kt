@@ -13,7 +13,9 @@ import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
-// 1. EMTURBOVID (TurboVip)
+// ============================================================================
+// 1. EMTURBOVID EXTRACTOR
+// ============================================================================
 open class EmturbovidExtractor : ExtractorApi() {
     override var name = "Emturbovid"
     override var mainUrl = "https://emturbovid.com"
@@ -43,7 +45,9 @@ open class EmturbovidExtractor : ExtractorApi() {
     }
 }
 
-// 2. P2P (Hownetwork)
+// ============================================================================
+// 2. P2P EXTRACTOR
+// ============================================================================
 open class P2PExtractor : ExtractorApi() {
     override var name = "P2P"
     override var mainUrl = "https://cloud.hownetwork.xyz"
@@ -76,7 +80,9 @@ open class P2PExtractor : ExtractorApi() {
     }
 }
 
-// 3. F16 / CAST (Pure Kotlin Decryption - NO WEBVIEW)
+// ============================================================================
+// 3. F16 EXTRACTOR (FIXED BASE64 PADDING)
+// ============================================================================
 open class F16Extractor : ExtractorApi() {
     override var name = "F16"
     override var mainUrl = "https://f16px.com"
@@ -86,6 +92,15 @@ open class F16Extractor : ExtractorApi() {
     data class PlaybackData(val iv: String?, val payload: String?, val key_parts: List<String>?)
     data class DecryptedSource(val file: String?, val label: String?, val type: String?)
     data class DecryptedResponse(val sources: List<DecryptedSource>?)
+
+    // Fungsi sakti untuk memperbaiki Base64 yang "cacat" (kurang tanda =)
+    private fun String.fixBase64(): String {
+        var s = this
+        while (s.length % 4 != 0) {
+            s += "="
+        }
+        return s
+    }
 
     override suspend fun getUrl(url: String, referer: String?): List<ExtractorLink>? {
         val sources = mutableListOf<ExtractorLink>()
@@ -102,30 +117,21 @@ open class F16Extractor : ExtractorApi() {
         )
 
         try {
-            // Payload dummy seperti di script Python
-            val jsonPayload = mapOf(
-                "fingerprint" to mapOf(
-                    "token" to "dummy_bypass",
-                    "viewer_id" to "7e847c23137449fbb73cbf6bb7f9bceb",
-                    "device_id" to "daeba4e7719c4d4c91e53dd03849cf37",
-                    "confidence" to 0.6
-                )
-            )
+            val dummyBody = """{"fingerprint":{"token":"dummy_bypass","viewer_id":"7e847c23137449fbb73cbf6bb7f9bceb","device_id":"daeba4e7719c4d4c91e53dd03849cf37","confidence":0.6}}"""
             
-            // Tembak API
-            val responseText = app.post(apiUrl, headers = headers, json = jsonPayload).text
+            val responseText = app.post(apiUrl, headers = headers, data = mapOf("body" to dummyBody)).text
             val json = tryParseJson<F16Playback>(responseText)
             val pb = json?.playback
 
             if (pb != null && pb.payload != null && pb.iv != null && !pb.key_parts.isNullOrEmpty()) {
                 
-                // RUMUS RAHASIA: Gabungkan Key Part 1 + Part 2 (Sesuai hasil Python)
-                // PENTING: Gunakan Base64.URL_SAFE karena kuncinya mengandung '_' dan '-'
-                val part1 = Base64.decode(pb.key_parts[0], Base64.URL_SAFE)
-                val part2 = Base64.decode(pb.key_parts[1], Base64.URL_SAFE)
+                // --- PERBAIKAN UTAMA DI SINI ---
+                // Kita tambahkan .fixBase64() agar tidak error saat decode
+                val part1 = Base64.decode(pb.key_parts[0].fixBase64(), Base64.URL_SAFE)
+                val part2 = Base64.decode(pb.key_parts[1].fixBase64(), Base64.URL_SAFE)
                 val combinedKey = part1 + part2 
 
-                // Dekripsi AES-GCM
+                // Dekripsi
                 val decryptedJson = decryptAesGcm(pb.payload, combinedKey, pb.iv)
 
                 if (decryptedJson != null) {
@@ -153,13 +159,9 @@ open class F16Extractor : ExtractorApi() {
 
     private fun decryptAesGcm(encryptedBase64: String, keyBytes: ByteArray, ivBase64: String): String? {
         try {
-            // Gunakan URL_SAFE untuk dekripsi payload & IV juga
-            val cipherText = Base64.decode(encryptedBase64, Base64.URL_SAFE)
-            val iv = try {
-                Base64.decode(ivBase64, Base64.URL_SAFE)
-            } catch (e: Exception) {
-                ivBase64.toByteArray() // Fallback jika IV bukan base64
-            }
+            // Fix padding juga untuk Payload dan IV
+            val cipherText = Base64.decode(encryptedBase64.fixBase64(), Base64.URL_SAFE)
+            val iv = Base64.decode(ivBase64.fixBase64(), Base64.URL_SAFE)
 
             val spec = GCMParameterSpec(128, iv)
             val keySpec = SecretKeySpec(keyBytes, "AES")
