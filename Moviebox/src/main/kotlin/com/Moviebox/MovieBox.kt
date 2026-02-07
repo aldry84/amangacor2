@@ -13,8 +13,8 @@ class MovieBox : MainAPI() {
     
     private val apiUrl = "https://h5-api.aoneroom.com/wefeed-h5api-bff"
 
-    // Header khusus Main Page sesuai curl terbaru kamu
-    private val mainHeaders = mapOf(
+    // 1. HEADER DESKTOP (Untuk Main Page & Search sesuai curl terbaru)
+    private val desktopHeaders = mapOf(
         "authority" to "h5-api.aoneroom.com",
         "accept" to "application/json",
         "accept-language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -25,21 +25,18 @@ class MovieBox : MainAPI() {
         "sec-ch-ua" to "\"Chromium\";v=\"137\", \"Not/A)Brand\";v=\"24\"",
         "sec-ch-ua-mobile" to "?0",
         "sec-ch-ua-platform" to "\"Linux\"",
-        "sec-fetch-dest" to "empty",
-        "sec-fetch-mode" to "cors",
-        "sec-fetch-site" to "cross-site",
         "user-agent" to "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
         "x-client-info" to "{\"timezone\":\"Asia/Jayapura\"}",
         "x-request-lang" to "en"
     )
 
     // =================================================================================
-    // 1. HALAMAN UTAMA (RANKING LIST)
+    // 1. HALAMAN UTAMA (RANKING LIST SESUAI PERMINTAAN)
     // =================================================================================
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val homeSets = mutableListOf<HomePageList>()
         
-        // Daftar kategori sesuai ID yang kamu berikan
+        // Daftar Kategori & ID yang diberikan
         val categories = listOf(
             Pair("6528093688173053896", "Film Indonesia"),
             Pair("5283462032510044280", "Drama Indonesia"),
@@ -49,9 +46,9 @@ class MovieBox : MainAPI() {
 
         categories.forEach { (id, title) ->
             try {
-                // Gunakan mainHeaders yang baru kamu berikan
+                // Endpoint untuk Ranking List detail
                 val url = "$apiUrl/subject/ranking-list/detail?id=$id&page=0&perPage=20&host=moviebox.ph"
-                val res = app.get(url, headers = mainHeaders, timeout = 60).parsedSafe<RankingDetailResponse>()
+                val res = app.get(url, headers = desktopHeaders, timeout = 60).parsedSafe<RankingDetailResponse>()
                 
                 res?.data?.subjectList?.mapNotNull { it.toSearchResponse() }?.let {
                     if (it.isNotEmpty()) {
@@ -68,14 +65,14 @@ class MovieBox : MainAPI() {
         val url = "$apiUrl/subject/search?host=moviebox.ph"
         val body = mapOf("keyword" to query, "page" to 0, "perPage" to 20)
         return try {
-            val res = app.post(url, headers = mainHeaders, json = body, timeout = 60).parsedSafe<SearchDataResponse>()
+            val res = app.post(url, headers = desktopHeaders, json = body, timeout = 60).parsedSafe<SearchDataResponse>()
             res?.data?.items?.mapNotNull { it.toSearchResponse() } ?: emptyList()
         } catch (e: Exception) { emptyList() }
     }
 
     override suspend fun load(url: String): LoadResponse {
         val detailUrl = "$apiUrl/detail?detailPath=$url&host=moviebox.ph"
-        val res = app.get(detailUrl, headers = mainHeaders, timeout = 60).parsedSafe<DetailFullResponse>()
+        val res = app.get(detailUrl, headers = desktopHeaders, timeout = 60).parsedSafe<DetailFullResponse>()
         val data = res?.data ?: throw ErrorLoadingException("Data Kosong")
         val subject = data.subject ?: throw ErrorLoadingException("Film Tidak Ditemukan")
 
@@ -85,13 +82,14 @@ class MovieBox : MainAPI() {
         val rating = subject.imdbRatingValue?.toDoubleOrNull()
         val actors = data.stars?.map { ActorData(Actor(it.name ?: "", it.avatarUrl), roleString = it.character) }
 
+        // Berikan data pemutar lengkap ke loadLinks: ID|Season|Episode|Path
         return if (subject.subjectType == 1) { // Movie
             newMovieLoadResponse(title, url, TvType.Movie, "${subject.subjectId}|0|0|$url") {
                 this.posterUrl = poster
                 this.plot = plot
                 this.actors = actors
                 this.year = subject.releaseDate?.take(4)?.toIntOrNull()
-                if (rating != null) this.score = Score.from10(rating)
+                if (rating != null) this.score = Score.from10(rating) //
             }
         } else { // Series
             val episodes = mutableListOf<Episode>()
@@ -115,6 +113,9 @@ class MovieBox : MainAPI() {
         }
     }
 
+    // =================================================================================
+    // 2. LOAD LINKS (MENGGUNAKAN HEADER MOBILE SESUAI CURL PLAY)
+    // =================================================================================
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -129,34 +130,39 @@ class MovieBox : MainAPI() {
 
         val playUrl = "https://lok-lok.cc/wefeed-h5api-bff/subject/play?subjectId=$id&se=$s&ep=$e&detailPath=$path"
         
-        // Header khusus untuk LOK-LOK (Play) tetap menggunakan data play curl sebelumnya
+        // Referer dinamis sesuai dengan film/eps yang sedang diputar
         val refererUrl = "https://lok-lok.cc/spa/videoPlayPage/movies/$path?id=$id&utm_source=app-search"
-        val playHeaders = mapOf(
+        
+        // Header khusus play dari curl Mobile (Android) Anda
+        val mobileHeaders = mapOf(
             "authority" to "lok-lok.cc",
             "accept" to "application/json",
             "accept-language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
             "cookie" to "_ga=GA1.1.683107572.1770449531; uuid=f73de7fd-ab7e-4c25-a1d7-dc984179f8fc; _ga_5W8GT0FPB7=GS2.1.s1770457948\$o2\$g1\$t1770458018\$j58\$l0\$h0",
             "referer" to refererUrl,
+            "sec-ch-ua" to "\"Chromium\";v=\"137\", \"Not/A)Brand\";v=\"24\"",
+            "sec-ch-ua-mobile" to "?1",
+            "sec-ch-ua-platform" to "\"Android\"",
             "user-agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
             "x-client-info" to "{\"timezone\":\"Asia/Jayapura\"}",
             "x-source" to "app-search"
         )
         
         return try {
-            val res = app.get(playUrl, headers = playHeaders, timeout = 60).parsedSafe<PlayResponse>()
+            val res = app.get(playUrl, headers = mobileHeaders, timeout = 60).parsedSafe<PlayResponse>()
             val streams = res?.data?.streams
             
             if (streams.isNullOrEmpty()) return false
 
             streams.forEach { stream ->
                 callback.invoke(
-                    newExtractorLink(
+                    newExtractorLink( //
                         source = this.name,
                         name = "${this.name} ${stream.resolutions}p",
                         url = stream.url ?: return@forEach,
                         type = ExtractorLinkType.VIDEO
                     ) {
-                        this.referer = refererUrl
+                        this.referer = refererUrl // Referer harus diatur di initializer
                         this.quality = stream.resolutions?.toIntOrNull() ?: 0
                     }
                 )
@@ -172,7 +178,7 @@ class MovieBox : MainAPI() {
         }
     }
 
-    // --- DATA CLASSES ---
+    // --- DATA CLASSES (Deep Analysis Mapping) ---
     data class RankingDetailResponse(@JsonProperty("data") val data: RankingData?)
     data class RankingData(@JsonProperty("subjectList") val subjectList: List<Subject>?)
     data class SearchDataResponse(@JsonProperty("data") val data: SearchResultData?)
