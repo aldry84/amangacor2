@@ -30,7 +30,7 @@ class LayarKacaProvider : MainAPI() {
         addWidget("Horror Terbaru", "div.widget[data-type='latest-horror'] li.slider article")
         addWidget("Daftar Lengkap", "div#post-container article")
 
-        // FIX 1: Gunakan newHomePageResponse (bukan constructor HomePageResponse)
+        // FIX: Menggunakan newHomePageResponse
         return newHomePageResponse(items)
     }
 
@@ -54,11 +54,13 @@ class LayarKacaProvider : MainAPI() {
                 element.select("span.duration").text().contains("S.")
 
         return if (isSeries) {
+            // FIX: Menggunakan newTvSeriesSearchResponse
             newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
                 this.posterUrl = posterUrl
                 this.quality = quality
             }
         } else {
+            // FIX: Menggunakan newMovieSearchResponse
             newMovieSearchResponse(title, href, TvType.Movie) {
                 this.posterUrl = posterUrl
                 this.quality = quality
@@ -96,16 +98,15 @@ class LayarKacaProvider : MainAPI() {
         val title = document.select("h1.entry-title, h1.page-title, div.movie-info h1").text().trim()
         val plot = document.select("div.synopsis, div.entry-content p blockquote").text().trim()
 
-        // Ambil poster (Cari yang paling valid)
+        // Ambil poster
         val poster = document.select("meta[property='og:image']").attr("content").ifEmpty {
             document.select("div.poster img, div.detail img").attr("src")
         }
 
-        // FIX 2: Ambil Rating (String untuk Score API baru)
+        // Ambil Rating (String)
         val ratingText = document.select("span.rating-value").text().ifEmpty {
             document.select("div.info-tag").text()
         }
-        // Cari angka (misal 7.6) di dalam teks dan simpan sebagai String
         val ratingScore = Regex("(\\d\\.\\d)").find(ratingText)?.value
 
         // Ambil Tahun
@@ -123,16 +124,14 @@ class LayarKacaProvider : MainAPI() {
 
         // 3. DETEKSI TIPE KONTEN & EPISODE
         val episodes = ArrayList<Episode>()
-
-        // Cek JSON Script (Khusus NontonDrama / Series)
         val jsonScript = document.select("script#season-data").html()
 
         if (jsonScript.isNotBlank()) {
-            // Parsing JSON Episode
+            // Parsing JSON Episode untuk Series NontonDrama
             tryParseJson<Map<String, List<NontonDramaEpisode>>>(jsonScript)?.forEach { (_, epsList) ->
                 epsList.forEach { epData ->
                     val epUrl = fixUrl(epData.slug ?: "")
-                    // FIX 3: Gunakan newEpisode (bukan constructor Episode)
+                    // FIX: Menggunakan newEpisode dengan lambda block
                     episodes.add(
                         newEpisode(epUrl) {
                             this.name = epData.title ?: "Episode ${epData.episode_no}"
@@ -143,12 +142,12 @@ class LayarKacaProvider : MainAPI() {
                 }
             }
         } else {
-            // Fallback manual (siapa tau ada format lama)
+            // Fallback manual untuk Movie/Series biasa
             document.select("ul.episodes li a").forEach {
                 val epTitle = it.text()
                 val epHref = fixUrl(it.attr("href"))
                 val epNum = Regex("(?i)Episode\\s+(\\d+)").find(epTitle)?.groupValues?.get(1)?.toIntOrNull()
-                // FIX 3: Gunakan newEpisode
+                // FIX: Menggunakan newEpisode
                 episodes.add(
                     newEpisode(epHref) {
                         this.name = epTitle
@@ -161,24 +160,26 @@ class LayarKacaProvider : MainAPI() {
         // 4. RETURN RESPONSE
         if (episodes.isNotEmpty()) {
             // -- TV SERIES --
+            // FIX: Menggunakan newTvSeriesLoadResponse
             return newTvSeriesLoadResponse(title, cleanUrl, TvType.TvSeries, episodes) {
                 this.posterUrl = poster
                 this.plot = plot
                 this.year = year
-                // FIX 4: Gunakan addScore, jangan this.rating = ...
-                addScore(ratingScore)
+                // FIX: Menggunakan Score.from langsung ke properti score
+                this.score = Score.from(ratingScore, 10)
                 this.tags = tags
                 this.actors = actors
                 this.recommendations = recommendations
             }
         } else {
             // -- MOVIE --
+            // FIX: Menggunakan newMovieLoadResponse
             return newMovieLoadResponse(title, cleanUrl, TvType.Movie, cleanUrl) {
                 this.posterUrl = poster
                 this.plot = plot
                 this.year = year
-                // FIX 4: Gunakan addScore
-                addScore(ratingScore)
+                // FIX: Menggunakan Score.from langsung
+                this.score = Score.from(ratingScore, 10)
                 this.tags = tags
                 this.actors = actors
                 this.recommendations = recommendations
