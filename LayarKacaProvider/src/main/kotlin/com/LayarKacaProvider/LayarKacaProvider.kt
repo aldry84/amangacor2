@@ -32,39 +32,82 @@ class LayarKacaProvider : MainAPI() {
         addWidget("Horror Terbaru", "div.widget[data-type='latest-horror'] li.slider article")
         addWidget("Daftar Lengkap", "div#post-container article")
 
-        // Menggunakan newHomePageResponse
         return newHomePageResponse(items)
     }
 
-    // --- SEARCH (UPDATED FIX) ---
+    // --- STRUKTUR DATA SEARCH (JSON) ---
+    data class Lk21SearchResponse(
+        val data: List<Lk21SearchItem>?
+    )
+
+    data class Lk21SearchItem(
+        val title: String,
+        val slug: String,
+        val poster: String?,
+        val type: String?,
+        val year: Int?,
+        val quality: String?
+    )
+
+    // --- SEARCH (JSON API FIX) ---
     override suspend fun search(query: String): List<SearchResponse> {
-        val searchUrl = "$mainUrl/search?s=$query"
-        val document = app.get(searchUrl).document
+        val searchUrl = "https://gudangvape.com/search.php?s=$query&page=1"
         
-        // Selector "Jaring Pukat Harimau" (Tangkap Semua)
-        // Kita cari semua tag <article> yang ada di dalam main content
-        // Ini akan menangkap hasil pencarian apapun bentuk class-nya
-        return document.select("main article, div#post-container article, div.search-result article, section article")
-            .mapNotNull { toSearchResult(it) }
+        // Header wajib agar tidak ditolak server
+        val headers = mapOf(
+            "Origin" to mainUrl,
+            "Referer" to "$mainUrl/",
+            "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36"
+        )
+
+        try {
+            val response = app.get(searchUrl, headers = headers).text
+            val json = tryParseJson<Lk21SearchResponse>(response)
+
+            return json?.data?.mapNotNull { item ->
+                val title = item.title
+                val href = fixUrl(item.slug)
+                
+                // Fix URL Poster (tambahkan domain base)
+                val posterUrl = if (item.poster != null) 
+                    "https://poster.lk21.party/wp-content/uploads/${item.poster}" 
+                else null
+                
+                val quality = getQualityFromString(item.quality)
+                val isSeries = item.type?.contains("series", ignoreCase = true) == true
+
+                if (isSeries) {
+                    newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
+                        this.posterUrl = posterUrl
+                        this.quality = quality
+                        this.year = item.year
+                    }
+                } else {
+                    newMovieSearchResponse(title, href, TvType.Movie) {
+                        this.posterUrl = posterUrl
+                        this.quality = quality
+                        this.year = item.year
+                    }
+                }
+            } ?: emptyList()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return emptyList()
+        }
     }
 
-    // --- HELPER: HTML -> SearchResponse ---
+    // --- HELPER: HTML -> SearchResponse (HOME) ---
     private fun toSearchResult(element: Element): SearchResponse? {
-        // Cari judul di header apapun (h1-h4) yang punya text
-        val title = element.select("h1, h2, h3, h4, .title").text().trim()
+        val title = element.select("h3.poster-title, h2.entry-title, h1.page-title, div.title").text().trim()
         if (title.isEmpty()) return null
         
         val href = fixUrl(element.select("a").first()?.attr("href") ?: return null)
-        
-        // Prioritaskan gambar poster
         val imgElement = element.select("img").first()
         val posterUrl = imgElement?.attr("src") ?: imgElement?.attr("data-src")
-        
         val quality = getQualityFromString(element.select("span.label").text())
 
-        // Deteksi Series: Cek label Episode atau durasi Season
         val isSeries = element.select("span.episode").isNotEmpty() ||
-                element.select("span.duration").text().contains("S.", ignoreCase = true)
+                element.select("span.duration").text().contains("S.")
 
         return if (isSeries) {
             newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
@@ -92,7 +135,7 @@ class LayarKacaProvider : MainAPI() {
         var response = app.get(cleanUrl)
         var document = response.document
 
-        // 1. CEK REDIRECT (Anti-Gocek Detail Page)
+        // Redirect Handler
         val redirectButton = document.select("a:contains(Buka Sekarang), a.btn:contains(Nontondrama)").first()
         if (redirectButton != null) {
             val newUrl = redirectButton.attr("href")
@@ -103,7 +146,7 @@ class LayarKacaProvider : MainAPI() {
             }
         }
 
-        // 2. PARSING DATA
+        // Parsing Data
         val title = document.select("h1.entry-title, h1.page-title, div.movie-info h1").text().trim()
         val plot = document.select("div.synopsis, div.entry-content p, blockquote").text().trim()
 
@@ -127,12 +170,11 @@ class LayarKacaProvider : MainAPI() {
             toSearchResult(it)
         }
 
-        // 3. AMBIL EPISODE (Movie & Series)
+        // Episodes
         val episodes = ArrayList<Episode>()
         val jsonScript = document.select("script#season-data").html()
 
         if (jsonScript.isNotBlank()) {
-            // Parsing JSON Episode (NontonDrama)
             tryParseJson<Map<String, List<NontonDramaEpisode>>>(jsonScript)?.forEach { (_, epsList) ->
                 epsList.forEach { epData ->
                     val epUrl = fixUrl(epData.slug ?: "")
@@ -146,7 +188,6 @@ class LayarKacaProvider : MainAPI() {
                 }
             }
         } else {
-            // Parsing HTML Episode (LK21 Biasa)
             document.select("ul.episodes li a").forEach {
                 val epTitle = it.text()
                 val epHref = fixUrl(it.attr("href"))
@@ -183,7 +224,7 @@ class LayarKacaProvider : MainAPI() {
         }
     }
 
-    // --- LOAD LINKS (SERIES FIX) ---
+    // --- LOAD LINKS ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -193,8 +234,7 @@ class LayarKacaProvider : MainAPI() {
         var currentUrl = data
         var document = app.get(currentUrl).document
 
-        // 1. CEK REDIRECT (Anti-Gocek Episode Page)
-        // Ini kuncinya! Series sering redirect lagi pas diklik episodenya.
+        // Redirect Handler untuk Episode
         val redirectButton = document.select("a:contains(Buka Sekarang), a.btn:contains(Nontondrama)").first()
         if (redirectButton != null) {
             val newUrl = redirectButton.attr("href")
@@ -204,39 +244,31 @@ class LayarKacaProvider : MainAPI() {
             }
         }
 
-        // 2. Ambil Player Links
         val playerLinks = document.select("ul#player-list li a").map { 
             val url = it.attr("data-url").ifEmpty { it.attr("href") }
             fixUrl(url)
         }
         val mainIframe = fixUrl(document.select("iframe#main-player").attr("src"))
-        
-        // Gabung semua sumber video
         val allSources = (playerLinks + mainIframe).filter { it.isNotBlank() }.distinct()
 
         allSources.forEach { url ->
-            // Coba load langsung (support server populer)
             val directLoaded = loadExtractor(url, currentUrl, subtitleCallback, callback)
             
             if (!directLoaded) {
-                // Unwrap jika link dibungkus (playeriframe.sbs)
                 try {
                     val iframePage = app.get(url, referer = currentUrl).document
                     
-                    // Cari nested iframe
                     iframePage.select("iframe").forEach { nestedIframe ->
                         val nestedSrc = fixUrl(nestedIframe.attr("src"))
                         loadExtractor(nestedSrc, url, subtitleCallback, callback)
                     }
                     
-                    // Cari link manual di script (P2P/M3U8)
                     val scriptHtml = iframePage.html()
                     Regex("(?i)https?://[^\"]+\\.(m3u8|mp4)").findAll(scriptHtml).forEach { match ->
                         val streamUrl = match.value
                         val qualityVal = if(streamUrl.contains("m3u8")) Qualities.Unknown.value else Qualities.P480.value
                         val typeVal = if(streamUrl.contains("m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
                         
-                        // Gunakan referer di dalam block lambda
                         callback.invoke(
                             newExtractorLink(
                                 source = "LK21 P2P",
@@ -250,7 +282,6 @@ class LayarKacaProvider : MainAPI() {
                         )
                     }
                 } catch (e: Exception) {
-                    // Ignore error unwrap
                 }
             }
         }
