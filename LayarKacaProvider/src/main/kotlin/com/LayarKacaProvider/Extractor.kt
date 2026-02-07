@@ -56,7 +56,7 @@ open class EmturbovidExtractor : ExtractorApi() {
 }
 
 // ============================================================================
-// 2. P2P EXTRACTOR (ORIGINAL - DO NOT TOUCH)
+// 2. P2P EXTRACTOR
 // ============================================================================
 open class P2PExtractor : ExtractorApi() {
     override var name = "P2P"
@@ -91,7 +91,7 @@ open class P2PExtractor : ExtractorApi() {
 }
 
 // ============================================================================
-// 3. F16 EXTRACTOR (FIXED: KEY NAME 'URL')
+// 3. F16 EXTRACTOR (UI FIXED: NO DUPLICATE LABELS & TRACKS)
 // ============================================================================
 open class F16Extractor : ExtractorApi() {
     override var name = "F16"
@@ -101,7 +101,7 @@ open class F16Extractor : ExtractorApi() {
     data class F16Playback(val playback: PlaybackData?)
     data class PlaybackData(val iv: String?, val payload: String?, val key_parts: List<String>?)
     
-    // UPDATE: Mengganti 'file' menjadi 'url' sesuai hasil JSON
+    // JSON Key = "url"
     data class DecryptedSource(val url: String?, val label: String?)
     data class DecryptedResponse(val sources: List<DecryptedSource>?)
 
@@ -111,7 +111,6 @@ open class F16Extractor : ExtractorApi() {
         return s
     }
 
-    // Helper untuk membuat Hex String acak
     private fun randomHex(length: Int): String {
         val chars = "0123456789abcdef"
         return (1..length).map { chars[Random.nextInt(chars.length)] }.joinToString("")
@@ -125,11 +124,9 @@ open class F16Extractor : ExtractorApi() {
             val apiUrl = "$mainUrl/api/videos/$videoId/embed/playback"
             val pageUrl = "$mainUrl/e/$videoId"
             
-            // Generate Fake ID
             val viewerId = randomHex(32) 
             val deviceId = randomHex(32)
             
-            // Construct Fake Token (JWT-like structure)
             val jwtHeader = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9" 
             val timestamp = System.currentTimeMillis() / 1000
             val jwtPayload = """{"viewer_id":"$viewerId","device_id":"$deviceId","confidence":0.91,"iat":$timestamp,"exp":${timestamp + 600}}"""
@@ -137,7 +134,6 @@ open class F16Extractor : ExtractorApi() {
             val jwtSignature = randomHex(43)
             val token = "$jwtHeader.$jwtPayloadEncoded.$jwtSignature"
 
-            // HEADERS WAJIB
             val headers = mapOf(
                 "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
                 "Referer" to pageUrl,
@@ -148,7 +144,6 @@ open class F16Extractor : ExtractorApi() {
                 "x-embed-referer" to "https://playeriframe.sbs/"
             )
 
-            // BODY JSON
             val jsonPayload = mapOf(
                 "fingerprint" to mapOf(
                     "token" to token,
@@ -158,34 +153,34 @@ open class F16Extractor : ExtractorApi() {
                 )
             )
             
-            // Request API
             val responseText = app.post(apiUrl, headers = headers, json = jsonPayload).text
             val json = tryParseJson<F16Playback>(responseText)
             val pb = json?.playback
 
             if (pb != null && pb.payload != null && pb.iv != null && !pb.key_parts.isNullOrEmpty()) {
                 
-                // 1. Gabungkan Key Parts
                 val part1 = Base64.decode(pb.key_parts[0].fixBase64(), Base64.URL_SAFE)
                 val part2 = Base64.decode(pb.key_parts[1].fixBase64(), Base64.URL_SAFE)
                 val combinedKey = part1 + part2 
 
-                // 2. Decrypt AES-GCM
                 val decryptedJson = decryptAesGcm(pb.payload, combinedKey, pb.iv)
 
                 if (decryptedJson != null) {
                     val result = tryParseJson<DecryptedResponse>(decryptedJson)
-                    result?.sources?.forEach { source ->
-                        // UPDATE: Menggunakan source.url
+                    
+                    // FIX DUPLIKAT: Filter URL yang sama persis
+                    // Jika URL master.m3u8 muncul 2x, kita ambil satu saja.
+                    val uniqueSources = result?.sources?.distinctBy { it.url } ?: emptyList()
+
+                    uniqueSources.forEach { source ->
                         if (!source.url.isNullOrBlank()) {
                             sources.add(newExtractorLink(
                                 source = "CAST",
-                                name = "CAST ${source.label ?: "Auto"}",
+                                name = "CAST", // FIX LABEL: Cukup "CAST", nanti CS3 tambah "480p" otomatis
                                 url = source.url,
                                 type = ExtractorLinkType.M3U8
                             ) {
                                 this.referer = "$mainUrl/"
-                                // UPDATE: Auto Quality (480p -> 480)
                                 this.quality = getQualityFromName(source.label)
                             })
                         }
