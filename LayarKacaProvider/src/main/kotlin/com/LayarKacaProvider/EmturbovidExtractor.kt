@@ -6,6 +6,7 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.newExtractorLink
+import java.net.URI
 
 open class EmturbovidExtractor : ExtractorApi() {
     override var name = "Emturbovid"
@@ -22,7 +23,25 @@ open class EmturbovidExtractor : ExtractorApi() {
         
         if (playerScript.isNotBlank()) {
             val m3u8Url = playerScript.substringAfter("var urlPlay = '").substringBefore("'")
+            
+            // Tentukan Origin berdasarkan Referer (Embed URL)
+            // Ini penting karena cURL kamu menunjukkan Origin: https://turbovidhls.com
+            val originUrl = try {
+                val uri = URI(finalReferer)
+                "${uri.scheme}://${uri.host}"
+            } catch (e: Exception) {
+                "$mainUrl"
+            }
 
+            // Headers Sakti Anti-Error 3001
+            val headers = mapOf(
+                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Referer" to finalReferer,
+                "Origin" to originUrl // Header kunci dari analisa cURL kamu
+            )
+
+            // Gunakan Single Link (Rapi) tapi tipe M3U8
+            // Player akan otomatis mendeteksi track 1080p, 720p, 480p di dalamnya
             sources.add(
                 newExtractorLink(
                     source = name,
@@ -31,17 +50,8 @@ open class EmturbovidExtractor : ExtractorApi() {
                     type = ExtractorLinkType.M3U8
                 ) {
                     this.referer = finalReferer
-                    // Pakai Unknown agar muncul 1 sumber saja di list
-                    // Tapi Video Tracks di dalam player akan muncul banyak (1080, 720, dll)
-                    this.quality = Qualities.Unknown.value
-                    
-                    // HEADER FIX 3001:
-                    // Header ini akan dipakai player saat request chunk video selanjutnya
-                    this.headers = mapOf(
-                        "Referer" to finalReferer,
-                        "Origin" to "https://emturbovid.com",
-                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                    )
+                    this.quality = Qualities.Unknown.value // Biarkan player yang menentukan kualitas
+                    this.headers = headers
                 }
             )
         }
