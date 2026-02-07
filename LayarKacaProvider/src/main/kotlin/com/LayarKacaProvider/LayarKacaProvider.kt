@@ -162,7 +162,7 @@ class LayarKacaProvider : MainAPI() {
         }
     }
 
-    // --- LOAD LINKS (CLEAN UI & FIX 3001) ---
+    // --- LOAD LINKS (FIXED) ---
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -179,7 +179,6 @@ class LayarKacaProvider : MainAPI() {
             document = app.get(currentUrl).document
         }
 
-        // Ambil Source
         val playerLinks = document.select("ul#player-list li a").map { it.attr("data-url").ifEmpty { it.attr("href") } }
         val mainIframe = document.select("iframe#main-player").attr("src")
         val allSources = (playerLinks + mainIframe).filter { it.isNotBlank() }.map { fixUrl(it) }.distinct()
@@ -190,36 +189,34 @@ class LayarKacaProvider : MainAPI() {
                 try {
                     val response = app.get(url, referer = currentUrl)
                     val iframePage = response.document
-                    val wrapperUrl = response.url // PENTING: URL akhir setelah redirect
+                    val wrapperUrl = response.url
 
-                    // Nested Iframes
                     iframePage.select("iframe").forEach { 
                         loadExtractor(fixUrl(it.attr("src")), wrapperUrl, subtitleCallback, callback) 
                     }
 
-                    // Script Extraction
                     val scriptHtml = iframePage.html().replace("\\/", "/")
                     Regex("(?i)https?://[^\"]+\\.(m3u8|mp4)(?:\\?[^\"']*)?").findAll(scriptHtml).forEach { match ->
                         val streamUrl = match.value
                         val isM3u8 = streamUrl.contains("m3u8", ignoreCase = true)
                         
-                        // HEADERS ANTI-ERROR 3001
                         val headers = mapOf(
                             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                            "Referer" to wrapperUrl, // Referer harus ke halaman wrapper
+                            "Referer" to wrapperUrl,
                             "Origin" to "https://playeriframe.sbs"
                         )
 
+                        // FIX: Memindahkan referer dan quality ke dalam block lambda
                         callback.invoke(
                             newExtractorLink(
                                 source = "LK21 VIP",
                                 name = "LK21 VIP",
                                 url = streamUrl,
-                                referer = wrapperUrl,
-                                quality = Qualities.Unknown.value,
                                 type = if (isM3u8) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
                             ) {
-                                this.headers = headers // Tempel headers agar tidak putus di tengah
+                                this.referer = wrapperUrl
+                                this.quality = Qualities.Unknown.value
+                                this.headers = headers
                             }
                         )
                     }
