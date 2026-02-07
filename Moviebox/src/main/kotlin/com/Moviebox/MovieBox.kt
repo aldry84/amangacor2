@@ -50,7 +50,7 @@ class MovieBox : MainAPI() {
             }
         } catch (e: Exception) { e.printStackTrace() }
 
-        return newHomePageResponse(homeSets)
+        [span_2](start_span)return newHomePageResponse(homeSets)[span_2](end_span)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
@@ -75,10 +75,10 @@ class MovieBox : MainAPI() {
                 this.posterUrl = subject.cover?.url
                 this.plot = subject.description
                 this.year = subject.releaseDate?.take(4)?.toIntOrNull()
-                subject.imdbRatingValue?.toDoubleOrNull()?.let { this.score = Score.from10(it) }
+                [span_3](start_span)subject.imdbRatingValue?.toDoubleOrNull()?.let { this.score = Score.from10(it) }[span_3](end_span)
             }
         } else {
-            val episodes = listOf(newEpisode(subject.subjectId ?: "") { this.name = "Tonton Sekarang" })
+            val episodes = listOf(newEpisode(subject.subjectId ?: "") { this.name = "Play Movie" })
             newTvSeriesLoadResponse(title, url, type, episodes) {
                 this.posterUrl = subject.cover?.url
                 this.plot = subject.description
@@ -91,16 +91,20 @@ class MovieBox : MainAPI() {
         isCasting: Boolean,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
-    ): Boolean {
+    [span_4](start_span)): Boolean {[span_4](end_span)
         val playUrl = "https://lok-lok.cc/wefeed-h5api-bff/subject/play?subjectId=$data&se=0&ep=0"
         return try {
             val res = app.get(playUrl, headers = mapOf("authority" to "lok-lok.cc", "referer" to "https://lok-lok.cc/")).parsedSafe<PlayResponse>()
             res?.data?.streams?.forEach { stream ->
+                // Menggunakan newExtractorLink untuk menghindari error deprecated constructor
                 callback.invoke(
-                    ExtractorLink(
-                        this.name, "${this.name} ${stream.resolutions}p",
-                        stream.url ?: return@forEach, "https://lok-lok.cc/",
-                        getQuality(stream.resolutions), false
+                    [span_5](start_span)newExtractorLink([span_5](end_span)
+                        source = this.name,
+                        name = "${this.name} ${stream.resolutions}p",
+                        url = stream.url ?: return@forEach,
+                        referer = "https://lok-lok.cc/",
+                        quality = getQualityInt(stream.resolutions),
+                        isM3u8 = false 
                     )
                 )
             }
@@ -108,9 +112,9 @@ class MovieBox : MainAPI() {
         } catch (e: Exception) { false }
     }
 
-    private fun getQuality(res: String?): Int {
+    private fun getQualityInt(res: String?): Int {
         return when (res) {
-            "720" -> 720 // Sesuai mapping integer di Cloudstream
+            "720" -> 720
             "480" -> 480
             "360" -> 360
             else -> 0
@@ -120,7 +124,7 @@ class MovieBox : MainAPI() {
     private fun Subject.toSearchResponse(): SearchResponse? {
         return newMovieSearchResponse(this.title ?: return null, this.detailPath ?: return null, TvType.Movie) {
             this.posterUrl = this@toSearchResponse.cover?.url ?: this@toSearchResponse.image?.url
-            this@toSearchResponse.imdbRatingValue?.toDoubleOrNull()?.let { this.score = Score.from10(it) }
+            [span_6](start_span)this@toSearchResponse.imdbRatingValue?.toDoubleOrNull()?.let { this.score = Score.from10(it) }[span_6](end_span)
         }
     }
 
