@@ -11,32 +11,30 @@ class MovieBox : MainAPI() {
     override val hasMainPage = true
     override var lang = "id"
     
-    // API URL Base
-    private val apiUrl = "https://h5-api.aoneroom.com/wefeed-h5api-bff"
+    // Menggunakan domain server aplikasi agar library lebih lengkap
+    private val apiUrl = "https://api4sg.aoneroom.com/wefeed-h5api-bff"
 
     private val headers = mapOf(
-        "authority" to "h5-api.aoneroom.com",
+        "authority" to "api4sg.aoneroom.com",
         "accept" to "application/json",
         "accept-language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
-        // Token dari data curl kamu
+        // Token Bearer tetap menggunakan yang lama (pastikan belum expired)
         "authorization" to "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjE4MTM0MjU0MjgwMjM4ODc4MDAsImF0cCI6MywiZXh0IjoiMTc3MDQxMTA5MCIsImV4cCI6MTc3ODE4NzA5MCwiaWF0IjoxNzcwNDEwNzkwfQ.-kW86pGAJX6jheH_yEM8xfGd4rysJFR_hM3djl32nAo",
         "content-type" to "application/json",
         "origin" to "https://moviebox.ph",
         "referer" to "https://moviebox.ph/",
-        "sec-ch-ua" to "\"Chromium\";v=\"137\", \"Not/A)Brand\";v=\"24\"",
-        "sec-ch-ua-mobile" to "?1",
-        "sec-ch-ua-platform" to "\"Android\"",
+        "user-agent" to "okhttp/4.9.0", // Menyamar sebagai aplikasi Android
         "x-client-info" to "{\"timezone\":\"Asia/Jayapura\"}",
         "x-request-lang" to "en"
     )
 
     // =================================================================================
-    // 1. HOME PAGE LOGIC
+    // 1. HALAMAN UTAMA (HOME)
     // =================================================================================
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val homeSets = mutableListOf<HomePageList>()
 
-        // A. Ambil Trending
+        // A. Ambil Data Trending (Urutan paling atas)
         try {
             val trendingUrl = "$apiUrl/subject/trending?page=0&perPage=18"
             val trendingResponse = app.get(trendingUrl, headers = headers).parsedSafe<TrendingResponse>()
@@ -47,17 +45,16 @@ class MovieBox : MainAPI() {
                     homeSets.add(HomePageList("🔥 Trending Now", trendingMedia, isHorizontalImages = false))
                 }
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        } catch (e: Exception) { e.printStackTrace() }
 
-        // B. Ambil Home Standard
+        // B. Ambil Layout Home (Banner & List Kategori)
         try {
             val homeUrl = "$apiUrl/home?host=moviebox.ph"
             val homeResponse = app.get(homeUrl, headers = headers).parsedSafe<HomeResponse>()
 
             homeResponse?.data?.operatingList?.forEach { section ->
                 val itemsToParse = ArrayList<Subject>()
+                
                 if (section.type == "BANNER" && section.banner?.items != null) {
                     itemsToParse.addAll(section.banner.items)
                 } else if (section.subjects != null && section.subjects.isNotEmpty()) {
@@ -77,31 +74,28 @@ class MovieBox : MainAPI() {
                     }
                 }
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        } catch (e: Exception) { e.printStackTrace() }
 
         return newHomePageResponse(homeSets)
     }
 
     // =================================================================================
-    // 2. SEARCH FUNCTIONALITY (FIXED with POST)
+    // 2. FITUR PENCARIAN (SEARCH) - MENGGUNAKAN POST
     // =================================================================================
     override suspend fun search(query: String): List<SearchResponse> {
         val url = "$apiUrl/subject/search?host=moviebox.ph"
         
-        // Body JSON sesuai temuan di Termux
+        // Payload JSON untuk pencarian maksimal (All categories)
         val jsonBody = mapOf(
             "keyword" to query,
             "page" to 0,
-            "perPage" to 20
+            "perPage" to 20,
+            "searchType" to 0,
+            "classify" to "all"
         )
 
         return try {
-            // Menggunakan POST request
             val response = app.post(url, headers = headers, json = jsonBody).parsedSafe<SearchDataResponse>()
-            
-            // Mapping data 'items' ke SearchResponse
             response?.data?.items?.mapNotNull { it.toSearchResponse() } ?: emptyList()
         } catch (e: Exception) {
             e.printStackTrace()
@@ -109,7 +103,7 @@ class MovieBox : MainAPI() {
         }
     }
 
-    // Helper: Ubah data JSON 'Subject' jadi format Cloudstream
+    // Helper untuk mapping data JSON ke format Cloudstream
     private fun Subject.toSearchResponse(): SearchResponse? {
         val title = this.title ?: return null
         val urlDetail = this.detailPath ?: return null
@@ -117,6 +111,7 @@ class MovieBox : MainAPI() {
 
         return newMovieSearchResponse(title, urlDetail, TvType.Movie) {
             this.posterUrl = poster
+            // Tambahkan rating jika ada
             this@toSearchResponse.imdbRatingValue?.trim()?.toDoubleOrNull()?.let { ratingVal ->
                 this.score = Score.from10(ratingVal)
             }
@@ -124,10 +119,9 @@ class MovieBox : MainAPI() {
     }
 
     // =================================================================================
-    // DATA CLASSES
+    // DATA CLASSES (PARSING JSON)
     // =================================================================================
     
-    // --- Home ---
     data class HomeResponse(@JsonProperty("data") val data: HomeData? = null)
     data class HomeData(@JsonProperty("operatingList") val operatingList: List<OperatingSection>? = null)
     data class OperatingSection(
@@ -138,15 +132,12 @@ class MovieBox : MainAPI() {
     )
     data class BannerObj(@JsonProperty("items") val items: List<Subject>? = null)
 
-    // --- Trending ---
     data class TrendingResponse(@JsonProperty("data") val data: TrendingData? = null)
     data class TrendingData(@JsonProperty("subjectList") val subjectList: List<Subject>? = null)
 
-    // --- Search (New!) ---
     data class SearchDataResponse(@JsonProperty("data") val data: SearchResultData? = null)
     data class SearchResultData(@JsonProperty("items") val items: List<Subject>? = null)
 
-    // --- Core Object ---
     data class Subject(
         @JsonProperty("subjectId") val subjectId: String? = null,
         @JsonProperty("title") val title: String? = null,
