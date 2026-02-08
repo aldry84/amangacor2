@@ -12,7 +12,6 @@ import javax.crypto.spec.SecretKeySpec
 
 open class HydraxExtractor : ExtractorApi() {
     override var name = "Hydrax"
-    // URL ini harus cocok dengan yang ada di iframe LayarKacaProvider
     override var mainUrl = "https://playeriframe.sbs"
     override val requiresReferer = true
 
@@ -27,21 +26,20 @@ open class HydraxExtractor : ExtractorApi() {
         val sources = mutableListOf<ExtractorLink>()
 
         try {
-            // Gunakan referer dari LK21 agar tidak kena blokir
-            val response = app.get(url, referer = referer ?: "https://tv8.lk21official.cc/")
+            // Ditambah timeout 15 detik biar nggak kena SocketTimeoutException lagi
+            val response = app.get(url, referer = referer ?: "https://tv8.lk21official.cc/", timeout = 15)
             val html = response.text
             val finalUrl = response.url
 
             val encodedData = Regex("""const datas\s*=\s*"([^"]+)"""").find(html)?.groupValues?.get(1) ?: return null
             
-            // Bersihkan Base64 dari sampah unicode
             val cleanB64 = encodedData.replace(Regex("""\\u[0-9a-fA-F]{4}"""), "")
             val decodedJson = String(Base64.decode(cleanB64, Base64.DEFAULT), Charsets.ISO_8859_1)
             
             val data = tryParseJson<AbyssData>(decodedJson) ?: return null
             val mediaData = data.media ?: return null
             
-            // Generate Kunci Final Boss: user_id:slug:md5_id
+            // Rumus Kunci: user_id:slug:md5_id
             val keyString = "${data.userId}:${data.slug}:${data.md5Id}"
             val md5Hash = MessageDigest.getInstance("MD5")
                 .digest(keyString.toByteArray())
@@ -54,7 +52,7 @@ open class HydraxExtractor : ExtractorApi() {
             val decryptedUrl = decryptAesCtr(encryptedBytes, keyBytes, ivBytes)
 
             if (decryptedUrl.contains("http")) {
-                // WAJIB: Gunakan newExtractorLink agar plugin tidak dianggap "Restricted"
+                // PAKAI newExtractorLink TANPA ENUM QUALITIES (Biar lolos Lint Stable)
                 sources.add(
                     newExtractorLink(
                         source = name,
@@ -63,8 +61,7 @@ open class HydraxExtractor : ExtractorApi() {
                         type = ExtractorLinkType.VIDEO
                     ) {
                         this.referer = finalUrl
-                        // Gunakan angka 400 (Unknown) atau 1080 secara langsung agar aman di build stable
-                        this.quality = 400 
+                        this.quality = 400 // Angka 400 = Unknown/Auto di Cloudstream
                     }
                 )
             }
@@ -80,7 +77,8 @@ open class HydraxExtractor : ExtractorApi() {
             val ivSpec = IvParameterSpec(iv)
             val cipher = Cipher.getInstance("AES/CTR/NoPadding")
             cipher.init(Cipher.DECRYPT_MODE, secretKey, ivSpec)
-            String(cipher.doFinal(encrypted)).filter { it.toInt() in 32..126 }
+            val decrypted = cipher.doFinal(encrypted)
+            String(decrypted).filter { it.toInt() in 32..126 }
         } catch (e: Exception) { "" }
     }
 
@@ -89,9 +87,14 @@ open class HydraxExtractor : ExtractorApi() {
         var i = 0
         while (i < media.length) {
             if (media[i] == '\\' && i + 1 < media.length && media[i+1] == 'u') {
-                val hex = media.substring(i + 2, i + 6)
-                bytes.add(hex.toInt(16).toByte())
-                i += 6
+                try {
+                    val hex = media.substring(i + 2, i + 6)
+                    bytes.add(hex.toInt(16).toByte())
+                    i += 6
+                } catch (e: Exception) { 
+                    bytes.add(media[i].toByte())
+                    i++
+                }
             } else {
                 bytes.add(media[i].toByte())
                 i++
