@@ -11,6 +11,7 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.M3u8Helper
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.newExtractorLink
+import com.lagradost.cloudstream3.USER_AGENT 
 
 class Hydrax : ExtractorApi() {
     override val name = "Hydrax"
@@ -23,32 +24,31 @@ class Hydrax : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        // Cloudstream otomatis menangani Cloudflare standar di sini
+        // 1. Cloudstream otomatis menangani Cloudflare di sini via WebView
         val response = app.get(url, referer = referer).text
         
-        // 1. Ambil variable 'datas'
+        // 2. Ambil variable 'datas'
         val regex = Regex("""datas\s*=\s*['"]([^'"]+)['"]""")
         val match = regex.find(response)
 
         if (match != null) {
             val encryptedData = match.groupValues[1]
             try {
-                // 2. Decode Base64 untuk mendapatkan SLUG & CREDENTIALS
+                // 3. Decode JSON Rahasia
                 val jsonString = base64Decode(encryptedData)
                 val initialData = mapper.readValue<InitialData>(jsonString)
                 val slug = initialData.slug
 
                 if (!slug.isNullOrEmpty()) {
-                    // 3. API Call Resmi 
                     val apiUrl = "$mainUrl/api/source/$slug"
                     
-                    // HEADER WAJIB: Ini KUNCI agar tidak diblokir
-                    val apiHeaders = mapOf(
+                    // HEADER PENYAMARAN (PENTING!)
+                    val commonHeaders = mapOf(
                         "Referer" to url,
                         "Origin" to mainUrl,
+                        "User-Agent" to USER_AGENT, // Pakai UA HP asli
                         "X-Requested-With" to "XMLHttpRequest",
-                        "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8",
-                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                        "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8"
                     )
 
                     val postData = mapOf(
@@ -58,14 +58,14 @@ class Hydrax : ExtractorApi() {
                         "h" to (initialData.md5Id?.toString() ?: "")
                     )
 
-                    // Tembak API
+                    // 4. Minta Link ke API
                     val apiResponse = app.post(
                         apiUrl, 
-                        headers = apiHeaders,
+                        headers = commonHeaders,
                         data = postData
                     ).parsedSafe<ApiResponse>()
 
-                    // 4. Proses Link Video
+                    // 5. Proses Hasil
                     apiResponse?.data?.forEach { video ->
                         val rawUrl = video.file ?: video.label
                         val streamUrl = decodeHexIfNeeded(rawUrl)
@@ -73,13 +73,13 @@ class Hydrax : ExtractorApi() {
                         if (!streamUrl.isNullOrEmpty()) {
                             val qualityInt = getQualityFromName(video.label)
                             
-                            // --- JURUS PAMUNGKAS: HEADER INJECTION ---
-                            // Kita paksa Player menggunakan Header ini.
-                            // Tanpa ini, server menolak request (Error 0x80000000 di logcat)
-                            val videoHeaders = mapOf(
-                                "User-Agent" to (apiHeaders["User-Agent"] ?: ""),
-                                "Referer" to mainUrl,
-                                "Origin" to mainUrl,
+                            // === JURUS KUNCI ===
+                            // Header ini WAJIB dibawa sampai ke video player.
+                            // Tanpa ini, server Abyss akan menolak play (Error 0x80000000)
+                            val playerHeaders = mapOf(
+                                "User-Agent" to USER_AGENT,
+                                "Referer" to "https://abysscdn.com/", // Wajib ada slash di akhir
+                                "Origin" to "https://abysscdn.com",
                                 "Accept" to "*/*"
                             )
 
@@ -87,8 +87,8 @@ class Hydrax : ExtractorApi() {
                                 M3u8Helper.generateM3u8(
                                     name,
                                     streamUrl,
-                                    referer ?: mainUrl,
-                                    headers = videoHeaders // Masukkan header ke helper
+                                    "https://abysscdn.com/", // Paksa referer di sini juga
+                                    headers = playerHeaders
                                 ).forEach(callback)
                             } else {
                                 callback(
@@ -97,10 +97,10 @@ class Hydrax : ExtractorApi() {
                                         name = name,
                                         url = streamUrl
                                     ) {
-                                        this.referer = mainUrl
+                                        this.referer = "https://abysscdn.com/"
                                         this.quality = qualityInt
-                                        // Masukkan header ke link final
-                                        this.headers = videoHeaders 
+                                        // Header disuntikkan ke sini
+                                        this.headers = playerHeaders 
                                     }
                                 )
                             }
