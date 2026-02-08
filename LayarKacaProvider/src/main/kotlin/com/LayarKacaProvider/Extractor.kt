@@ -25,50 +25,65 @@ class Hydrax : ExtractorApi() {
     ) {
         val response = app.get(url, referer = referer).text
         
-        // 1. Ambil variable 'datas'
+        // 1. Ambil DATA MENTAH (datas)
         val regex = Regex("""datas\s*=\s*['"]([^'"]+)['"]""")
         val match = regex.find(response)
 
         if (match != null) {
             val encryptedData = match.groupValues[1]
             try {
-                // 2. Decode Base64 untuk mendapatkan SLUG
+                // 2. Decode Base64
                 val jsonString = base64Decode(encryptedData)
                 
-                // Kita pakai parse manual yang aman (ignore unknown keys)
+                // 3. Ambil Kunci Rahasia (slug, id, user_id)
+                // Kita pakai mapper agar tipe datanya aman
                 val initialData = mapper.readValue<InitialData>(jsonString)
                 val slug = initialData.slug
 
                 if (!slug.isNullOrEmpty()) {
-                    // 3. JURUS API BYPASS
-                    // Kita tembak langsung ke endpoint API mereka menggunakan slug yang kita dapat.
-                    // Endpoint ini sering dipakai oleh player V2 mereka.
+                    // --- JURUS HACKER: OTENTIKASI RESMI ---
+                    // Kita tidak menebak API, kita menggunakan jalur standar player V2
+                    // Endpoint ini menerima parameter yang ada di 'datas'
+                    
                     val apiUrl = "$mainUrl/api/source/$slug"
                     
+                    // Header wajib agar dikira browser
                     val apiHeaders = mapOf(
                         "Referer" to url,
                         "X-Requested-With" to "XMLHttpRequest",
-                        "Content-Type" to "application/x-www-form-urlencoded"
+                        "Origin" to mainUrl,
+                        "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8"
                     )
 
-                    // Kirim request POST kosong atau dengan r=referer
+                    // Payload (Isi Surat)
+                    // Kita kirimkan semua 'credential' yang kita temukan di dump
+                    val postData = mapOf(
+                        "r" to (referer ?: mainUrl), // Referer asli
+                        "d" to "abysscdn.com",       // Domain
+                        "u" to (initialData.userId?.toString() ?: ""), // User ID dari dump
+                        "h" to (initialData.md5Id?.toString() ?: "")   // Hash ID dari dump
+                    )
+
+                    // TEMBAK!
                     val apiResponse = app.post(
                         apiUrl, 
                         headers = apiHeaders,
-                        data = mapOf("r" to (referer ?: mainUrl), "d" to "abysscdn.com")
+                        data = postData
                     ).parsedSafe<ApiResponse>()
 
-                    // 4. Proses Hasil API
+                    // 4. Panen Hasil
                     apiResponse?.data?.forEach { video ->
-                        val streamUrl = video.file ?: video.label // Kadang link ada di label (jarang)
-                        val qualityLabel = video.label ?: "Auto"
-                        val qualityInt = getQualityFromName(qualityLabel)
+                        val streamUrl = video.file ?: video.label
+                        // Decryption layer kedua (kadang file-nya masih di-encode Hex/Base64)
+                        val finalUrl = decodeHexIfNeeded(streamUrl)
 
-                        if (!streamUrl.isNullOrEmpty()) {
-                            if (streamUrl.contains(".m3u8")) {
+                        if (!finalUrl.isNullOrEmpty()) {
+                            val qualityInt = getQualityFromName(video.label)
+                            
+                            if (finalUrl.contains(".m3u8")) {
                                 M3u8Helper.generateM3u8(
                                     name,
-                                    streamUrl,
+                                    finalUrl,
                                     referer ?: mainUrl
                                 ).forEach(callback)
                             } else {
@@ -76,7 +91,7 @@ class Hydrax : ExtractorApi() {
                                     newExtractorLink(
                                         source = name,
                                         name = name,
-                                        url = streamUrl
+                                        url = finalUrl
                                     ) {
                                         this.referer = referer ?: mainUrl
                                         this.quality = qualityInt
@@ -93,6 +108,22 @@ class Hydrax : ExtractorApi() {
         }
     }
 
+    // Fungsi bantu: Kadang Hydrax mengirim URL dalam format Hex (contoh: 68747470...)
+    private fun decodeHexIfNeeded(url: String?): String? {
+        if (url == null) return null
+        // Ciri hex: panjang, genap, hanya angka 0-9 dan huruf a-f, tidak ada http
+        if (!url.startsWith("http") && url.matches(Regex("^[0-9a-fA-F]+$"))) {
+            return try {
+                url.chunked(2)
+                    .map { it.toInt(16).toChar() }
+                    .joinToString("")
+            } catch (e: Exception) {
+                url // Kalau gagal decode, kembalikan aslinya
+            }
+        }
+        return url
+    }
+
     private fun getQualityFromName(label: String?): Int {
         return when (label?.lowercase()) {
             "fhd", "1080p" -> Qualities.P1080.value
@@ -103,12 +134,13 @@ class Hydrax : ExtractorApi() {
         }
     }
 
-    // Data Class untuk parsing tahap 1 (ambil slug)
+    // Data Class sesuai dump JSON kamu
     data class InitialData(
-        @JsonProperty("slug") val slug: String? = null
+        @JsonProperty("slug") val slug: String? = null,
+        @JsonProperty("user_id") val userId: Long? = null,
+        @JsonProperty("md5_id") val md5Id: Long? = null
     )
 
-    // Data Class untuk parsing tahap 2 (hasil API)
     data class ApiResponse(
         @JsonProperty("success") val success: Boolean? = null,
         @JsonProperty("data") val data: List<VideoData>? = null
