@@ -3,6 +3,7 @@ package com.LayarKacaProvider
 import android.util.Base64
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
+// Gunakan extension parseJson jika memungkinkan, atau tetap gunakan tryParseJson jika sudah didefinisikan di project
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.fasterxml.jackson.annotation.JsonProperty
 import java.security.MessageDigest
@@ -11,7 +12,7 @@ import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 // ============================================================================
-// HYDRAX / ABYSSCDN EXTRACTOR (FIXED FOR STABLE)
+// HYDRAX / ABYSSCDN EXTRACTOR (VERSI STABIL)
 // ============================================================================
 open class HydraxExtractor : ExtractorApi() {
     override var name = "Hydrax"
@@ -29,9 +30,6 @@ open class HydraxExtractor : ExtractorApi() {
         val sources = mutableListOf<ExtractorLink>()
 
         try {
-            // Kita tidak perlu memanggil unshortenLinkSafe di sini.
-            // CloudStream sudah melakukannya di ExtractorApi.kt sebelum memanggil getUrl.
-            
             val response = app.get(url, referer = referer ?: "https://tv8.lk21official.cc/")
             val html = response.text
             val finalUrl = response.url
@@ -49,25 +47,26 @@ open class HydraxExtractor : ExtractorApi() {
             val sUserId = data.userId.toString()
 
             val keyString = "$sUserId:$sSlug:$sMd5Id"
-            val md5HashStr = md5(keyString)
+            val md5HashStr = md5(keyString) 
             
             val keyBytes = md5HashStr.toByteArray(Charsets.UTF_8)
             val ivBytes = keyBytes.sliceArray(0 until 16)
 
             val encryptedBytes = unescapeMediaToBytes(media)
-            val decryptedUrl = decryptAesCtr(encryptedBytes, keyBytes, ivBytes)
+            val decryptedUrl = hydraxDecrypt(encryptedBytes, keyBytes, ivBytes)
 
             if (decryptedUrl.contains("http")) {
-                // Menggunakan cara pembuatan ExtractorLink yang aman untuk versi stable
+                // MENGGUNAKAN newExtractorLink UNTUK STABILITAS
                 sources.add(
-                    ExtractorLink(
+                    newExtractorLink(
                         source = this.name,
                         name = "${this.name} VIP",
                         url = decryptedUrl,
-                        referer = finalUrl,
-                        quality = Qualities.Unknown.value,
                         type = ExtractorLinkType.VIDEO
-                    )
+                    ) {
+                        this.referer = finalUrl
+                        this.quality = Qualities.Unknown.value
+                    }
                 )
             }
 
@@ -84,7 +83,8 @@ open class HydraxExtractor : ExtractorApi() {
             .joinToString("") { "%02x".format(it) }
     }
 
-    private fun decryptAesCtr(encrypted: ByteArray, key: ByteArray, iv: ByteArray): String {
+    // Nama fungsi diubah sedikit untuk menghindari konflik dengan internal utils
+    private fun hydraxDecrypt(encrypted: ByteArray, key: ByteArray, iv: ByteArray): String {
         return try {
             val secretKey = SecretKeySpec(key, "AES") 
             val ivSpec = IvParameterSpec(iv)
@@ -92,6 +92,7 @@ open class HydraxExtractor : ExtractorApi() {
             cipher.init(Cipher.DECRYPT_MODE, secretKey, ivSpec)
             
             val decrypted = cipher.doFinal(encrypted)
+            // Menggunakan .code sebagai pengganti .toInt() untuk Char
             String(decrypted).filter { it.code in 32..126 }
         } catch (e: Exception) {
             ""
@@ -107,7 +108,7 @@ open class HydraxExtractor : ExtractorApi() {
                 bytes.add(hex.toInt(16).toByte())
                 i += 6
             } else {
-                bytes.add(media[i].toByte())
+                bytes.add(media[i].code.toByte())
                 i++
             }
         }
