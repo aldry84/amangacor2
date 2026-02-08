@@ -1,16 +1,20 @@
 package com.LayarKacaProvider
 
+import com.fasterxml.jackson.annotation.JsonProperty
+import com.fasterxml.jackson.module.kotlin.readValue
+import com.lagradost.cloudstream3.SubtitleFile
+import com.lagradost.cloudstream3.app
+import com.lagradost.cloudstream3.base64Decode
+import com.lagradost.cloudstream3.mapper
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.Qualities
-import com.lagradost.cloudstream3.app
-import com.lagradost.cloudstream3.base64Decode // Pastikan import ini ada
 import com.lagradost.cloudstream3.utils.M3u8Helper
-import com.fasterxml.jackson.annotation.JsonProperty
+import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.utils.newExtractorLink // Wajib pakai ini sekarang
 
 class Hydrax : ExtractorApi() {
     override val name = "Hydrax"
-    override val mainUrl = "https://abysscdn.com" // Domain bisa berubah, tapi logic sama
+    override val mainUrl = "https://abysscdn.com"
     override val requiresReferer = true
 
     override suspend fun getUrl(
@@ -23,7 +27,6 @@ class Hydrax : ExtractorApi() {
         val response = app.get(url, referer = referer).text
 
         // 2. Cari variabel 'datas' menggunakan Regex
-        // Pola: mencari kata 'datas', diikuti tanda sama dengan, lalu tanda kutip, lalu isi datanya
         val regex = Regex("""datas\s*=\s*['"]([^'"]+)['"]""")
         val match = regex.find(response)
 
@@ -31,19 +34,20 @@ class Hydrax : ExtractorApi() {
             val encryptedData = match.groupValues[1]
 
             try {
-                // 3. Decode Base64 (sesuai petunjuk 'atob')
+                // 3. Decode Base64
                 val jsonString = base64Decode(encryptedData)
-                
-                // 4. Parse JSON menjadi Object
-                // Cloudstream punya built-in parser, atau pakai Jackson manual
-                val data = app.parseJson<HydraxData>(jsonString)
+
+                // 4. Parse JSON (Menggunakan mapper bawaan Cloudstream agar lebih aman)
+                // Kita ganti app.parseJson dengan mapper.readValue
+                val data = mapper.readValue<HydraxData>(jsonString)
 
                 // 5. Ekstrak Link
-                // Biasanya link ada di properti 'source', 'url', atau 'file'
                 val streamUrl = data.source ?: data.url ?: data.file
-                
+
+                // Pengecekan null safe
                 if (!streamUrl.isNullOrEmpty()) {
-                    // Cek apakah linknya .m3u8 (HLS) atau .mp4
+                    val finalQuality = getQualityFromName(data.label)
+                    
                     if (streamUrl.contains(".m3u8")) {
                         M3u8Helper.generateM3u8(
                             name,
@@ -51,29 +55,36 @@ class Hydrax : ExtractorApi() {
                             referer ?: mainUrl
                         ).forEach(callback)
                     } else {
-                        // Kalau MP4 biasa
+                        // PERBAIKAN: Menggunakan newExtractorLink, bukan ExtractorLink()
                         callback(
-                            ExtractorLink(
-                                name,
-                                name,
-                                streamUrl,
-                                referer ?: mainUrl,
-                                Qualities.Unknown.value
+                            newExtractorLink(
+                                source = name,
+                                name = name,
+                                url = streamUrl,
+                                referer = referer ?: mainUrl,
+                                quality = finalQuality
                             )
                         )
                     }
                 }
 
             } catch (e: Exception) {
-                // Gunakan ini untuk debug jika parsing gagal
                 e.printStackTrace()
-                System.out.println("Hydrax Decode Error: ${e.message}")
             }
         }
     }
 
-    // Model Data untuk menangkap hasil JSON
-    // Kita buat flexible karena field-nya sering berubah nama
+    // Fungsi bantu kecil untuk konversi label (misal "HD") ke Int quality
+    private fun getQualityFromName(label: String?): Int {
+        return when (label?.lowercase()) {
+            "fhd", "1080p" -> Qualities.P1080.value
+            "hd", "720p" -> Qualities.P720.value
+            "sd", "480p" -> Qualities.P480.value
+            "360p" -> Qualities.P360.value
+            else -> Qualities.Unknown.value
+        }
+    }
+
     data class HydraxData(
         @JsonProperty("source") val source: String? = null,
         @JsonProperty("url") val url: String? = null,
