@@ -25,76 +25,77 @@ class Hydrax : ExtractorApi() {
     ) {
         val response = app.get(url, referer = referer).text
         
-        // 1. Ambil DATA MENTAH (datas)
+        // 1. Ambil variable 'datas'
         val regex = Regex("""datas\s*=\s*['"]([^'"]+)['"]""")
         val match = regex.find(response)
 
         if (match != null) {
             val encryptedData = match.groupValues[1]
             try {
-                // 2. Decode Base64
+                // 2. Decode Base64 untuk mendapatkan SLUG
                 val jsonString = base64Decode(encryptedData)
-                
-                // 3. Ambil Kunci Rahasia (slug, id, user_id)
-                // Kita pakai mapper agar tipe datanya aman
                 val initialData = mapper.readValue<InitialData>(jsonString)
                 val slug = initialData.slug
 
                 if (!slug.isNullOrEmpty()) {
-                    // --- JURUS HACKER: OTENTIKASI RESMI ---
-                    // Kita tidak menebak API, kita menggunakan jalur standar player V2
-                    // Endpoint ini menerima parameter yang ada di 'datas'
-                    
+                    // 3. API Call Resmi (Pura-pura jadi player V2)
                     val apiUrl = "$mainUrl/api/source/$slug"
                     
-                    // Header wajib agar dikira browser
                     val apiHeaders = mapOf(
                         "Referer" to url,
                         "X-Requested-With" to "XMLHttpRequest",
                         "Origin" to mainUrl,
-                        "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8"
+                        "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8",
+                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
                     )
 
-                    // Payload (Isi Surat)
-                    // Kita kirimkan semua 'credential' yang kita temukan di dump
+                    // Kirim credential lengkap (User ID & Hash) biar server percaya 100%
                     val postData = mapOf(
-                        "r" to (referer ?: mainUrl), // Referer asli
-                        "d" to "abysscdn.com",       // Domain
-                        "u" to (initialData.userId?.toString() ?: ""), // User ID dari dump
-                        "h" to (initialData.md5Id?.toString() ?: "")   // Hash ID dari dump
+                        "r" to (referer ?: mainUrl),
+                        "d" to "abysscdn.com",
+                        "u" to (initialData.userId?.toString() ?: ""),
+                        "h" to (initialData.md5Id?.toString() ?: "")
                     )
 
-                    // TEMBAK!
                     val apiResponse = app.post(
                         apiUrl, 
                         headers = apiHeaders,
                         data = postData
                     ).parsedSafe<ApiResponse>()
 
-                    // 4. Panen Hasil
+                    // 4. Proses Hasil & INJEKSI HEADER (PENTING!)
                     apiResponse?.data?.forEach { video ->
-                        val streamUrl = video.file ?: video.label
-                        // Decryption layer kedua (kadang file-nya masih di-encode Hex/Base64)
-                        val finalUrl = decodeHexIfNeeded(streamUrl)
+                        val rawUrl = video.file ?: video.label
+                        val streamUrl = decodeHexIfNeeded(rawUrl)
 
-                        if (!finalUrl.isNullOrEmpty()) {
+                        if (!streamUrl.isNullOrEmpty()) {
                             val qualityInt = getQualityFromName(video.label)
                             
-                            if (finalUrl.contains(".m3u8")) {
+                            // INI KUNCINYA: Kita buat map header khusus untuk video ini
+                            // Agar saat player memutar, dia membawa 'surat jalan' ini.
+                            val videoHeaders = mapOf(
+                                "Referer" to mainUrl,
+                                "Origin" to mainUrl,
+                                "User-Agent" to (apiHeaders["User-Agent"] ?: "")
+                            )
+
+                            if (streamUrl.contains(".m3u8")) {
                                 M3u8Helper.generateM3u8(
                                     name,
-                                    finalUrl,
-                                    referer ?: mainUrl
+                                    streamUrl,
+                                    referer ?: mainUrl,
+                                    headers = videoHeaders // Masukkan header di sini
                                 ).forEach(callback)
                             } else {
                                 callback(
                                     newExtractorLink(
                                         source = name,
                                         name = name,
-                                        url = finalUrl
+                                        url = streamUrl
                                     ) {
-                                        this.referer = referer ?: mainUrl
+                                        this.referer = mainUrl
                                         this.quality = qualityInt
+                                        this.headers = videoHeaders // DAN DI SINI! (Fix setDataSource failed)
                                     }
                                 )
                             }
@@ -108,18 +109,15 @@ class Hydrax : ExtractorApi() {
         }
     }
 
-    // Fungsi bantu: Kadang Hydrax mengirim URL dalam format Hex (contoh: 68747470...)
+    // Dekoder Hex (Jaga-jaga server iseng kirim hex)
     private fun decodeHexIfNeeded(url: String?): String? {
         if (url == null) return null
-        // Ciri hex: panjang, genap, hanya angka 0-9 dan huruf a-f, tidak ada http
         if (!url.startsWith("http") && url.matches(Regex("^[0-9a-fA-F]+$"))) {
             return try {
                 url.chunked(2)
                     .map { it.toInt(16).toChar() }
                     .joinToString("")
-            } catch (e: Exception) {
-                url // Kalau gagal decode, kembalikan aslinya
-            }
+            } catch (e: Exception) { url }
         }
         return url
     }
@@ -134,7 +132,6 @@ class Hydrax : ExtractorApi() {
         }
     }
 
-    // Data Class sesuai dump JSON kamu
     data class InitialData(
         @JsonProperty("slug") val slug: String? = null,
         @JsonProperty("user_id") val userId: Long? = null,
