@@ -1,3 +1,9 @@
+package com.LayarKacaProvider // Harus sama persis dengan file lainnya!
+
+import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
+import com.lagradost.cloudstream3.plugins.Plugin
+import android.content.Context
+
 @CloudstreamPlugin
 class LayarKacaPlugin : Plugin() {
     override fun load(context: Context) {
@@ -8,6 +14,6 @@ class LayarKacaPlugin : Plugin() {
         registerExtractorAPI(EmturbovidExtractor()) 
         registerExtractorAPI(P2PExtractor())        
         registerExtractorAPI(F16Extractor())        
-        registerExtractorAPI(HydraxExtractor()) // <--- TAMBAHKAN BARIS INI
+        registerExtractorAPI(HydraxExtractor()) 
     }
 }
