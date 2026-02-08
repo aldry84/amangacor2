@@ -11,7 +11,7 @@ import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 // ============================================================================
-// HYDRAX / ABYSSCDN EXTRACTOR (DIRECT BYPASS METHOD)
+// HYDRAX / ABYSSCDN EXTRACTOR (UNIVERSAL BYPASS FIX)
 // ============================================================================
 open class HydraxExtractor : ExtractorApi() {
     override var name = "Hydrax"
@@ -32,39 +32,37 @@ open class HydraxExtractor : ExtractorApi() {
         callback: (ExtractorLink) -> Unit
     ) {
         try {
-            // 1. LOGIC BYPASS: Ubah URL playeriframe ke short.icu
-            // Asal: https://playeriframe.sbs/iframe/hydrax/BaTQvlo6B
-            // Tujuan: https://short.icu/BaTQvlo6B
-            
+            // 1. LOGIC BYPASS UNIVERSAL
+            // Menangkap semua pola: /iframe/[APAPUN]/[ID]
+            // Contoh: /iframe/hydrax/123, /iframe/p2p/456, /iframe/cast/789
             var targetUrl = url
-            val idMatch = Regex("""/iframe/hydrax/([^/?]+)""").find(url)
+            val idMatch = Regex("""/iframe/[^/]+/([^/?]+)""").find(url)
             
             if (idMatch != null) {
                 val id = idMatch.groupValues[1]
                 targetUrl = "https://short.icu/$id"
-                // Log untuk memastikan bypass bekerja
-                System.out.println("HydraxExtractor: Bypassing playeriframe -> $targetUrl")
+                System.out.println("HydraxExtractor: Bypass Aktif! $url -> $targetUrl")
             }
 
             // 2. Request ke Pintu Belakang (Short.icu -> Abysscdn)
-            // Gunakan headers desktop agar lebih aman
             val headers = mapOf(
                 "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                 "Referer" to "https://tv8.lk21official.cc/",
                 "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
             )
 
+            // Timeout diperpanjang untuk antisipasi redirect lambat
             val response = app.get(targetUrl, headers = headers, timeout = 60L)
             val html = response.text
             val finalUrl = response.url
 
             // 3. Cari Data (Pola: const datas = "eyJ...")
-            // Sesuai hasil trace termux: const datas = "eyJzbHVnIjoiQmFU...
             val regex = Regex("""const\s+\w+\s*=\s*"(eyJ[^"]+)"""")
             val match = regex.find(html)
             
             if (match == null) {
-                System.err.println("HydraxExtractor: Data tidak ditemukan di $finalUrl")
+                // Jika masih gagal, cetak URL akhir untuk debug
+                System.err.println("HydraxExtractor: Data tidak ditemukan di $finalUrl (Asal: $url)")
                 return
             }
 
