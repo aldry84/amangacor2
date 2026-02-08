@@ -11,7 +11,7 @@ import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 // ============================================================================
-// HYDRAX / ABYSSCDN EXTRACTOR (CLOUDFLARE BYPASS EDITION)
+// HYDRAX / ABYSSCDN EXTRACTOR (DIRECT BYPASS METHOD)
 // ============================================================================
 open class HydraxExtractor : ExtractorApi() {
     override var name = "Hydrax"
@@ -32,45 +32,45 @@ open class HydraxExtractor : ExtractorApi() {
         callback: (ExtractorLink) -> Unit
     ) {
         try {
-            val safeReferer = referer ?: "https://tv8.lk21official.cc/"
+            // 1. LOGIC BYPASS: Ubah URL playeriframe ke short.icu
+            // Asal: https://playeriframe.sbs/iframe/hydrax/BaTQvlo6B
+            // Tujuan: https://short.icu/BaTQvlo6B
             
-            // --- ANTI-CLOUDFLARE HEADERS (CLIENT HINTS) ---
-            // Header ini membuat request terlihat persis seperti Chrome Desktop asli
+            var targetUrl = url
+            val idMatch = Regex("""/iframe/hydrax/([^/?]+)""").find(url)
+            
+            if (idMatch != null) {
+                val id = idMatch.groupValues[1]
+                targetUrl = "https://short.icu/$id"
+                // Log untuk memastikan bypass bekerja
+                System.out.println("HydraxExtractor: Bypassing playeriframe -> $targetUrl")
+            }
+
+            // 2. Request ke Pintu Belakang (Short.icu -> Abysscdn)
+            // Gunakan headers desktop agar lebih aman
             val headers = mapOf(
                 "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-                "Accept-Language" to "en-US,en;q=0.9,id;q=0.8",
-                "Referer" to safeReferer,
-                "Sec-Ch-Ua" to "\"Not_A Brand\";v=\"8\", \"Chromium\";v=\"120\", \"Google Chrome\";v=\"120\"",
-                "Sec-Ch-Ua-Mobile" to "?0",
-                "Sec-Ch-Ua-Platform" to "\"Windows\"",
-                "Sec-Fetch-Dest" to "document",
-                "Sec-Fetch-Mode" to "navigate",
-                "Sec-Fetch-Site" to "cross-site",
-                "Sec-Fetch-User" to "?1",
-                "Upgrade-Insecure-Requests" to "1",
-                "Cache-Control" to "max-age=0"
+                "Referer" to "https://tv8.lk21official.cc/",
+                "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
             )
 
-            // Gunakan timeout lebih lama (60 detik) agar Interceptor punya waktu bypass Cloudflare
-            val response = app.get(url, headers = headers, timeout = 60L)
+            val response = app.get(targetUrl, headers = headers, timeout = 60L)
             val html = response.text
             val finalUrl = response.url
 
-            // --- PENCARIAN DATA (SMART REGEX) ---
-            // Cari string JSON Base64 (diawali eyJ...) di dalam variabel const apa pun
+            // 3. Cari Data (Pola: const datas = "eyJ...")
+            // Sesuai hasil trace termux: const datas = "eyJzbHVnIjoiQmFU...
             val regex = Regex("""const\s+\w+\s*=\s*"(eyJ[^"]+)"""")
             val match = regex.find(html)
             
             if (match == null) {
-                // Jika masih null, berarti Cloudflare masih memblokir atau HTML kosong
-                System.err.println("HydraxExtractor: Gagal bypass Cloudflare atau pola tidak ditemukan.")
+                System.err.println("HydraxExtractor: Data tidak ditemukan di $finalUrl")
                 return
             }
 
             val rawString = match.groupValues[1]
 
-            // --- DECODE & DECRYPT ---
+            // 4. Bersihkan & Decode
             val unescapedString = unescapeJsString(rawString)
             val decodedJson = String(Base64.decode(unescapedString, Base64.DEFAULT), Charsets.ISO_8859_1)
             
@@ -81,6 +81,7 @@ open class HydraxExtractor : ExtractorApi() {
             val sMd5Id = data.md5Id.toString()
             val sUserId = data.userId.toString()
 
+            // 5. Generate Key & Decrypt
             val keyString = "$sUserId:$sSlug:$sMd5Id"
             val md5HashStr = md5(keyString)
             val keyBytes = md5HashStr.toByteArray(Charsets.UTF_8)
