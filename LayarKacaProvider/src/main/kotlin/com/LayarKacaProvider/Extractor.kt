@@ -11,22 +11,20 @@ import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 // ============================================================================
-// HYDRAX / ABYSSCDN EXTRACTOR (UPDATED STANDARD)
+// HYDRAX / ABYSSCDN EXTRACTOR (FIXED PARSING)
 // ============================================================================
 open class HydraxExtractor : ExtractorApi() {
     override var name = "Hydrax"
     override var mainUrl = "https://playeriframe.sbs"
     override val requiresReferer = true
 
-    // Model data untuk parsing JSON internal
     data class AbyssData(
         @JsonProperty("slug") val slug: String? = null,
-        @JsonProperty("md5_id") val md5Id: Any? = null, // Bisa berupa Int atau String
+        @JsonProperty("md5_id") val md5Id: Any? = null,
         @JsonProperty("user_id") val userId: Any? = null,
         @JsonProperty("media") val media: String? = null
     )
 
-    // Menggunakan override versi baru dengan Callback (lebih cepat & responsif)
     override suspend fun getUrl(
         url: String,
         referer: String?,
@@ -34,77 +32,133 @@ open class HydraxExtractor : ExtractorApi() {
         callback: (ExtractorLink) -> Unit
     ) {
         try {
-            // 1. Request Halaman Player
-            // Default referer ke main URL jika null, untuk menghindari blokir
             val safeReferer = referer ?: "https://tv8.lk21official.cc/"
             val response = app.get(url, referer = safeReferer)
             val html = response.text
             val finalUrl = response.url
 
-            // 2. Ekstrak variabel 'datas' (Base64 JSON)
-            // Regex mencari: const datas = "..."
-            val encodedData = Regex("""const datas\s*=\s*"([^"]+)"""").find(html)?.groupValues?.get(1) 
+            // --- PERBAIKAN: MENGGUNAKAN INDEXOF (BUKAN REGEX) ---
+            // Regex sering gagal pada string base64 yang sangat panjang.
+            // Kita cari manual posisi 'const datas = "'
+            val marker = "const datas = \""
+            val startIndex = html.indexOf(marker)
             
-            if (encodedData == null) {
-                // Log jika gagal menemukan data (berguna untuk debugging)
-                System.err.println("HydraxExtractor: Gagal menemukan variabel 'datas' di HTML.")
-                return
+            if (startIndex == -1) {
+                // Fallback: coba cari tanpa spasi jika minified
+                val markerMin = "const datas=\""
+                val startMin = html.indexOf(markerMin)
+                if (startMin == -1) {
+                    System.err.println("HydraxExtractor: Marker variabel 'datas' tidak ditemukan.")
+                    return
+                }
+                parseAndDecrypt(html, startMin + markerMin.length, finalUrl, callback)
+            } else {
+                parseAndDecrypt(html, startIndex + marker.length, finalUrl, callback)
             }
+
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private suspend fun parseAndDecrypt(
+        html: String, 
+        startIdx: Int, 
+        referer: String, 
+        callback: (ExtractorLink) -> Unit
+    ) {
+        try {
+            // Cari ujung kutipan penutup "
+            val endIdx = html.indexOf("\"", startIdx)
+            if (endIdx == -1) return
+
+            // Ambil string mentah (masih mengandung escape seperti \u00xx atau \)
+            val rawString = html.substring(startIdx, endIdx)
+
+            // Bersihkan string dari format JS Escape menjadi string normal
+            val unescapedString = unescapeJsString(rawString)
+
+            // Decode Base64
+            val decodedJson = String(Base64.decode(unescapedString, Base64.DEFAULT), Charsets.ISO_8859_1)
             
-            // 3. Bersihkan & Decode Base64
-            // Menghapus unicode escape sequence yang merusak decoding
-            val cleanB64 = encodedData.replace(Regex("""\\u[0-9a-fA-F]{4}"""), "")
-            val decodedJson = try {
-                String(Base64.decode(cleanB64, Base64.DEFAULT), Charsets.ISO_8859_1)
-            } catch (e: Exception) {
-                System.err.println("HydraxExtractor: Gagal decode Base64.")
-                return
-            }
+            val data = tryParseJson<AbyssData>(decodedJson) ?: return
+            val media = data.media ?: return
             
-            // 4. Parsing JSON ke Object
-            val data = tryParseJson<AbyssData>(decodedJson)
-            if (data?.media == null) return
-            
-            // Konversi ID ke string aman
             val sSlug = data.slug.toString()
             val sMd5Id = data.md5Id.toString()
             val sUserId = data.userId.toString()
 
-            // 5. GENERATE KEY (Logic Reverse Engineering)
-            // Rumus: user_id + ":" + slug + ":" + md5_id
+            // Key Generation (Logic: user_id:slug:md5_id)
             val keyString = "$sUserId:$sSlug:$sMd5Id"
-            val md5HashStr = md5(keyString) // 32 chars Hex String
+            val md5HashStr = md5(keyString)
             
-            // Key dan IV diambil dari representasi byte string hex tersebut
             val keyBytes = md5HashStr.toByteArray(Charsets.UTF_8)
-            val ivBytes = keyBytes.sliceArray(0 until 16) // 16 byte pertama untuk IV
+            val ivBytes = keyBytes.sliceArray(0 until 16)
 
-            // 6. DEKRIPSI (AES-CTR)
-            val encryptedBytes = unescapeMediaToBytes(data.media)
+            // Dekripsi AES-CTR
+            val encryptedBytes = unescapeMediaToBytes(media)
             val decryptedUrl = decryptAesCtr(encryptedBytes, keyBytes, ivBytes)
 
-            // 7. Kirim Hasil ke Cloudstream (Callback)
             if (decryptedUrl.startsWith("http")) {
                 callback.invoke(
                     newExtractorLink(
                         source = name,
                         name = "$name VIP",
                         url = decryptedUrl,
-                        type = ExtractorLinkType.VIDEO // Asumsikan video biasa (mp4), auto-detect jika m3u8
+                        type = ExtractorLinkType.VIDEO
                     ) {
-                        this.referer = finalUrl
-                        this.quality = Qualities.Unknown.value // Biarkan player menentukan/menampilkan
+                        this.referer = referer
+                        this.quality = Qualities.Unknown.value
                     }
                 )
             }
-
         } catch (e: Exception) {
-            // Log error agar tidak crash diam-diam
+            System.err.println("HydraxExtractor: Gagal saat parsing/decrypt.")
             e.printStackTrace()
         }
     }
 
-    // --- CRYPTO HELPERS ---
+    // --- HELPER UNTUK MEMBERSIHKAN JS STRING ---
+    private fun unescapeJsString(input: String): String {
+        val sb = StringBuilder()
+        var i = 0
+        while (i < input.length) {
+            val c = input[i]
+            if (c == '\\' && i + 1 < input.length) {
+                val next = input[i+1]
+                if (next == 'u' && i + 5 < input.length) {
+                    // Handle unicode escape \uXXXX
+                    try {
+                        val hex = input.substring(i + 2, i + 6)
+                        sb.append(hex.toInt(16).toChar())
+                        i += 6
+                    } catch(e: Exception) {
+                        sb.append(c)
+                        i++
+                    }
+                } else if (next == 'x' && i + 3 < input.length) {
+                    // Handle hex escape \xXX
+                    try {
+                        val hex = input.substring(i + 2, i + 4)
+                        sb.append(hex.toInt(16).toChar())
+                        i += 4
+                    } catch(e: Exception) {
+                        sb.append(c)
+                        i++
+                    }
+                } else {
+                    // Escape biasa (misal \" atau \n atau sekedar backslash pemisah)
+                    // Kita ambil karakter setelah backslash
+                    sb.append(next)
+                    i += 2
+                }
+            } else {
+                sb.append(c)
+                i++
+            }
+        }
+        return sb.toString()
+    }
 
     private fun md5(input: String): String {
         return MessageDigest.getInstance("MD5")
@@ -120,16 +174,13 @@ open class HydraxExtractor : ExtractorApi() {
             cipher.init(Cipher.DECRYPT_MODE, secretKey, ivSpec)
             
             val decrypted = cipher.doFinal(encrypted)
-            // Filter hasil dekripsi agar hanya karakter URL valid yang tersisa
             String(decrypted).filter { it.code in 32..126 }
         } catch (e: Exception) {
-            e.printStackTrace()
             ""
         }
     }
 
     private fun unescapeMediaToBytes(media: String): ByteArray {
-        // Mengubah string custom escape (misal \u00ff) menjadi ByteArray asli
         val bytes = mutableListOf<Byte>()
         var i = 0
         while (i < media.length) {
@@ -139,7 +190,6 @@ open class HydraxExtractor : ExtractorApi() {
                     bytes.add(hex.toInt(16).toByte())
                     i += 6
                 } catch (e: Exception) {
-                    // Fallback jika format unicode salah
                     bytes.add(media[i].code.toByte())
                     i++
                 }
