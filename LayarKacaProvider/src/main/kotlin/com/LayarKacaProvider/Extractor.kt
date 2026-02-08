@@ -23,6 +23,7 @@ class Hydrax : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
+        // Cloudstream otomatis menangani Cloudflare standar di sini
         val response = app.get(url, referer = referer).text
         
         // 1. Ambil variable 'datas'
@@ -32,24 +33,24 @@ class Hydrax : ExtractorApi() {
         if (match != null) {
             val encryptedData = match.groupValues[1]
             try {
-                // 2. Decode Base64 untuk mendapatkan SLUG
+                // 2. Decode Base64 untuk mendapatkan SLUG & CREDENTIALS
                 val jsonString = base64Decode(encryptedData)
                 val initialData = mapper.readValue<InitialData>(jsonString)
                 val slug = initialData.slug
 
                 if (!slug.isNullOrEmpty()) {
-                    // 3. API Call Resmi (Pura-pura jadi player V2)
+                    // 3. API Call Resmi 
                     val apiUrl = "$mainUrl/api/source/$slug"
                     
+                    // HEADER WAJIB: Ini KUNCI agar tidak diblokir
                     val apiHeaders = mapOf(
                         "Referer" to url,
-                        "X-Requested-With" to "XMLHttpRequest",
                         "Origin" to mainUrl,
+                        "X-Requested-With" to "XMLHttpRequest",
                         "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8",
                         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
                     )
 
-                    // Kirim credential lengkap (User ID & Hash) biar server percaya 100%
                     val postData = mapOf(
                         "r" to (referer ?: mainUrl),
                         "d" to "abysscdn.com",
@@ -57,13 +58,14 @@ class Hydrax : ExtractorApi() {
                         "h" to (initialData.md5Id?.toString() ?: "")
                     )
 
+                    // Tembak API
                     val apiResponse = app.post(
                         apiUrl, 
                         headers = apiHeaders,
                         data = postData
                     ).parsedSafe<ApiResponse>()
 
-                    // 4. Proses Hasil & INJEKSI HEADER (PENTING!)
+                    // 4. Proses Link Video
                     apiResponse?.data?.forEach { video ->
                         val rawUrl = video.file ?: video.label
                         val streamUrl = decodeHexIfNeeded(rawUrl)
@@ -71,12 +73,14 @@ class Hydrax : ExtractorApi() {
                         if (!streamUrl.isNullOrEmpty()) {
                             val qualityInt = getQualityFromName(video.label)
                             
-                            // INI KUNCINYA: Kita buat map header khusus untuk video ini
-                            // Agar saat player memutar, dia membawa 'surat jalan' ini.
+                            // --- JURUS PAMUNGKAS: HEADER INJECTION ---
+                            // Kita paksa Player menggunakan Header ini.
+                            // Tanpa ini, server menolak request (Error 0x80000000 di logcat)
                             val videoHeaders = mapOf(
+                                "User-Agent" to (apiHeaders["User-Agent"] ?: ""),
                                 "Referer" to mainUrl,
                                 "Origin" to mainUrl,
-                                "User-Agent" to (apiHeaders["User-Agent"] ?: "")
+                                "Accept" to "*/*"
                             )
 
                             if (streamUrl.contains(".m3u8")) {
@@ -84,7 +88,7 @@ class Hydrax : ExtractorApi() {
                                     name,
                                     streamUrl,
                                     referer ?: mainUrl,
-                                    headers = videoHeaders // Masukkan header di sini
+                                    headers = videoHeaders // Masukkan header ke helper
                                 ).forEach(callback)
                             } else {
                                 callback(
@@ -95,7 +99,8 @@ class Hydrax : ExtractorApi() {
                                     ) {
                                         this.referer = mainUrl
                                         this.quality = qualityInt
-                                        this.headers = videoHeaders // DAN DI SINI! (Fix setDataSource failed)
+                                        // Masukkan header ke link final
+                                        this.headers = videoHeaders 
                                     }
                                 )
                             }
@@ -109,7 +114,6 @@ class Hydrax : ExtractorApi() {
         }
     }
 
-    // Dekoder Hex (Jaga-jaga server iseng kirim hex)
     private fun decodeHexIfNeeded(url: String?): String? {
         if (url == null) return null
         if (!url.startsWith("http") && url.matches(Regex("^[0-9a-fA-F]+$"))) {
