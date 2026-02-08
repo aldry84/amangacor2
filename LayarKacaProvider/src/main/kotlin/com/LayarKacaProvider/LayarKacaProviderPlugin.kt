@@ -1,4 +1,4 @@
-package com.LayarKacaProvider
+package com.LayarKacaProvider // Harus sama persis dengan file lainnya!
 
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.Plugin
@@ -11,8 +11,9 @@ class LayarKacaPlugin : Plugin() {
         registerMainAPI(LayarKacaProvider())
         
         // Extractor Servers
-        registerExtractorAPI(EmturbovidExtractor()) // TurboVip
-        registerExtractorAPI(P2PExtractor())        // P2P
-        registerExtractorAPI(F16Extractor())        // CAST (Baru!)
+        registerExtractorAPI(EmturbovidExtractor()) 
+        registerExtractorAPI(P2PExtractor())        
+        registerExtractorAPI(F16Extractor())        
+        registerExtractorAPI(HydraxExtractor()) 
     }
 }
