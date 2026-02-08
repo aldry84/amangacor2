@@ -1,29 +1,17 @@
 package com.LayarKacaProvider
 
-import android.util.Base64
-import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.utils.*
-import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
+import com.lagradost.cloudstream3.utils.ExtractorApi
+import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.app
+import com.lagradost.cloudstream3.base64Decode // Pastikan import ini ada
+import com.lagradost.cloudstream3.utils.M3u8Helper
 import com.fasterxml.jackson.annotation.JsonProperty
-import java.security.MessageDigest
-import javax.crypto.Cipher
-import javax.crypto.spec.IvParameterSpec
-import javax.crypto.spec.SecretKeySpec
 
-// ============================================================================
-// HYDRAX / ABYSSCDN EXTRACTOR (UNIVERSAL BYPASS FIX)
-// ============================================================================
-open class HydraxExtractor : ExtractorApi() {
-    override var name = "Hydrax"
-    override var mainUrl = "https://playeriframe.sbs"
+class Hydrax : ExtractorApi() {
+    override val name = "Hydrax"
+    override val mainUrl = "https://abysscdn.com" // Domain bisa berubah, tapi logic sama
     override val requiresReferer = true
-
-    data class AbyssData(
-        @JsonProperty("slug") val slug: String? = null,
-        @JsonProperty("md5_id") val md5Id: Any? = null,
-        @JsonProperty("user_id") val userId: Any? = null,
-        @JsonProperty("media") val media: String? = null
-    )
 
     override suspend fun getUrl(
         url: String,
@@ -31,159 +19,65 @@ open class HydraxExtractor : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        try {
-            // 1. LOGIC BYPASS UNIVERSAL
-            // Menangkap semua pola: /iframe/[APAPUN]/[ID]
-            // Contoh: /iframe/hydrax/123, /iframe/p2p/456, /iframe/cast/789
-            var targetUrl = url
-            val idMatch = Regex("""/iframe/[^/]+/([^/?]+)""").find(url)
-            
-            if (idMatch != null) {
-                val id = idMatch.groupValues[1]
-                targetUrl = "https://short.icu/$id"
-                System.out.println("HydraxExtractor: Bypass Aktif! $url -> $targetUrl")
-            }
+        // 1. Ambil HTML
+        val response = app.get(url, referer = referer).text
 
-            // 2. Request ke Pintu Belakang (Short.icu -> Abysscdn)
-            val headers = mapOf(
-                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Referer" to "https://tv8.lk21official.cc/",
-                "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
-            )
+        // 2. Cari variabel 'datas' menggunakan Regex
+        // Pola: mencari kata 'datas', diikuti tanda sama dengan, lalu tanda kutip, lalu isi datanya
+        val regex = Regex("""datas\s*=\s*['"]([^'"]+)['"]""")
+        val match = regex.find(response)
 
-            // Timeout diperpanjang untuk antisipasi redirect lambat
-            val response = app.get(targetUrl, headers = headers, timeout = 60L)
-            val html = response.text
-            val finalUrl = response.url
+        if (match != null) {
+            val encryptedData = match.groupValues[1]
 
-            // 3. Cari Data (Pola: const datas = "eyJ...")
-            val regex = Regex("""const\s+\w+\s*=\s*"(eyJ[^"]+)"""")
-            val match = regex.find(html)
-            
-            if (match == null) {
-                // Jika masih gagal, cetak URL akhir untuk debug
-                System.err.println("HydraxExtractor: Data tidak ditemukan di $finalUrl (Asal: $url)")
-                return
-            }
+            try {
+                // 3. Decode Base64 (sesuai petunjuk 'atob')
+                val jsonString = base64Decode(encryptedData)
+                
+                // 4. Parse JSON menjadi Object
+                // Cloudstream punya built-in parser, atau pakai Jackson manual
+                val data = app.parseJson<HydraxData>(jsonString)
 
-            val rawString = match.groupValues[1]
-
-            // 4. Bersihkan & Decode
-            val unescapedString = unescapeJsString(rawString)
-            val decodedJson = String(Base64.decode(unescapedString, Base64.DEFAULT), Charsets.ISO_8859_1)
-            
-            val data = tryParseJson<AbyssData>(decodedJson) ?: return
-            val media = data.media ?: return
-            
-            val sSlug = data.slug.toString()
-            val sMd5Id = data.md5Id.toString()
-            val sUserId = data.userId.toString()
-
-            // 5. Generate Key & Decrypt
-            val keyString = "$sUserId:$sSlug:$sMd5Id"
-            val md5HashStr = md5(keyString)
-            val keyBytes = md5HashStr.toByteArray(Charsets.UTF_8)
-            val ivBytes = keyBytes.sliceArray(0 until 16)
-
-            val encryptedBytes = unescapeMediaToBytes(media)
-            val decryptedUrl = decryptAesCtr(encryptedBytes, keyBytes, ivBytes)
-
-            if (decryptedUrl.startsWith("http")) {
-                callback.invoke(
-                    newExtractorLink(
-                        source = name,
-                        name = "$name VIP",
-                        url = decryptedUrl,
-                        type = ExtractorLinkType.VIDEO
-                    ) {
-                        this.referer = finalUrl
-                        this.quality = Qualities.Unknown.value
+                // 5. Ekstrak Link
+                // Biasanya link ada di properti 'source', 'url', atau 'file'
+                val streamUrl = data.source ?: data.url ?: data.file
+                
+                if (!streamUrl.isNullOrEmpty()) {
+                    // Cek apakah linknya .m3u8 (HLS) atau .mp4
+                    if (streamUrl.contains(".m3u8")) {
+                        M3u8Helper.generateM3u8(
+                            name,
+                            streamUrl,
+                            referer ?: mainUrl
+                        ).forEach(callback)
+                    } else {
+                        // Kalau MP4 biasa
+                        callback(
+                            ExtractorLink(
+                                name,
+                                name,
+                                streamUrl,
+                                referer ?: mainUrl,
+                                Qualities.Unknown.value
+                            )
+                        )
                     }
-                )
-            }
-
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    // --- HELPER FUNCTIONS ---
-
-    private fun unescapeJsString(input: String): String {
-        val sb = StringBuilder()
-        var i = 0
-        while (i < input.length) {
-            val c = input[i]
-            if (c == '\\' && i + 1 < input.length) {
-                val next = input[i+1]
-                if (next == 'u' && i + 5 < input.length) {
-                    try {
-                        val hex = input.substring(i + 2, i + 6)
-                        sb.append(hex.toInt(16).toChar())
-                        i += 6
-                    } catch(e: Exception) {
-                        sb.append(c)
-                        i++
-                    }
-                } else if (next == 'x' && i + 3 < input.length) {
-                    try {
-                        val hex = input.substring(i + 2, i + 4)
-                        sb.append(hex.toInt(16).toChar())
-                        i += 4
-                    } catch(e: Exception) {
-                        sb.append(c)
-                        i++
-                    }
-                } else {
-                    sb.append(next)
-                    i += 2
                 }
-            } else {
-                sb.append(c)
-                i++
+
+            } catch (e: Exception) {
+                // Gunakan ini untuk debug jika parsing gagal
+                e.printStackTrace()
+                System.out.println("Hydrax Decode Error: ${e.message}")
             }
         }
-        return sb.toString()
     }
 
-    private fun md5(input: String): String {
-        return MessageDigest.getInstance("MD5")
-            .digest(input.toByteArray())
-            .joinToString("") { "%02x".format(it) }
-    }
-
-    private fun decryptAesCtr(encrypted: ByteArray, key: ByteArray, iv: ByteArray): String {
-        return try {
-            val secretKey = SecretKeySpec(key, "AES") 
-            val ivSpec = IvParameterSpec(iv)
-            val cipher = Cipher.getInstance("AES/CTR/NoPadding")
-            cipher.init(Cipher.DECRYPT_MODE, secretKey, ivSpec)
-            
-            val decrypted = cipher.doFinal(encrypted)
-            String(decrypted).filter { it.code in 32..126 }
-        } catch (e: Exception) {
-            ""
-        }
-    }
-
-    private fun unescapeMediaToBytes(media: String): ByteArray {
-        val bytes = mutableListOf<Byte>()
-        var i = 0
-        while (i < media.length) {
-            if (media[i] == '\\' && i + 1 < media.length && media[i+1] == 'u') {
-                try {
-                    val hex = media.substring(i + 2, i + 6)
-                    bytes.add(hex.toInt(16).toByte())
-                    i += 6
-                } catch (e: Exception) {
-                    bytes.add(media[i].code.toByte())
-                    i++
-                }
-            } else {
-                bytes.add(media[i].code.toByte())
-                i++
-            }
-        }
-        return bytes.toByteArray()
-    }
+    // Model Data untuk menangkap hasil JSON
+    // Kita buat flexible karena field-nya sering berubah nama
+    data class HydraxData(
+        @JsonProperty("source") val source: String? = null,
+        @JsonProperty("url") val url: String? = null,
+        @JsonProperty("file") val file: String? = null,
+        @JsonProperty("label") val label: String? = null
+    )
 }
