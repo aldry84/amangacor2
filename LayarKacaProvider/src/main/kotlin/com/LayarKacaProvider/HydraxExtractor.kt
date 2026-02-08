@@ -1,4 +1,4 @@
-package com.LayarKacaProvide
+package com.LayarKacaProvider
 
 import android.util.Base64
 import com.lagradost.cloudstream3.*
