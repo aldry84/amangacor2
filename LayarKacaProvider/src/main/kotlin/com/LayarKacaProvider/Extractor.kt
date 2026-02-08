@@ -3,6 +3,7 @@ package com.LayarKacaProvider
 import android.util.Base64
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.SubtitleFile
+import com.lagradost.cloudstream3.app // FIX 1: Import wajib untuk akses 'app'
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import java.security.MessageDigest
@@ -11,22 +12,20 @@ import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 // ============================================================================
-// HYDRAX / ABYSSCDN EXTRACTOR (UPDATED FOR NEW EXTRACTORAPI)
+// HYDRAX / ABYSSCDN EXTRACTOR (UPDATED & FIXED)
 // ============================================================================
 open class HydraxExtractor : ExtractorApi() {
     override var name = "Hydrax"
     override var mainUrl = "https://playeriframe.sbs"
     override val requiresReferer = true
 
-    // Model untuk membedah JSON 'datas' yang ada di HTML
     data class AbyssData(
         @JsonProperty("slug") val slug: String? = null,
-        @JsonProperty("md5_id") val md5Id: Any? = null, // md5_id kadang int kadang string
+        @JsonProperty("md5_id") val md5Id: Any? = null,
         @JsonProperty("user_id") val userId: Any? = null,
         @JsonProperty("media") val media: String? = null
     )
 
-    // PERUBAHAN UTAMA DI SINI: Menggunakan signature getUrl terbaru dengan callback
     override suspend fun getUrl(
         url: String,
         referer: String?,
@@ -34,53 +33,54 @@ open class HydraxExtractor : ExtractorApi() {
         callback: (ExtractorLink) -> Unit
     ) {
         try {
-            // 1. Ambil HTML dari Player (playeriframe -> short.icu -> abysscdn)
+            // 1. Ambil HTML
             val targetReferer = referer ?: "https://tv8.lk21official.cc/"
-            val response = app.get(url, referer = targetReferer)
+            // 'app' sekarang dikenali berkat import com.lagradost.cloudstream3.app
+            val response = app.get(url, referer = targetReferer) 
             val html = response.text
             val finalUrl = response.url
 
-            // 2. Ekstrak variabel 'datas' (Base64 JSON)
+            // 2. Ekstrak variabel 'datas'
             val encodedData = Regex("""const datas\s*=\s*"([^"]+)"""").find(html)?.groupValues?.get(1) 
-                ?: return // Langsung return jika tidak ketemu, tidak perlu null
+                ?: return
 
-            // Bersihkan Base64 dari unicode escape \u00xx
+            // Bersihkan Base64
             val cleanB64 = encodedData.replace(Regex("""\\u[0-9a-fA-F]{4}"""), "")
             val decodedJson = String(Base64.decode(cleanB64, Base64.DEFAULT), Charsets.ISO_8859_1)
 
-            // 3. Parsing Metadata Film
+            // 3. Parsing Metadata
             val data = tryParseJson<AbyssData>(decodedJson) ?: return
             val media = data.media ?: return
 
-            // Konversi ID ke string agar aman digabung
             val sSlug = data.slug.toString()
             val sMd5Id = data.md5Id.toString()
             val sUserId = data.userId.toString()
 
-            // 4. GENERATE KUNCI (Rumus: user_id:slug:md5_id)
+            // 4. GENERATE KUNCI
             val keyString = "$sUserId:$sSlug:$sMd5Id"
-            val md5HashStr = md5(keyString) // Hasil MD5 dalam format Hex String (32 char)
+            val md5HashStr = md5(keyString)
 
-            // Kunci AES & Counter diambil dari byte string MD5 tersebut
             val keyBytes = md5HashStr.toByteArray(Charsets.UTF_8)
-            val ivBytes = keyBytes.sliceArray(0 until 16) // Ambil 16 byte pertama (slice 0, 0x10)
+            val ivBytes = keyBytes.sliceArray(0 until 16)
 
-            // 5. DEKRIPSI (AES-CTR)
+            // 5. DEKRIPSI
             val encryptedBytes = unescapeMediaToBytes(media)
             val decryptedUrl = decryptAesCtr(encryptedBytes, keyBytes, ivBytes)
 
             if (decryptedUrl.contains("http")) {
-                // Menggunakan callback.invoke() alih-alih menambahkan ke list
+                // FIX 2: Menggunakan 'newExtractorLink' (Builder Pattern)
+                // Constructor langsung ExtractorLink() menyebabkan crash di versi Stable/Prerelease check
                 callback.invoke(
-                    ExtractorLink(
+                    newExtractorLink(
                         source = name,
                         name = "$name VIP",
                         url = decryptedUrl,
-                        referer = finalUrl,
-                        quality = Qualities.Unknown.value,
-                        type = ExtractorLinkType.VIDEO,
-                        headers = mapOf("User-Agent" to "Mozilla/5.0") // Opsional, header default
-                    )
+                        type = ExtractorLinkType.VIDEO
+                    ) {
+                        this.referer = finalUrl
+                        this.quality = Qualities.Unknown.value
+                        this.headers = mapOf("User-Agent" to "Mozilla/5.0")
+                    }
                 )
             }
 
@@ -89,7 +89,7 @@ open class HydraxExtractor : ExtractorApi() {
         }
     }
 
-    // --- HELPER DECRYPTOR (TETAP SAMA) ---
+    // --- HELPER DECRYPTOR ---
 
     private fun md5(input: String): String {
         return MessageDigest.getInstance("MD5")
@@ -105,7 +105,6 @@ open class HydraxExtractor : ExtractorApi() {
             cipher.init(Cipher.DECRYPT_MODE, secretKey, ivSpec)
 
             val decrypted = cipher.doFinal(encrypted)
-            // Filter hanya karakter yang valid untuk URL
             String(decrypted).filter { it.toInt() in 32..126 }
         } catch (e: Exception) {
             ""
