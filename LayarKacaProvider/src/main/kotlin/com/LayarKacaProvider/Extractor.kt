@@ -10,7 +10,7 @@ import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.M3u8Helper
 import com.lagradost.cloudstream3.utils.Qualities
-import com.lagradost.cloudstream3.utils.newExtractorLink 
+import com.lagradost.cloudstream3.utils.newExtractorLink
 
 class Hydrax : ExtractorApi() {
     override val name = "Hydrax"
@@ -24,40 +24,69 @@ class Hydrax : ExtractorApi() {
         callback: (ExtractorLink) -> Unit
     ) {
         val response = app.get(url, referer = referer).text
+        
+        // 1. Ambil variable 'datas'
         val regex = Regex("""datas\s*=\s*['"]([^'"]+)['"]""")
         val match = regex.find(response)
 
         if (match != null) {
             val encryptedData = match.groupValues[1]
             try {
+                // 2. Decode Base64 untuk mendapatkan SLUG
                 val jsonString = base64Decode(encryptedData)
-                val data = mapper.readValue<HydraxData>(jsonString)
-                val streamUrl = data.source ?: data.url ?: data.file
+                
+                // Kita pakai parse manual yang aman (ignore unknown keys)
+                val initialData = mapper.readValue<InitialData>(jsonString)
+                val slug = initialData.slug
 
-                if (!streamUrl.isNullOrEmpty()) {
-                    val finalQuality = getQualityFromName(data.label)
+                if (!slug.isNullOrEmpty()) {
+                    // 3. JURUS API BYPASS
+                    // Kita tembak langsung ke endpoint API mereka menggunakan slug yang kita dapat.
+                    // Endpoint ini sering dipakai oleh player V2 mereka.
+                    val apiUrl = "$mainUrl/api/source/$slug"
                     
-                    if (streamUrl.contains(".m3u8")) {
-                        M3u8Helper.generateM3u8(
-                            name,
-                            streamUrl,
-                            referer ?: mainUrl
-                        ).forEach(callback)
-                    } else {
-                        // --- PERBAIKAN UTAMA DI SINI ---
-                        // Referer dan Quality dimasukkan ke dalam blok { ... }
-                        callback(
-                            newExtractorLink(
-                                source = name,
-                                name = name,
-                                url = streamUrl
-                            ) {
-                                this.referer = referer ?: mainUrl
-                                this.quality = finalQuality
+                    val apiHeaders = mapOf(
+                        "Referer" to url,
+                        "X-Requested-With" to "XMLHttpRequest",
+                        "Content-Type" to "application/x-www-form-urlencoded"
+                    )
+
+                    // Kirim request POST kosong atau dengan r=referer
+                    val apiResponse = app.post(
+                        apiUrl, 
+                        headers = apiHeaders,
+                        data = mapOf("r" to (referer ?: mainUrl), "d" to "abysscdn.com")
+                    ).parsedSafe<ApiResponse>()
+
+                    // 4. Proses Hasil API
+                    apiResponse?.data?.forEach { video ->
+                        val streamUrl = video.file ?: video.label // Kadang link ada di label (jarang)
+                        val qualityLabel = video.label ?: "Auto"
+                        val qualityInt = getQualityFromName(qualityLabel)
+
+                        if (!streamUrl.isNullOrEmpty()) {
+                            if (streamUrl.contains(".m3u8")) {
+                                M3u8Helper.generateM3u8(
+                                    name,
+                                    streamUrl,
+                                    referer ?: mainUrl
+                                ).forEach(callback)
+                            } else {
+                                callback(
+                                    newExtractorLink(
+                                        source = name,
+                                        name = name,
+                                        url = streamUrl
+                                    ) {
+                                        this.referer = referer ?: mainUrl
+                                        this.quality = qualityInt
+                                    }
+                                )
                             }
-                        )
+                        }
                     }
                 }
+
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -74,10 +103,20 @@ class Hydrax : ExtractorApi() {
         }
     }
 
-    data class HydraxData(
-        @JsonProperty("source") val source: String? = null,
-        @JsonProperty("url") val url: String? = null,
+    // Data Class untuk parsing tahap 1 (ambil slug)
+    data class InitialData(
+        @JsonProperty("slug") val slug: String? = null
+    )
+
+    // Data Class untuk parsing tahap 2 (hasil API)
+    data class ApiResponse(
+        @JsonProperty("success") val success: Boolean? = null,
+        @JsonProperty("data") val data: List<VideoData>? = null
+    )
+
+    data class VideoData(
         @JsonProperty("file") val file: String? = null,
-        @JsonProperty("label") val label: String? = null
+        @JsonProperty("label") val label: String? = null,
+        @JsonProperty("type") val type: String? = null
     )
 }
