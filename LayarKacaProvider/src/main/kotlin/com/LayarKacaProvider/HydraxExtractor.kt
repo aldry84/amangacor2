@@ -2,7 +2,7 @@ package com.LayarKacaProvider
 
 import android.util.Base64
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.utils.* // Memuat newExtractorLink dan Qualities
+import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.fasterxml.jackson.annotation.JsonProperty
 import java.security.MessageDigest
@@ -12,12 +12,13 @@ import javax.crypto.spec.SecretKeySpec
 
 open class HydraxExtractor : ExtractorApi() {
     override var name = "Hydrax"
+    // URL ini harus cocok dengan yang ada di iframe LayarKacaProvider
     override var mainUrl = "https://playeriframe.sbs"
     override val requiresReferer = true
 
     data class AbyssData(
         @JsonProperty("slug") val slug: String? = null,
-        @JsonProperty("md5_id") val md5Id: Any? = null, 
+        @JsonProperty("md5_id") val md5Id: Any? = null,
         @JsonProperty("user_id") val userId: Any? = null,
         @JsonProperty("media") val media: String? = null
     )
@@ -26,33 +27,34 @@ open class HydraxExtractor : ExtractorApi() {
         val sources = mutableListOf<ExtractorLink>()
 
         try {
+            // Gunakan referer dari LK21 agar tidak kena blokir
             val response = app.get(url, referer = referer ?: "https://tv8.lk21official.cc/")
             val html = response.text
             val finalUrl = response.url
 
             val encodedData = Regex("""const datas\s*=\s*"([^"]+)"""").find(html)?.groupValues?.get(1) ?: return null
+            
+            // Bersihkan Base64 dari sampah unicode
             val cleanB64 = encodedData.replace(Regex("""\\u[0-9a-fA-F]{4}"""), "")
             val decodedJson = String(Base64.decode(cleanB64, Base64.DEFAULT), Charsets.ISO_8859_1)
             
             val data = tryParseJson<AbyssData>(decodedJson) ?: return null
-            val media = data.media ?: return null
+            val mediaData = data.media ?: return null
             
-            val sSlug = data.slug.toString()
-            val sMd5Id = data.md5Id.toString()
-            val sUserId = data.userId.toString()
-
-            // RUMUS FINAL: user_id:slug:md5_id
-            val keyString = "$sUserId:$sSlug:$sMd5Id"
-            val md5HashStr = md5(keyString) 
+            // Generate Kunci Final Boss: user_id:slug:md5_id
+            val keyString = "${data.userId}:${data.slug}:${data.md5Id}"
+            val md5Hash = MessageDigest.getInstance("MD5")
+                .digest(keyString.toByteArray())
+                .joinToString("") { "%02x".format(it) }
             
-            val keyBytes = md5HashStr.toByteArray(Charsets.UTF_8)
-            val ivBytes = keyBytes.sliceArray(0 until 16) 
+            val keyBytes = md5Hash.toByteArray(Charsets.UTF_8)
+            val ivBytes = keyBytes.sliceArray(0 until 16)
 
-            val encryptedBytes = unescapeMediaToBytes(media)
+            val encryptedBytes = unescapeMedia(mediaData)
             val decryptedUrl = decryptAesCtr(encryptedBytes, keyBytes, ivBytes)
 
             if (decryptedUrl.contains("http")) {
-                // PAKAI newExtractorLink AGAR LOLOS LINT STABLE
+                // WAJIB: Gunakan newExtractorLink agar plugin tidak dianggap "Restricted"
                 sources.add(
                     newExtractorLink(
                         source = name,
@@ -61,35 +63,28 @@ open class HydraxExtractor : ExtractorApi() {
                         type = ExtractorLinkType.VIDEO
                     ) {
                         this.referer = finalUrl
-                        this.quality = Qualities.Unknown.value
+                        // Gunakan angka 400 (Unknown) atau 1080 secara langsung agar aman di build stable
+                        this.quality = 400 
                     }
                 )
             }
-
         } catch (e: Exception) {
             e.printStackTrace()
         }
         return sources
     }
 
-    private fun md5(input: String): String {
-        return MessageDigest.getInstance("MD5")
-            .digest(input.toByteArray())
-            .joinToString("") { "%02x".format(it) }
-    }
-
     private fun decryptAesCtr(encrypted: ByteArray, key: ByteArray, iv: ByteArray): String {
         return try {
-            val secretKey = SecretKeySpec(key, "AES") 
+            val secretKey = SecretKeySpec(key, "AES")
             val ivSpec = IvParameterSpec(iv)
             val cipher = Cipher.getInstance("AES/CTR/NoPadding")
             cipher.init(Cipher.DECRYPT_MODE, secretKey, ivSpec)
-            val decrypted = cipher.doFinal(encrypted)
-            String(decrypted).filter { it.toInt() in 32..126 }
+            String(cipher.doFinal(encrypted)).filter { it.toInt() in 32..126 }
         } catch (e: Exception) { "" }
     }
 
-    private fun unescapeMediaToBytes(media: String): ByteArray {
+    private fun unescapeMedia(media: String): ByteArray {
         val bytes = mutableListOf<Byte>()
         var i = 0
         while (i < media.length) {
